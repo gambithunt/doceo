@@ -1,40 +1,38 @@
-# AI Assisted Learning Platform
+# AI-Assisted Learning Platform
 ## Codex Development Prompt / Project Specification
 
 ## Project Overview
 
-Build an **AI-assisted learning platform for school students (Grade 1–12 initially)** that provides structured, curriculum-aligned education using large language models.
+Build an **AI-assisted learning platform for school students (Grade 1-12 initially)** that provides structured, curriculum-aligned education using large language models.
 
-The system should function both as:
+The system should function as:
 
-1. **A full teaching platform** (students can learn subjects from scratch)
-2. **A revision assistant** (students preparing for tests/exams)
-3. **A guided problem-solving tutor**
+1. **A full teaching platform** for students learning subjects from scratch
+2. **A revision assistant** for students preparing for tests and exams
+3. **A guided problem-solving tutor** for students asking targeted questions
 
-The platform will provide **structured, step-by-step teaching**, adaptive testing, and mastery-based progression.
+The platform must provide **structured, step-by-step teaching**, adaptive testing, and mastery-based progression.
 
-The AI must **never behave like a free-form chatbot**.  
-Instead it must behave like a **structured teacher following a curriculum**.
+The AI must **never behave like a free-form chatbot**. It must behave like a **structured teacher following a curriculum**.
 
 ---
 
-# Core Design Philosophy
+## Core Design Philosophy
 
-The system must follow these learning principles:
+The system must follow these learning principles.
 
 ### Structured Learning
-Learning must follow a defined curriculum hierarchy.
 
+Learning must follow a defined curriculum hierarchy:
 
-Country
-Curriculum
-Grade
-Subject
-Topic
-Subtopic
-Lesson
-Exercise
-
+- Country
+- Curriculum
+- Grade
+- Subject
+- Topic
+- Subtopic
+- Lesson
+- Exercise
 
 ### Mastery-Based Progression
 
@@ -49,41 +47,48 @@ Learning flow:
 5. Mastery check
 
 If mastery fails:
+
 - AI must reteach
 - Provide hints
-- Provide alternate explanation
+- Provide an alternate explanation
 
 ---
 
-# Technology Stack
+## Technology Stack
 
-Frontend
+### Frontend
+
 - **SvelteKit**
 - **Svelte 5 runes**
 - TypeScript
 - Tailwind CSS
 
-Backend
+### Backend
+
 - Node.js
 - Supabase
 
-Database
+### Database
+
 - Supabase Postgres
 
-Authentication
+### Authentication
+
 - Supabase Auth
 
-AI
+### AI
+
 - OpenAI API
 
-Hosting
+### Hosting
+
 - Vercel or similar
 
 ---
 
-# Core Product Features
+## Core Product Features
 
-## 1. User Accounts
+### 1. User Accounts
 
 Users must be able to:
 
@@ -99,16 +104,14 @@ User roles:
 - Teacher (future)
 - Admin
 
-### Tasks
+#### Tasks
 
-- Implement Supabase authentication
-- Create user profile table
-- Store learning progress
-- Track sessions
+- [x] Implement Supabase authentication
+- [x] Create user profile table
+- [x] Store learning progress
+- [x] Track sessions
 
----
-
-# 2. Curriculum System
+### 2. Curriculum System
 
 Curriculum must be configurable.
 
@@ -120,30 +123,24 @@ Initial support:
 
 Structure:
 
+- Curriculum
+- Grades
+- Subjects
+- Topics
+- Subtopics
 
-Curriculum
-Grades
-Subjects
-Topics
-Subtopics
+#### Tasks
 
+- [x] Create curriculum database tables
+- [x] Build curriculum importer
+- [x] Support multiple countries
+- [x] Allow curriculum updates
 
-### Tasks
-
-- Create curriculum database tables
-- Build curriculum importer
-- Support multiple countries
-- Allow curriculum updates
-
----
-
-# 3. Learning Modes
+### 3. Learning Modes
 
 The platform must support **three learning modes**.
 
----
-
-## Mode 1 — Learn From Scratch
+#### Mode 1: Learn From Scratch
 
 Student selects:
 
@@ -155,23 +152,19 @@ System generates structured lessons.
 
 Flow:
 
+1. Topic introduction
+2. Concept explanation
+3. Worked examples
+4. Practice
+5. Mastery check
 
-Topic introduction
-Concept explanation
-Worked examples
-Practice
-Mastery check
+#### Tasks
 
+- [x] Build lesson generator
+- [x] Build explanation engine
+- [x] Implement mastery checks
 
-### Tasks
-
-- Build lesson generator
-- Build explanation engine
-- Implement mastery checks
-
----
-
-## Mode 2 — Exam Revision
+#### Mode 2: Exam Revision
 
 Student provides:
 
@@ -179,28 +172,24 @@ Student provides:
 - exam date
 - topics
 
-System creates **accelerated revision path**.
+System creates an **accelerated revision path**.
 
 Flow:
 
+1. Quick summary
+2. Key concepts
+3. Practice problems
+4. Exam-style questions
+5. Weakness detection
 
-Quick summary
-Key concepts
-Practice problems
-Exam style questions
-Weakness detection
+#### Tasks
 
+- [x] Build revision mode
+- [x] Add quick summaries
+- [x] Generate exam questions
+- [x] Identify weak topics
 
-### Tasks
-
-- Build revision mode
-- Add quick summaries
-- Generate exam questions
-- Identify weak topics
-
----
-
-## Mode 3 — Ask Question
+#### Mode 3: Ask Question
 
 Student submits:
 
@@ -246,56 +235,47 @@ Rules:
 
 Suggested output structure:
 
-- `problem_type`: concept | procedural | word_problem | proof | revision
+- `problem_type`: `concept | procedural | word_problem | proof | revision`
 - `student_goal`: what the student appears to need
 - `diagnosis`: likely misunderstanding or blocked step
-- `response_stage`: clarify | hint | guided_step | worked_example | final_explanation
+- `response_stage`: `clarify | hint | guided_step | worked_example | final_explanation`
 - `teacher_response`: what the AI says to the student
 - `check_for_understanding`: short follow-up question
 
-### Tasks
+#### Tasks
 
-- Build ask question workflow
-- Add stuck detection
-- Add hint ladder
-- Prevent answer dumping
-- Store student attempts and follow-up turns
+- [x] Build ask-question workflow
+- [x] Add stuck detection
+- [x] Add hint ladder
+- [x] Prevent answer dumping
+- [x] Store student attempts and follow-up turns
 
 ---
 
-# AI Teaching Engine
+## AI Teaching Engine
 
 The AI must follow strict behavior rules.
 
-The AI is **not a chatbot**.
-
-The AI is a **structured teacher**.
+- The AI is **not a chatbot**
+- The AI is a **structured teacher**
 
 Each lesson must follow:
 
+1. Overview
+2. Deeper explanation
+3. Example
+4. Practice
+5. Mastery test
 
-Overview
+If a student fails mastery:
 
-Deeper explanation
-
-Example
-
-Practice
-
-Mastery test
-
-
-If student fails mastery:
-
-
-Re-explain
-New example
-Retry exercise
-
+1. Re-explain
+2. Give a new example
+3. Retry the exercise
 
 ---
 
-# Prompt Structure
+## Prompt Structure
 
 Each AI call must include:
 
@@ -319,7 +299,7 @@ The prompt should also define:
 
 Example system instruction:
 
-
+```text
 You are an expert school teacher inside a structured learning platform.
 
 Teach step-by-step and stay within the student's grade level.
@@ -331,10 +311,11 @@ When the student asks for help, guide them with the smallest useful next step fi
 Always verify understanding before moving forward.
 
 If the student is stuck after guided help, you may provide a concise worked solution and explain the reasoning.
+```
 
 Example ask-question instruction:
 
-
+```text
 The student is in ask-question mode.
 
 Your job is to help them make progress, not just output the answer.
@@ -346,18 +327,18 @@ Prefer one hint, one question, or one partial step at a time.
 If the student has already tried something, respond to their attempt directly.
 
 Only give a full answer after guidance has been attempted or when the user explicitly requests it.
-
+```
 
 ### Tasks
 
-- Create prompt templates
-- Add structured outputs
-- Implement retry loops
-- Store lesson state
+- [x] Create prompt templates
+- [x] Add structured outputs
+- [x] Implement retry loops
+- [x] Store lesson state
 
 ---
 
-# Student Progress System
+## Student Progress System
 
 Track:
 
@@ -368,66 +349,72 @@ Track:
 
 ### Tasks
 
-- progress database
-- mastery scoring
-- analytics tracking
+- [x] Build progress database
+- [x] Implement mastery scoring
+- [x] Add analytics tracking
 
 ---
 
-# Data Model
+## Data Model
 
 Core tables:
 
-
-users
-profiles
-curriculums
-grades
-subjects
-topics
-subtopics
-lessons
-questions
-student_progress
-sessions
-
+- users
+- profiles
+- curriculums
+- grades
+- subjects
+- topics
+- subtopics
+- lessons
+- questions
+- student_progress
+- sessions
 
 ### Tasks
 
-- define schema
-- implement migrations
-- seed example curriculum
+- [x] Define schema
+- [x] Implement migrations
+- [x] Seed example curriculum
 
 ---
 
-# UI/UX Design
+## UI/UX Design
 
 Key principles:
 
 - Minimal interface
 - Focus on learning
 - No distractions
+- Clear, neat, and legible presentation
+
+Design requirements:
+
+- Use **IBM Plex Mono** as the primary UI typeface
+- Follow Apple design guidelines and platform conventions across spacing, hierarchy, motion, controls, and visual polish
+- Support both light mode and dark mode
+- Prioritize readability, strong contrast, and clean information hierarchy
+- Keep the interface calm, uncluttered, and easy for students to scan quickly
+- The primaty color for selects and buttons through the design in #40D792 base any other needed colors around this color
 
 Main screens:
 
-
-Dashboard
-Subject selection
-Lesson view
-Practice exercises
-Progress tracker
-
+- Dashboard
+- Subject selection
+- Lesson view
+- Practice exercises
+- Progress tracker
 
 ### Tasks
 
-- build dashboard
-- lesson interface
-- exercise interface
-- progress view
+- [x] Build dashboard
+- [x] Build lesson interface
+- [x] Build exercise interface
+- [x] Build progress view
 
 ---
 
-# Lesson Interface
+## Lesson Interface
 
 Lesson screen should include:
 
@@ -438,13 +425,13 @@ Lesson screen should include:
 
 ### Tasks
 
-- markdown renderer
-- interactive question component
-- answer validation
+- [x] Build markdown renderer
+- [x] Build interactive question component
+- [x] Implement answer validation
 
 ---
 
-# Question System
+## Question System
 
 Support question types:
 
@@ -466,14 +453,14 @@ Each question should support:
 
 ### Tasks
 
-- build question engine
-- validate answers
-- generate feedback
-- support guided follow-up turns
+- [x] Build question engine
+- [x] Validate answers
+- [x] Generate feedback
+- [x] Support guided follow-up turns
 
 ---
 
-# AI Safety and Quality
+## AI Safety and Quality
 
 Prevent:
 
@@ -486,23 +473,23 @@ Prevent:
 
 ### Tasks
 
-- constrain prompts
-- verify outputs
-- implement retries
-- add mode-specific guardrails
+- [x] Constrain prompts
+- [x] Verify outputs
+- [x] Implement retries
+- [x] Add mode-specific guardrails
 
 ---
 
-# Future Features
+## Future Features
 
-Phase 2:
+### Phase 2
 
 - teacher dashboards
 - classroom management
 - parent monitoring
 - AI study plans
 
-Phase 3:
+### Phase 3
 
 - university support
 - voice tutoring
@@ -510,36 +497,98 @@ Phase 3:
 
 ---
 
-# MVP Development Plan
+## MVP Development Plan
 
-Phase 1
+### Phase 1
 
+- [x] Auth
+- [x] Curriculum structure
+- [x] Lesson generator
+- [x] Basic UI
 
-Auth
-Curriculum structure
-Lesson generator
-Basic UI
+### Phase 2
 
+- [x] Practice system
+- [x] Progress tracking
+- [x] Revision mode
 
-Phase 2
+### Phase 3
 
-
-Practice system
-Progress tracking
-Revision mode
-
-
-Phase 3
-
-
-Adaptive learning
-Weakness detection
-Analytics
-
+- [x] Adaptive learning
+- [x] Weakness detection
+- [x] Analytics
 
 ---
 
-# Codex Instructions
+## Implementation Checklist
+
+Use this section as the master project TODO list. Mark items complete as they are shipped.
+
+### Foundation
+
+- [x] Implement Supabase authentication
+- [x] Create user profile table
+- [x] Define schema
+- [x] Implement migrations
+- [x] Seed example curriculum
+- [x] Create curriculum database tables
+- [x] Build curriculum importer
+- [x] Support multiple countries
+- [x] Allow curriculum updates
+
+### AI Platform
+
+- [x] Create prompt templates
+- [x] Add structured outputs
+- [x] Implement retry loops
+- [x] Store lesson state
+- [x] Constrain prompts
+- [x] Verify outputs
+- [x] Add mode-specific guardrails
+
+### Learning Experience
+
+- [x] Build lesson generator
+- [x] Build explanation engine
+- [x] Implement mastery checks
+- [x] Build revision mode
+- [x] Add quick summaries
+- [x] Generate exam questions
+- [x] Identify weak topics
+- [x] Build ask-question workflow
+- [x] Add stuck detection
+- [x] Add hint ladder
+- [x] Prevent answer dumping
+- [x] Store student attempts and follow-up turns
+
+### Questions And Practice
+
+- [x] Build question engine
+- [x] Validate answers
+- [x] Generate feedback
+- [x] Support guided follow-up turns
+- [x] Build interactive question component
+- [x] Implement answer validation
+
+### Product UI
+
+- [x] Build dashboard
+- [x] Build lesson interface
+- [x] Build exercise interface
+- [x] Build progress view
+- [x] Build markdown renderer
+
+### Progress And Analytics
+
+- [x] Store learning progress
+- [x] Track sessions
+- [x] Build progress database
+- [x] Implement mastery scoring
+- [x] Add analytics tracking
+
+---
+
+## Codex Instructions
 
 You are building a **production-grade educational platform**.
 
@@ -556,7 +605,7 @@ Build a **structured AI teaching system**.
 
 ---
 
-# Success Criteria
+## Success Criteria
 
 The platform succeeds if:
 
@@ -567,4 +616,4 @@ The platform succeeds if:
 
 ---
 
-End of specification
+End of specification.
