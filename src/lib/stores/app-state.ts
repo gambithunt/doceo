@@ -19,7 +19,13 @@ import type {
   AppScreen,
   AppState,
   AskQuestionRequest,
+  CountryOption,
+  CurriculumOption,
+  GradeOption,
   LearningMode,
+  OnboardingStep,
+  SchoolTerm,
+  SubjectOption,
   ThemeMode
 } from '$lib/types';
 
@@ -39,6 +45,29 @@ interface TutorResponse {
   response: import('$lib/types').AskQuestionResponse;
   provider: string;
   error?: string;
+}
+
+interface OptionsResponse<TOption> {
+  options: TOption[];
+}
+
+interface CompleteOnboardingResponse {
+  recommendation: {
+    subjectId: string | null;
+    subjectName: string | null;
+    reason: string;
+  };
+  selectionMode: import('$lib/types').SubjectSelectionMode;
+  subjects: SubjectOption[];
+}
+
+interface OnboardingProgressResponse {
+  recommendation: {
+    subjectId: string | null;
+    subjectName: string | null;
+    reason: string;
+  };
+  selectionMode: import('$lib/types').SubjectSelectionMode;
 }
 
 function readState(): AppState {
@@ -72,6 +101,16 @@ function createAnalyticsEvent(type: AnalyticsEvent['type'], detail: string): Ana
     createdAt: new Date().toISOString(),
     detail
   };
+}
+
+function deduplicateSubjects(subjects: string[]): string[] {
+  return Array.from(new Set(subjects.map((subject) => subject.trim()).filter((subject) => subject.length > 0)));
+}
+
+async function fetchOptions<TOption>(query: string): Promise<TOption[]> {
+  const response = await fetch(`/api/onboarding/options?${query}`);
+  const payload = (await response.json()) as OptionsResponse<TOption>;
+  return payload.options;
 }
 
 function createAppStore() {
@@ -130,6 +169,71 @@ function createAppStore() {
     return next;
   }
 
+  async function syncOnboardingProgress(next: AppState): Promise<void> {
+    if (!browser || !next.onboarding.selectedCountryId || !next.onboarding.selectedGradeId) {
+      return;
+    }
+
+    const response = await fetch('/api/onboarding/progress', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        profileId: next.profile.id,
+        countryId: next.onboarding.selectedCountryId,
+        curriculumId: next.onboarding.selectedCurriculumId,
+        gradeId: next.onboarding.selectedGradeId,
+        schoolYear: next.onboarding.schoolYear,
+        term: next.onboarding.term,
+        selectedSubjectIds: next.onboarding.selectedSubjectIds,
+        selectedSubjectNames: next.onboarding.selectedSubjectNames,
+        customSubjects: next.onboarding.customSubjects,
+        isUnsure: next.onboarding.selectionMode === 'unsure'
+      })
+    });
+    const payload = (await response.json()) as OnboardingProgressResponse;
+
+    update((state) => {
+      const updated = {
+        ...state,
+        onboarding: {
+          ...state.onboarding,
+          recommendation: payload.recommendation,
+          selectionMode: payload.selectionMode
+        }
+      };
+      persistState(updated);
+      return updated;
+    });
+  }
+
+  async function loadInitialOnboardingOptions(state: AppState): Promise<AppState> {
+    const countries = await fetchOptions<CountryOption>('type=countries');
+    const curriculums = await fetchOptions<CurriculumOption>(
+      `type=curriculums&countryId=${state.onboarding.selectedCountryId}`
+    );
+    const grades = await fetchOptions<GradeOption>(
+      `type=grades&curriculumId=${state.onboarding.selectedCurriculumId}`
+    );
+    const subjects = await fetchOptions<SubjectOption>(
+      `type=subjects&curriculumId=${state.onboarding.selectedCurriculumId}&gradeId=${state.onboarding.selectedGradeId}`
+    );
+
+    return {
+      ...state,
+      onboarding: {
+        ...state.onboarding,
+        options: {
+          countries,
+          curriculums,
+          grades,
+          subjects
+        }
+      }
+    };
+  }
+
   return {
     subscribe,
     initializeRemoteState: async () => {
@@ -142,7 +246,8 @@ function createAppStore() {
       try {
         const response = await fetch('/api/state/bootstrap');
         const payload = (await response.json()) as BootstrapResponse;
-        const normalizedState = normalizeAppState(payload.state);
+        let normalizedState = normalizeAppState(payload.state);
+        normalizedState = await loadInitialOnboardingOptions(normalizedState);
         const next = {
           ...normalizedState,
           backend: {
@@ -170,7 +275,11 @@ function createAppStore() {
               ui: {
                 ...state.ui,
                 currentScreen:
-                  session || state.onboarding.completed ? ('dashboard' as const) : ('landing' as const)
+                  session && state.onboarding.completed
+                    ? ('dashboard' as const)
+                    : session
+                      ? ('onboarding' as const)
+                      : ('landing' as const)
               }
             };
             persistState(sessionState);
@@ -181,29 +290,335 @@ function createAppStore() {
         hasInitializedRemoteState = true;
       }
     },
+    setTheme: (theme: ThemeMode) =>
+      update((state) => persistAndSync({ ...state, ui: { ...state.ui, theme } })),
     setScreen: (currentScreen: AppScreen) =>
+      update((state) => persistAndSync({ ...state, ui: { ...state.ui, currentScreen } })),
+    setLearningMode: (learningMode: LearningMode) =>
       update((state) => {
+        const lesson = getSelectedLesson(state);
         const next = {
           ...state,
           ui: {
             ...state.ui,
-            currentScreen
-          }
+            learningMode,
+            currentScreen:
+              learningMode === 'learn'
+                ? ('lesson' as const)
+                : learningMode === 'revision'
+                  ? ('revision' as const)
+                  : ('ask' as const)
+          },
+          sessions: recordSession(state.sessions, learningMode, lesson.id, `Resume ${lesson.title}`)
         };
         return persistAndSync(next);
       }),
-    completeOnboarding: (fullName: string, grade: string) =>
+    setOnboardingStep: (currentStep: OnboardingStep) =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            currentStep
+          },
+          ui: {
+            ...state.ui,
+            currentScreen: 'onboarding'
+          }
+        })
+      ),
+    setOnboardingSchoolYear: (schoolYear: string) =>
+      update((state) => {
+        const next = persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            schoolYear
+          }
+        });
+        void syncOnboardingProgress(next);
+        return next;
+      }),
+    setOnboardingTerm: (term: SchoolTerm) =>
+      update((state) => {
+        const next = persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            term
+          }
+        });
+        void syncOnboardingProgress(next);
+        return next;
+      }),
+    selectOnboardingCountry: async (countryId: string) => {
+      const curriculums = await fetchOptions<CurriculumOption>(`type=curriculums&countryId=${countryId}`);
+      const curriculum = curriculums[0];
+      const grades = curriculum
+        ? await fetchOptions<GradeOption>(`type=grades&curriculumId=${curriculum.id}`)
+        : [];
+      const grade = grades[0];
+      const subjects =
+        curriculum && grade
+          ? await fetchOptions<SubjectOption>(
+              `type=subjects&curriculumId=${curriculum.id}&gradeId=${grade.id}`
+            )
+          : [];
+
       update((state) => {
         const next = {
           ...state,
           onboarding: {
             ...state.onboarding,
-            completed: true
+            selectedCountryId: countryId,
+            selectedCurriculumId: curriculum?.id ?? '',
+            selectedGradeId: grade?.id ?? '',
+            selectedSubjectIds: [],
+            selectedSubjectNames: [],
+            customSubjects: [],
+            customSubjectInput: '',
+            error: null,
+            options: {
+              ...state.onboarding.options,
+              curriculums,
+              grades,
+              subjects
+            }
+          }
+        };
+        void syncOnboardingProgress(next);
+        return persistAndSync(next);
+      });
+    },
+    selectOnboardingCurriculum: async (curriculumId: string) => {
+      const grades = await fetchOptions<GradeOption>(`type=grades&curriculumId=${curriculumId}`);
+      const grade = grades[0];
+      const subjects = grade
+        ? await fetchOptions<SubjectOption>(
+            `type=subjects&curriculumId=${curriculumId}&gradeId=${grade.id}`
+          )
+        : [];
+
+      update((state) => {
+        const next = {
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            selectedCurriculumId: curriculumId,
+            selectedGradeId: grade?.id ?? '',
+            selectedSubjectIds: [],
+            selectedSubjectNames: [],
+            customSubjects: [],
+            customSubjectInput: '',
+            options: {
+              ...state.onboarding.options,
+              grades,
+              subjects
+            }
+          }
+        };
+        void syncOnboardingProgress(next);
+        return persistAndSync(next);
+      });
+    },
+    selectOnboardingGrade: async (gradeId: string) => {
+      update((state) => ({
+        ...state,
+        onboarding: {
+          ...state.onboarding,
+          isSaving: true,
+          selectedGradeId: gradeId
+        }
+      }));
+
+      const currentState = readState();
+      const subjects = await fetchOptions<SubjectOption>(
+        `type=subjects&curriculumId=${currentState.onboarding.selectedCurriculumId}&gradeId=${gradeId}`
+      );
+
+      update((state) => {
+        const next = {
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            isSaving: false,
+            selectedGradeId: gradeId,
+            selectedSubjectIds: [],
+            selectedSubjectNames: [],
+            customSubjects: [],
+            customSubjectInput: '',
+            options: {
+              ...state.onboarding.options,
+              subjects
+            }
+          }
+        };
+        void syncOnboardingProgress(next);
+        return persistAndSync(next);
+      });
+    },
+    toggleOnboardingSubject: (subjectId: string) =>
+      update((state) => {
+        const isSelected = state.onboarding.selectedSubjectIds.includes(subjectId);
+        const selectedSubjectIds = isSelected
+          ? state.onboarding.selectedSubjectIds.filter((item) => item !== subjectId)
+          : [...state.onboarding.selectedSubjectIds, subjectId];
+        const selectedSubjectNames = state.onboarding.options.subjects
+          .filter((subject) => selectedSubjectIds.includes(subject.id))
+          .map((subject) => subject.name);
+        const next = {
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            selectedSubjectIds,
+            selectedSubjectNames,
+            selectionMode:
+              selectedSubjectIds.length > 0 || state.onboarding.customSubjects.length > 0
+                ? state.onboarding.customSubjects.length > 0
+                  ? ('mixed' as const)
+                  : ('structured' as const)
+                : state.onboarding.selectionMode
+          }
+        };
+        void syncOnboardingProgress(next);
+        return persistAndSync(next);
+      }),
+    setOnboardingCustomSubjectInput: (customSubjectInput: string) =>
+      update((state) => {
+        const next = persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            customSubjectInput
+          }
+        });
+        return next;
+      }),
+    addOnboardingCustomSubject: () =>
+      update((state) => {
+        const nextCustomSubjects = deduplicateSubjects([
+          ...state.onboarding.customSubjects,
+          state.onboarding.customSubjectInput
+        ]);
+        const next = {
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            customSubjects: nextCustomSubjects,
+            customSubjectInput: '',
+            selectionMode:
+              state.onboarding.selectedSubjectIds.length > 0
+                ? ('mixed' as const)
+                : ('structured' as const)
+          }
+        };
+        void syncOnboardingProgress(next);
+        return persistAndSync(next);
+      }),
+    removeOnboardingCustomSubject: (subjectName: string) =>
+      update((state) => {
+        const nextCustomSubjects = state.onboarding.customSubjects.filter((item) => item !== subjectName);
+        const next = {
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            customSubjects: nextCustomSubjects,
+            selectionMode:
+              nextCustomSubjects.length === 0 && state.onboarding.selectedSubjectIds.length === 0
+                ? ('unsure' as const)
+                : nextCustomSubjects.length > 0 && state.onboarding.selectedSubjectIds.length > 0
+                  ? ('mixed' as const)
+                  : ('structured' as const)
+          }
+        };
+        void syncOnboardingProgress(next);
+        return persistAndSync(next);
+      }),
+    setOnboardingUnsure: (isUnsure: boolean) =>
+      update((state) => {
+        const next = {
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            selectionMode: isUnsure
+              ? ('unsure' as const)
+              : state.onboarding.customSubjects.length > 0 && state.onboarding.selectedSubjectIds.length > 0
+                ? ('mixed' as const)
+                : ('structured' as const)
+          }
+        };
+        void syncOnboardingProgress(next);
+        return persistAndSync(next);
+      }),
+    completeOnboarding: async (fullName: string, gradeLabel: string) => {
+      update((state) => ({
+        ...state,
+        onboarding: {
+          ...state.onboarding,
+          isSaving: true,
+          error: null
+        }
+      }));
+
+      const snapshot = readState();
+
+      const response = await fetch('/api/onboarding/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          profileId: snapshot.profile.id,
+          countryId: snapshot.onboarding.selectedCountryId,
+          curriculumId: snapshot.onboarding.selectedCurriculumId,
+          gradeId: snapshot.onboarding.selectedGradeId,
+          schoolYear: snapshot.onboarding.schoolYear,
+          term: snapshot.onboarding.term,
+          selectedSubjectIds: snapshot.onboarding.selectedSubjectIds,
+          selectedSubjectNames: snapshot.onboarding.selectedSubjectNames,
+          customSubjects: snapshot.onboarding.customSubjects,
+          isUnsure: snapshot.onboarding.selectionMode === 'unsure'
+        })
+      });
+
+      const payload = (await response.json()) as CompleteOnboardingResponse;
+
+      update((state) => {
+        const curriculum =
+          state.onboarding.options.curriculums.find(
+            (item) => item.id === state.onboarding.selectedCurriculumId
+          ) ?? state.onboarding.options.curriculums[0];
+        const country =
+          state.onboarding.options.countries.find((item) => item.id === state.onboarding.selectedCountryId) ??
+          state.onboarding.options.countries[0];
+        const grade =
+          state.onboarding.options.grades.find((item) => item.id === state.onboarding.selectedGradeId) ??
+          state.onboarding.options.grades[0];
+
+        const next = {
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            completed: true,
+            completedAt: new Date().toISOString(),
+            currentStep: 'review' as const,
+            isSaving: false,
+            recommendation: payload.recommendation,
+            selectionMode: payload.selectionMode
           },
           profile: {
             ...state.profile,
             fullName,
-            grade
+            grade: gradeLabel,
+            gradeId: grade?.id ?? state.profile.gradeId,
+            country: country?.name ?? state.profile.country,
+            countryId: country?.id ?? state.profile.countryId,
+            curriculum: curriculum?.name ?? state.profile.curriculum,
+            curriculumId: curriculum?.id ?? state.profile.curriculumId,
+            schoolYear: state.onboarding.schoolYear,
+            term: state.onboarding.term,
+            recommendedStartSubjectId: payload.recommendation.subjectId,
+            recommendedStartSubjectName: payload.recommendation.subjectName
           },
           auth: {
             ...state.auth,
@@ -216,7 +631,8 @@ function createAppStore() {
           }
         };
         return persistAndSync(next);
-      }),
+      });
+    },
     signIn: async (email: string, password: string) => {
       update((state) => ({
         ...state,
@@ -240,7 +656,7 @@ function createAppStore() {
             },
             ui: {
               ...state.ui,
-              currentScreen: state.onboarding.completed ? ('dashboard' as const) : ('landing' as const)
+              currentScreen: state.onboarding.completed ? ('dashboard' as const) : ('onboarding' as const)
             }
           };
           return persistAndSync(next);
@@ -270,7 +686,7 @@ function createAppStore() {
               ? state.ui.currentScreen
               : state.onboarding.completed
                 ? ('dashboard' as const)
-                : ('landing' as const)
+                : ('onboarding' as const)
           }
         };
         return persistAndSync(next);
@@ -297,6 +713,10 @@ function createAppStore() {
               ...state.profile,
               fullName,
               email
+            },
+            ui: {
+              ...state.ui,
+              currentScreen: 'onboarding' as const
             }
           };
           return persistAndSync(next);
@@ -325,6 +745,10 @@ function createAppStore() {
             ...state.profile,
             fullName,
             email
+          },
+          ui: {
+            ...state.ui,
+            currentScreen: error ? state.ui.currentScreen : ('onboarding' as const)
           }
         };
         return persistAndSync(next);
@@ -336,10 +760,11 @@ function createAppStore() {
       }
 
       update((state) => {
+        const initial = createInitialState();
         const next = {
-          ...createInitialState(),
+          ...initial,
           ui: {
-            ...createInitialState().ui,
+            ...initial.ui,
             theme: state.ui.theme
           }
         };
@@ -348,41 +773,6 @@ function createAppStore() {
       });
       await goto('/');
     },
-    reset: () => {
-      const state = createInitialState();
-      persistAndSync(state);
-      set(state);
-    },
-    setTheme: (theme: ThemeMode) =>
-      update((state) => {
-        const next = {
-          ...state,
-          ui: {
-            ...state.ui,
-            theme
-          }
-        };
-        return persistAndSync(next);
-      }),
-    setLearningMode: (learningMode: LearningMode) =>
-      update((state) => {
-        const lesson = getSelectedLesson(state);
-        const next = {
-          ...state,
-          ui: {
-            ...state.ui,
-            learningMode,
-            currentScreen:
-              learningMode === 'learn'
-                ? ('lesson' as const)
-                : learningMode === 'revision'
-                  ? ('revision' as const)
-                  : ('ask' as const)
-          },
-          sessions: recordSession(state.sessions, learningMode, lesson.id, `Resume ${lesson.title}`)
-        };
-        return persistAndSync(next);
-      }),
     selectSubject: (subjectId: string) =>
       update((state) => {
         const subject =
@@ -390,8 +780,7 @@ function createAppStore() {
         const topic = subject.topics[0];
         const subtopic = topic.subtopics[0];
         const lessonId = subtopic.lessonIds[0] ?? state.ui.selectedLessonId;
-        const lesson =
-          state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
+        const lesson = state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
         const next = {
           ...state,
           ui: {
@@ -413,7 +802,8 @@ function createAppStore() {
           .find((item) => item.id === topicId);
         const lessonId = topic?.subtopics[0]?.lessonIds[0] ?? state.ui.selectedLessonId;
         const questionId =
-          state.lessons.find((lesson) => lesson.id === lessonId)?.practiceQuestionIds[0] ?? state.ui.practiceQuestionId;
+          state.lessons.find((lesson) => lesson.id === lessonId)?.practiceQuestionIds[0] ??
+          state.ui.practiceQuestionId;
         const next = {
           ...state,
           ui: {
@@ -430,8 +820,7 @@ function createAppStore() {
     selectSubtopic: (subtopicId: string) =>
       update((state) => {
         const topic = getSelectedTopic(state);
-        const subtopic =
-          topic.subtopics.find((item) => item.id === subtopicId) ?? topic.subtopics[0];
+        const subtopic = topic.subtopics.find((item) => item.id === subtopicId) ?? topic.subtopics[0];
         const lessonId = subtopic.lessonIds[0] ?? state.ui.selectedLessonId;
         const lesson = state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
         const next = {
@@ -462,16 +851,15 @@ function createAppStore() {
         return persistAndSync(next);
       }),
     selectPracticeQuestion: (questionId: string) =>
-      update((state) => {
-        const next = {
+      update((state) =>
+        persistAndSync({
           ...state,
           ui: {
             ...state.ui,
             practiceQuestionId: questionId
           }
-        };
-        return persistAndSync(next);
-      }),
+        })
+      ),
     answerQuestion: (questionId: string, answer: string) =>
       update((state) => {
         const question = getQuestionById(state, questionId);

@@ -10,7 +10,7 @@ return {
 	assets: new Set([]),
 	mimeTypes: {},
 	_: {
-		client: {start:"_app/immutable/entry/start.B1WhRCDc.js",app:"_app/immutable/entry/app.OqSSuRtQ.js",imports:["_app/immutable/entry/start.B1WhRCDc.js","_app/immutable/chunks/B2eDWqRQ.js","_app/immutable/chunks/BMOPieSH.js","_app/immutable/chunks/C8mE_EF6.js","_app/immutable/entry/app.OqSSuRtQ.js","_app/immutable/chunks/BMOPieSH.js","_app/immutable/chunks/ByAQXraS.js","_app/immutable/chunks/ULgTuGFF.js","_app/immutable/chunks/C8mE_EF6.js","_app/immutable/chunks/Bd7UQKXC.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.COvhKRB8.js",app:"_app/immutable/entry/app.BnhdppZx.js",imports:["_app/immutable/entry/start.COvhKRB8.js","_app/immutable/chunks/VnilDVIm.js","_app/immutable/chunks/wgxlZxHc.js","_app/immutable/entry/app.BnhdppZx.js","_app/immutable/chunks/wgxlZxHc.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -33,6 +33,27 @@ return {
 				params: [],
 				page: null,
 				endpoint: __memo(() => import('./entries/endpoints/api/ai/tutor/_server.ts.js'))
+			},
+			{
+				id: "/api/onboarding/complete",
+				pattern: /^\/api\/onboarding\/complete\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/onboarding/complete/_server.ts.js'))
+			},
+			{
+				id: "/api/onboarding/options",
+				pattern: /^\/api\/onboarding\/options\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/onboarding/options/_server.ts.js'))
+			},
+			{
+				id: "/api/onboarding/progress",
+				pattern: /^\/api\/onboarding\/progress\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/onboarding/progress/_server.ts.js'))
 			},
 			{
 				id: "/api/state/bootstrap",

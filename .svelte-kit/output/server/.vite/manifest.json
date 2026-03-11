@@ -16,8 +16,8 @@
     "imports": [
       "_exports.js",
       "_utils.js",
-      "_root.js",
-      "_index.js"
+      "_svelte-vendor.js",
+      "_root.js"
     ]
   },
   "_environment.js": {
@@ -26,19 +26,7 @@
   },
   "_exports.js": {
     "file": "chunks/exports.js",
-    "name": "exports",
-    "imports": [
-      "_index.js",
-      "_root.js"
-    ]
-  },
-  "_false.js": {
-    "file": "chunks/false.js",
-    "name": "false"
-  },
-  "_index.js": {
-    "file": "chunks/index.js",
-    "name": "index"
+    "name": "exports"
   },
   "_internal.js": {
     "file": "chunks/internal.js",
@@ -48,16 +36,30 @@
       "_environment.js"
     ]
   },
+  "_onboarding-repository.js": {
+    "file": "chunks/onboarding-repository.js",
+    "name": "onboarding-repository",
+    "imports": [
+      "_onboarding.js",
+      "_supabase.js"
+    ]
+  },
+  "_onboarding.js": {
+    "file": "chunks/onboarding.js",
+    "name": "onboarding"
+  },
   "_platform.js": {
     "file": "chunks/platform.js",
-    "name": "platform"
+    "name": "platform",
+    "imports": [
+      "_onboarding.js"
+    ]
   },
   "_root.js": {
     "file": "chunks/root.js",
     "name": "root",
     "imports": [
-      "_index.js",
-      "_false.js"
+      "_svelte-vendor.js"
     ]
   },
   "_shared.js": {
@@ -71,8 +73,17 @@
     "file": "chunks/state-repository.js",
     "name": "state-repository",
     "imports": [
-      "_platform.js"
+      "_platform.js",
+      "_supabase.js"
     ]
+  },
+  "_supabase.js": {
+    "file": "chunks/supabase.js",
+    "name": "supabase"
+  },
+  "_svelte-vendor.js": {
+    "file": "chunks/svelte-vendor.js",
+    "name": "svelte-vendor"
   },
   "_utils.js": {
     "file": "chunks/utils.js",
@@ -85,7 +96,7 @@
     "isEntry": true,
     "imports": [
       "_shared.js",
-      "_false.js",
+      "_svelte-vendor.js",
       "_environment.js"
     ]
   },
@@ -95,7 +106,7 @@
     "src": "node_modules/@sveltejs/kit/src/runtime/components/svelte-5/error.svelte",
     "isEntry": true,
     "imports": [
-      "_index.js",
+      "_svelte-vendor.js",
       "_client.js"
     ]
   },
@@ -105,7 +116,7 @@
     "src": "node_modules/@sveltejs/kit/src/runtime/server/index.js",
     "isEntry": true,
     "imports": [
-      "_false.js",
+      "_svelte-vendor.js",
       "_environment.js",
       "_shared.js",
       "_exports.js",
@@ -119,10 +130,10 @@
     "src": "src/routes/+layout.svelte",
     "isEntry": true,
     "imports": [
-      "_index.js"
+      "_svelte-vendor.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.BHQ1bU-u.css"
+      "_app/immutable/assets/_layout.BsSSYbx7.css"
     ]
   },
   "src/routes/+page.svelte": {
@@ -131,13 +142,13 @@
     "src": "src/routes/+page.svelte",
     "isEntry": true,
     "imports": [
-      "_index.js",
+      "_svelte-vendor.js",
       "_client.js",
-      "_exports.js",
-      "_platform.js"
+      "_platform.js",
+      "_onboarding.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.BEdIwYBR.css"
+      "_app/immutable/assets/_page.DuURfhpk.css"
     ]
   },
   "src/routes/api/ai/tutor/+server.ts": {
@@ -147,7 +158,35 @@
     "isEntry": true,
     "imports": [
       "_platform.js",
+      "_supabase.js",
       "_state-repository.js"
+    ]
+  },
+  "src/routes/api/onboarding/complete/+server.ts": {
+    "file": "entries/endpoints/api/onboarding/complete/_server.ts.js",
+    "name": "entries/endpoints/api/onboarding/complete/_server.ts",
+    "src": "src/routes/api/onboarding/complete/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_onboarding-repository.js"
+    ]
+  },
+  "src/routes/api/onboarding/options/+server.ts": {
+    "file": "entries/endpoints/api/onboarding/options/_server.ts.js",
+    "name": "entries/endpoints/api/onboarding/options/_server.ts",
+    "src": "src/routes/api/onboarding/options/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_onboarding-repository.js"
+    ]
+  },
+  "src/routes/api/onboarding/progress/+server.ts": {
+    "file": "entries/endpoints/api/onboarding/progress/_server.ts.js",
+    "name": "entries/endpoints/api/onboarding/progress/_server.ts",
+    "src": "src/routes/api/onboarding/progress/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_onboarding-repository.js"
     ]
   },
   "src/routes/api/state/bootstrap/+server.ts": {
@@ -156,7 +195,9 @@
     "src": "src/routes/api/state/bootstrap/+server.ts",
     "isEntry": true,
     "imports": [
-      "_state-repository.js"
+      "_state-repository.js",
+      "_onboarding-repository.js",
+      "_supabase.js"
     ]
   },
   "src/routes/api/state/sync/+server.ts": {

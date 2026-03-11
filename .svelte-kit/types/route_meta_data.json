@@ -3,6 +3,15 @@
 	"/api/ai/tutor": [
 		"src/routes/api/ai/tutor/+server.ts"
 	],
+	"/api/onboarding/complete": [
+		"src/routes/api/onboarding/complete/+server.ts"
+	],
+	"/api/onboarding/options": [
+		"src/routes/api/onboarding/options/+server.ts"
+	],
+	"/api/onboarding/progress": [
+		"src/routes/api/onboarding/progress/+server.ts"
+	],
 	"/api/state/bootstrap": [
 		"src/routes/api/state/bootstrap/+server.ts"
 	],

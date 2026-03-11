@@ -4,8 +4,10 @@
   import DashboardView from '$lib/components/DashboardView.svelte';
   import LandingView from '$lib/components/LandingView.svelte';
   import LessonWorkspace from '$lib/components/LessonWorkspace.svelte';
+  import OnboardingWizard from '$lib/components/OnboardingWizard.svelte';
   import ProgressView from '$lib/components/ProgressView.svelte';
   import RevisionWorkspace from '$lib/components/RevisionWorkspace.svelte';
+  import SettingsView from '$lib/components/SettingsView.svelte';
   import StudentNav from '$lib/components/StudentNav.svelte';
   import SubjectView from '$lib/components/SubjectView.svelte';
   import { createInitialState } from '$lib/data/platform';
@@ -38,8 +40,10 @@
   />
 </svelte:head>
 
-{#if state.ui.currentScreen === 'landing' || state.auth.status === 'signed_out' || !state.onboarding.completed}
+{#if state.ui.currentScreen === 'landing' || state.auth.status === 'signed_out'}
   <LandingView {state} />
+{:else if state.ui.currentScreen === 'onboarding' || !state.onboarding.completed}
+  <OnboardingWizard {state} />
 {:else}
   <div class="app-shell">
     <StudentNav {state} />
@@ -55,6 +59,8 @@
         <RevisionWorkspace {state} />
       {:else if state.ui.currentScreen === 'ask'}
         <AskQuestionWorkspace {state} />
+      {:else if state.ui.currentScreen === 'settings'}
+        <SettingsView {state} />
       {:else}
         <ProgressView {state} />
       {/if}
@@ -71,13 +77,13 @@
     min-height: 100vh;
     display: grid;
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-    gap: 1.25rem;
-    padding: 1.25rem;
+    gap: 1.5rem;
+    padding: 1.5rem;
   }
 
   .main-content {
     display: grid;
-    gap: 1rem;
+    gap: 1.25rem;
     align-content: start;
   }
 

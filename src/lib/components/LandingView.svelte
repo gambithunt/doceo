@@ -9,7 +9,6 @@
   let fullName = $state('');
   let email = $state('');
   let password = $state('');
-  let grade = $state('Grade 6');
   let lastAuthStatus: AppState['auth']['status'] = $state('signed_out');
   let lastAuthMode: 'signin' | 'signup' = $state('signup');
 
@@ -20,7 +19,6 @@
       if (viewState.auth.status === 'signed_in') {
         fullName = viewState.profile.fullName;
         email = viewState.profile.email;
-        grade = viewState.profile.grade;
       }
     }
 
@@ -34,10 +32,9 @@
       }
     }
 
-    if (viewState.auth.status === 'signed_in' && !viewState.onboarding.completed) {
+    if (viewState.auth.status === 'signed_in') {
       fullName = viewState.profile.fullName;
       email = viewState.profile.email;
-      grade = viewState.profile.grade;
     }
   });
 
@@ -50,9 +47,6 @@
     await appState.signIn(email, password);
   }
 
-  function finishOnboarding(): void {
-    appState.completeOnboarding(fullName, grade);
-  }
 </script>
 
 <section class="landing-shell">
@@ -61,10 +55,16 @@
       <p class="eyebrow">Doceo</p>
       <ThemeToggle theme={viewState.ui.theme} />
     </div>
-    <h1>Structured learning, not chatbot drift.</h1>
-    <p>
-      Learn a subject in order, revise with intent, and ask targeted questions when you are stuck.
-    </p>
+    <div class="intro-copy">
+      <h1>Structured learning, not chatbot drift.</h1>
+      <p>
+        Learn in order, revise with intent, and ask focused questions only when you need the next step.
+      </p>
+    </div>
+    <div class="intro-summary">
+      <strong>Built for students who want a clear path.</strong>
+      <span>South Africa first. Curriculum-aware from the moment onboarding starts.</span>
+    </div>
     <div class="bullet-grid">
       <div>
         <strong>Dashboard</strong>
@@ -86,48 +86,30 @@
   </article>
 
   <article class="auth card">
-    {#if viewState.auth.status === 'signed_in' && !viewState.onboarding.completed}
-      <p class="eyebrow">Onboarding</p>
-      <h2>Set your learner profile</h2>
+    <div class="tabs">
+      <button type="button" class:active={authMode === 'signup'} onclick={() => (authMode = 'signup')}>Create account</button>
+      <button type="button" class:active={authMode === 'signin'} onclick={() => (authMode = 'signin')}>Sign in</button>
+    </div>
+    <h2>{authMode === 'signup' ? 'Create your student account' : 'Sign in to continue'}</h2>
+    {#if authMode === 'signup'}
       <label>
         <span>Full name</span>
         <input bind:value={fullName} />
       </label>
-      <label>
-        <span>Grade</span>
-        <select bind:value={grade}>
-          <option>Grade 6</option>
-          <option>Grade 7</option>
-          <option>Grade 8</option>
-        </select>
-      </label>
-      <button type="button" onclick={finishOnboarding}>Enter the student app</button>
-    {:else}
-      <div class="tabs">
-        <button type="button" class:active={authMode === 'signup'} onclick={() => (authMode = 'signup')}>Create account</button>
-        <button type="button" class:active={authMode === 'signin'} onclick={() => (authMode = 'signin')}>Sign in</button>
-      </div>
-      <h2>{authMode === 'signup' ? 'Create your student account' : 'Sign in to continue'}</h2>
-      {#if authMode === 'signup'}
-        <label>
-          <span>Full name</span>
-          <input bind:value={fullName} />
-        </label>
-      {/if}
-      <label>
-        <span>Email</span>
-        <input bind:value={email} type="email" />
-      </label>
-      <label>
-        <span>Password</span>
-        <input bind:value={password} type="password" />
-      </label>
-      <button type="button" onclick={submitAuth} disabled={viewState.auth.status === 'loading'}>
-        {viewState.auth.status === 'loading' ? 'Working...' : authMode === 'signup' ? 'Create account' : 'Sign in'}
-      </button>
-      {#if viewState.auth.error}
-        <p class="error">{viewState.auth.error}</p>
-      {/if}
+    {/if}
+    <label>
+      <span>Email</span>
+      <input bind:value={email} type="email" />
+    </label>
+    <label>
+      <span>Password</span>
+      <input bind:value={password} type="password" />
+    </label>
+    <button type="button" onclick={submitAuth} disabled={viewState.auth.status === 'loading'}>
+      {viewState.auth.status === 'loading' ? 'Working...' : authMode === 'signup' ? 'Create account' : 'Sign in'}
+    </button>
+    {#if viewState.auth.error}
+      <p class="error">{viewState.auth.error}</p>
     {/if}
   </article>
 </section>
@@ -136,25 +118,25 @@
   .landing-shell {
     min-height: 100vh;
     display: grid;
-    gap: 1.25rem;
-    grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
-    padding: 1.5rem;
+    gap: 1.5rem;
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+    padding: 1.75rem;
     align-items: stretch;
   }
 
   .card {
     border: 1px solid var(--border);
-    border-radius: 2rem;
-    background: var(--surface);
-    padding: 1.5rem;
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(24px);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+    padding: 1.75rem;
+    box-shadow: var(--shadow-strong);
+    backdrop-filter: blur(28px);
   }
 
   .intro,
   .auth {
     display: grid;
-    gap: 1rem;
+    gap: 1.2rem;
     align-content: start;
   }
 
@@ -165,6 +147,33 @@
     gap: 1rem;
   }
 
+  .intro-copy,
+  .intro-summary {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .intro-copy h1 {
+    max-width: 12ch;
+    font-size: clamp(2rem, 5vw, 3.7rem);
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+  }
+
+  .intro-copy p,
+  .intro-summary span {
+    max-width: 38rem;
+    color: var(--text-soft);
+    line-height: 1.6;
+  }
+
+  .intro-summary {
+    padding: 1rem 1.1rem;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface-soft));
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  }
+
   .bullet-grid {
     display: grid;
     gap: 1rem;
@@ -173,10 +182,10 @@
 
   .bullet-grid div {
     display: grid;
-    gap: 0.4rem;
-    padding: 1rem;
-    border-radius: 1.4rem;
-    background: var(--surface-soft);
+    gap: 0.55rem;
+    padding: 1.1rem;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, var(--surface-tint), var(--surface-soft));
     border: 1px solid var(--border);
   }
 
@@ -214,12 +223,11 @@
     gap: 0.45rem;
   }
 
-  input,
-  select {
+  input {
     width: 100%;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: 1rem;
-    background: var(--surface-soft);
+    background: var(--surface-tint);
     color: var(--text);
     padding: 0.9rem 1rem;
     font: inherit;

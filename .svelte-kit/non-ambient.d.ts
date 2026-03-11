@@ -27,7 +27,7 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/" | "/api" | "/api/ai" | "/api/ai/tutor" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync";
+		RouteId(): "/" | "/api" | "/api/ai" | "/api/ai/tutor" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync";
 		RouteParams(): {
 			
 		};
@@ -36,11 +36,15 @@ declare module "$app/types" {
 			"/api": Record<string, never>;
 			"/api/ai": Record<string, never>;
 			"/api/ai/tutor": Record<string, never>;
+			"/api/onboarding": Record<string, never>;
+			"/api/onboarding/complete": Record<string, never>;
+			"/api/onboarding/options": Record<string, never>;
+			"/api/onboarding/progress": Record<string, never>;
 			"/api/state": Record<string, never>;
 			"/api/state/bootstrap": Record<string, never>;
 			"/api/state/sync": Record<string, never>
 		};
-		Pathname(): "/" | "/api/ai/tutor" | "/api/state/bootstrap" | "/api/state/sync";
+		Pathname(): "/" | "/api/ai/tutor" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/state/bootstrap" | "/api/state/sync";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

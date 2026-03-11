@@ -1,53 +1,5 @@
 import { c as createInitialState, n as normalizeAppState } from "./platform.js";
-import { createClient } from "@supabase/supabase-js";
-import { config } from "dotenv";
-config();
-function readEnv(name) {
-  return process.env[name] ?? "";
-}
-const serverEnv = {
-  supabaseUrl: readEnv("PUBLIC_SUPABASE_URL") || readEnv("VITE_SUPABASE_URL"),
-  supabaseAnonKey: readEnv("PUBLIC_SUPABASE_ANON_KEY") || readEnv("VITE_SUPABASE_ANON_KEY"),
-  supabaseServiceRoleKey: readEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  githubModelsToken: readEnv("GITHUB_MODELS_TOKEN"),
-  githubModelsEndpoint: readEnv("GITHUB_MODELS_ENDPOINT") || "https://models.inference.ai.azure.com/chat/completions",
-  githubModelsModel: readEnv("GITHUB_MODELS_MODEL") || "openai/gpt-4.1-mini"
-};
-function hasConfiguredPublicSupabase() {
-  return serverEnv.supabaseUrl.length > 0 && serverEnv.supabaseAnonKey.length > 0 && !serverEnv.supabaseUrl.includes("your-project-ref") && !serverEnv.supabaseAnonKey.includes("your-supabase-anon-key");
-}
-function hasConfiguredServiceRole() {
-  return serverEnv.supabaseServiceRoleKey.length > 0 && !serverEnv.supabaseServiceRoleKey.includes("your-supabase-service-role-key");
-}
-function createServerSupabaseAdmin() {
-  if (!hasConfiguredPublicSupabase() || !hasConfiguredServiceRole()) {
-    return null;
-  }
-  return createClient(
-    serverEnv.supabaseUrl,
-    serverEnv.supabaseServiceRoleKey,
-    {
-      auth: {
-        persistSession: false
-      }
-    }
-  );
-}
-function getSupabaseFunctionsUrl() {
-  if (!hasConfiguredPublicSupabase()) {
-    return null;
-  }
-  return `${serverEnv.supabaseUrl}/functions/v1`;
-}
-function isSupabaseConfigured() {
-  return hasConfiguredPublicSupabase();
-}
-function getSupabaseAnonKey() {
-  if (!hasConfiguredPublicSupabase()) {
-    return null;
-  }
-  return serverEnv.supabaseAnonKey;
-}
+import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
 function createSnapshotId(profileId) {
   return `snapshot-${profileId}`;
 }
@@ -77,10 +29,18 @@ async function saveAppState(state) {
   const profileRow = {
     id: normalizedState.profile.id,
     full_name: normalizedState.profile.fullName,
+    email: normalizedState.profile.email,
     role: normalizedState.profile.role,
+    school_year: normalizedState.profile.schoolYear,
+    term: normalizedState.profile.term,
     grade: normalizedState.profile.grade,
+    grade_id: normalizedState.profile.gradeId,
     country: normalizedState.profile.country,
-    curriculum: normalizedState.profile.curriculum
+    country_id: normalizedState.profile.countryId,
+    curriculum: normalizedState.profile.curriculum,
+    curriculum_id: normalizedState.profile.curriculumId,
+    recommended_start_subject_id: normalizedState.profile.recommendedStartSubjectId,
+    recommended_start_subject_name: normalizedState.profile.recommendedStartSubjectName
   };
   await supabase.from("profiles").upsert(profileRow);
   await supabase.from("app_state_snapshots").upsert({
@@ -142,11 +102,7 @@ async function logAiInteraction(profileId, requestPayload, response, provider) {
   });
 }
 export {
-  getSupabaseAnonKey as a,
-  loadAppState as b,
-  saveAppState as c,
-  getSupabaseFunctionsUrl as g,
-  isSupabaseConfigured as i,
+  loadAppState as a,
   logAiInteraction as l,
-  serverEnv as s
+  saveAppState as s
 };

@@ -1,4 +1,4 @@
-import { g as getContext, e as escape_html } from "../../chunks/index.js";
+import { g as getContext, e as escape_html } from "../../chunks/svelte-vendor.js";
 import "clsx";
 import { s as stores } from "../../chunks/client.js";
 ({

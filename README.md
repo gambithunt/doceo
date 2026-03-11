@@ -1,12 +1,12 @@
 # Doceo
 
-Doceo is a SvelteKit-based AI-assisted learning platform prototype for structured school learning. It is designed around three modes:
+Doceo is a SvelteKit-based AI-assisted learning platform for structured school learning. It is designed around three modes:
 
 - Learn from scratch
 - Exam revision
 - Ask question
 
-The current implementation includes a typed curriculum model, seeded lesson and question content, mastery tracking, local session persistence, revision planning, ask-question guidance, analytics events, and a light/dark IBM Plex Mono UI aligned to the project spec in [docs/prompt.md](/Users/delon/Documents/code/projects/doceo/docs/prompt.md).
+The current implementation includes a real onboarding flow, typed curriculum and onboarding models, seeded lesson and question content, mastery tracking, local and Supabase-backed persistence, revision planning, ask-question guidance, analytics events, Playwright smoke tests, and a light/dark IBM Plex Mono UI aligned to the project spec in [docs/prompt.md](/Users/delon/Documents/code/projects/doceo/docs/prompt.md).
 
 ## Stack
 
@@ -30,7 +30,7 @@ Start the development server:
 npm run dev
 ```
 
-The local dev server runs on `http://localhost:5185`.
+The local dev server is configured for `http://localhost:5187`. If that port is already occupied, Vite will move to the next available port.
 
 Run typecheck:
 
@@ -50,6 +50,12 @@ Preview the production build:
 npm run preview
 ```
 
+Run the Playwright smoke test:
+
+```bash
+npm run test:e2e
+```
+
 ## Environment
 
 Supabase is optional in the current app. If you want to wire a real backend, define:
@@ -59,7 +65,7 @@ VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
 ```
 
-Without these values, the app still runs with the built-in local demo state.
+Without these values, the app still runs with the built-in local data and onboarding flow.
 
 ## Local Supabase Setup
 
@@ -126,13 +132,15 @@ This repo uses a separate local Supabase port range to avoid collisions:
 
 ## Current Behavior
 
-- Uses seeded demo curriculum content for Mathematics
-- Stores progress and session state in browser local storage
+- Uses seeded curriculum content for Mathematics and onboarding-driven subject selection for the student profile
+- Stores progress and session state in browser local storage and can sync snapshots to Supabase
+- Supports a 4-step onboarding flow for South Africa, curriculum, grade, term, and subjects
 - Supports lesson practice and mastery updates
 - Generates a revision plan from current subject/topic state
 - Produces structured ask-question tutoring responses
 - Tracks recent analytics events in-app
 - Supports light and dark themes
+- Includes a Playwright smoke test for onboarding, dashboard personalization, and settings re-entry
 
 ## Notes
 

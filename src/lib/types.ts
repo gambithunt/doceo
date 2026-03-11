@@ -2,12 +2,17 @@ export type ThemeMode = 'light' | 'dark';
 export type LearningMode = 'learn' | 'revision' | 'ask';
 export type AppScreen =
   | 'landing'
+  | 'onboarding'
   | 'dashboard'
   | 'subject'
   | 'lesson'
   | 'revision'
   | 'ask'
-  | 'progress';
+  | 'progress'
+  | 'settings';
+export type OnboardingStep = 'country' | 'academic' | 'subjects' | 'review';
+export type SchoolTerm = 'Term 1' | 'Term 2' | 'Term 3' | 'Term 4';
+export type SubjectSelectionMode = 'structured' | 'mixed' | 'unsure';
 export type LessonStage =
   | 'overview'
   | 'deeper-explanation'
@@ -33,9 +38,43 @@ export interface UserProfile {
   fullName: string;
   email: string;
   role: 'student' | 'parent' | 'teacher' | 'admin';
+  schoolYear: string;
+  term: SchoolTerm;
   grade: string;
+  gradeId: string;
   country: string;
+  countryId: string;
   curriculum: string;
+  curriculumId: string;
+  recommendedStartSubjectId: string | null;
+  recommendedStartSubjectName: string | null;
+}
+
+export interface CountryOption {
+  id: string;
+  name: string;
+}
+
+export interface CurriculumOption {
+  id: string;
+  countryId: string;
+  name: string;
+  description: string;
+}
+
+export interface GradeOption {
+  id: string;
+  curriculumId: string;
+  label: string;
+  order: number;
+}
+
+export interface SubjectOption {
+  id: string;
+  curriculumId: string;
+  gradeId: string;
+  name: string;
+  category: 'core' | 'elective' | 'language';
 }
 
 export interface QuestionOption {
@@ -179,7 +218,33 @@ export interface AppState {
   };
   onboarding: {
     completed: boolean;
+    completedAt: string | null;
+    currentStep: OnboardingStep;
+    stepOrder: OnboardingStep[];
+    canSkipCurriculum: boolean;
+    schoolYear: string;
+    term: SchoolTerm;
+    selectedCountryId: string;
+    selectedCurriculumId: string;
+    selectedGradeId: string;
     selectedSubjectIds: string[];
+    selectedSubjectNames: string[];
+    customSubjects: string[];
+    customSubjectInput: string;
+    selectionMode: SubjectSelectionMode;
+    isSaving: boolean;
+    error: string | null;
+    recommendation: {
+      subjectId: string | null;
+      subjectName: string | null;
+      reason: string;
+    };
+    options: {
+      countries: CountryOption[];
+      curriculums: CurriculumOption[];
+      grades: GradeOption[];
+      subjects: SubjectOption[];
+    };
   };
   profile: UserProfile;
   curriculum: CurriculumDefinition;

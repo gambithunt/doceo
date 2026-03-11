@@ -1,10 +1,10 @@
 import "clsx";
 import "@sveltejs/kit/internal";
-import { w as writable } from "./exports.js";
+import "./exports.js";
 import "./utils.js";
+import { w as writable, n as noop } from "./svelte-vendor.js";
 import "@sveltejs/kit/internal/server";
 import "./root.js";
-import { n as noop } from "./index.js";
 function create_updated_store() {
   const { set, subscribe } = writable(false);
   {

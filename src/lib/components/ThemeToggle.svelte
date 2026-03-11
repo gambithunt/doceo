@@ -33,14 +33,15 @@
     padding: 0.35rem;
     border: 1px solid var(--border);
     border-radius: 999px;
-    background: var(--surface-soft);
+    background: linear-gradient(180deg, var(--surface-tint), var(--surface-soft));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
 
   button {
     border: 0;
     background: transparent;
     color: var(--muted);
-    padding: 0.5rem 0.9rem;
+    padding: 0.55rem 0.95rem;
     border-radius: 999px;
     cursor: pointer;
     font: inherit;
@@ -49,5 +50,6 @@
   .active {
     background: var(--accent);
     color: var(--accent-contrast);
+    box-shadow: 0 10px 25px color-mix(in srgb, var(--accent) 24%, transparent);
   }
 </style>

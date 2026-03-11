@@ -1,6 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { b as buildAskQuestionResponse } from "../../../../../chunks/platform.js";
-import { g as getSupabaseFunctionsUrl, a as getSupabaseAnonKey, s as serverEnv, l as logAiInteraction } from "../../../../../chunks/state-repository.js";
+import { g as getSupabaseFunctionsUrl, a as getSupabaseAnonKey, s as serverEnv } from "../../../../../chunks/supabase.js";
+import { l as logAiInteraction } from "../../../../../chunks/state-repository.js";
 function createTutorSystemPrompt() {
   return [
     "You are a structured school teacher inside an AI learning platform.",
@@ -8,7 +9,7 @@ function createTutorSystemPrompt() {
     "Guide the student one step at a time.",
     "Do not dump the answer unless guidance has already been attempted or the student explicitly requests the full worked answer.",
     "Keep explanations age-appropriate and concise.",
-    "Return JSON only."
+    "Return JSON only with exactly these keys: problemType, studentGoal, diagnosis, responseStage, teacherResponse, checkForUnderstanding."
   ].join(" ");
 }
 function createTutorUserPrompt(request) {
@@ -38,39 +39,7 @@ function createGithubModelsBody(request, model) {
         role: "user",
         content: createTutorUserPrompt(request)
       }
-    ],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "ask_question_response",
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            problemType: {
-              type: "string",
-              enum: ["concept", "procedural", "word_problem", "proof", "revision"]
-            },
-            studentGoal: { type: "string" },
-            diagnosis: { type: "string" },
-            responseStage: {
-              type: "string",
-              enum: ["clarify", "hint", "guided_step", "worked_example", "final_explanation"]
-            },
-            teacherResponse: { type: "string" },
-            checkForUnderstanding: { type: "string" }
-          },
-          required: [
-            "problemType",
-            "studentGoal",
-            "diagnosis",
-            "responseStage",
-            "teacherResponse",
-            "checkForUnderstanding"
-          ]
-        }
-      }
-    }
+    ]
   };
 }
 function parseGithubModelsResponse(payload) {
@@ -79,7 +48,25 @@ function parseGithubModelsResponse(payload) {
     return null;
   }
   try {
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+    if (parsed.problemType && parsed.studentGoal && parsed.diagnosis && parsed.responseStage && parsed.teacherResponse && parsed.checkForUnderstanding) {
+      return parsed;
+    }
+    if (parsed.solution) {
+      return {
+        problemType: "procedural",
+        studentGoal: "Help the student understand the next solving step.",
+        diagnosis: "The model returned a worked structure instead of the requested tutoring contract.",
+        responseStage: "worked_example",
+        teacherResponse: [
+          parsed.solution.step_1,
+          parsed.solution.calculation,
+          parsed.solution.result
+        ].filter((item) => Boolean(item)).join(". "),
+        checkForUnderstanding: "Can you explain why dividing both sides keeps the equation balanced?"
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -108,7 +95,9 @@ async function POST({ request, fetch }) {
     });
     if (functionResponse.ok) {
       const functionPayload = await functionResponse.json();
-      return json(functionPayload);
+      if (functionPayload.provider === "github-models") {
+        return json(functionPayload);
+      }
     }
   }
   if (!hasGithubModelsConfig()) {
@@ -125,8 +114,10 @@ async function POST({ request, fetch }) {
   const response = await fetch(serverEnv.githubModelsEndpoint, {
     method: "POST",
     headers: {
+      Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
-      Authorization: `Bearer ${serverEnv.githubModelsToken}`
+      Authorization: `Bearer ${serverEnv.githubModelsToken}`,
+      "X-GitHub-Api-Version": "2022-11-28"
     },
     body: JSON.stringify(body)
   });

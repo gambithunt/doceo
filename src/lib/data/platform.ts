@@ -1,3 +1,14 @@
+import {
+  defaultSchoolYear,
+  defaultTerm,
+  getCurriculumsByCountry,
+  getGradesByCurriculum,
+  getRecommendedSubject,
+  getSelectionMode,
+  getSubjectsByCurriculumAndGrade,
+  onboardingCountries,
+  onboardingStepOrder
+} from '$lib/data/onboarding';
 import type {
   AnalyticsEvent,
   AppState,
@@ -292,6 +303,21 @@ export function createInitialState(): AppState {
   const selectedLesson = lessons[0];
   const selectedTopic = curriculum.subjects[0].topics[0];
   const selectedSubtopic = selectedTopic.subtopics[0];
+  const selectedCountryId = onboardingCountries[0].id;
+  const availableCurriculums = getCurriculumsByCountry(selectedCountryId);
+  const selectedCurriculumId = availableCurriculums[0]?.id ?? 'caps';
+  const availableGrades = getGradesByCurriculum(selectedCurriculumId);
+  const selectedGradeId =
+    availableGrades.find((grade) => grade.label === 'Grade 6')?.id ?? availableGrades[0]?.id ?? 'grade-6';
+  const availableSubjects = getSubjectsByCurriculumAndGrade(selectedCurriculumId, selectedGradeId);
+  const selectedStructuredSubjectIds = availableSubjects
+    .filter((subject) => subject.name === 'Mathematics')
+    .map((subject) => subject.id);
+  const recommendation = getRecommendedSubject(
+    selectedStructuredSubjectIds,
+    [],
+    availableSubjects
+  );
 
   return {
     auth: {
@@ -300,16 +326,47 @@ export function createInitialState(): AppState {
     },
     onboarding: {
       completed: false,
-      selectedSubjectIds: [curriculum.subjects[0].id]
+      completedAt: null,
+      currentStep: onboardingStepOrder[0],
+      stepOrder: onboardingStepOrder,
+      canSkipCurriculum: true,
+      schoolYear: defaultSchoolYear,
+      term: defaultTerm,
+      selectedCountryId,
+      selectedCurriculumId,
+      selectedGradeId,
+      selectedSubjectIds: selectedStructuredSubjectIds,
+      selectedSubjectNames: availableSubjects
+        .filter((subject) => selectedStructuredSubjectIds.includes(subject.id))
+        .map((subject) => subject.name),
+      customSubjects: [],
+      customSubjectInput: '',
+      selectionMode: getSelectionMode(selectedStructuredSubjectIds, [], false),
+      isSaving: false,
+      error: null,
+      recommendation,
+      options: {
+        countries: onboardingCountries,
+        curriculums: availableCurriculums,
+        grades: availableGrades,
+        subjects: availableSubjects
+      }
     },
     profile: {
       id: 'student-demo',
       fullName: 'Demo Student',
       email: 'student@example.com',
       role: 'student',
+      schoolYear: defaultSchoolYear,
+      term: defaultTerm,
       grade: 'Grade 6',
+      gradeId: selectedGradeId,
       country: 'South Africa',
-      curriculum: 'CAPS'
+      countryId: selectedCountryId,
+      curriculum: 'CAPS',
+      curriculumId: selectedCurriculumId,
+      recommendedStartSubjectId: recommendation.subjectId,
+      recommendedStartSubjectName: recommendation.subjectName
     },
     curriculum,
     lessons,
@@ -387,11 +444,41 @@ export function normalizeAppState(value: unknown): AppState {
     onboarding: {
       ...base.onboarding,
       ...(input.onboarding ?? {}),
+      stepOrder: Array.isArray(input.onboarding?.stepOrder)
+        ? input.onboarding.stepOrder
+        : base.onboarding.stepOrder,
       selectedSubjectIds: Array.isArray(input.onboarding?.selectedSubjectIds)
         ? input.onboarding.selectedSubjectIds
-        : base.onboarding.selectedSubjectIds
+        : base.onboarding.selectedSubjectIds,
+      selectedSubjectNames: Array.isArray(input.onboarding?.selectedSubjectNames)
+        ? input.onboarding.selectedSubjectNames
+        : base.onboarding.selectedSubjectNames,
+      customSubjects: Array.isArray(input.onboarding?.customSubjects)
+        ? input.onboarding.customSubjects
+        : base.onboarding.customSubjects,
+      recommendation: {
+        ...base.onboarding.recommendation,
+        ...(input.onboarding?.recommendation ?? {})
+      },
+      options: {
+        countries: Array.isArray(input.onboarding?.options?.countries)
+          ? input.onboarding.options.countries
+          : base.onboarding.options.countries,
+        curriculums: Array.isArray(input.onboarding?.options?.curriculums)
+          ? input.onboarding.options.curriculums
+          : base.onboarding.options.curriculums,
+        grades: Array.isArray(input.onboarding?.options?.grades)
+          ? input.onboarding.options.grades
+          : base.onboarding.options.grades,
+        subjects: Array.isArray(input.onboarding?.options?.subjects)
+          ? input.onboarding.options.subjects
+          : base.onboarding.options.subjects
+      }
     },
-    profile: input.profile ?? base.profile,
+    profile: {
+      ...base.profile,
+      ...(input.profile ?? {})
+    },
     curriculum: input.curriculum ?? base.curriculum,
     lessons: Array.isArray(input.lessons) ? input.lessons : base.lessons,
     questions: Array.isArray(input.questions) ? input.questions : base.questions,

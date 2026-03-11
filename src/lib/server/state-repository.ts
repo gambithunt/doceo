@@ -10,10 +10,18 @@ interface SnapshotRow {
 interface ProfileRow {
   id: string;
   full_name: string;
+  email: string;
   role: 'student' | 'parent' | 'teacher' | 'admin';
+  school_year: string;
+  term: string;
   grade: string;
+  grade_id: string;
   country: string;
+  country_id: string;
   curriculum: string;
+  curriculum_id: string;
+  recommended_start_subject_id: string | null;
+  recommended_start_subject_name: string | null;
 }
 
 interface SaveStateResult {
@@ -63,10 +71,18 @@ export async function saveAppState(state: AppState): Promise<SaveStateResult> {
   const profileRow: ProfileRow = {
     id: normalizedState.profile.id,
     full_name: normalizedState.profile.fullName,
+    email: normalizedState.profile.email,
     role: normalizedState.profile.role,
+    school_year: normalizedState.profile.schoolYear,
+    term: normalizedState.profile.term,
     grade: normalizedState.profile.grade,
+    grade_id: normalizedState.profile.gradeId,
     country: normalizedState.profile.country,
-    curriculum: normalizedState.profile.curriculum
+    country_id: normalizedState.profile.countryId,
+    curriculum: normalizedState.profile.curriculum,
+    curriculum_id: normalizedState.profile.curriculumId,
+    recommended_start_subject_id: normalizedState.profile.recommendedStartSubjectId,
+    recommended_start_subject_name: normalizedState.profile.recommendedStartSubjectName
   };
 
   await supabase.from('profiles').upsert(profileRow);
