@@ -61,6 +61,60 @@ VITE_SUPABASE_ANON_KEY=...
 
 Without these values, the app still runs with the built-in local demo state.
 
+## Local Supabase Setup
+
+To run Supabase correctly in local development you need:
+
+1. Install the Supabase CLI
+2. Have Docker running
+3. Start the local Supabase stack:
+
+```bash
+supabase start
+```
+
+4. Copy the local values Supabase prints into `.env`:
+
+```bash
+PUBLIC_SUPABASE_URL=http://127.0.0.1:55121
+PUBLIC_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_URL=http://127.0.0.1:55121
+VITE_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+GITHUB_MODELS_TOKEN=...
+GITHUB_MODELS_ENDPOINT=https://models.github.ai/inference/chat/completions
+GITHUB_MODELS_MODEL=openai/gpt-4.1-mini
+```
+
+5. Apply the local database schema:
+
+```bash
+supabase db reset
+```
+
+6. Make the GitHub Models secrets available to the edge function:
+
+```bash
+supabase secrets set GITHUB_MODELS_TOKEN=... GITHUB_MODELS_ENDPOINT=https://models.github.ai/inference/chat/completions GITHUB_MODELS_MODEL=openai/gpt-4.1-mini
+```
+
+7. Serve the edge function locally if you want to test that path directly:
+
+```bash
+supabase functions serve github-models-tutor --env-file .env
+```
+
+The app will prefer the Supabase edge function path when Supabase is configured. If it is not configured, it falls back to the local deterministic tutor response.
+
+This repo uses a separate local Supabase port range to avoid collisions:
+
+- API: `55121`
+- DB: `55122`
+- Studio: `55123`
+- Inbucket: `55124`
+- Analytics: `55127`
+- Vector: `55128`
+
 ## Project Structure
 
 - [src/routes/+page.svelte](/Users/delon/Documents/code/projects/doceo/src/routes/+page.svelte): main application shell

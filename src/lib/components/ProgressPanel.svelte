@@ -40,6 +40,14 @@
       {/each}
     </ul>
   </article>
+
+  <article class="panel">
+    <h3>Backend</h3>
+    <p>Supabase configured: {state.backend.isConfigured ? 'Yes' : 'No'}</p>
+    <p>Sync status: {state.backend.lastSyncStatus}</p>
+    <p>Last sync: {state.backend.lastSyncAt ?? 'Not synced yet'}</p>
+    <p>Error: {state.backend.lastSyncError ?? 'None'}</p>
+  </article>
 </section>
 
 <style>

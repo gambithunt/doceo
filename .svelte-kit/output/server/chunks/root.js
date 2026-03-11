@@ -1,7 +1,15 @@
-import { H as HYDRATION_ERROR, C as COMMENT_NODE, a as HYDRATION_END, b as HYDRATION_START, c as HYDRATION_START_ELSE, r as run_all, B as BOUNDARY_EFFECT, R as REACTION_RAN, E as ERROR_VALUE, d as EFFECT, f as CONNECTED, h as CLEAN, M as MAYBE_DIRTY, D as DIRTY, i as DERIVED, W as WAS_MARKED, I as INERT, j as BLOCK_EFFECT, U as UNINITIALIZED, k as deferred, l as RENDER_EFFECT, m as MANAGED_EFFECT, o as ROOT_EFFECT, p as BRANCH_EFFECT, q as DESTROYED, A as ASYNC, t as includes, u as HYDRATION_START_FAILED, v as EFFECT_TRANSPARENT, w as EFFECT_PRESERVED, S as STALE_REACTION, n as noop, x as EAGER_EFFECT, y as STATE_SYMBOL, z as object_prototype, F as array_prototype, G as get_descriptor, J as get_prototype_of, K as is_array, L as is_extensible, N as HEAD_EFFECT, O as DESTROYING, P as USER_EFFECT, Q as REACTION_IS_UPDATING, T as index_of, V as define_property, X as array_from, Y as is_passive_event, Z as LEGACY_PROPS, _ as render, $ as setContext, a0 as derived } from "./index2.js";
+import { H as HYDRATION_ERROR, C as COMMENT_NODE, f as HYDRATION_END, i as HYDRATION_START, j as HYDRATION_START_ELSE, r as run_all, B as BOUNDARY_EFFECT, R as REACTION_RAN, E as ERROR_VALUE, k as EFFECT, l as CONNECTED, m as CLEAN, M as MAYBE_DIRTY, D as DIRTY, o as DERIVED, W as WAS_MARKED, I as INERT, p as BLOCK_EFFECT, U as UNINITIALIZED, q as deferred, t as RENDER_EFFECT, u as MANAGED_EFFECT, v as ROOT_EFFECT, w as BRANCH_EFFECT, x as DESTROYED, A as ASYNC, y as includes, z as HYDRATION_START_FAILED, F as EFFECT_TRANSPARENT, G as EFFECT_PRESERVED, S as STALE_REACTION, n as noop, J as EAGER_EFFECT, K as STATE_SYMBOL, L as object_prototype, N as array_prototype, O as get_descriptor, P as get_prototype_of, Q as is_array, T as is_extensible, V as HEAD_EFFECT, X as DESTROYING, Y as USER_EFFECT, Z as REACTION_IS_UPDATING, _ as index_of, $ as define_property, a0 as array_from, a1 as is_passive_event, a2 as LEGACY_PROPS, a3 as render, a4 as setContext, a5 as derived } from "./index.js";
 import { b as browser } from "./false.js";
 import "clsx";
-import { s as safe_equals, e as equals } from "./equality.js";
+function equals(value) {
+  return value === this.v;
+}
+function safe_not_equal(a, b) {
+  return a != a ? b == b : a !== b || a !== null && typeof a === "object" || typeof a === "function";
+}
+function safe_equals(value) {
+  return !safe_not_equal(value, this.v);
+}
 function effect_update_depth_exceeded() {
   {
     throw new Error(`https://svelte.dev/e/effect_update_depth_exceeded`);
@@ -2699,5 +2707,6 @@ function Root($$renderer, $$props) {
 }
 const root = asClassComponent(Root);
 export {
-  root as r
+  root as r,
+  safe_not_equal as s
 };

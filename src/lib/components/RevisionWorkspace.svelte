@@ -13,7 +13,7 @@
       <p class="eyebrow">Exam Revision</p>
       <h2>Accelerated revision path</h2>
     </div>
-    <button type="button" onclick={() => appState.generateRevisionPlan()}>Refresh Revision Plan</button>
+    <button type="button" onclick={() => appState.generateRevisionPlan()}>Refresh plan</button>
   </header>
 
   <div class="grid">

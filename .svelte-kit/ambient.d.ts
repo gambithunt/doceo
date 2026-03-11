@@ -38,6 +38,12 @@
  * The above values will be the same _even if_ different values for `ENVIRONMENT` or `PUBLIC_BASE_URL` are set at runtime, as they are statically replaced in your code with their build time values.
  */
 declare module '$env/static/private' {
+	export const VITE_SUPABASE_URL: string;
+	export const VITE_SUPABASE_ANON_KEY: string;
+	export const SUPABASE_SERVICE_ROLE_KEY: string;
+	export const GITHUB_MODELS_TOKEN: string;
+	export const GITHUB_MODELS_ENDPOINT: string;
+	export const GITHUB_MODELS_MODEL: string;
 	export const CODEX_SANDBOX_NETWORK_DISABLED: string;
 	export const MANPATH: string;
 	export const STARSHIP_SHELL: string;
@@ -143,7 +149,8 @@ declare module '$env/static/private' {
  * The above values will be the same _even if_ different values for `ENVIRONMENT` or `PUBLIC_BASE_URL` are set at runtime, as they are statically replaced in your code with their build time values.
  */
 declare module '$env/static/public' {
-	
+	export const PUBLIC_SUPABASE_URL: string;
+	export const PUBLIC_SUPABASE_ANON_KEY: string;
 }
 
 /**
@@ -193,6 +200,12 @@ declare module '$env/static/public' {
  */
 declare module '$env/dynamic/private' {
 	export const env: {
+		VITE_SUPABASE_URL: string;
+		VITE_SUPABASE_ANON_KEY: string;
+		SUPABASE_SERVICE_ROLE_KEY: string;
+		GITHUB_MODELS_TOKEN: string;
+		GITHUB_MODELS_ENDPOINT: string;
+		GITHUB_MODELS_MODEL: string;
 		CODEX_SANDBOX_NETWORK_DISABLED: string;
 		MANPATH: string;
 		STARSHIP_SHELL: string;
@@ -317,6 +330,8 @@ declare module '$env/dynamic/private' {
  */
 declare module '$env/dynamic/public' {
 	export const env: {
+		PUBLIC_SUPABASE_URL: string;
+		PUBLIC_SUPABASE_ANON_KEY: string;
 		[key: `PUBLIC_${string}`]: string | undefined;
 	}
 }

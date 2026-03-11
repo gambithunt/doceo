@@ -1,5 +1,13 @@
 export type ThemeMode = 'light' | 'dark';
 export type LearningMode = 'learn' | 'revision' | 'ask';
+export type AppScreen =
+  | 'landing'
+  | 'dashboard'
+  | 'subject'
+  | 'lesson'
+  | 'revision'
+  | 'ask'
+  | 'progress';
 export type LessonStage =
   | 'overview'
   | 'deeper-explanation'
@@ -23,6 +31,7 @@ export type ResponseStage =
 export interface UserProfile {
   id: string;
   fullName: string;
+  email: string;
   role: 'student' | 'parent' | 'teacher' | 'admin';
   grade: string;
   country: string;
@@ -164,6 +173,14 @@ export interface RevisionPlan {
 }
 
 export interface AppState {
+  auth: {
+    status: 'signed_out' | 'loading' | 'signed_in';
+    error: string | null;
+  };
+  onboarding: {
+    completed: boolean;
+    selectedSubjectIds: string[];
+  };
   profile: UserProfile;
   curriculum: CurriculumDefinition;
   lessons: Lesson[];
@@ -175,12 +192,23 @@ export interface AppState {
   askQuestion: {
     request: AskQuestionRequest;
     response: AskQuestionResponse;
+    provider: string;
+    isLoading: boolean;
+    error: string | null;
+  };
+  backend: {
+    isConfigured: boolean;
+    lastSyncAt: string | null;
+    lastSyncStatus: 'idle' | 'syncing' | 'synced' | 'error';
+    lastSyncError: string | null;
   };
   ui: {
     theme: ThemeMode;
     learningMode: LearningMode;
+    currentScreen: AppScreen;
     selectedSubjectId: string;
     selectedTopicId: string;
+    selectedSubtopicId: string;
     selectedLessonId: string;
     practiceQuestionId: string;
   };

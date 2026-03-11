@@ -10,7 +10,7 @@ return {
 	assets: new Set([]),
 	mimeTypes: {},
 	_: {
-		client: {start:"_app/immutable/entry/start.BiUD03y3.js",app:"_app/immutable/entry/app.RPf-zXB9.js",imports:["_app/immutable/entry/start.BiUD03y3.js","_app/immutable/chunks/CEEoIZWD.js","_app/immutable/chunks/BxqxDuOX.js","_app/immutable/chunks/B1OHTdYM.js","_app/immutable/chunks/CeUSaZSI.js","_app/immutable/entry/app.RPf-zXB9.js","_app/immutable/chunks/BxqxDuOX.js","_app/immutable/chunks/DkcbHNXx.js","_app/immutable/chunks/BrIvAMXJ.js","_app/immutable/chunks/CeUSaZSI.js","_app/immutable/chunks/CWW4LRX7.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.B1WhRCDc.js",app:"_app/immutable/entry/app.OqSSuRtQ.js",imports:["_app/immutable/entry/start.B1WhRCDc.js","_app/immutable/chunks/B2eDWqRQ.js","_app/immutable/chunks/BMOPieSH.js","_app/immutable/chunks/C8mE_EF6.js","_app/immutable/entry/app.OqSSuRtQ.js","_app/immutable/chunks/BMOPieSH.js","_app/immutable/chunks/ByAQXraS.js","_app/immutable/chunks/ULgTuGFF.js","_app/immutable/chunks/C8mE_EF6.js","_app/immutable/chunks/Bd7UQKXC.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -26,6 +26,27 @@ return {
 				params: [],
 				page: { layouts: [0,], errors: [1,], leaf: 2 },
 				endpoint: null
+			},
+			{
+				id: "/api/ai/tutor",
+				pattern: /^\/api\/ai\/tutor\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/ai/tutor/_server.ts.js'))
+			},
+			{
+				id: "/api/state/bootstrap",
+				pattern: /^\/api\/state\/bootstrap\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/state/bootstrap/_server.ts.js'))
+			},
+			{
+				id: "/api/state/sync",
+				pattern: /^\/api\/state\/sync\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/state/sync/_server.ts.js'))
 			}
 		],
 		prerendered_routes: new Set([]),

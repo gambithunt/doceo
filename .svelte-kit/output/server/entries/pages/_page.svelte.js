@@ -1,361 +1,11 @@
-import { e as escape_html, a1 as attr, a2 as bind_props, a3 as ensure_array_like, a4 as attr_class, a5 as head, a0 as derived } from "../../chunks/index2.js";
-import { w as writable } from "../../chunks/index.js";
-const questions = [
-  {
-    id: "q-fractions-1",
-    lessonId: "lesson-fractions-foundations",
-    type: "multiple-choice",
-    prompt: "Which fraction is equivalent to 1/2?",
-    expectedAnswer: "2/4",
-    rubric: "Student identifies an equivalent fraction by scaling numerator and denominator equally.",
-    explanation: "If you multiply the numerator and denominator of 1/2 by 2, you get 2/4.",
-    hintLevels: ["Think about doubling both numbers.", "1/2 becomes ?/4 when you multiply by 2."],
-    misconceptionTags: ["equivalent-fractions", "unequal-scaling"],
-    difficulty: "foundation",
-    topicId: "topic-fractions",
-    subtopicId: "subtopic-equivalent-fractions",
-    options: [
-      { id: "a", label: "A", text: "2/4" },
-      { id: "b", label: "B", text: "1/4" },
-      { id: "c", label: "C", text: "3/4" }
-    ]
-  },
-  {
-    id: "q-fractions-2",
-    lessonId: "lesson-fractions-foundations",
-    type: "numeric",
-    prompt: "Write 3/6 in its simplest form.",
-    expectedAnswer: "1/2",
-    rubric: "Student simplifies the fraction by dividing the numerator and denominator by their highest common factor.",
-    explanation: "The highest common factor of 3 and 6 is 3, so 3/6 simplifies to 1/2.",
-    hintLevels: ["What number divides both 3 and 6?", "Try dividing the numerator and denominator by 3."],
-    misconceptionTags: ["simplification", "common-factor"],
-    difficulty: "core",
-    topicId: "topic-fractions",
-    subtopicId: "subtopic-equivalent-fractions"
-  },
-  {
-    id: "q-fractions-3",
-    lessonId: "lesson-fractions-foundations",
-    type: "step-by-step",
-    prompt: "Add 1/4 + 2/4. Explain your method.",
-    expectedAnswer: "3/4",
-    rubric: "Student adds numerators when denominators are already equal and keeps the denominator unchanged.",
-    explanation: "When denominators are the same, add the numerators only: 1 + 2 = 3, so the answer is 3/4.",
-    hintLevels: ["Are the denominators already the same?", "Add only the top numbers."],
-    misconceptionTags: ["fraction-addition", "denominator-error"],
-    difficulty: "core",
-    topicId: "topic-fractions",
-    subtopicId: "subtopic-adding-fractions"
-  },
-  {
-    id: "q-algebra-1",
-    lessonId: "lesson-algebra-patterns",
-    type: "short-answer",
-    prompt: "If x + 7 = 15, what is x?",
-    expectedAnswer: "8",
-    rubric: "Student isolates x by subtracting 7 from both sides.",
-    explanation: "Subtract 7 from both sides to keep the equation balanced. 15 - 7 = 8.",
-    hintLevels: ["What operation undoes +7?", "Subtract 7 from both sides."],
-    misconceptionTags: ["inverse-operations"],
-    difficulty: "foundation",
-    topicId: "topic-algebra",
-    subtopicId: "subtopic-solving-equations"
-  },
-  {
-    id: "q-algebra-2",
-    lessonId: "lesson-algebra-patterns",
-    type: "step-by-step",
-    prompt: "Solve 2x = 18 and explain each step.",
-    expectedAnswer: "9",
-    rubric: "Student divides both sides by 2 and explains why the equation stays balanced.",
-    explanation: "Divide both sides by 2 to isolate x. 18 divided by 2 is 9.",
-    hintLevels: ["What is attached to x?", "Undo multiplying by 2 with division."],
-    misconceptionTags: ["inverse-operations", "balance"],
-    difficulty: "core",
-    topicId: "topic-algebra",
-    subtopicId: "subtopic-solving-equations"
-  }
-];
-const lessons = [
-  {
-    id: "lesson-fractions-foundations",
-    topicId: "topic-fractions",
-    subtopicId: "subtopic-equivalent-fractions",
-    title: "Equivalent Fractions and Simple Addition",
-    subjectId: "subject-mathematics",
-    grade: "Grade 6",
-    overview: {
-      title: "Overview",
-      body: "Fractions describe equal parts of a whole. Equivalent fractions name the same amount, and fractions with the same denominator can be added by combining the numerators."
-    },
-    deeperExplanation: {
-      title: "Deeper Explanation",
-      body: "Equivalent fractions keep the same value because the numerator and denominator are scaled by the same factor. When adding fractions with equal denominators, the size of each part does not change, so only the number of parts changes."
-    },
-    example: {
-      title: "Worked Example",
-      body: "To show that 1/2 = 2/4, multiply both the numerator and denominator by 2. To add 1/4 + 2/4, keep the denominator as 4 and add the numerators to get 3/4."
-    },
-    practiceQuestionIds: ["q-fractions-1", "q-fractions-2", "q-fractions-3"],
-    masteryQuestionIds: ["q-fractions-2", "q-fractions-3"]
-  },
-  {
-    id: "lesson-algebra-patterns",
-    topicId: "topic-algebra",
-    subtopicId: "subtopic-solving-equations",
-    title: "Solving One-Step Equations",
-    subjectId: "subject-mathematics",
-    grade: "Grade 7",
-    overview: {
-      title: "Overview",
-      body: "An equation is balanced like a scale. To solve for a variable, use the inverse operation and do the same thing to both sides."
-    },
-    deeperExplanation: {
-      title: "Deeper Explanation",
-      body: "Inverse operations undo each other. Addition is undone by subtraction, and multiplication is undone by division. Keeping both sides balanced preserves the truth of the equation."
-    },
-    example: {
-      title: "Worked Example",
-      body: "If x + 7 = 15, subtract 7 from both sides to get x = 8. If 2x = 18, divide both sides by 2 to get x = 9."
-    },
-    practiceQuestionIds: ["q-algebra-1", "q-algebra-2"],
-    masteryQuestionIds: ["q-algebra-1", "q-algebra-2"]
-  }
-];
-const curriculum = {
-  country: "South Africa",
-  name: "CAPS",
-  grade: "Grade 6",
-  subjects: [
-    {
-      id: "subject-mathematics",
-      name: "Mathematics",
-      topics: [
-        {
-          id: "topic-fractions",
-          name: "Fractions",
-          subtopics: [
-            {
-              id: "subtopic-equivalent-fractions",
-              name: "Equivalent Fractions",
-              lessonIds: ["lesson-fractions-foundations"]
-            },
-            {
-              id: "subtopic-adding-fractions",
-              name: "Adding Fractions",
-              lessonIds: ["lesson-fractions-foundations"]
-            }
-          ]
-        },
-        {
-          id: "topic-algebra",
-          name: "Introductory Algebra",
-          subtopics: [
-            {
-              id: "subtopic-solving-equations",
-              name: "Solving One-Step Equations",
-              lessonIds: ["lesson-algebra-patterns"]
-            }
-          ]
-        }
-      ]
-    }
-  ]
-};
-function isoNow() {
-  return (/* @__PURE__ */ new Date()).toISOString();
-}
-function createEvent(type, detail) {
-  return {
-    id: `${type}-${crypto.randomUUID()}`,
-    type,
-    detail,
-    createdAt: isoNow()
-  };
-}
-function initialLessonProgress() {
-  return Object.fromEntries(
-    lessons.map((lesson) => [
-      lesson.id,
-      {
-        lessonId: lesson.id,
-        completed: false,
-        masteryLevel: 0,
-        weakAreas: [],
-        answers: [],
-        timeSpentMinutes: 0,
-        lastStage: "overview"
-      }
-    ])
-  );
-}
-function buildRevisionPlan(selectedTopics) {
-  return {
-    subjectId: "subject-mathematics",
-    examDate: "2026-06-18",
-    topics: selectedTopics,
-    quickSummary: "Prioritize fraction equivalence, fraction addition, and one-step equations. Start with worked examples, then complete timed retrieval practice.",
-    keyConcepts: [
-      "Equivalent fractions scale numerator and denominator by the same factor.",
-      "Like denominators allow direct addition of numerators.",
-      "Inverse operations keep equations balanced."
-    ],
-    examFocus: ["Show working clearly.", "Check whether denominators match.", "Explain the balancing step in algebra."],
-    weaknessDetection: "Watch for denominator errors in fraction addition and for skipping the inverse-operation explanation in algebra."
-  };
-}
-function diagnoseProblem(question) {
-  const normalized = question.toLowerCase();
-  if (normalized.includes("why") || normalized.includes("explain")) {
-    return "concept";
-  }
-  if (normalized.includes("prove")) {
-    return "proof";
-  }
-  if (normalized.includes("exam") || normalized.includes("revise")) {
-    return "revision";
-  }
-  if (normalized.includes("word problem") || normalized.includes("story")) {
-    return "word_problem";
-  }
-  return "procedural";
-}
-function inferResponseStage(request) {
-  if (request.currentAttempt.trim().length === 0) {
-    return "clarify";
-  }
-  if (request.currentAttempt.toLowerCase().includes("stuck")) {
-    return "hint";
-  }
-  return "guided_step";
-}
-function buildAskQuestionResponse(request) {
-  const problemType = diagnoseProblem(request.question);
-  const responseStage = inferResponseStage(request);
-  const topicContext = request.topic || "the selected topic";
-  const teacherResponseMap = {
-    clarify: `Let’s pin down the exact step causing trouble in ${topicContext}. Tell me what you already know, then we can choose the smallest next step together.`,
-    hint: `Focus on one move only: identify the rule that applies in ${topicContext}, then test it on the first part of the problem before you try the full solution.`,
-    guided_step: `Your method is close. Keep your previous work, then do one balancing step or one fraction operation at a time and explain why that step is valid.`,
-    worked_example: `Here is a short worked example for ${topicContext}, with each step justified so you can mirror the method on your own problem.`,
-    final_explanation: `You have already attempted the problem, so here is the full explanation with the final answer and the reasoning behind each step.`
-  };
-  return {
-    problemType,
-    studentGoal: "Make progress on a specific question without skipping the reasoning.",
-    diagnosis: request.currentAttempt.trim().length === 0 ? "The student has not shown enough working yet, so the next step is to identify the blocked concept." : "The student has started, but needs targeted guidance on the next step rather than a full answer.",
-    responseStage,
-    teacherResponse: teacherResponseMap[responseStage],
-    checkForUnderstanding: `What is the next step you would try now in ${topicContext}?`
-  };
-}
-function createInitialState() {
-  const selectedLesson = lessons[0];
-  const selectedTopic = curriculum.subjects[0].topics[0];
-  return {
-    profile: {
-      id: "student-demo",
-      fullName: "Demo Student",
-      role: "student",
-      grade: "Grade 6",
-      country: "South Africa",
-      curriculum: "CAPS"
-    },
-    curriculum,
-    lessons,
-    questions,
-    progress: initialLessonProgress(),
-    sessions: [
-      {
-        id: "session-initial",
-        mode: "learn",
-        lessonId: selectedLesson.id,
-        startedAt: isoNow(),
-        updatedAt: isoNow(),
-        resumeLabel: `Resume ${selectedLesson.title}`
-      }
-    ],
-    analytics: [
-      createEvent("session_started", "Initial demo session created"),
-      createEvent("lesson_viewed", selectedLesson.title)
-    ],
-    revisionPlan: buildRevisionPlan([selectedTopic.name]),
-    askQuestion: {
-      request: {
-        question: "How do I know when fractions are equivalent?",
-        topic: selectedTopic.name,
-        subject: "Mathematics",
-        grade: "Grade 6",
-        currentAttempt: ""
-      },
-      response: buildAskQuestionResponse({
-        question: "How do I know when fractions are equivalent?",
-        topic: selectedTopic.name,
-        currentAttempt: ""
-      })
-    },
-    ui: {
-      theme: "light",
-      learningMode: "learn",
-      selectedSubjectId: curriculum.subjects[0].id,
-      selectedTopicId: selectedTopic.id,
-      selectedLessonId: selectedLesson.id,
-      practiceQuestionId: selectedLesson.practiceQuestionIds[0]
-    }
-  };
-}
-function getSelectedSubject(state) {
-  return state.curriculum.subjects.find((subject) => subject.id === state.ui.selectedSubjectId) ?? state.curriculum.subjects[0];
-}
-function getSelectedTopic(state) {
-  const subject = getSelectedSubject(state);
-  return subject.topics.find((topic) => topic.id === state.ui.selectedTopicId) ?? subject.topics[0];
-}
-function getSelectedLesson(state) {
-  return state.lessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ?? state.lessons[0];
-}
-function getQuestionById(state, questionId) {
-  return state.questions.find((question) => question.id === questionId) ?? state.questions[0];
-}
-function evaluateAnswer(question, answer) {
-  const normalizedAnswer = answer.trim().toLowerCase();
-  const normalizedExpected = question.expectedAnswer.trim().toLowerCase();
-  return {
-    questionId: question.id,
-    answer,
-    isCorrect: normalizedAnswer === normalizedExpected,
-    attemptedAt: isoNow()
-  };
-}
-function recalculateMastery(progress) {
-  const totalAnswers = progress.answers.length;
-  const correctAnswers = progress.answers.filter((answer) => answer.isCorrect).length;
-  const masteryLevel = totalAnswers === 0 ? 0 : Math.round(correctAnswers / totalAnswers * 100);
-  const weakAreas = masteryLevel >= 70 ? [] : ["Needs more guided practice before mastery"];
-  return {
-    ...progress,
-    completed: masteryLevel >= 70,
-    masteryLevel,
-    weakAreas
-  };
-}
-function recordSession(sessions, mode, lessonId, resumeLabel) {
-  return [
-    {
-      id: `session-${crypto.randomUUID()}`,
-      mode,
-      lessonId,
-      startedAt: isoNow(),
-      updatedAt: isoNow(),
-      resumeLabel
-    },
-    ...sessions
-  ].slice(0, 8);
-}
-function buildRevisionTopics(state) {
-  return getSelectedSubject(state).topics.map((topic) => topic.name);
-}
+import { e as escape_html, a as attr, b as bind_props, c as ensure_array_like, d as attr_class, h as head } from "../../chunks/index.js";
+import { g as goto } from "../../chunks/client.js";
+import { w as writable } from "../../chunks/exports.js";
+import { a as buildRevisionTopics, g as getSelectedTopic, b as buildAskQuestionResponse, d as getQuestionById, e as evaluateAnswer, r as recalculateMastery, f as getSelectedLesson, h as recordSession, c as createInitialState, i as getCompletionSummary, j as getWeakTopicLabels, k as getSelectedSubject, l as getLessonsForSelectedTopic } from "../../chunks/platform.js";
+import { createClient } from "@supabase/supabase-js";
+const supabaseUrl = "http://127.0.0.1:55121";
+const supabaseAnonKey = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 function readState() {
   {
     return createInitialState();
@@ -371,10 +21,178 @@ function createAnalyticsEvent(type, detail) {
 }
 function createAppStore() {
   const { subscribe, update, set } = writable(readState());
+  async function syncState(next) {
+    {
+      return;
+    }
+  }
+  function persistAndSync(next) {
+    void syncState();
+    return next;
+  }
   return {
     subscribe,
+    initializeRemoteState: async () => {
+      {
+        return;
+      }
+    },
+    setScreen: (currentScreen) => update((state) => {
+      const next = {
+        ...state,
+        ui: {
+          ...state.ui,
+          currentScreen
+        }
+      };
+      return persistAndSync(next);
+    }),
+    completeOnboarding: (fullName, grade) => update((state) => {
+      const next = {
+        ...state,
+        onboarding: {
+          ...state.onboarding,
+          completed: true
+        },
+        profile: {
+          ...state.profile,
+          fullName,
+          grade
+        },
+        auth: {
+          ...state.auth,
+          status: "signed_in",
+          error: null
+        },
+        ui: {
+          ...state.ui,
+          currentScreen: "dashboard"
+        }
+      };
+      return persistAndSync(next);
+    }),
+    signIn: async (email, password) => {
+      update((state) => ({
+        ...state,
+        auth: {
+          status: "loading",
+          error: null
+        }
+      }));
+      if (!supabase) {
+        update((state) => {
+          const next = {
+            ...state,
+            auth: {
+              status: "signed_in",
+              error: null
+            },
+            profile: {
+              ...state.profile,
+              email
+            },
+            ui: {
+              ...state.ui,
+              currentScreen: state.onboarding.completed ? "dashboard" : "landing"
+            }
+          };
+          return persistAndSync(next);
+        });
+        return;
+      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      update((state) => {
+        const next = {
+          ...state,
+          auth: {
+            status: error ? "signed_out" : "signed_in",
+            error: error?.message ?? null
+          },
+          profile: {
+            ...state.profile,
+            email
+          },
+          ui: {
+            ...state.ui,
+            currentScreen: error ? state.ui.currentScreen : state.onboarding.completed ? "dashboard" : "landing"
+          }
+        };
+        return persistAndSync(next);
+      });
+    },
+    signUp: async (fullName, email, password) => {
+      update((state) => ({
+        ...state,
+        auth: {
+          status: "loading",
+          error: null
+        }
+      }));
+      if (!supabase) {
+        update((state) => {
+          const next = {
+            ...state,
+            auth: {
+              status: "signed_in",
+              error: null
+            },
+            profile: {
+              ...state.profile,
+              fullName,
+              email
+            }
+          };
+          return persistAndSync(next);
+        });
+        return;
+      }
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName
+          }
+        }
+      });
+      update((state) => {
+        const next = {
+          ...state,
+          auth: {
+            status: error ? "signed_out" : "signed_in",
+            error: error?.message ?? null
+          },
+          profile: {
+            ...state.profile,
+            fullName,
+            email
+          }
+        };
+        return persistAndSync(next);
+      });
+    },
+    signOut: async () => {
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+      update((state) => {
+        const next = {
+          ...createInitialState(),
+          ui: {
+            ...createInitialState().ui,
+            theme: state.ui.theme
+          }
+        };
+        return next;
+      });
+      await goto();
+    },
     reset: () => {
       const state = createInitialState();
+      persistAndSync(state);
       set(state);
     },
     setTheme: (theme) => update((state) => {
@@ -385,7 +203,7 @@ function createAppStore() {
           theme
         }
       };
-      return next;
+      return persistAndSync(next);
     }),
     setLearningMode: (learningMode) => update((state) => {
       const lesson = getSelectedLesson(state);
@@ -393,11 +211,32 @@ function createAppStore() {
         ...state,
         ui: {
           ...state.ui,
-          learningMode
+          learningMode,
+          currentScreen: learningMode === "learn" ? "lesson" : learningMode === "revision" ? "revision" : "ask"
         },
         sessions: recordSession(state.sessions, learningMode, lesson.id, `Resume ${lesson.title}`)
       };
-      return next;
+      return persistAndSync(next);
+    }),
+    selectSubject: (subjectId) => update((state) => {
+      const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];
+      const topic = subject.topics[0];
+      const subtopic = topic.subtopics[0];
+      const lessonId = subtopic.lessonIds[0] ?? state.ui.selectedLessonId;
+      const lesson = state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
+      const next = {
+        ...state,
+        ui: {
+          ...state.ui,
+          currentScreen: "subject",
+          selectedSubjectId: subject.id,
+          selectedTopicId: topic.id,
+          selectedSubtopicId: subtopic.id,
+          selectedLessonId: lesson.id,
+          practiceQuestionId: lesson.practiceQuestionIds[0]
+        }
+      };
+      return persistAndSync(next);
     }),
     selectTopic: (topicId) => update((state) => {
       const topic = state.curriculum.subjects.flatMap((subject) => subject.topics).find((item) => item.id === topicId);
@@ -407,12 +246,30 @@ function createAppStore() {
         ...state,
         ui: {
           ...state.ui,
+          currentScreen: "subject",
           selectedTopicId: topicId,
+          selectedSubtopicId: topic?.subtopics[0]?.id ?? state.ui.selectedSubtopicId,
           selectedLessonId: lessonId,
           practiceQuestionId: questionId
         }
       };
-      return next;
+      return persistAndSync(next);
+    }),
+    selectSubtopic: (subtopicId) => update((state) => {
+      const topic = getSelectedTopic(state);
+      const subtopic = topic.subtopics.find((item) => item.id === subtopicId) ?? topic.subtopics[0];
+      const lessonId = subtopic.lessonIds[0] ?? state.ui.selectedLessonId;
+      const lesson = state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
+      const next = {
+        ...state,
+        ui: {
+          ...state.ui,
+          selectedSubtopicId: subtopic.id,
+          selectedLessonId: lesson.id,
+          practiceQuestionId: lesson.practiceQuestionIds[0]
+        }
+      };
+      return persistAndSync(next);
     }),
     selectLesson: (lessonId) => update((state) => {
       const lesson = state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
@@ -420,12 +277,14 @@ function createAppStore() {
         ...state,
         ui: {
           ...state.ui,
+          currentScreen: "lesson",
           selectedLessonId: lesson.id,
           selectedTopicId: lesson.topicId,
+          selectedSubtopicId: lesson.subtopicId,
           practiceQuestionId: lesson.practiceQuestionIds[0]
         }
       };
-      return next;
+      return persistAndSync(next);
     }),
     selectPracticeQuestion: (questionId) => update((state) => {
       const next = {
@@ -435,7 +294,7 @@ function createAppStore() {
           practiceQuestionId: questionId
         }
       };
-      return next;
+      return persistAndSync(next);
     }),
     answerQuestion: (questionId, answer) => update((state) => {
       const question = getQuestionById(state, questionId);
@@ -463,20 +322,67 @@ function createAppStore() {
           ...state.analytics
         ]
       };
-      return next;
+      return persistAndSync(next);
     }),
-    updateAskQuestion: (request) => update((state) => {
-      const response = buildAskQuestionResponse(request);
-      const next = {
-        ...state,
-        askQuestion: {
-          request,
-          response
-        },
-        analytics: [createAnalyticsEvent("ask_question_submitted", request.question), ...state.analytics]
-      };
-      return next;
-    }),
+    updateAskQuestion: async (request) => {
+      update((state) => {
+        const next = {
+          ...state,
+          askQuestion: {
+            ...state.askQuestion,
+            request,
+            response: buildAskQuestionResponse(request),
+            provider: state.askQuestion.provider,
+            isLoading: true,
+            error: null
+          },
+          analytics: [createAnalyticsEvent("ask_question_submitted", request.question), ...state.analytics]
+        };
+        return next;
+      });
+      try {
+        const response = await fetch("/api/ai/tutor", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            request,
+            profileId: readState().profile.id
+          })
+        });
+        const payload = await response.json();
+        update((state) => {
+          const next = {
+            ...state,
+            askQuestion: {
+              request,
+              response: payload.response,
+              provider: payload.provider,
+              isLoading: false,
+              error: payload.error ?? null
+            }
+          };
+          return persistAndSync(next);
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Tutor request failed";
+        update((state) => {
+          const next = {
+            ...state,
+            askQuestion: {
+              ...state.askQuestion,
+              request,
+              response: buildAskQuestionResponse(request),
+              provider: "local-fallback",
+              isLoading: false,
+              error: message
+            }
+          };
+          return persistAndSync(next);
+        });
+      }
+    },
     generateRevisionPlan: () => update((state) => {
       const topics = buildRevisionTopics(state);
       const selectedTopic = getSelectedTopic(state);
@@ -490,7 +396,7 @@ function createAppStore() {
         },
         analytics: [createAnalyticsEvent("revision_generated", topics.join(", ")), ...state.analytics]
       };
-      return next;
+      return persistAndSync(next);
     })
   };
 }
@@ -503,7 +409,7 @@ function AskQuestionWorkspace($$renderer, $$props) {
     let subject = state.askQuestion.request.subject;
     let grade = state.askQuestion.request.grade;
     let currentAttempt = state.askQuestion.request.currentAttempt;
-    $$renderer2.push(`<section class="workspace svelte-tc0v16"><header class="section-header svelte-tc0v16"><div><p class="eyebrow svelte-tc0v16">Ask Question</p> <h2 class="svelte-tc0v16">Guided problem-solving tutor</h2></div> <div class="pill svelte-tc0v16">${escape_html(state.askQuestion.response.responseStage)}</div></header> <div class="grid svelte-tc0v16"><article class="panel svelte-tc0v16"><h3 class="svelte-tc0v16">Student input</h3> <label class="svelte-tc0v16"><span class="svelte-tc0v16">Question</span> <textarea rows="4" class="svelte-tc0v16">`);
+    $$renderer2.push(`<section class="workspace svelte-tc0v16"><header class="section-header svelte-tc0v16"><div><p class="eyebrow svelte-tc0v16">Ask Question</p> <h2 class="svelte-tc0v16">Guided problem-solving tutor</h2></div> <div class="pill svelte-tc0v16">${escape_html(state.askQuestion.isLoading ? "loading" : state.askQuestion.response.responseStage)}</div></header> <div class="grid svelte-tc0v16"><article class="panel svelte-tc0v16"><h3 class="svelte-tc0v16">Student input</h3> <label class="svelte-tc0v16"><span class="svelte-tc0v16">Question</span> <textarea rows="4" class="svelte-tc0v16">`);
     const $$body = escape_html(question);
     if ($$body) {
       $$renderer2.push(`${$$body}`);
@@ -513,7 +419,78 @@ function AskQuestionWorkspace($$renderer, $$props) {
     if ($$body_1) {
       $$renderer2.push(`${$$body_1}`);
     }
-    $$renderer2.push(`</textarea></label> <button type="button" class="svelte-tc0v16">Generate guided response</button></article> <article class="panel svelte-tc0v16"><h3 class="svelte-tc0v16">AI response contract</h3> <p class="svelte-tc0v16"><strong>Problem type:</strong> ${escape_html(state.askQuestion.response.problemType)}</p> <p class="svelte-tc0v16"><strong>Student goal:</strong> ${escape_html(state.askQuestion.response.studentGoal)}</p> <p class="svelte-tc0v16"><strong>Diagnosis:</strong> ${escape_html(state.askQuestion.response.diagnosis)}</p> <p class="svelte-tc0v16"><strong>Response stage:</strong> ${escape_html(state.askQuestion.response.responseStage)}</p> <p class="svelte-tc0v16"><strong>Teacher response:</strong> ${escape_html(state.askQuestion.response.teacherResponse)}</p> <p class="svelte-tc0v16"><strong>Check for understanding:</strong> ${escape_html(state.askQuestion.response.checkForUnderstanding)}</p></article> <article class="panel full svelte-tc0v16"><h3 class="svelte-tc0v16">Guardrails</h3> <ul class="svelte-tc0v16"><li>Do not give the final answer before guidance unless the learner explicitly asks after attempting the problem.</li> <li>Respond to the learner’s working instead of restarting from scratch.</li> <li>Use one small hint, one question, or one guided step at a time.</li> <li>Correct misconceptions clearly and keep explanations age-appropriate.</li></ul></article></div></section>`);
+    $$renderer2.push(`</textarea></label> <button type="button"${attr("disabled", state.askQuestion.isLoading, true)} class="svelte-tc0v16">${escape_html(state.askQuestion.isLoading ? "Generating..." : "Generate guided response")}</button></article> <article class="panel svelte-tc0v16"><h3 class="svelte-tc0v16">Guidance</h3> <p class="svelte-tc0v16"><strong>Problem type:</strong> ${escape_html(state.askQuestion.response.problemType)}</p> <p class="svelte-tc0v16">${escape_html(state.askQuestion.response.teacherResponse)}</p> <p class="svelte-tc0v16"><strong>Next check:</strong> ${escape_html(state.askQuestion.response.checkForUnderstanding)}</p> `);
+    if (state.askQuestion.error) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<p class="error svelte-tc0v16"><strong>Error:</strong> ${escape_html(state.askQuestion.error)}</p>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+    }
+    $$renderer2.push(`<!--]--></article> <article class="panel full svelte-tc0v16"><h3 class="svelte-tc0v16">How this tutor responds</h3> <ul class="svelte-tc0v16"><li>Do not give the final answer before guidance unless the learner explicitly asks after attempting the problem.</li> <li>Respond to the learner’s working instead of restarting from scratch.</li> <li>Use one small hint, one question, or one guided step at a time.</li> <li>Correct misconceptions clearly and keep explanations age-appropriate.</li></ul></article></div></section>`);
+    bind_props($$props, { state });
+  });
+}
+function DashboardView($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let state = $$props["state"];
+    const summary = getCompletionSummary(state);
+    const weakTopics = getWeakTopicLabels(state);
+    const continueLesson = state.lessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ?? state.lessons[0];
+    $$renderer2.push(`<section class="view svelte-1kfr389"><header class="hero card svelte-1kfr389"><p class="eyebrow svelte-1kfr389">Dashboard</p> <h2 class="svelte-1kfr389">Continue learning with a clear next step.</h2> <p class="svelte-1kfr389">Your main path is lesson first. Revision and ask-question sit beside it as support tools.</p> <div class="hero-actions svelte-1kfr389"><button type="button" class="svelte-1kfr389">Continue lesson</button> <button type="button" class="secondary svelte-1kfr389">Open revision</button></div></header> <div class="stats svelte-1kfr389"><article class="card svelte-1kfr389"><strong class="svelte-1kfr389">${escape_html(summary.completedLessons)}/${escape_html(summary.totalLessons)}</strong> <span class="svelte-1kfr389">Lessons completed</span></article> <article class="card svelte-1kfr389"><strong class="svelte-1kfr389">${escape_html(summary.averageMastery)}%</strong> <span class="svelte-1kfr389">Average mastery</span></article> <article class="card svelte-1kfr389"><strong class="svelte-1kfr389">${escape_html(state.sessions.length)}</strong> <span class="svelte-1kfr389">Saved sessions</span></article></div> <div class="grid svelte-1kfr389"><article class="card svelte-1kfr389"><p class="eyebrow svelte-1kfr389">Continue</p> <h3 class="svelte-1kfr389">${escape_html(continueLesson.title)}</h3> <p class="svelte-1kfr389">Resume the current lesson path with examples, practice, and mastery.</p> <button type="button" class="svelte-1kfr389">Open lesson</button></article> <article class="card svelte-1kfr389"><p class="eyebrow svelte-1kfr389">Weak areas</p> <h3 class="svelte-1kfr389">Topics needing attention</h3> <ul class="svelte-1kfr389"><!--[-->`);
+    const each_array = ensure_array_like(weakTopics);
+    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+      let topic = each_array[$$index];
+      $$renderer2.push(`<li>${escape_html(topic)}</li>`);
+    }
+    $$renderer2.push(`<!--]--></ul></article> <article class="card svelte-1kfr389"><p class="eyebrow svelte-1kfr389">Revision</p> <h3 class="svelte-1kfr389">Exam preparation</h3> <p class="svelte-1kfr389">Generate a focused plan from the current subject and progress.</p> <button type="button" class="svelte-1kfr389">Go to revision</button></article></div></section>`);
+    bind_props($$props, { state });
+  });
+}
+function LandingView($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let state = $$props["state"];
+    let authMode = "signup";
+    let fullName = state.profile.fullName;
+    let email = state.profile.email;
+    let password = "";
+    let grade = state.profile.grade;
+    $$renderer2.push(`<section class="landing-shell svelte-stkfxm"><article class="intro card svelte-stkfxm"><p class="eyebrow svelte-stkfxm">Doceo</p> <h1 class="svelte-stkfxm">Structured learning, not chatbot drift.</h1> <p class="svelte-stkfxm">Learn a subject in order, revise with intent, and ask targeted questions when you are stuck.</p> <div class="bullet-grid svelte-stkfxm"><div class="svelte-stkfxm"><strong class="svelte-stkfxm">Dashboard</strong> <span class="svelte-stkfxm">Continue lessons and track weak areas.</span></div> <div class="svelte-stkfxm"><strong class="svelte-stkfxm">Lesson flow</strong> <span class="svelte-stkfxm">Overview, example, practice, mastery.</span></div> <div class="svelte-stkfxm"><strong class="svelte-stkfxm">Revision</strong> <span class="svelte-stkfxm">Condense the syllabus into focused exam preparation.</span></div> <div class="svelte-stkfxm"><strong class="svelte-stkfxm">Ask Question</strong> <span class="svelte-stkfxm">Get the next helpful step without answer dumping.</span></div></div></article> <article class="auth card svelte-stkfxm">`);
+    if (state.auth.status === "signed_in" && !state.onboarding.completed) {
+      $$renderer2.push("<!--[0-->");
+      $$renderer2.push(`<p class="eyebrow svelte-stkfxm">Onboarding</p> <h2 class="svelte-stkfxm">Set your learner profile</h2> <label class="svelte-stkfxm"><span class="svelte-stkfxm">Full name</span> <input${attr("value", fullName)} class="svelte-stkfxm"/></label> <label class="svelte-stkfxm"><span class="svelte-stkfxm">Grade</span> `);
+      $$renderer2.select(
+        { value: grade, class: "" },
+        ($$renderer3) => {
+          $$renderer3.option({}, ($$renderer4) => {
+            $$renderer4.push(`Grade 6`);
+          });
+          $$renderer3.option({}, ($$renderer4) => {
+            $$renderer4.push(`Grade 7`);
+          });
+          $$renderer3.option({}, ($$renderer4) => {
+            $$renderer4.push(`Grade 8`);
+          });
+        },
+        "svelte-stkfxm"
+      );
+      $$renderer2.push(`</label> <button type="button" class="svelte-stkfxm">Enter the student app</button>`);
+    } else {
+      $$renderer2.push("<!--[-1-->");
+      $$renderer2.push(`<div class="tabs svelte-stkfxm"><button type="button"${attr_class("svelte-stkfxm", void 0, { "active": authMode === "signup" })}>Create account</button> <button type="button"${attr_class("svelte-stkfxm", void 0, { "active": authMode === "signin" })}>Sign in</button></div> <h2 class="svelte-stkfxm">${escape_html("Create your student account")}</h2> `);
+      {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<label class="svelte-stkfxm"><span class="svelte-stkfxm">Full name</span> <input${attr("value", fullName)} class="svelte-stkfxm"/></label>`);
+      }
+      $$renderer2.push(`<!--]--> <label class="svelte-stkfxm"><span class="svelte-stkfxm">Email</span> <input${attr("value", email)} type="email" class="svelte-stkfxm"/></label> <label class="svelte-stkfxm"><span class="svelte-stkfxm">Password</span> <input${attr("value", password)} type="password" class="svelte-stkfxm"/></label> <button type="button"${attr("disabled", state.auth.status === "loading", true)} class="svelte-stkfxm">${escape_html(state.auth.status === "loading" ? "Working..." : "Create account")}</button> `);
+      if (state.auth.error) {
+        $$renderer2.push("<!--[0-->");
+        $$renderer2.push(`<p class="error svelte-stkfxm">${escape_html(state.auth.error)}</p>`);
+      } else {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]-->`);
+    }
+    $$renderer2.push(`<!--]--></article></section>`);
     bind_props($$props, { state });
   });
 }
@@ -573,59 +550,16 @@ function LessonWorkspace($$renderer, $$props) {
     bind_props($$props, { state });
   });
 }
-function ModePicker($$renderer, $$props) {
-  $$renderer.component(($$renderer2) => {
-    let value = $$props["value"];
-    const options = [
-      {
-        id: "learn",
-        label: "Learn",
-        description: "Structured lesson flow with explanation, examples, practice, and mastery."
-      },
-      {
-        id: "revision",
-        label: "Revision",
-        description: "Accelerated exam preparation with focus topics and weaknesses."
-      },
-      {
-        id: "ask",
-        label: "Ask Question",
-        description: "Guided tutoring for a specific problem without answer dumping."
-      }
-    ];
-    $$renderer2.push(`<div class="mode-grid svelte-p9wq1j"><!--[-->`);
-    const each_array = ensure_array_like(options);
-    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
-      let option = each_array[$$index];
-      $$renderer2.push(`<button type="button"${attr_class("mode-card svelte-p9wq1j", void 0, { "active": value === option.id })}><span class="svelte-p9wq1j">${escape_html(option.label)}</span> <small class="svelte-p9wq1j">${escape_html(option.description)}</small></button>`);
-    }
-    $$renderer2.push(`<!--]--></div>`);
-    bind_props($$props, { value });
-  });
-}
-function ProgressPanel($$renderer, $$props) {
+function ProgressView($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let state = $$props["state"];
-    const progressEntries = Object.values(state.progress);
-    $$renderer2.push(`<section class="grid svelte-1g717fj"><article class="panel svelte-1g717fj"><h3 class="svelte-1g717fj">Student profile</h3> <p class="svelte-1g717fj">${escape_html(state.profile.fullName)}</p> <p class="svelte-1g717fj">${escape_html(state.profile.grade)} · ${escape_html(state.profile.curriculum)} · ${escape_html(state.profile.country)}</p> <p class="svelte-1g717fj">Role: ${escape_html(state.profile.role)}</p></article> <article class="panel svelte-1g717fj"><h3 class="svelte-1g717fj">Progress tracker</h3> <ul class="svelte-1g717fj"><!--[-->`);
-    const each_array = ensure_array_like(progressEntries);
+    $$renderer2.push(`<section class="view svelte-1qlvu86"><header class="card svelte-1qlvu86"><p class="eyebrow svelte-1qlvu86">Progress</p> <h2 class="svelte-1qlvu86">Track mastery and recent learning activity.</h2></header> <div class="grid svelte-1qlvu86"><!--[-->`);
+    const each_array = ensure_array_like(Object.values(state.progress));
     for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
       let item = each_array[$$index];
-      $$renderer2.push(`<li>${escape_html(item.lessonId)}: ${escape_html(item.masteryLevel)}% mastery · ${escape_html(item.timeSpentMinutes)} min</li>`);
+      $$renderer2.push(`<article class="card svelte-1qlvu86"><h3 class="svelte-1qlvu86">${escape_html(item.lessonId)}</h3> <p class="svelte-1qlvu86">Mastery: ${escape_html(item.masteryLevel)}%</p> <p class="svelte-1qlvu86">Completed: ${escape_html(item.completed ? "Yes" : "Not yet")}</p> <p class="svelte-1qlvu86">Time spent: ${escape_html(item.timeSpentMinutes)} min</p> <p class="svelte-1qlvu86">Weak areas: ${escape_html(item.weakAreas.length > 0 ? item.weakAreas.join(", ") : "None flagged")}</p></article>`);
     }
-    $$renderer2.push(`<!--]--></ul></article> <article class="panel svelte-1g717fj"><h3 class="svelte-1g717fj">Sessions</h3> <ul class="svelte-1g717fj"><!--[-->`);
-    const each_array_1 = ensure_array_like(state.sessions.slice(0, 4));
-    for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
-      let session = each_array_1[$$index_1];
-      $$renderer2.push(`<li>${escape_html(session.resumeLabel)} · ${escape_html(session.mode)} · ${escape_html(new Date(session.updatedAt).toLocaleString())}</li>`);
-    }
-    $$renderer2.push(`<!--]--></ul></article> <article class="panel svelte-1g717fj"><h3 class="svelte-1g717fj">Analytics</h3> <ul class="svelte-1g717fj"><!--[-->`);
-    const each_array_2 = ensure_array_like(state.analytics.slice(0, 5));
-    for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
-      let event = each_array_2[$$index_2];
-      $$renderer2.push(`<li>${escape_html(event.type)} · ${escape_html(event.detail)}</li>`);
-    }
-    $$renderer2.push(`<!--]--></ul></article></section>`);
+    $$renderer2.push(`<!--]--></div></section>`);
     bind_props($$props, { state });
   });
 }
@@ -633,7 +567,7 @@ function RevisionWorkspace($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let state = $$props["state"];
     const revisionPlan = state.revisionPlan;
-    $$renderer2.push(`<section class="workspace svelte-o1xyyi"><header class="section-header svelte-o1xyyi"><div><p class="eyebrow svelte-o1xyyi">Exam Revision</p> <h2 class="svelte-o1xyyi">Accelerated revision path</h2></div> <button type="button" class="svelte-o1xyyi">Refresh Revision Plan</button></header> <div class="grid svelte-o1xyyi"><article class="panel svelte-o1xyyi"><h3 class="svelte-o1xyyi">Exam context</h3> <p class="svelte-o1xyyi">Subject: Mathematics</p> <p class="svelte-o1xyyi">Exam date: ${escape_html(revisionPlan.examDate)}</p> <p class="svelte-o1xyyi">Topics: ${escape_html(revisionPlan.topics.join(", "))}</p></article> <article class="panel svelte-o1xyyi"><h3 class="svelte-o1xyyi">Quick summary</h3> <p class="svelte-o1xyyi">${escape_html(revisionPlan.quickSummary)}</p></article> <article class="panel svelte-o1xyyi"><h3 class="svelte-o1xyyi">Key concepts</h3> <ul class="svelte-o1xyyi"><!--[-->`);
+    $$renderer2.push(`<section class="workspace svelte-o1xyyi"><header class="section-header svelte-o1xyyi"><div><p class="eyebrow svelte-o1xyyi">Exam Revision</p> <h2 class="svelte-o1xyyi">Accelerated revision path</h2></div> <button type="button" class="svelte-o1xyyi">Refresh plan</button></header> <div class="grid svelte-o1xyyi"><article class="panel svelte-o1xyyi"><h3 class="svelte-o1xyyi">Exam context</h3> <p class="svelte-o1xyyi">Subject: Mathematics</p> <p class="svelte-o1xyyi">Exam date: ${escape_html(revisionPlan.examDate)}</p> <p class="svelte-o1xyyi">Topics: ${escape_html(revisionPlan.topics.join(", "))}</p></article> <article class="panel svelte-o1xyyi"><h3 class="svelte-o1xyyi">Quick summary</h3> <p class="svelte-o1xyyi">${escape_html(revisionPlan.quickSummary)}</p></article> <article class="panel svelte-o1xyyi"><h3 class="svelte-o1xyyi">Key concepts</h3> <ul class="svelte-o1xyyi"><!--[-->`);
     const each_array = ensure_array_like(revisionPlan.keyConcepts);
     for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
       let concept = each_array[$$index];
@@ -656,82 +590,117 @@ function ThemeToggle($$renderer, $$props) {
     bind_props($$props, { theme });
   });
 }
+function StudentNav($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let state = $$props["state"];
+    const links = [
+      { id: "dashboard", label: "Dashboard" },
+      { id: "subject", label: "Subject" },
+      { id: "lesson", label: "Lesson" },
+      { id: "revision", label: "Revision" },
+      { id: "ask", label: "Ask Question" },
+      { id: "progress", label: "Progress" }
+    ];
+    $$renderer2.push(`<aside class="sidebar svelte-gwv0ec"><div class="brand svelte-gwv0ec"><p class="eyebrow svelte-gwv0ec">Doceo</p> <h1 class="svelte-gwv0ec">${escape_html(state.profile.fullName)}</h1> <p class="svelte-gwv0ec">${escape_html(state.profile.grade)} · ${escape_html(state.profile.curriculum)} · ${escape_html(state.profile.country)}</p></div> `);
+    ThemeToggle($$renderer2, { theme: state.ui.theme });
+    $$renderer2.push(`<!----> <nav class="nav svelte-gwv0ec"><!--[-->`);
+    const each_array = ensure_array_like(links);
+    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+      let link = each_array[$$index];
+      $$renderer2.push(`<button type="button"${attr_class("svelte-gwv0ec", void 0, { "active": state.ui.currentScreen === link.id })}>${escape_html(link.label)}</button>`);
+    }
+    $$renderer2.push(`<!--]--></nav> <section class="card svelte-gwv0ec"><p class="eyebrow svelte-gwv0ec">Current subject</p> <h2 class="svelte-gwv0ec">${escape_html(state.curriculum.subjects.find((item) => item.id === state.ui.selectedSubjectId)?.name)}</h2> <label class="svelte-gwv0ec"><span class="svelte-gwv0ec">Subject</span> `);
+    $$renderer2.select(
+      {
+        value: state.ui.selectedSubjectId,
+        onchange: (event) => appState.selectSubject(event.currentTarget.value),
+        class: ""
+      },
+      ($$renderer3) => {
+        $$renderer3.push(`<!--[-->`);
+        const each_array_1 = ensure_array_like(state.curriculum.subjects);
+        for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
+          let subject = each_array_1[$$index_1];
+          $$renderer3.option({ value: subject.id }, ($$renderer4) => {
+            $$renderer4.push(`${escape_html(subject.name)}`);
+          });
+        }
+        $$renderer3.push(`<!--]-->`);
+      },
+      "svelte-gwv0ec"
+    );
+    $$renderer2.push(`</label></section> <button type="button" class="signout svelte-gwv0ec">Sign out</button></aside>`);
+    bind_props($$props, { state });
+  });
+}
+function SubjectView($$renderer, $$props) {
+  $$renderer.component(($$renderer2) => {
+    let state = $$props["state"];
+    const subject = getSelectedSubject(state);
+    const topic = getSelectedTopic(state);
+    const lessons = getLessonsForSelectedTopic(state);
+    $$renderer2.push(`<section class="view svelte-1518sz9"><header class="card svelte-1518sz9"><p class="eyebrow svelte-1518sz9">Subject</p> <h2 class="svelte-1518sz9">${escape_html(subject.name)}</h2> <p class="svelte-1518sz9">Follow the topic roadmap in order so each lesson builds on the previous one.</p></header> <div class="grid svelte-1518sz9"><article class="card svelte-1518sz9"><h3 class="svelte-1518sz9">Topics</h3> <div class="stack svelte-1518sz9"><!--[-->`);
+    const each_array = ensure_array_like(subject.topics);
+    for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
+      let item = each_array[$$index];
+      $$renderer2.push(`<button type="button"${attr_class("svelte-1518sz9", void 0, { "active": item.id === topic.id })}>${escape_html(item.name)}</button>`);
+    }
+    $$renderer2.push(`<!--]--></div></article> <article class="card svelte-1518sz9"><h3 class="svelte-1518sz9">Subtopics</h3> <div class="stack svelte-1518sz9"><!--[-->`);
+    const each_array_1 = ensure_array_like(topic.subtopics);
+    for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
+      let subtopic = each_array_1[$$index_1];
+      $$renderer2.push(`<button type="button"${attr_class("svelte-1518sz9", void 0, { "active": subtopic.id === state.ui.selectedSubtopicId })}>${escape_html(subtopic.name)}</button>`);
+    }
+    $$renderer2.push(`<!--]--></div></article> <article class="card svelte-1518sz9"><h3 class="svelte-1518sz9">Lessons</h3> <div class="stack svelte-1518sz9"><!--[-->`);
+    const each_array_2 = ensure_array_like(lessons);
+    for (let $$index_2 = 0, $$length = each_array_2.length; $$index_2 < $$length; $$index_2++) {
+      let lesson = each_array_2[$$index_2];
+      $$renderer2.push(`<button type="button"${attr_class("svelte-1518sz9", void 0, { "active": lesson.id === state.ui.selectedLessonId })}>${escape_html(lesson.title)}</button>`);
+    }
+    $$renderer2.push(`<!--]--></div></article></div></section>`);
+    bind_props($$props, { state });
+  });
+}
 function _page($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {
     let state = createInitialState();
     appState.subscribe((value) => {
       state = value;
     });
-    const subject = derived(() => getSelectedSubject(state));
-    const topic = derived(() => getSelectedTopic(state));
     head("1uha8ag", $$renderer2, ($$renderer3) => {
       $$renderer3.title(($$renderer4) => {
         $$renderer4.push(`<title>Doceo</title>`);
       });
-      $$renderer3.push(`<meta name="description" content="Structured AI-assisted learning platform for lessons, revision, and guided questions."/>`);
+      $$renderer3.push(`<meta name="description" content="Structured school learning with lessons, revision, progress tracking, and guided tutoring."/>`);
     });
-    if (state) {
+    if (state.ui.currentScreen === "landing" || state.auth.status === "signed_out" || !state.onboarding.completed) {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="page-shell svelte-1uha8ag"><aside class="sidebar svelte-1uha8ag"><div class="brand svelte-1uha8ag"><p class="eyebrow svelte-1uha8ag">Doceo</p> <h1 class="svelte-1uha8ag">AI-assisted learning platform</h1> <p class="svelte-1uha8ag">Curriculum-aligned teaching with mastery progression, revision, and guided tutoring.</p></div> <div class="stack svelte-1uha8ag">`);
-      ThemeToggle($$renderer2, { theme: state.ui.theme });
-      $$renderer2.push(`<!----> <button type="button" class="reset svelte-1uha8ag">Reset Demo State</button></div> <section class="nav-panel svelte-1uha8ag"><p class="eyebrow svelte-1uha8ag">Curriculum</p> <h2 class="svelte-1uha8ag">${escape_html(subject().name)}</h2> <p class="svelte-1uha8ag">${escape_html(state.curriculum.country)} · ${escape_html(state.curriculum.name)} · ${escape_html(state.profile.grade)}</p> <label class="svelte-1uha8ag"><span class="svelte-1uha8ag">Topic</span> `);
-      $$renderer2.select(
-        {
-          value: state.ui.selectedTopicId,
-          onchange: (event) => appState.selectTopic(event.currentTarget.value),
-          class: ""
-        },
-        ($$renderer3) => {
-          $$renderer3.push(`<!--[-->`);
-          const each_array = ensure_array_like(subject().topics);
-          for (let $$index = 0, $$length = each_array.length; $$index < $$length; $$index++) {
-            let item = each_array[$$index];
-            $$renderer3.option({ value: item.id }, ($$renderer4) => {
-              $$renderer4.push(`${escape_html(item.name)}`);
-            });
-          }
-          $$renderer3.push(`<!--]-->`);
-        },
-        "svelte-1uha8ag"
-      );
-      $$renderer2.push(`</label> <label class="svelte-1uha8ag"><span class="svelte-1uha8ag">Lesson</span> `);
-      $$renderer2.select(
-        {
-          value: state.ui.selectedLessonId,
-          onchange: (event) => appState.selectLesson(event.currentTarget.value),
-          class: ""
-        },
-        ($$renderer3) => {
-          $$renderer3.push(`<!--[-->`);
-          const each_array_1 = ensure_array_like(state.lessons.filter((lesson) => lesson.topicId === topic().id));
-          for (let $$index_1 = 0, $$length = each_array_1.length; $$index_1 < $$length; $$index_1++) {
-            let lesson = each_array_1[$$index_1];
-            $$renderer3.option({ value: lesson.id }, ($$renderer4) => {
-              $$renderer4.push(`${escape_html(lesson.title)}`);
-            });
-          }
-          $$renderer3.push(`<!--]-->`);
-        },
-        "svelte-1uha8ag"
-      );
-      $$renderer2.push(`</label></section> `);
-      ProgressPanel($$renderer2, { state });
-      $$renderer2.push(`<!----></aside> <main class="content svelte-1uha8ag"><section class="hero svelte-1uha8ag"><div><p class="eyebrow svelte-1uha8ag">Structured teacher</p> <h2 class="svelte-1uha8ag">Learn, revise, and ask targeted questions without dropping into chatbot mode.</h2> <p class="svelte-1uha8ag">The platform keeps teaching stage, lesson state, mastery, sessions, and analytics in one typed flow.</p></div></section> `);
-      ModePicker($$renderer2, { value: state.ui.learningMode });
-      $$renderer2.push(`<!----> `);
-      if (state.ui.learningMode === "learn") {
-        $$renderer2.push("<!--[0-->");
-        LessonWorkspace($$renderer2, { state });
-      } else if (state.ui.learningMode === "revision") {
-        $$renderer2.push("<!--[1-->");
-        RevisionWorkspace($$renderer2, { state });
-      } else {
-        $$renderer2.push("<!--[-1-->");
-        AskQuestionWorkspace($$renderer2, { state });
-      }
-      $$renderer2.push(`<!--]--></main></div>`);
+      LandingView($$renderer2, { state });
     } else {
       $$renderer2.push("<!--[-1-->");
+      $$renderer2.push(`<div class="app-shell svelte-1uha8ag">`);
+      StudentNav($$renderer2, { state });
+      $$renderer2.push(`<!----> <main class="main-content svelte-1uha8ag">`);
+      if (state.ui.currentScreen === "dashboard") {
+        $$renderer2.push("<!--[0-->");
+        DashboardView($$renderer2, { state });
+      } else if (state.ui.currentScreen === "subject") {
+        $$renderer2.push("<!--[1-->");
+        SubjectView($$renderer2, { state });
+      } else if (state.ui.currentScreen === "lesson") {
+        $$renderer2.push("<!--[2-->");
+        LessonWorkspace($$renderer2, { state });
+      } else if (state.ui.currentScreen === "revision") {
+        $$renderer2.push("<!--[3-->");
+        RevisionWorkspace($$renderer2, { state });
+      } else if (state.ui.currentScreen === "ask") {
+        $$renderer2.push("<!--[4-->");
+        AskQuestionWorkspace($$renderer2, { state });
+      } else {
+        $$renderer2.push("<!--[-1-->");
+        ProgressView($$renderer2, { state });
+      }
+      $$renderer2.push(`<!--]--></main></div>`);
     }
     $$renderer2.push(`<!--]-->`);
   });

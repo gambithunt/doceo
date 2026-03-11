@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 5185",
+    "dev": "vite dev --port 5187",
     "build": "vite build",
-    "preview": "vite preview --port 5185",
+    "preview": "vite preview --port 5187",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "npm run check"
   },
@@ -23,6 +23,7 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.99.0"
+    "@supabase/supabase-js": "^2.99.0",
+    "dotenv": "^17.3.1"
   }
 }

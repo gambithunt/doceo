@@ -10,8 +10,8 @@
   let grade = state.askQuestion.request.grade;
   let currentAttempt = state.askQuestion.request.currentAttempt;
 
-  function submit(): void {
-    appState.updateAskQuestion({
+  async function submit(): Promise<void> {
+    await appState.updateAskQuestion({
       question,
       topic,
       subject,
@@ -27,7 +27,7 @@
       <p class="eyebrow">Ask Question</p>
       <h2>Guided problem-solving tutor</h2>
     </div>
-    <div class="pill">{state.askQuestion.response.responseStage}</div>
+    <div class="pill">{state.askQuestion.isLoading ? 'loading' : state.askQuestion.response.responseStage}</div>
   </header>
 
   <div class="grid">
@@ -53,21 +53,23 @@
         <span>Current attempt or working</span>
         <textarea bind:value={currentAttempt} rows="5"></textarea>
       </label>
-      <button type="button" onclick={submit}>Generate guided response</button>
+      <button type="button" onclick={submit} disabled={state.askQuestion.isLoading}>
+        {state.askQuestion.isLoading ? 'Generating...' : 'Generate guided response'}
+      </button>
     </article>
 
     <article class="panel">
-      <h3>AI response contract</h3>
+      <h3>Guidance</h3>
       <p><strong>Problem type:</strong> {state.askQuestion.response.problemType}</p>
-      <p><strong>Student goal:</strong> {state.askQuestion.response.studentGoal}</p>
-      <p><strong>Diagnosis:</strong> {state.askQuestion.response.diagnosis}</p>
-      <p><strong>Response stage:</strong> {state.askQuestion.response.responseStage}</p>
-      <p><strong>Teacher response:</strong> {state.askQuestion.response.teacherResponse}</p>
-      <p><strong>Check for understanding:</strong> {state.askQuestion.response.checkForUnderstanding}</p>
+      <p>{state.askQuestion.response.teacherResponse}</p>
+      <p><strong>Next check:</strong> {state.askQuestion.response.checkForUnderstanding}</p>
+      {#if state.askQuestion.error}
+        <p class="error"><strong>Error:</strong> {state.askQuestion.error}</p>
+      {/if}
     </article>
 
     <article class="panel full">
-      <h3>Guardrails</h3>
+      <h3>How this tutor responds</h3>
       <ul>
         <li>Do not give the final answer before guidance unless the learner explicitly asks after attempting the problem.</li>
         <li>Respond to the learner’s working instead of restarting from scratch.</li>
@@ -163,5 +165,14 @@
   ul {
     padding-left: 1.1rem;
     color: var(--muted);
+  }
+
+  button:disabled {
+    cursor: progress;
+    opacity: 0.72;
+  }
+
+  .error {
+    color: #ef4444;
   }
 </style>

@@ -1,3 +1,12 @@
 {
-	"/": []
+	"/": [],
+	"/api/ai/tutor": [
+		"src/routes/api/ai/tutor/+server.ts"
+	],
+	"/api/state/bootstrap": [
+		"src/routes/api/state/bootstrap/+server.ts"
+	],
+	"/api/state/sync": [
+		"src/routes/api/state/sync/+server.ts"
+	]
 }

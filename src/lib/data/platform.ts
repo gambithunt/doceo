@@ -291,11 +291,21 @@ export function buildAskQuestionResponse(request: AskQuestionRequest): AskQuesti
 export function createInitialState(): AppState {
   const selectedLesson = lessons[0];
   const selectedTopic = curriculum.subjects[0].topics[0];
+  const selectedSubtopic = selectedTopic.subtopics[0];
 
   return {
+    auth: {
+      status: 'signed_out',
+      error: null
+    },
+    onboarding: {
+      completed: false,
+      selectedSubjectIds: [curriculum.subjects[0].id]
+    },
     profile: {
       id: 'student-demo',
       fullName: 'Demo Student',
+      email: 'student@example.com',
       role: 'student',
       grade: 'Grade 6',
       country: 'South Africa',
@@ -334,15 +344,82 @@ export function createInitialState(): AppState {
         subject: 'Mathematics',
         grade: 'Grade 6',
         currentAttempt: ''
-      })
+      }),
+      provider: 'local-seed',
+      isLoading: false,
+      error: null
+    },
+    backend: {
+      isConfigured: false,
+      lastSyncAt: null,
+      lastSyncStatus: 'idle',
+      lastSyncError: null
     },
     ui: {
       theme: 'light',
       learningMode: 'learn',
+      currentScreen: 'landing',
       selectedSubjectId: curriculum.subjects[0].id,
       selectedTopicId: selectedTopic.id,
+      selectedSubtopicId: selectedSubtopic.id,
       selectedLessonId: selectedLesson.id,
       practiceQuestionId: selectedLesson.practiceQuestionIds[0]
+    }
+  };
+}
+
+export function normalizeAppState(value: unknown): AppState {
+  const base = createInitialState();
+
+  if (!value || typeof value !== 'object') {
+    return base;
+  }
+
+  const input = value as Partial<AppState>;
+
+  return {
+    ...base,
+    ...input,
+    auth: {
+      ...base.auth,
+      ...(input.auth ?? {})
+    },
+    onboarding: {
+      ...base.onboarding,
+      ...(input.onboarding ?? {}),
+      selectedSubjectIds: Array.isArray(input.onboarding?.selectedSubjectIds)
+        ? input.onboarding.selectedSubjectIds
+        : base.onboarding.selectedSubjectIds
+    },
+    profile: input.profile ?? base.profile,
+    curriculum: input.curriculum ?? base.curriculum,
+    lessons: Array.isArray(input.lessons) ? input.lessons : base.lessons,
+    questions: Array.isArray(input.questions) ? input.questions : base.questions,
+    progress:
+      input.progress && typeof input.progress === 'object' ? { ...base.progress, ...input.progress } : base.progress,
+    sessions: Array.isArray(input.sessions) ? input.sessions : base.sessions,
+    analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,
+    revisionPlan: input.revisionPlan ?? base.revisionPlan,
+    askQuestion: {
+      ...base.askQuestion,
+      ...(input.askQuestion ?? {}),
+      request: input.askQuestion?.request ?? base.askQuestion.request,
+      response: input.askQuestion?.response ?? base.askQuestion.response,
+      provider: input.askQuestion?.provider ?? base.askQuestion.provider,
+      isLoading: input.askQuestion?.isLoading ?? base.askQuestion.isLoading,
+      error: input.askQuestion?.error ?? base.askQuestion.error
+    },
+    backend: {
+      ...base.backend,
+      ...(input.backend ?? {}),
+      isConfigured: input.backend?.isConfigured ?? base.backend.isConfigured,
+      lastSyncAt: input.backend?.lastSyncAt ?? base.backend.lastSyncAt,
+      lastSyncStatus: input.backend?.lastSyncStatus ?? base.backend.lastSyncStatus,
+      lastSyncError: input.backend?.lastSyncError ?? base.backend.lastSyncError
+    },
+    ui: {
+      ...base.ui,
+      ...(input.ui ?? {})
     }
   };
 }
@@ -412,4 +489,42 @@ export function recordSession(
 
 export function buildRevisionTopics(state: AppState): string[] {
   return getSelectedSubject(state).topics.map((topic) => topic.name);
+}
+
+export function getSelectedSubtopic(state: AppState) {
+  const topic = getSelectedTopic(state);
+
+  return (
+    topic.subtopics.find((subtopic) => subtopic.id === state.ui.selectedSubtopicId) ??
+    topic.subtopics[0]
+  );
+}
+
+export function getLessonsForSelectedTopic(state: AppState): Lesson[] {
+  return state.lessons.filter((lesson) => lesson.topicId === state.ui.selectedTopicId);
+}
+
+export function getCompletionSummary(state: AppState) {
+  const progressItems = Object.values(state.progress);
+  const completedLessons = progressItems.filter((item) => item.completed).length;
+  const totalLessons = progressItems.length;
+  const averageMastery =
+    totalLessons === 0
+      ? 0
+      : Math.round(
+          progressItems.reduce((total, item) => total + item.masteryLevel, 0) / totalLessons
+        );
+
+  return {
+    completedLessons,
+    totalLessons,
+    averageMastery
+  };
+}
+
+export function getWeakTopicLabels(state: AppState): string[] {
+  return state.lessons
+    .filter((lesson) => state.progress[lesson.id]?.masteryLevel < 70)
+    .map((lesson) => lesson.title)
+    .slice(0, 3);
 }
