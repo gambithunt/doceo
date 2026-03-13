@@ -1,5 +1,5 @@
 export type ThemeMode = 'light' | 'dark';
-export type LearningMode = 'learn' | 'revision' | 'ask';
+export type LearningMode = 'learn' | 'revision';
 export type AppScreen =
   | 'landing'
   | 'onboarding'
@@ -7,18 +7,12 @@ export type AppScreen =
   | 'subject'
   | 'lesson'
   | 'revision'
-  | 'ask'
   | 'progress'
   | 'settings';
 export type OnboardingStep = 'country' | 'academic' | 'subjects' | 'review';
 export type SchoolTerm = 'Term 1' | 'Term 2' | 'Term 3' | 'Term 4';
 export type SubjectSelectionMode = 'structured' | 'mixed' | 'unsure';
-export type LessonStage =
-  | 'overview'
-  | 'deeper-explanation'
-  | 'example'
-  | 'practice'
-  | 'mastery';
+export type LessonStage = 'overview' | 'concepts' | 'detail' | 'examples' | 'check' | 'complete';
 export type QuestionType =
   | 'multiple-choice'
   | 'short-answer'
@@ -32,6 +26,18 @@ export type ResponseStage =
   | 'guided_step'
   | 'worked_example'
   | 'final_explanation';
+export type AssistantAction = 'advance' | 'reteach' | 'side_thread' | 'complete' | 'stay';
+export type LessonMessageType =
+  | 'teaching'
+  | 'check'
+  | 'response'
+  | 'question'
+  | 'side_thread'
+  | 'feedback'
+  | 'stage_start';
+export type LessonSessionStatus = 'active' | 'complete' | 'archived';
+export type ConfidenceLevel = 'low' | 'medium' | 'high';
+export type ReteachStyle = 'analogy' | 'example' | 'step_by_step' | 'visual';
 
 export interface UserProfile {
   id: string;
@@ -89,6 +95,7 @@ export interface Question {
   type: QuestionType;
   prompt: string;
   expectedAnswer: string;
+  acceptedAnswers?: string[];
   rubric: string;
   explanation: string;
   hintLevels: string[];
@@ -170,7 +177,9 @@ export interface AnalyticsEvent {
     | 'question_answered'
     | 'mastery_updated'
     | 'revision_generated'
-    | 'ask_question_submitted';
+    | 'ask_question_submitted'
+    | 'topic_shortlisted'
+    | 'lesson_message_sent';
   createdAt: string;
   detail: string;
 }
@@ -179,9 +188,14 @@ export interface StudySession {
   id: string;
   mode: LearningMode;
   lessonId?: string;
+  subjectId?: string;
+  subjectName: string;
+  sectionName: string;
+  lessonTitle: string;
   startedAt: string;
   updatedAt: string;
   resumeLabel: string;
+  archivedAt?: string | null;
 }
 
 export interface AskQuestionRequest {
@@ -201,6 +215,23 @@ export interface AskQuestionResponse {
   checkForUnderstanding: string;
 }
 
+export interface LessonSelectorRequest {
+  subject: string;
+  studentName: string;
+  studentPrompt: string;
+  availableSections: string[];
+}
+
+export interface LessonSelectorResponse {
+  studentIntent: string;
+  matchedSection: string;
+  matchedTopic: string;
+  confidence: ConfidenceLevel;
+  reasoning: string;
+  clarificationNeeded: boolean;
+  candidateSections: string[];
+}
+
 export interface RevisionPlan {
   subjectId: string;
   examDate: string;
@@ -209,6 +240,153 @@ export interface RevisionPlan {
   keyConcepts: string[];
   examFocus: string[];
   weaknessDetection: string;
+}
+
+export interface ShortlistedTopic {
+  id: string;
+  title: string;
+  description: string;
+  curriculumReference: string;
+  relevance: string;
+  topicId: string;
+  subtopicId: string;
+  lessonId: string;
+}
+
+export interface TopicShortlistRequest {
+  studentId: string;
+  studentName: string;
+  country: string;
+  curriculum: string;
+  grade: string;
+  subject: string;
+  term: string;
+  year: string;
+  studentInput: string;
+  availableTopics: Array<{
+    topicId: string;
+    topicName: string;
+    subtopicId: string;
+    subtopicName: string;
+    lessonId: string;
+    lessonTitle: string;
+  }>;
+}
+
+export interface TopicShortlistResponse {
+  matchedSection: string;
+  subtopics: ShortlistedTopic[];
+}
+
+export interface LearnerProfileSignals {
+  analogies_preference: number;
+  step_by_step: number;
+  visual_learner: number;
+  real_world_examples: number;
+  abstract_thinking: number;
+  needs_repetition: number;
+  quiz_performance: number;
+}
+
+export interface LearnerProfileUpdate extends Partial<LearnerProfileSignals> {
+  engagement_level?: 'high' | 'medium' | 'low' | null;
+  struggled_with?: string[];
+  excelled_at?: string[];
+}
+
+export interface LearnerProfile extends LearnerProfileSignals {
+  studentId: string;
+  total_sessions: number;
+  total_questions_asked: number;
+  total_reteach_events: number;
+  concepts_struggled_with: string[];
+  concepts_excelled_at: string[];
+  subjects_studied: string[];
+  created_at: string;
+  last_updated_at: string;
+}
+
+export interface DoceoMeta {
+  action: AssistantAction;
+  next_stage: LessonStage | null;
+  reteach_style: ReteachStyle | null;
+  reteach_count: number;
+  confidence_assessment: number;
+  needs_teacher_review?: boolean;
+  stuck_concept?: string | null;
+  profile_update: LearnerProfileUpdate;
+}
+
+export interface LessonMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  type: LessonMessageType;
+  content: string;
+  stage: LessonStage;
+  timestamp: string;
+  metadata?: DoceoMeta | null;
+}
+
+export interface LessonSession {
+  id: string;
+  studentId: string;
+  subjectId: string;
+  subject: string;
+  topicId: string;
+  topicTitle: string;
+  topicDescription: string;
+  curriculumReference: string;
+  matchedSection: string;
+  lessonId: string;
+  currentStage: LessonStage;
+  stagesCompleted: LessonStage[];
+  messages: LessonMessage[];
+  questionCount: number;
+  reteachCount: number;
+  confidenceScore: number;
+  needsTeacherReview: boolean;
+  stuckConcept: string | null;
+  startedAt: string;
+  lastActiveAt: string;
+  completedAt: string | null;
+  status: LessonSessionStatus;
+  profileUpdates: LearnerProfileUpdate[];
+}
+
+export interface LessonChatRequest {
+  student: UserProfile;
+  learnerProfile: LearnerProfile;
+  lessonSession: LessonSession;
+  message: string;
+  messageType: 'question' | 'response';
+}
+
+export interface LessonChatResponse {
+  displayContent: string;
+  metadata: DoceoMeta | null;
+  provider: string;
+  error?: string;
+}
+
+export interface TopicDiscoveryState {
+  selectedSubjectId: string;
+  input: string;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  shortlist: TopicShortlistResponse | null;
+  provider: string | null;
+  error: string | null;
+}
+
+export interface RevisionTopic {
+  lessonSessionId: string;
+  subjectId: string;
+  subject: string;
+  topicTitle: string;
+  curriculumReference: string;
+  confidenceScore: number;
+  previousIntervalDays: number;
+  nextRevisionAt: string;
+  lastReviewedAt: string | null;
 }
 
 export interface AppState {
@@ -247,11 +425,14 @@ export interface AppState {
     };
   };
   profile: UserProfile;
+  learnerProfile: LearnerProfile;
   curriculum: CurriculumDefinition;
   lessons: Lesson[];
   questions: Question[];
   progress: Record<string, LessonProgress>;
   sessions: StudySession[];
+  lessonSessions: LessonSession[];
+  revisionTopics: RevisionTopic[];
   analytics: AnalyticsEvent[];
   revisionPlan: RevisionPlan;
   askQuestion: {
@@ -261,6 +442,7 @@ export interface AppState {
     isLoading: boolean;
     error: string | null;
   };
+  topicDiscovery: TopicDiscoveryState;
   backend: {
     isConfigured: boolean;
     lastSyncAt: string | null;
@@ -276,5 +458,9 @@ export interface AppState {
     selectedSubtopicId: string;
     selectedLessonId: string;
     practiceQuestionId: string;
+    activeLessonSessionId: string | null;
+    pendingAssistantSessionId: string | null;
+    composerDraft: string;
+    showLessonCloseConfirm: boolean;
   };
 }

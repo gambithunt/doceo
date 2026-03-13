@@ -1,6 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment';
-  import AskQuestionWorkspace from '$lib/components/AskQuestionWorkspace.svelte';
+  import { onDestroy, onMount } from 'svelte';
   import DashboardView from '$lib/components/DashboardView.svelte';
   import LandingView from '$lib/components/LandingView.svelte';
   import LessonWorkspace from '$lib/components/LessonWorkspace.svelte';
@@ -23,12 +23,12 @@
     }
   });
 
-  $effect(() => {
+  onMount(() => {
     void appState.initializeRemoteState();
   });
 
-  $effect(() => {
-    return () => unsubscribe();
+  onDestroy(() => {
+    unsubscribe();
   });
 </script>
 
@@ -48,7 +48,7 @@
   <div class="app-shell">
     <StudentNav {state} />
 
-    <main class="main-content">
+    <main class:lesson-mode={state.ui.currentScreen === 'lesson'} class="main-content">
       {#if state.ui.currentScreen === 'dashboard'}
         <DashboardView {state} />
       {:else if state.ui.currentScreen === 'subject'}
@@ -57,8 +57,6 @@
         <LessonWorkspace {state} />
       {:else if state.ui.currentScreen === 'revision'}
         <RevisionWorkspace {state} />
-      {:else if state.ui.currentScreen === 'ask'}
-        <AskQuestionWorkspace {state} />
       {:else if state.ui.currentScreen === 'settings'}
         <SettingsView {state} />
       {:else}
@@ -74,17 +72,23 @@
   }
 
   .app-shell {
-    min-height: 100vh;
+    height: 100vh;
     display: grid;
     grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
     gap: 1.5rem;
     padding: 1.5rem;
+    overflow: hidden;
   }
 
   .main-content {
     display: grid;
     gap: 1.25rem;
-    align-content: start;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .main-content.lesson-mode {
+    overflow: hidden;
   }
 
   @media (max-width: 1024px) {

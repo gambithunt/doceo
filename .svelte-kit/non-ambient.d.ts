@@ -27,7 +27,7 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/" | "/api" | "/api/ai" | "/api/ai/tutor" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync";
+		RouteId(): "/" | "/api" | "/api/ai" | "/api/ai/lesson-chat" | "/api/ai/lesson-selector" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum" | "/api/curriculum/program" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync";
 		RouteParams(): {
 			
 		};
@@ -35,16 +35,22 @@ declare module "$app/types" {
 			"/": Record<string, never>;
 			"/api": Record<string, never>;
 			"/api/ai": Record<string, never>;
+			"/api/ai/lesson-chat": Record<string, never>;
+			"/api/ai/lesson-selector": Record<string, never>;
+			"/api/ai/topic-shortlist": Record<string, never>;
 			"/api/ai/tutor": Record<string, never>;
+			"/api/curriculum": Record<string, never>;
+			"/api/curriculum/program": Record<string, never>;
 			"/api/onboarding": Record<string, never>;
 			"/api/onboarding/complete": Record<string, never>;
 			"/api/onboarding/options": Record<string, never>;
 			"/api/onboarding/progress": Record<string, never>;
+			"/api/onboarding/reset": Record<string, never>;
 			"/api/state": Record<string, never>;
 			"/api/state/bootstrap": Record<string, never>;
 			"/api/state/sync": Record<string, never>
 		};
-		Pathname(): "/" | "/api/ai/tutor" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/state/bootstrap" | "/api/state/sync";
+		Pathname(): "/" | "/api/ai/lesson-chat" | "/api/ai/lesson-selector" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum/program" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state/bootstrap" | "/api/state/sync";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

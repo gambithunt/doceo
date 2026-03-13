@@ -1,0 +1,125 @@
+import type { TopicShortlistRequest, TopicShortlistResponse } from '$lib/types';
+
+export interface GithubModelsMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface GithubModelsRequestBody {
+  model: string;
+  messages: GithubModelsMessage[];
+  temperature: number;
+}
+
+export interface GithubModelsSuccessResponse {
+  choices: Array<{
+    message: {
+      content: string;
+    };
+  }>;
+}
+
+function normalize(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export function createTopicShortlistSystemPrompt(): string {
+  return [
+    'You are a curriculum mapping assistant for South African school students.',
+    'Map the student request to the official curriculum and return 4 to 6 specific subtopics.',
+    'Return JSON only with exactly these keys: matchedSection, subtopics.',
+    'Each subtopic item must include: id, title, description, curriculumReference, relevance, topicId, subtopicId, lessonId.'
+  ].join(' ');
+}
+
+export function createTopicShortlistUserPrompt(request: TopicShortlistRequest): string {
+  return JSON.stringify({
+    country: request.country,
+    curriculum: request.curriculum,
+    grade: request.grade,
+    subject: request.subject,
+    term: request.term,
+    year: request.year,
+    student_input: request.studentInput,
+    available_topics: request.availableTopics
+  });
+}
+
+export function createTopicShortlistBody(
+  request: TopicShortlistRequest,
+  model: string
+): GithubModelsRequestBody {
+  return {
+    model,
+    temperature: 0.2,
+    messages: [
+      {
+        role: 'system',
+        content: createTopicShortlistSystemPrompt()
+      },
+      {
+        role: 'user',
+        content: createTopicShortlistUserPrompt(request)
+      }
+    ]
+  };
+}
+
+export function buildFallbackTopicShortlist(request: TopicShortlistRequest): TopicShortlistResponse {
+  const prompt = normalize(request.studentInput);
+  const scored = request.availableTopics
+    .map((item) => {
+      const target = normalize(`${item.topicName} ${item.subtopicName} ${item.lessonTitle}`);
+      const score = target.includes(prompt) || prompt.includes(normalize(item.subtopicName))
+        ? 3
+        : prompt
+            .split(/\s+/)
+            .filter((word) => word.length > 2)
+            .reduce((total, word) => total + (target.includes(word) ? 1 : 0), 0);
+      return {
+        item,
+        score
+      };
+    })
+    .sort((left, right) => right.score - left.score);
+
+  const top = scored.slice(0, 6).map(({ item }, index) => ({
+    id: `shortlist-${index + 1}-${item.lessonId}`,
+    title: item.subtopicName,
+    description: `Focus on ${item.subtopicName.toLowerCase()} within ${item.topicName.toLowerCase()}.`,
+    curriculumReference: `${request.curriculum} · ${request.grade} · ${item.topicName}`,
+    relevance:
+      index === 0
+        ? 'Closest match to the way you described the topic.'
+        : 'Also sits near the same curriculum section.',
+    topicId: item.topicId,
+    subtopicId: item.subtopicId,
+    lessonId: item.lessonId
+  }));
+
+  return {
+    matchedSection: top[0]?.title ?? request.availableTopics[0]?.topicName ?? 'General foundations',
+    subtopics: top
+  };
+}
+
+export function parseTopicShortlistResponse(
+  payload: GithubModelsSuccessResponse
+): TopicShortlistResponse | null {
+  const content = payload.choices[0]?.message.content;
+
+  if (!content) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(content) as TopicShortlistResponse;
+    if (parsed.matchedSection && Array.isArray(parsed.subtopics)) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}

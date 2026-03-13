@@ -1,204 +1,622 @@
 <script lang="ts">
+  import { getActiveLessonSession } from '$lib/data/platform';
+  import { getStageIcon, getStageLabel, LESSON_STAGE_ORDER } from '$lib/lesson-system';
+  import { renderSimpleMarkdown } from '$lib/markdown';
   import { appState } from '$lib/stores/app-state';
-  import { getQuestionById } from '$lib/data/platform';
-  import type { AppState } from '$lib/types';
+  import type { AppState, LessonMessage, LessonStage } from '$lib/types';
+  import { dev } from '$app/environment';
 
-  export let state: AppState;
+  const { state: viewState }: { state: AppState } = $props();
+  const lessonSession = $derived(getActiveLessonSession(viewState));
+  let composer = $state('');
+  let chatElement = $state<HTMLDivElement | null>(null);
+  const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
 
-  let answer = '';
+  const visibleStages = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete');
 
-  const lesson = state.lessons.find((item) => item.id === state.ui.selectedLessonId) ?? state.lessons[0];
-  const practiceQuestion =
-    state.questions.find((question) => question.id === state.ui.practiceQuestionId) ??
-    getQuestionById(state, lesson.practiceQuestionIds[0]);
-  const progress = state.progress[lesson.id];
+  $effect(() => {
+    composer = viewState.ui.composerDraft;
+  });
 
-  function submitAnswer(): void {
-    if (answer.trim().length === 0) {
+  $effect(() => {
+    lessonSession?.messages.length;
+    if (chatElement) {
+      chatElement.scrollTo({
+        top: chatElement.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  });
+
+  function statusForStage(stage: LessonStage): 'completed' | 'active' | 'upcoming' {
+    if (!lessonSession) {
+      return 'upcoming';
+    }
+
+    if (lessonSession.stagesCompleted.includes(stage)) {
+      return 'completed';
+    }
+
+    return lessonSession.currentStage === stage ? 'active' : 'upcoming';
+  }
+
+  function submit(): void {
+    if (composer.trim().length === 0) {
       return;
     }
 
-    appState.answerQuestion(practiceQuestion.id, answer);
-    answer = '';
+    void appState.sendLessonMessage(composer.trim());
+    composer = '';
+  }
+
+  function onInput(event: Event): void {
+    composer = (event.currentTarget as HTMLTextAreaElement).value;
+    appState.updateComposerDraft(composer);
+  }
+
+  function sendQuickReply(reply: string): void {
+    composer = reply;
+    appState.updateComposerDraft(reply);
+    submit();
+  }
+
+  function bubbleClass(message: LessonMessage): string {
+    if (message.type === 'question') {
+      return 'user question';
+    }
+
+    if (message.role === 'user') {
+      return 'user';
+    }
+
+    if (message.type === 'side_thread') {
+      return 'assistant side-thread';
+    }
+
+    if (message.type === 'feedback') {
+      return 'assistant check';
+    }
+
+    return 'assistant';
+  }
+
+  function bubbleAnimationClass(message: LessonMessage): string {
+    return message.role === 'user' ? 'enter-user' : 'enter-assistant';
   }
 </script>
 
-<section class="workspace">
-  <header class="section-header">
-    <div>
-      <p class="eyebrow">Lesson</p>
-      <h2>{lesson.title}</h2>
-    </div>
-    <div class="pill">
-      Mastery {progress.masteryLevel}%
-    </div>
-  </header>
-
-  <div class="lesson-grid">
-    <article class="panel">
-      <h3>{lesson.overview.title}</h3>
-      <p>{lesson.overview.body}</p>
-    </article>
-    <article class="panel">
-      <h3>{lesson.deeperExplanation.title}</h3>
-      <p>{lesson.deeperExplanation.body}</p>
-    </article>
-    <article class="panel">
-      <h3>{lesson.example.title}</h3>
-      <p>{lesson.example.body}</p>
-    </article>
-    <article class="panel">
-      <h3>Mastery Retry Loop</h3>
-      <ol>
-        <li>Re-explain if the learner misses key ideas.</li>
-        <li>Give a new example when mastery is below 70%.</li>
-        <li>Retry practice before moving on.</li>
-      </ol>
-    </article>
-  </div>
-
-  <div class="practice-grid">
-    <article class="panel">
-      <header class="compact-header">
-        <h3>Practice</h3>
-        <select
-          value={practiceQuestion.id}
-          onchange={(event) => appState.selectPracticeQuestion((event.currentTarget as HTMLSelectElement).value)}
-        >
-          {#each lesson.practiceQuestionIds as questionId}
-            {@const question = getQuestionById(state, questionId)}
-            <option value={question.id}>{question.prompt}</option>
-          {/each}
-        </select>
+{#if lessonSession}
+  <section class="lesson-shell">
+    <header class="top-bar">
+      <button type="button" class="close-button" onclick={() => appState.setLessonCloseConfirm(true)}>Close</button>
+        <div class="title-block">
+          <p>{lessonSession.subject}</p>
+          <h2>{lessonSession.topicTitle}</h2>
+        </div>
+        {#if showDebug}
+          <div class="top-actions">
+            <button type="button" class="debug">Profile</button>
+            <button type="button" class="debug">Prompt</button>
+          </div>
+        {/if}
       </header>
 
-      <p>{practiceQuestion.prompt}</p>
+    <nav class="progress-rail" aria-label="Lesson stages">
+      {#each visibleStages as stage}
+        <div class:completed={statusForStage(stage) === 'completed'} class:active={statusForStage(stage) === 'active'} class="stage">
+          <span class="icon">{statusForStage(stage) === 'completed' ? '✓' : getStageIcon(stage)}</span>
+          <span>{getStageLabel(stage)}</span>
+        </div>
+      {/each}
+    </nav>
 
-      {#if practiceQuestion.options}
-        <ul class="options">
-          {#each practiceQuestion.options as option}
-            <li>{option.label}. {option.text}</li>
-          {/each}
-        </ul>
+    <div class="chat-area" bind:this={chatElement}>
+      {#each lessonSession.messages as message}
+        {#if message.type === 'stage_start'}
+          <div class="stage-badge">{message.content}</div>
+        {:else}
+          <article class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}>
+            {#if message.type === 'question'}
+              <small>❓ Question</small>
+            {/if}
+            {#if message.type === 'side_thread'}
+              <small>↳ Side Thread</small>
+            {/if}
+            <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
+          </article>
+        {/if}
+      {/each}
+
+      {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
+        <article class="bubble assistant pending enter-assistant">
+          <div class="typing-dots" aria-label="Assistant is typing" role="status">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </article>
       {/if}
+    </div>
 
-      <textarea
-        bind:value={answer}
-        rows="4"
-        placeholder="Type your answer or show your working"
-      ></textarea>
-      <div class="actions">
-        <button type="button" onclick={submitAnswer}>Check Answer</button>
+    <div class="input-area">
+      <p>Reply to continue · Ask a question anytime</p>
+      <div class="quick-actions">
+        <button type="button" class="secondary quick" onclick={() => sendQuickReply('Slow down and break it into steps.')}>Slow down</button>
+        <button type="button" class="secondary quick" onclick={() => sendQuickReply('Give me another example for this part.')}>Give an example</button>
+        <button type="button" class="secondary quick" onclick={() => sendQuickReply('Continue to the next step.')}>Continue</button>
       </div>
-      <p class="hint">Hint ladder: {practiceQuestion.hintLevels.join(' / ')}</p>
-      <p class="hint">Explanation: {practiceQuestion.explanation}</p>
-    </article>
+      <div class="composer">
+        <textarea
+          rows="3"
+          bind:value={composer}
+          placeholder="Type your response or ask a question..."
+          oninput={onInput}
+        ></textarea>
+        <button type="button" class="send" onclick={submit}>↑</button>
+      </div>
+    </div>
+  </section>
 
-    <article class="panel">
-      <h3>Progress Snapshot</h3>
-      <p>Completed: {progress.completed ? 'Yes' : 'Not yet'}</p>
-      <p>Last stage: {progress.lastStage}</p>
-      <p>Time spent: {progress.timeSpentMinutes} min</p>
-      <p>Weak areas: {progress.weakAreas.length > 0 ? progress.weakAreas.join(', ') : 'None flagged'}</p>
-
-      <h4>Recent answers</h4>
-      <ul class="answers">
-        {#each progress.answers.slice(0, 4) as item}
-          <li>{item.answer} · {item.isCorrect ? 'Correct' : 'Review'} · {new Date(item.attemptedAt).toLocaleTimeString()}</li>
-        {/each}
-      </ul>
-    </article>
-  </div>
-</section>
+  {#if viewState.ui.showLessonCloseConfirm}
+    <div class="overlay">
+      <div class="confirm-card">
+        <h3>Leave this lesson?</h3>
+        <p>Your progress is saved. You can resume anytime from the dashboard.</p>
+        <div class="confirm-actions">
+          <button type="button" class="secondary" onclick={() => appState.setLessonCloseConfirm(false)}>Stay here</button>
+          <button type="button" class="primary" onclick={() => appState.closeLessonToDashboard()}>Back to dashboard</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+{:else}
+  <section class="empty-state">
+    <h2>No active lesson</h2>
+    <button type="button" class="primary" onclick={() => appState.setScreen('dashboard')}>Return to dashboard</button>
+  </section>
+{/if}
 
 <style>
-  .workspace {
+  .lesson-shell {
+    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 92%, white 8%);
+    --chat-assistant-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
+    --chat-assistant-text: var(--text);
+    --chat-check-bg: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    --chat-check-border: color-mix(in srgb, var(--accent) 26%, var(--border));
+    --chat-side-thread-bg: color-mix(in srgb, #8ec5ff 12%, var(--surface-strong));
+    --chat-side-thread-border: color-mix(in srgb, #8ec5ff 30%, var(--border));
+    --chat-stage-bg: color-mix(in srgb, var(--surface-strong) 88%, #ece4d6 12%);
+    --chat-stage-text: color-mix(in srgb, var(--text-soft) 78%, #5f6672 22%);
+    --chat-stage-border: color-mix(in srgb, var(--border-strong) 72%, #d9cfbf 28%);
+    --chat-user-bg: color-mix(in srgb, #111827 92%, black 8%);
+    --chat-user-text: #f8fafc;
     display: grid;
     gap: 1rem;
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    overflow: hidden;
   }
 
-  .section-header,
-  .compact-header {
+  :global(:root[data-theme='dark']) .lesson-shell {
+    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 92%, white 3%);
+    --chat-assistant-border: color-mix(in srgb, #30445f 62%, var(--border));
+    --chat-assistant-text: #eef5ff;
+    --chat-check-bg: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    --chat-check-border: color-mix(in srgb, var(--accent) 32%, rgba(255, 255, 255, 0.06));
+    --chat-side-thread-bg: color-mix(in srgb, #5eb3ff 12%, var(--surface-strong));
+    --chat-side-thread-border: color-mix(in srgb, #5eb3ff 34%, rgba(255, 255, 255, 0.08));
+    --chat-stage-bg: rgba(233, 227, 215, 0.96);
+    --chat-stage-text: #5d6470;
+    --chat-stage-border: rgba(205, 193, 173, 0.78);
+    --chat-user-bg: linear-gradient(180deg, rgba(24, 26, 30, 0.98), rgba(15, 17, 20, 0.98));
+    --chat-user-text: #f8fafc;
+  }
+
+  .top-bar,
+  .progress-rail,
+  .input-area,
+  .confirm-actions,
+  .composer,
+  .quick-actions {
     display: flex;
-    justify-content: space-between;
-    align-items: start;
-    gap: 1rem;
+    gap: 0.9rem;
   }
 
-  .eyebrow {
+  .top-bar,
+  .progress-rail,
+  .input-area,
+  .confirm-card {
+    border: 1px solid var(--border);
+    border-radius: 1.4rem;
+    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+    padding: 1rem 1.1rem;
+    box-shadow: var(--shadow);
+    animation: fade-up 220ms ease;
+  }
+
+  .top-bar {
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .title-block {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .title-block p {
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.72rem;
-    margin-bottom: 0.5rem;
   }
 
-  .pill {
-    border: 1px solid var(--border);
+  .progress-rail {
+    align-items: center;
+    overflow-x: auto;
+  }
+
+  .stage {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.6rem 0.8rem;
     border-radius: 999px;
-    padding: 0.6rem 0.85rem;
-    background: var(--surface-soft);
-    color: var(--muted);
-  }
-
-  .lesson-grid,
-  .practice-grid {
-    display: grid;
-    gap: 1rem;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  }
-
-  .panel {
     border: 1px solid var(--border);
-    border-radius: 1.5rem;
-    background: var(--surface);
-    padding: 1.2rem;
-    display: grid;
-    gap: 0.85rem;
+    color: var(--muted);
+    white-space: nowrap;
   }
 
-  h2,
-  h3,
-  h4,
-  p,
-  ol,
-  ul {
+  .stage.active {
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  }
+
+  .stage.completed {
+    background: var(--accent);
+    color: var(--accent-contrast);
+    border-color: transparent;
+  }
+
+  .chat-area {
+    display: grid;
+    gap: 0.9rem;
+    align-content: start;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 0.4rem 0.35rem 0;
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+  }
+
+  .stage-badge {
+    justify-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    background: var(--chat-stage-bg);
+    color: var(--chat-stage-text);
+    border: 1px solid var(--chat-stage-border);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    animation: badge-arrive 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .bubble {
+    max-width: 88%;
+    padding: 0.98rem 1.08rem;
+    border-radius: 1.22rem;
+    border: 1px solid var(--chat-assistant-border);
+    background: var(--chat-assistant-bg);
+    color: var(--chat-assistant-text);
+    display: grid;
+    gap: 0.45rem;
+    line-height: 1.6;
+    transform-origin: left bottom;
+    will-change: transform, opacity, filter;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+  }
+
+  .bubble.assistant {
+    justify-self: start;
+    border-radius: 1.18rem 1.18rem 1.18rem 0.42rem;
+  }
+
+  .bubble.assistant.check {
+    background: var(--chat-check-bg);
+    border-color: var(--chat-check-border);
+  }
+
+  .bubble.assistant.side-thread {
+    background: var(--chat-side-thread-bg);
+    border-color: var(--chat-side-thread-border);
+  }
+
+  .bubble.user {
+    justify-self: end;
+    background: var(--chat-user-bg);
+    color: var(--chat-user-text);
+    border-color: transparent;
+    border-radius: 1.18rem 1.18rem 0.42rem 1.18rem;
+    transform-origin: right bottom;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.16);
+  }
+
+  .bubble.user.question {
+    background: #2d2520;
+  }
+
+  .bubble small {
+    font-weight: 700;
+    opacity: 0.85;
+  }
+
+  .bubble-body :global(p),
+  .bubble-body :global(ul),
+  .bubble-body :global(li),
+  .bubble-body :global(hr),
+  .confirm-card p,
+  .title-block h2,
+  .confirm-card h3,
+  .input-area p {
     margin: 0;
   }
 
-  textarea,
-  select {
-    width: 100%;
+  .bubble-body {
+    display: grid;
+    gap: 0.45rem;
+    animation: content-fade 260ms ease;
+  }
+
+  .bubble-body :global(ul) {
+    padding-left: 1.1rem;
+  }
+
+  .bubble-body :global(hr) {
+    border: 0;
+    border-top: 1px solid currentColor;
+    opacity: 0.2;
+  }
+
+  .input-area {
+    display: grid;
+    align-self: end;
+    position: relative;
+    z-index: 1;
+  }
+
+  .input-area p {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .composer textarea {
+    flex: 1;
+    min-height: 78px;
     border: 1px solid var(--border);
     border-radius: 1rem;
     background: var(--surface-soft);
     color: var(--text);
-    padding: 0.85rem 1rem;
+    padding: 0.9rem 1rem;
     font: inherit;
   }
 
-  button {
-    border: 0;
+  .close-button,
+  .debug,
+  .send,
+  .primary,
+  .secondary {
     border-radius: 999px;
-    background: var(--accent);
-    color: var(--accent-contrast);
-    padding: 0.8rem 1.15rem;
     font: inherit;
     cursor: pointer;
   }
 
-  .actions {
+  .close-button,
+  .debug,
+  .secondary {
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+    color: var(--text);
+    padding: 0.75rem 0.95rem;
+  }
+
+  .send,
+  .primary {
+    border: 0;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    padding: 0.8rem 1rem;
+  }
+
+  .top-actions {
     display: flex;
-    justify-content: flex-end;
+    gap: 0.65rem;
   }
 
-  .options,
-  .answers {
-    padding-left: 1.1rem;
-    color: var(--muted);
+  .quick {
+    padding: 0.65rem 0.9rem;
   }
 
-  .hint {
-    color: var(--muted);
+  .enter-assistant {
+    animation: bubble-in-assistant 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .enter-user {
+    animation: bubble-in-user 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .pending {
+    min-width: 88px;
+    min-height: 56px;
+    align-items: center;
+  }
+
+  .typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+    padding: 0.25rem 0.1rem;
+  }
+
+  .typing-dots span {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text) 34%, white);
+    animation: typing-bounce 1.1s ease-in-out infinite;
+  }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: 0.12s;
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: 0.24s;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.3);
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+  }
+
+  .confirm-card {
+    width: min(440px, 100%);
+    display: grid;
+    gap: 1rem;
+  }
+
+  .empty-state {
+    display: grid;
+    gap: 1rem;
+    justify-items: start;
+  }
+
+  @media (max-width: 780px) {
+    .top-bar {
+      grid-template-columns: 1fr;
+    }
+
+    .composer {
+      flex-direction: column;
+    }
+
+    .quick-actions {
+      flex-wrap: wrap;
+    }
+  }
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes bubble-in-assistant {
+    0% {
+      opacity: 0;
+      transform: translateY(14px) scaleX(0.97) scaleY(0.94);
+      filter: blur(6px);
+    }
+
+    60% {
+      opacity: 1;
+      transform: translateY(0) scaleX(1.01) scaleY(1);
+      filter: blur(0);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scaleX(1) scaleY(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes bubble-in-user {
+    0% {
+      opacity: 0;
+      transform: translateY(10px) scaleX(0.94) scaleY(0.92);
+      filter: blur(4px);
+    }
+
+    65% {
+      opacity: 1;
+      transform: translateY(0) scaleX(1.015) scaleY(1);
+      filter: blur(0);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scaleX(1) scaleY(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes content-fade {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes badge-arrive {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes typing-bounce {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0) scale(0.96);
+      opacity: 0.45;
+    }
+
+    30% {
+      transform: translateY(-4px) scale(1);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .top-bar,
+    .progress-rail,
+    .input-area,
+    .confirm-card,
+    .stage-badge,
+    .bubble,
+    .bubble-body,
+    .typing-dots span {
+      animation: none !important;
+      transition: none !important;
+      filter: none !important;
+    }
   }
 </style>

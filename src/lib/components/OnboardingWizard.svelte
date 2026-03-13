@@ -27,6 +27,15 @@
   const selectedCount = $derived(
     state.onboarding.selectedSubjectIds.length + state.onboarding.customSubjects.length
   );
+  const countryName = $derived(
+    state.onboarding.options.countries.find((country) => country.id === state.onboarding.selectedCountryId)?.name ??
+      'Not chosen'
+  );
+  const curriculumName = $derived(
+    state.onboarding.options.curriculums.find(
+      (curriculum) => curriculum.id === state.onboarding.selectedCurriculumId
+    )?.name ?? 'Not chosen'
+  );
 
   function goToStep(step: OnboardingStep): void {
     appState.setOnboardingStep(step);
@@ -99,7 +108,7 @@
 </script>
 
 <section class="wizard-shell">
-  <header class="hero card">
+  <header class="hero">
     <div class="hero-copy">
       <p class="eyebrow">Student setup</p>
       <h1>Build a student profile that keeps the app relevant from the first screen.</h1>
@@ -107,17 +116,17 @@
         This takes four short steps. We use your country, curriculum, grade, term, and subjects to tailor the dashboard and recommend where to begin.
       </p>
     </div>
-    <div class="hero-meta">
-      <span>Step {stepIndex + 1} of {state.onboarding.stepOrder.length}</span>
-      <div class="progress-track">
-        <div class="progress-fill" style={`width:${((stepIndex + 1) / state.onboarding.stepOrder.length) * 100}%`}></div>
-      </div>
-      <p>{selectedCount} subject{selectedCount === 1 ? '' : 's'} currently selected</p>
-    </div>
   </header>
 
-  <div class="content-grid">
-    <aside class="steps card">
+  <section class="progress-shell">
+    <div class="progress-header">
+      <span>Step {stepIndex + 1} of {state.onboarding.stepOrder.length}</span>
+      <p>{selectedCount} subject{selectedCount === 1 ? '' : 's'} currently selected</p>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" style={`width:${((stepIndex + 1) / state.onboarding.stepOrder.length) * 100}%`}></div>
+    </div>
+    <div class="step-strip">
       {#each state.onboarding.stepOrder as step, index}
         <button
           type="button"
@@ -140,28 +149,28 @@
           </div>
         </button>
       {/each}
-
-      <div class="summary-card">
-        <p class="eyebrow">Live summary</p>
-        <div class="summary-row">
-          <span>Country</span>
-          <strong>{state.onboarding.options.countries.find((country) => country.id === state.onboarding.selectedCountryId)?.name ?? 'Not chosen'}</strong>
-        </div>
-        <div class="summary-row">
-          <span>Curriculum</span>
-          <strong>{state.onboarding.options.curriculums.find((curriculum) => curriculum.id === state.onboarding.selectedCurriculumId)?.name ?? 'Not chosen'}</strong>
-        </div>
-        <div class="summary-row">
-          <span>Grade</span>
-          <strong>{currentGradeLabel}</strong>
-        </div>
-        <div class="summary-row">
-          <span>Recommended start</span>
-          <strong>{liveRecommendation.subjectName ?? 'Pending'}</strong>
-        </div>
+    </div>
+    <div class="summary-strip">
+      <div class="summary-row">
+        <span>Country</span>
+        <strong>{countryName}</strong>
       </div>
-    </aside>
+      <div class="summary-row">
+        <span>Curriculum</span>
+        <strong>{curriculumName}</strong>
+      </div>
+      <div class="summary-row">
+        <span>Grade</span>
+        <strong>{currentGradeLabel}</strong>
+      </div>
+      <div class="summary-row">
+        <span>Recommended start</span>
+        <strong>{liveRecommendation.subjectName ?? 'Pending'}</strong>
+      </div>
+    </div>
+  </section>
 
+  <div class="content-grid">
     <article class="panel card">
       {#if state.onboarding.currentStep === 'country'}
         <div class="section-copy">
@@ -265,50 +274,62 @@
 
         <div class="category-block">
           <h3>Core</h3>
-          <div class="checkbox-grid">
-            {#each groupedSubjects('core') as subject}
-              <button
-                type="button"
-                class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
-                class="subject-card"
-                onclick={() => appState.toggleOnboardingSubject(subject.id)}
-              >
-                {subject.name}
-              </button>
-            {/each}
-          </div>
+          {#if groupedSubjects('core').length > 0}
+            <div class="checkbox-grid">
+              {#each groupedSubjects('core') as subject}
+                <button
+                  type="button"
+                  class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
+                  class="subject-card"
+                  onclick={() => appState.toggleOnboardingSubject(subject.id)}
+                >
+                  {subject.name}
+                </button>
+              {/each}
+            </div>
+          {:else}
+            <p class="empty-state">No core subjects are available yet for this curriculum and grade.</p>
+          {/if}
         </div>
 
         <div class="category-block">
           <h3>Languages</h3>
-          <div class="checkbox-grid">
-            {#each groupedSubjects('language') as subject}
-              <button
-                type="button"
-                class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
-                class="subject-card"
-                onclick={() => appState.toggleOnboardingSubject(subject.id)}
-              >
-                {subject.name}
-              </button>
-            {/each}
-          </div>
+          {#if groupedSubjects('language').length > 0}
+            <div class="checkbox-grid">
+              {#each groupedSubjects('language') as subject}
+                <button
+                  type="button"
+                  class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
+                  class="subject-card"
+                  onclick={() => appState.toggleOnboardingSubject(subject.id)}
+                >
+                  {subject.name}
+                </button>
+              {/each}
+            </div>
+          {:else}
+            <p class="empty-state">No language subjects are available yet for this curriculum and grade.</p>
+          {/if}
         </div>
 
         <div class="category-block">
           <h3>Other subjects</h3>
-          <div class="checkbox-grid">
-            {#each groupedSubjects('elective') as subject}
-              <button
-                type="button"
-                class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
-                class="subject-card"
-                onclick={() => appState.toggleOnboardingSubject(subject.id)}
-              >
-                {subject.name}
-              </button>
-            {/each}
-          </div>
+          {#if groupedSubjects('elective').length > 0}
+            <div class="checkbox-grid">
+              {#each groupedSubjects('elective') as subject}
+                <button
+                  type="button"
+                  class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
+                  class="subject-card"
+                  onclick={() => appState.toggleOnboardingSubject(subject.id)}
+                >
+                  {subject.name}
+                </button>
+              {/each}
+            </div>
+          {:else}
+            <p class="empty-state">No additional subjects are available yet for this curriculum and grade.</p>
+          {/if}
         </div>
 
         <div class="custom-row">
@@ -320,7 +341,11 @@
               oninput={(event) => appState.setOnboardingCustomSubjectInput((event.currentTarget as HTMLInputElement).value)}
             />
           </label>
-          <button type="button" class="secondary" onclick={() => appState.addOnboardingCustomSubject()}>
+          <button
+            type="button"
+            class="secondary add-subject"
+            onclick={() => appState.addOnboardingCustomSubject()}
+          >
             Add subject
           </button>
         </div>
@@ -398,7 +423,7 @@
 
         {#if state.onboarding.currentStep === 'review'}
           <button type="button" onclick={complete} disabled={state.onboarding.isSaving}>
-            {state.onboarding.isSaving ? 'Saving profile...' : 'Start learning'}
+            {state.onboarding.isSaving ? 'Saving profile...' : 'Save profile and continue'}
           </button>
         {:else}
           <button type="button" onclick={nextStep} disabled={!canContinue()}>
@@ -414,7 +439,9 @@
   .wizard-shell,
   .content-grid,
   .panel,
-  .steps,
+  .progress-shell,
+  .step-strip,
+  .summary-strip,
   .selection-grid,
   .checkbox-grid,
   .review-grid,
@@ -430,8 +457,7 @@
   }
 
   .content-grid {
-    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .card {
@@ -445,16 +471,23 @@
 
   .hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-    gap: 1.5rem;
-    align-items: end;
+    gap: 1rem;
+    padding: 1.5rem 1.75rem 1.25rem;
+    border-radius: var(--radius-xl);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 10%, var(--surface)),
+      color-mix(in srgb, var(--surface-strong) 88%, white)
+    );
+    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
   }
 
   .hero-copy h1 {
-    max-width: 14ch;
     font-size: clamp(2rem, 4vw, 3.25rem);
     line-height: 1.04;
     letter-spacing: -0.04em;
+    max-width: none;
+    margin-right: 1rem;
   }
 
   .hero-copy p:last-child,
@@ -463,17 +496,24 @@
     line-height: 1.6;
   }
 
-  .hero-meta {
-    display: grid;
-    gap: 0.8rem;
-    padding: 1rem;
-    border-radius: var(--radius-lg);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--surface)), var(--surface-soft));
-    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  .hero-copy {
+    max-width: 78rem;
   }
 
-  .hero-meta span,
-  .hero-meta p {
+  .progress-shell {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .progress-header {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .progress-header span,
+  .progress-header p {
     margin: 0;
   }
 
@@ -488,6 +528,11 @@
     height: 100%;
     border-radius: inherit;
     background: linear-gradient(90deg, var(--accent), #8be5bd);
+  }
+
+  .step-strip,
+  .summary-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .step-card,
@@ -511,6 +556,7 @@
     gap: 0.85rem;
     padding: 0.95rem 1rem;
     text-align: left;
+    min-height: 100%;
   }
 
   .step-card span {
@@ -540,7 +586,6 @@
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
   }
 
-  .summary-card,
   .summary-row,
   .section-copy,
   .category-block,
@@ -550,16 +595,12 @@
     gap: 0.65rem;
   }
 
-  .summary-card {
-    margin-top: 0.35rem;
-    padding: 1rem;
+  .summary-row {
+    gap: 0.2rem;
+    padding: 0.95rem 1rem;
     border-radius: var(--radius-lg);
     background: var(--surface-soft);
     border: 1px solid var(--border);
-  }
-
-  .summary-row {
-    gap: 0.2rem;
   }
 
   .selection-grid,
@@ -630,6 +671,12 @@
     flex: 1;
   }
 
+  .add-subject {
+    align-self: end;
+    padding: 0.72rem 1rem;
+    white-space: nowrap;
+  }
+
   .unsure {
     display: flex;
     align-items: center;
@@ -664,6 +711,14 @@
   .recommendation-card {
     background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface-soft));
     border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  }
+
+  .empty-state {
+    padding: 0.95rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px dashed var(--border);
+    background: var(--surface-soft);
+    color: var(--text-soft);
   }
 
   .actions {
@@ -709,9 +764,14 @@
   }
 
   @media (max-width: 980px) {
-    .content-grid,
-    .hero {
+    .progress-header,
+    .step-strip,
+    .summary-strip {
       grid-template-columns: 1fr;
+    }
+
+    .hero {
+      padding: 1.25rem;
     }
   }
 </style>

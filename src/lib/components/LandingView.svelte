@@ -6,7 +6,8 @@
   const { state: viewState }: { state: AppState } = $props();
 
   let authMode: 'signin' | 'signup' = $state('signup');
-  let fullName = $state('');
+  let firstName = $state('');
+  let lastName = $state('');
   let email = $state('');
   let password = $state('');
   let lastAuthStatus: AppState['auth']['status'] = $state('signed_out');
@@ -17,7 +18,9 @@
       lastAuthStatus = viewState.auth.status;
 
       if (viewState.auth.status === 'signed_in') {
-        fullName = viewState.profile.fullName;
+        const [nextFirstName = '', ...rest] = viewState.profile.fullName.split(' ');
+        firstName = nextFirstName;
+        lastName = rest.join(' ');
         email = viewState.profile.email;
       }
     }
@@ -26,21 +29,24 @@
       lastAuthMode = authMode;
 
       if (viewState.auth.status === 'signed_out' && authMode === 'signup') {
-        fullName = '';
+        firstName = '';
+        lastName = '';
         email = '';
         password = '';
       }
     }
 
     if (viewState.auth.status === 'signed_in') {
-      fullName = viewState.profile.fullName;
+      const [nextFirstName = '', ...rest] = viewState.profile.fullName.split(' ');
+      firstName = nextFirstName;
+      lastName = rest.join(' ');
       email = viewState.profile.email;
     }
   });
 
   async function submitAuth(): Promise<void> {
     if (authMode === 'signup') {
-      await appState.signUp(fullName, email, password);
+      await appState.signUp(`${firstName} ${lastName}`.trim(), email, password);
       return;
     }
 
@@ -56,18 +62,15 @@
       <ThemeToggle theme={viewState.ui.theme} />
     </div>
     <div class="intro-copy">
-      <h1>Structured learning, not chatbot drift.</h1>
-      <p>
-        Learn in order, revise with intent, and ask focused questions only when you need the next step.
-      </p>
+      <h1>Structured learning for school students.</h1>
     </div>
     <div class="intro-summary">
       <strong>Built for students who want a clear path.</strong>
-      <span>South Africa first. Curriculum-aware from the moment onboarding starts.</span>
+      <span>Learn in order, revise with intent, and ask focused questions only when you need the next step.</span>
     </div>
     <div class="bullet-grid">
       <div>
-        <strong>Dashboard</strong>
+        <strong>Learning Hub</strong>
         <span>Continue lessons and track weak areas.</span>
       </div>
       <div>
@@ -79,8 +82,8 @@
         <span>Condense the syllabus into focused exam preparation.</span>
       </div>
       <div>
-        <strong>Ask Question</strong>
-        <span>Get the next helpful step without answer dumping.</span>
+        <strong>Adaptive tutor</strong>
+        <span>Ask focused questions inside the lesson without losing your place.</span>
       </div>
     </div>
   </article>
@@ -92,10 +95,16 @@
     </div>
     <h2>{authMode === 'signup' ? 'Create your student account' : 'Sign in to continue'}</h2>
     {#if authMode === 'signup'}
-      <label>
-        <span>Full name</span>
-        <input bind:value={fullName} />
-      </label>
+      <div class="name-grid">
+        <label>
+          <span>First name</span>
+          <input bind:value={firstName} />
+        </label>
+        <label>
+          <span>Last name</span>
+          <input bind:value={lastName} />
+        </label>
+      </div>
     {/if}
     <label>
       <span>Email</span>
@@ -154,13 +163,12 @@
   }
 
   .intro-copy h1 {
-    max-width: 12ch;
+    max-width: 10ch;
     font-size: clamp(2rem, 5vw, 3.7rem);
     line-height: 1.02;
     letter-spacing: -0.04em;
   }
 
-  .intro-copy p,
   .intro-summary span {
     max-width: 38rem;
     color: var(--text-soft);
@@ -223,6 +231,12 @@
     gap: 0.45rem;
   }
 
+  .name-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   input {
     width: 100%;
     border: 1px solid var(--border-strong);
@@ -256,6 +270,10 @@
   @media (max-width: 960px) {
     .landing-shell,
     .bullet-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .name-grid {
       grid-template-columns: 1fr;
     }
 

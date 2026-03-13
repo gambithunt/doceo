@@ -1,72 +1,112 @@
 <script lang="ts">
+  import { renderSimpleMarkdown } from '$lib/markdown';
   import { appState } from '$lib/stores/app-state';
-  import type { AppState } from '$lib/types';
+  import type { AppState, RevisionTopic } from '$lib/types';
 
   export let state: AppState;
 
-  const revisionPlan = state.revisionPlan;
+  const revisionTopics = state.revisionTopics
+    .slice()
+    .sort((left, right) => Date.parse(left.nextRevisionAt) - Date.parse(right.nextRevisionAt));
+
+  const selectedTopic =
+    revisionTopics.find((topic) => topic.lessonSessionId === state.ui.activeLessonSessionId) ?? revisionTopics[0] ?? null;
+  let recallDraft = '';
+  let feedback = '';
+
+  function review(topic: RevisionTopic): void {
+    appState.runRevisionSession(topic);
+    recallDraft = '';
+    feedback = '';
+  }
+
+  function submitRecall(): void {
+    if (!selectedTopic || recallDraft.trim().length === 0) {
+      return;
+    }
+
+    const response = [
+      `**Recall check**`,
+      `You remembered: ${recallDraft.trim()}`,
+      '',
+      `**Marking memo style feedback**`,
+      `- Strong start: you engaged with ${selectedTopic.topicTitle.toLowerCase()}.`,
+      `- Missing piece: add the key rule and one worked example in your own words.`,
+      `- Model answer: define the idea, show how it works, then name the mistake to avoid.`,
+      '',
+      `**Revise again** on ${new Date(selectedTopic.nextRevisionAt).toLocaleDateString()} unless this still feels shaky.`
+    ].join('\n');
+
+    feedback = response;
+  }
 </script>
 
 <section class="workspace">
   <header class="section-header">
     <div>
-      <p class="eyebrow">Exam Revision</p>
-      <h2>Accelerated revision path</h2>
+      <p class="eyebrow">Revision</p>
+      <h2>Recall first, then tighten the gaps</h2>
+      <p>Start by saying what you remember before you look for help.</p>
     </div>
     <button type="button" onclick={() => appState.generateRevisionPlan()}>Refresh plan</button>
   </header>
 
   <div class="grid">
-    <article class="panel">
-      <h3>Exam context</h3>
-      <p>Subject: Mathematics</p>
-      <p>Exam date: {revisionPlan.examDate}</p>
-      <p>Topics: {revisionPlan.topics.join(', ')}</p>
-    </article>
+    <aside class="panel topic-panel">
+      <h3>Revision queue</h3>
+      {#each revisionTopics as topic}
+        <button
+          type="button"
+          class:selected={selectedTopic?.lessonSessionId === topic.lessonSessionId}
+          class="topic-button"
+          onclick={() => review(topic)}
+        >
+          <strong>{topic.topicTitle}</strong>
+          <span>{topic.subject}</span>
+          <small>Due {new Date(topic.nextRevisionAt).toLocaleDateString()}</small>
+        </button>
+      {/each}
+    </aside>
 
-    <article class="panel">
-      <h3>Quick summary</h3>
-      <p>{revisionPlan.quickSummary}</p>
-    </article>
+    <section class="panel recall-panel">
+      {#if selectedTopic}
+        <p class="eyebrow">Recall prompt</p>
+        <h3>{selectedTopic.topicTitle}</h3>
+        <p>Without looking at notes, tell me what you remember about this topic.</p>
+        <textarea
+          bind:value={recallDraft}
+          rows="8"
+          placeholder={`What do you remember about ${selectedTopic.topicTitle}?`}
+        ></textarea>
+        <div class="actions">
+          <button type="button" onclick={submitRecall}>Check recall</button>
+          <button type="button" class="secondary" onclick={() => (recallDraft = '')}>Clear</button>
+        </div>
 
-    <article class="panel">
-      <h3>Key concepts</h3>
-      <ul>
-        {#each revisionPlan.keyConcepts as concept}
-          <li>{concept}</li>
-        {/each}
-      </ul>
-    </article>
-
-    <article class="panel">
-      <h3>Exam-style focus</h3>
-      <ul>
-        {#each revisionPlan.examFocus as focus}
-          <li>{focus}</li>
-        {/each}
-      </ul>
-    </article>
-
-    <article class="panel full">
-      <h3>Weakness detection</h3>
-      <p>{revisionPlan.weaknessDetection}</p>
-    </article>
+        {#if feedback}
+          <article class="feedback-card">
+            {@html renderSimpleMarkdown(feedback)}
+          </article>
+        {/if}
+      {:else}
+        <h3>No revision topics yet</h3>
+        <p>Complete a lesson to add it to the revision queue.</p>
+      {/if}
+    </section>
   </div>
 </section>
 
 <style>
   .workspace,
-  .grid {
+  .grid,
+  .topic-panel,
+  .recall-panel {
     display: grid;
     gap: 1rem;
   }
 
   .grid {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  }
-
-  .full {
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   }
 
   .section-header {
@@ -81,10 +121,11 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.72rem;
-    margin-bottom: 0.5rem;
+    margin: 0;
   }
 
-  .panel {
+  .panel,
+  .feedback-card {
     border: 1px solid var(--border);
     border-radius: 1.5rem;
     background: var(--surface);
@@ -93,7 +134,41 @@
     gap: 0.8rem;
   }
 
+  .topic-button {
+    display: grid;
+    gap: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface-soft);
+    padding: 0.85rem 0.95rem;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .topic-button.selected {
+    border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  }
+
+  textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface-soft);
+    color: var(--text);
+    padding: 0.9rem 1rem;
+    font: inherit;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
   button {
+    justify-self: start;
     border: 0;
     border-radius: 999px;
     background: var(--accent);
@@ -103,15 +178,34 @@
     cursor: pointer;
   }
 
-  h2,
-  h3,
-  p,
-  ul {
+  .secondary {
+    background: var(--surface-soft);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .feedback-card :global(p),
+  .feedback-card :global(ul),
+  .feedback-card :global(li) {
     margin: 0;
   }
 
-  ul {
+  .feedback-card :global(ul) {
     padding-left: 1.1rem;
-    color: var(--muted);
+  }
+
+  h2,
+  h3,
+  p,
+  strong,
+  span,
+  small {
+    margin: 0;
+  }
+
+  @media (max-width: 900px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

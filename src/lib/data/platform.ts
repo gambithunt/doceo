@@ -9,191 +9,43 @@ import {
   onboardingCountries,
   onboardingStepOrder
 } from '$lib/data/onboarding';
+import { buildLearningProgram } from '$lib/data/learning-content';
+import {
+  buildLessonSessionFromTopic,
+  buildRevisionTopicFromLesson,
+  createDefaultLearnerProfile
+} from '$lib/lesson-system';
 import type {
   AnalyticsEvent,
   AppState,
   AskQuestionRequest,
   AskQuestionResponse,
-  CurriculumDefinition,
   Lesson,
   LessonProgress,
   ProblemType,
   Question,
   ResponseStage,
   RevisionPlan,
+  ShortlistedTopic,
   StudentAnswer,
-  StudySession,
   Topic
 } from '$lib/types';
 
-const questions: Question[] = [
-  {
-    id: 'q-fractions-1',
-    lessonId: 'lesson-fractions-foundations',
-    type: 'multiple-choice',
-    prompt: 'Which fraction is equivalent to 1/2?',
-    expectedAnswer: '2/4',
-    rubric: 'Student identifies an equivalent fraction by scaling numerator and denominator equally.',
-    explanation: 'If you multiply the numerator and denominator of 1/2 by 2, you get 2/4.',
-    hintLevels: ['Think about doubling both numbers.', '1/2 becomes ?/4 when you multiply by 2.'],
-    misconceptionTags: ['equivalent-fractions', 'unequal-scaling'],
-    difficulty: 'foundation',
-    topicId: 'topic-fractions',
-    subtopicId: 'subtopic-equivalent-fractions',
-    options: [
-      { id: 'a', label: 'A', text: '2/4' },
-      { id: 'b', label: 'B', text: '1/4' },
-      { id: 'c', label: 'C', text: '3/4' }
-    ]
-  },
-  {
-    id: 'q-fractions-2',
-    lessonId: 'lesson-fractions-foundations',
-    type: 'numeric',
-    prompt: 'Write 3/6 in its simplest form.',
-    expectedAnswer: '1/2',
-    rubric: 'Student simplifies the fraction by dividing the numerator and denominator by their highest common factor.',
-    explanation: 'The highest common factor of 3 and 6 is 3, so 3/6 simplifies to 1/2.',
-    hintLevels: ['What number divides both 3 and 6?', 'Try dividing the numerator and denominator by 3.'],
-    misconceptionTags: ['simplification', 'common-factor'],
-    difficulty: 'core',
-    topicId: 'topic-fractions',
-    subtopicId: 'subtopic-equivalent-fractions'
-  },
-  {
-    id: 'q-fractions-3',
-    lessonId: 'lesson-fractions-foundations',
-    type: 'step-by-step',
-    prompt: 'Add 1/4 + 2/4. Explain your method.',
-    expectedAnswer: '3/4',
-    rubric: 'Student adds numerators when denominators are already equal and keeps the denominator unchanged.',
-    explanation: 'When denominators are the same, add the numerators only: 1 + 2 = 3, so the answer is 3/4.',
-    hintLevels: ['Are the denominators already the same?', 'Add only the top numbers.'],
-    misconceptionTags: ['fraction-addition', 'denominator-error'],
-    difficulty: 'core',
-    topicId: 'topic-fractions',
-    subtopicId: 'subtopic-adding-fractions'
-  },
-  {
-    id: 'q-algebra-1',
-    lessonId: 'lesson-algebra-patterns',
-    type: 'short-answer',
-    prompt: 'If x + 7 = 15, what is x?',
-    expectedAnswer: '8',
-    rubric: 'Student isolates x by subtracting 7 from both sides.',
-    explanation: 'Subtract 7 from both sides to keep the equation balanced. 15 - 7 = 8.',
-    hintLevels: ['What operation undoes +7?', 'Subtract 7 from both sides.'],
-    misconceptionTags: ['inverse-operations'],
-    difficulty: 'foundation',
-    topicId: 'topic-algebra',
-    subtopicId: 'subtopic-solving-equations'
-  },
-  {
-    id: 'q-algebra-2',
-    lessonId: 'lesson-algebra-patterns',
-    type: 'step-by-step',
-    prompt: 'Solve 2x = 18 and explain each step.',
-    expectedAnswer: '9',
-    rubric: 'Student divides both sides by 2 and explains why the equation stays balanced.',
-    explanation: 'Divide both sides by 2 to isolate x. 18 divided by 2 is 9.',
-    hintLevels: ['What is attached to x?', 'Undo multiplying by 2 with division.'],
-    misconceptionTags: ['inverse-operations', 'balance'],
-    difficulty: 'core',
-    topicId: 'topic-algebra',
-    subtopicId: 'subtopic-solving-equations'
-  }
-];
-
-const lessons: Lesson[] = [
-  {
-    id: 'lesson-fractions-foundations',
-    topicId: 'topic-fractions',
-    subtopicId: 'subtopic-equivalent-fractions',
-    title: 'Equivalent Fractions and Simple Addition',
-    subjectId: 'subject-mathematics',
-    grade: 'Grade 6',
-    overview: {
-      title: 'Overview',
-      body: 'Fractions describe equal parts of a whole. Equivalent fractions name the same amount, and fractions with the same denominator can be added by combining the numerators.'
-    },
-    deeperExplanation: {
-      title: 'Deeper Explanation',
-      body: 'Equivalent fractions keep the same value because the numerator and denominator are scaled by the same factor. When adding fractions with equal denominators, the size of each part does not change, so only the number of parts changes.'
-    },
-    example: {
-      title: 'Worked Example',
-      body: 'To show that 1/2 = 2/4, multiply both the numerator and denominator by 2. To add 1/4 + 2/4, keep the denominator as 4 and add the numerators to get 3/4.'
-    },
-    practiceQuestionIds: ['q-fractions-1', 'q-fractions-2', 'q-fractions-3'],
-    masteryQuestionIds: ['q-fractions-2', 'q-fractions-3']
-  },
-  {
-    id: 'lesson-algebra-patterns',
-    topicId: 'topic-algebra',
-    subtopicId: 'subtopic-solving-equations',
-    title: 'Solving One-Step Equations',
-    subjectId: 'subject-mathematics',
-    grade: 'Grade 7',
-    overview: {
-      title: 'Overview',
-      body: 'An equation is balanced like a scale. To solve for a variable, use the inverse operation and do the same thing to both sides.'
-    },
-    deeperExplanation: {
-      title: 'Deeper Explanation',
-      body: 'Inverse operations undo each other. Addition is undone by subtraction, and multiplication is undone by division. Keeping both sides balanced preserves the truth of the equation.'
-    },
-    example: {
-      title: 'Worked Example',
-      body: 'If x + 7 = 15, subtract 7 from both sides to get x = 8. If 2x = 18, divide both sides by 2 to get x = 9.'
-    },
-    practiceQuestionIds: ['q-algebra-1', 'q-algebra-2'],
-    masteryQuestionIds: ['q-algebra-1', 'q-algebra-2']
-  }
-];
-
-const curriculum: CurriculumDefinition = {
-  country: 'South Africa',
-  name: 'CAPS',
-  grade: 'Grade 6',
-  subjects: [
-    {
-      id: 'subject-mathematics',
-      name: 'Mathematics',
-      topics: [
-        {
-          id: 'topic-fractions',
-          name: 'Fractions',
-          subtopics: [
-            {
-              id: 'subtopic-equivalent-fractions',
-              name: 'Equivalent Fractions',
-              lessonIds: ['lesson-fractions-foundations']
-            },
-            {
-              id: 'subtopic-adding-fractions',
-              name: 'Adding Fractions',
-              lessonIds: ['lesson-fractions-foundations']
-            }
-          ]
-        },
-        {
-          id: 'topic-algebra',
-          name: 'Introductory Algebra',
-          subtopics: [
-            {
-              id: 'subtopic-solving-equations',
-              name: 'Solving One-Step Equations',
-              lessonIds: ['lesson-algebra-patterns']
-            }
-          ]
-        }
-      ]
-    }
-  ]
-};
-
 function isoNow(): string {
   return new Date().toISOString();
+}
+
+function formatLessonDate(value: string): string {
+  return value.slice(0, 10);
+}
+
+function normalizeAnswer(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function createEvent(type: AnalyticsEvent['type'], detail: string): AnalyticsEvent {
@@ -205,39 +57,105 @@ function createEvent(type: AnalyticsEvent['type'], detail: string): AnalyticsEve
   };
 }
 
-function initialLessonProgress(): Record<string, LessonProgress> {
+function buildRevisionPlan(subjectId: string, subjectName: string, selectedTopics: string[]): RevisionPlan {
+  return {
+    subjectId,
+    examDate: '2026-06-18',
+    topics: selectedTopics,
+    quickSummary: `Prioritize ${selectedTopics[0] ?? subjectName}, then move through the remaining ${subjectName} topics with active recall and exam-style prompts.`,
+    keyConcepts: [
+      `State the key vocabulary in ${subjectName} before attempting the harder questions.`,
+      `Explain each step clearly instead of jumping to the answer in ${subjectName}.`,
+      `Use spaced repetition across ${selectedTopics.length || 1} topic areas.`
+    ],
+    examFocus: [
+      'Show your method clearly.',
+      'Connect each answer to the underlying concept.',
+      `Revise ${subjectName} mistakes before doing speed work.`
+    ],
+    weaknessDetection: `Watch for places where the learner can state an answer in ${subjectName} but cannot justify the step.`
+  };
+}
+
+function createDerivedProgram(
+  country: string,
+  curriculumName: string,
+  grade: string,
+  selectedSubjectNames: string[],
+  customSubjects: string[] = []
+) {
+  const subjectNames = [...selectedSubjectNames, ...customSubjects].filter(
+    (subject, index, allSubjects) => subject.length > 0 && allSubjects.indexOf(subject) === index
+  );
+
+  return buildLearningProgram(country, curriculumName, grade, subjectNames);
+}
+
+function createAskQuestionState(state: Pick<AppState, 'curriculum' | 'profile'>) {
+  const selectedSubject = state.curriculum.subjects[0];
+  const selectedTopic = selectedSubject?.topics[0];
+  const request = {
+    question: `What is the key idea in ${selectedTopic?.name ?? 'this topic'}?`,
+    topic: selectedTopic?.name ?? 'Foundations',
+    subject: selectedSubject?.name ?? 'Mathematics',
+    grade: state.profile.grade,
+    currentAttempt: ''
+  };
+
+  return {
+    request,
+    response: buildAskQuestionResponse(request),
+    provider: 'local-seed',
+    isLoading: false,
+    error: null
+  };
+}
+
+function buildSessionLabel(subjectName: string, sectionName: string, startedAt: string): string {
+  return `${formatLessonDate(startedAt)} · ${subjectName} · ${sectionName}`;
+}
+
+function deriveLegacyProgress(state: Pick<AppState, 'lessons' | 'lessonSessions'>): Record<string, LessonProgress> {
   return Object.fromEntries(
-    lessons.map((lesson) => [
-      lesson.id,
-      {
-        lessonId: lesson.id,
-        completed: false,
-        masteryLevel: 0,
-        weakAreas: [],
-        answers: [],
-        timeSpentMinutes: 0,
-        lastStage: 'overview'
-      }
-    ])
+    state.lessons.map((lesson) => {
+      const latest = state.lessonSessions
+        .filter((session) => session.lessonId === lesson.id)
+        .sort((left, right) => Date.parse(right.lastActiveAt) - Date.parse(left.lastActiveAt))[0];
+
+      return [
+        lesson.id,
+        {
+          lessonId: lesson.id,
+          completed: latest?.status === 'complete',
+          masteryLevel: latest ? Math.round(latest.confidenceScore * 100) : 0,
+          weakAreas: latest?.needsTeacherReview ? [latest.stuckConcept ?? 'Needs teacher review'] : [],
+          answers: [],
+          timeSpentMinutes: latest
+            ? Math.max(1, Math.round((Date.parse(latest.lastActiveAt) - Date.parse(latest.startedAt)) / 60000))
+            : 0,
+          lastStage: latest?.currentStage ?? 'overview'
+        }
+      ];
+    })
   );
 }
 
-function buildRevisionPlan(selectedTopics: string[]): RevisionPlan {
-  return {
-    subjectId: 'subject-mathematics',
-    examDate: '2026-06-18',
-    topics: selectedTopics,
-    quickSummary:
-      'Prioritize fraction equivalence, fraction addition, and one-step equations. Start with worked examples, then complete timed retrieval practice.',
-    keyConcepts: [
-      'Equivalent fractions scale numerator and denominator by the same factor.',
-      'Like denominators allow direct addition of numerators.',
-      'Inverse operations keep equations balanced.'
-    ],
-    examFocus: ['Show working clearly.', 'Check whether denominators match.', 'Explain the balancing step in algebra.'],
-    weaknessDetection:
-      'Watch for denominator errors in fraction addition and for skipping the inverse-operation explanation in algebra.'
-  };
+function deriveLegacySessions(state: Pick<AppState, 'lessonSessions'>): AppState['sessions'] {
+  return state.lessonSessions
+    .map((session) => ({
+      id: session.id,
+      mode: session.status === 'complete' ? ('revision' as const) : ('learn' as const),
+      lessonId: session.lessonId,
+      subjectId: session.subjectId,
+      subjectName: session.subject,
+      sectionName: session.topicTitle,
+      lessonTitle: buildSessionLabel(session.subject, session.topicTitle, session.startedAt),
+      startedAt: session.startedAt,
+      updatedAt: session.lastActiveAt,
+      resumeLabel: `Resume ${session.topicTitle}`,
+      archivedAt: session.status === 'archived' ? session.lastActiveAt : null
+    }))
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
 }
 
 function diagnoseProblem(question: string): ProblemType {
@@ -273,6 +191,19 @@ function inferResponseStage(request: AskQuestionRequest): ResponseStage {
   return 'guided_step';
 }
 
+function buildSeedShortlistedTopic(lesson: Lesson): ShortlistedTopic {
+  return {
+    id: `short-${lesson.id}`,
+    title: lesson.title.replace(/^.*?:\s*/, ''),
+    description: lesson.overview.body,
+    curriculumReference: `${lesson.grade} · ${lesson.title}`,
+    relevance: 'Recommended starting point from your current curriculum.',
+    topicId: lesson.topicId,
+    subtopicId: lesson.subtopicId,
+    lessonId: lesson.id
+  };
+}
+
 export function buildAskQuestionResponse(request: AskQuestionRequest): AskQuestionResponse {
   const problemType = diagnoseProblem(request.question);
   const responseStage = inferResponseStage(request);
@@ -300,9 +231,6 @@ export function buildAskQuestionResponse(request: AskQuestionRequest): AskQuesti
 }
 
 export function createInitialState(): AppState {
-  const selectedLesson = lessons[0];
-  const selectedTopic = curriculum.subjects[0].topics[0];
-  const selectedSubtopic = selectedTopic.subtopics[0];
   const selectedCountryId = onboardingCountries[0].id;
   const availableCurriculums = getCurriculumsByCountry(selectedCountryId);
   const selectedCurriculumId = availableCurriculums[0]?.id ?? 'caps';
@@ -313,13 +241,39 @@ export function createInitialState(): AppState {
   const selectedStructuredSubjectIds = availableSubjects
     .filter((subject) => subject.name === 'Mathematics')
     .map((subject) => subject.id);
-  const recommendation = getRecommendedSubject(
-    selectedStructuredSubjectIds,
-    [],
-    availableSubjects
+  const selectedSubjectNames = availableSubjects
+    .filter((subject) => selectedStructuredSubjectIds.includes(subject.id))
+    .map((subject) => subject.name);
+  const recommendation = getRecommendedSubject(selectedStructuredSubjectIds, [], availableSubjects);
+  const program = createDerivedProgram('South Africa', 'CAPS', 'Grade 6', selectedSubjectNames);
+  const selectedLesson = program.lessons[0];
+  const selectedTopic = program.curriculum.subjects[0].topics[0];
+  const selectedSubtopic = selectedTopic.subtopics[0];
+  const learnerProfile = createDefaultLearnerProfile('student-demo');
+  const seedTopic = buildSeedShortlistedTopic(selectedLesson);
+  const lessonSession = buildLessonSessionFromTopic(
+    {
+      id: 'student-demo',
+      fullName: 'Demo Student',
+      email: 'student@example.com',
+      role: 'student',
+      schoolYear: defaultSchoolYear,
+      term: defaultTerm,
+      grade: 'Grade 6',
+      gradeId: selectedGradeId,
+      country: 'South Africa',
+      countryId: selectedCountryId,
+      curriculum: 'CAPS',
+      curriculumId: selectedCurriculumId,
+      recommendedStartSubjectId: recommendation.subjectId,
+      recommendedStartSubjectName: recommendation.subjectName
+    },
+    selectedLesson,
+    seedTopic,
+    program.curriculum.subjects[0].name
   );
 
-  return {
+  const baseState: AppState = {
     auth: {
       status: 'signed_out',
       error: null
@@ -336,9 +290,7 @@ export function createInitialState(): AppState {
       selectedCurriculumId,
       selectedGradeId,
       selectedSubjectIds: selectedStructuredSubjectIds,
-      selectedSubjectNames: availableSubjects
-        .filter((subject) => selectedStructuredSubjectIds.includes(subject.id))
-        .map((subject) => subject.name),
+      selectedSubjectNames,
       customSubjects: [],
       customSubjectInput: '',
       selectionMode: getSelectionMode(selectedStructuredSubjectIds, [], false),
@@ -368,42 +320,46 @@ export function createInitialState(): AppState {
       recommendedStartSubjectId: recommendation.subjectId,
       recommendedStartSubjectName: recommendation.subjectName
     },
-    curriculum,
-    lessons,
-    questions,
-    progress: initialLessonProgress(),
-    sessions: [
-      {
-        id: 'session-initial',
-        mode: 'learn',
-        lessonId: selectedLesson.id,
-        startedAt: isoNow(),
-        updatedAt: isoNow(),
-        resumeLabel: `Resume ${selectedLesson.title}`
-      }
-    ],
+    learnerProfile,
+    curriculum: program.curriculum,
+    lessons: program.lessons,
+    questions: program.questions,
+    progress: {},
+    sessions: [],
+    lessonSessions: [lessonSession],
+    revisionTopics: [],
     analytics: [
       createEvent('session_started', 'Initial demo session created'),
       createEvent('lesson_viewed', selectedLesson.title)
     ],
-    revisionPlan: buildRevisionPlan([selectedTopic.name]),
-    askQuestion: {
-      request: {
-        question: 'How do I know when fractions are equivalent?',
-        topic: selectedTopic.name,
-        subject: 'Mathematics',
+    revisionPlan: buildRevisionPlan(program.curriculum.subjects[0].id, program.curriculum.subjects[0].name, [
+      selectedTopic.name
+    ]),
+    askQuestion: createAskQuestionState({
+      curriculum: program.curriculum,
+      profile: {
+        id: 'student-demo',
+        fullName: 'Demo Student',
+        email: 'student@example.com',
+        role: 'student',
+        schoolYear: defaultSchoolYear,
+        term: defaultTerm,
         grade: 'Grade 6',
-        currentAttempt: ''
-      },
-      response: buildAskQuestionResponse({
-        question: 'How do I know when fractions are equivalent?',
-        topic: selectedTopic.name,
-        subject: 'Mathematics',
-        grade: 'Grade 6',
-        currentAttempt: ''
-      }),
-      provider: 'local-seed',
-      isLoading: false,
+        gradeId: selectedGradeId,
+        country: 'South Africa',
+        countryId: selectedCountryId,
+        curriculum: 'CAPS',
+        curriculumId: selectedCurriculumId,
+        recommendedStartSubjectId: recommendation.subjectId,
+        recommendedStartSubjectName: recommendation.subjectName
+      }
+    }),
+    topicDiscovery: {
+      selectedSubjectId: program.curriculum.subjects[0].id,
+      input: '',
+      status: 'idle',
+      shortlist: null,
+      provider: null,
       error: null
     },
     backend: {
@@ -416,13 +372,19 @@ export function createInitialState(): AppState {
       theme: 'light',
       learningMode: 'learn',
       currentScreen: 'landing',
-      selectedSubjectId: curriculum.subjects[0].id,
+      selectedSubjectId: program.curriculum.subjects[0].id,
       selectedTopicId: selectedTopic.id,
       selectedSubtopicId: selectedSubtopic.id,
       selectedLessonId: selectedLesson.id,
-      practiceQuestionId: selectedLesson.practiceQuestionIds[0]
+      practiceQuestionId: selectedLesson.practiceQuestionIds[0],
+      activeLessonSessionId: lessonSession.id,
+      pendingAssistantSessionId: null,
+      composerDraft: '',
+      showLessonCloseConfirm: false
     }
   };
+
+  return deriveLearningState(baseState);
 }
 
 export function normalizeAppState(value: unknown): AppState {
@@ -433,8 +395,7 @@ export function normalizeAppState(value: unknown): AppState {
   }
 
   const input = value as Partial<AppState>;
-
-  return {
+  const normalized: AppState = {
     ...base,
     ...input,
     auth: {
@@ -479,34 +440,125 @@ export function normalizeAppState(value: unknown): AppState {
       ...base.profile,
       ...(input.profile ?? {})
     },
+    learnerProfile: {
+      ...base.learnerProfile,
+      ...(input.learnerProfile ?? {})
+    },
     curriculum: input.curriculum ?? base.curriculum,
     lessons: Array.isArray(input.lessons) ? input.lessons : base.lessons,
     questions: Array.isArray(input.questions) ? input.questions : base.questions,
     progress:
       input.progress && typeof input.progress === 'object' ? { ...base.progress, ...input.progress } : base.progress,
     sessions: Array.isArray(input.sessions) ? input.sessions : base.sessions,
+    lessonSessions: Array.isArray(input.lessonSessions) ? input.lessonSessions : base.lessonSessions,
+    revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics : base.revisionTopics,
     analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,
     revisionPlan: input.revisionPlan ?? base.revisionPlan,
     askQuestion: {
       ...base.askQuestion,
       ...(input.askQuestion ?? {}),
       request: input.askQuestion?.request ?? base.askQuestion.request,
-      response: input.askQuestion?.response ?? base.askQuestion.response,
-      provider: input.askQuestion?.provider ?? base.askQuestion.provider,
-      isLoading: input.askQuestion?.isLoading ?? base.askQuestion.isLoading,
-      error: input.askQuestion?.error ?? base.askQuestion.error
+      response: input.askQuestion?.response ?? base.askQuestion.response
+    },
+    topicDiscovery: {
+      ...base.topicDiscovery,
+      ...(input.topicDiscovery ?? {})
     },
     backend: {
       ...base.backend,
-      ...(input.backend ?? {}),
-      isConfigured: input.backend?.isConfigured ?? base.backend.isConfigured,
-      lastSyncAt: input.backend?.lastSyncAt ?? base.backend.lastSyncAt,
-      lastSyncStatus: input.backend?.lastSyncStatus ?? base.backend.lastSyncStatus,
-      lastSyncError: input.backend?.lastSyncError ?? base.backend.lastSyncError
+      ...(input.backend ?? {})
     },
     ui: {
       ...base.ui,
       ...(input.ui ?? {})
+    }
+  };
+
+  return deriveLearningState(normalized);
+}
+
+export function deriveLearningState(state: AppState): AppState {
+  const expectedSubjectNames = [...state.onboarding.selectedSubjectNames, ...state.onboarding.customSubjects].filter(
+    (subject, index, subjects) => subject.length > 0 && subjects.indexOf(subject) === index
+  );
+  const currentSubjectNames = state.curriculum.subjects.map((subject) => subject.name);
+  const hasMatchingProgram =
+    state.curriculum.subjects.length > 0 &&
+    state.lessons.length > 0 &&
+    expectedSubjectNames.length > 0 &&
+    expectedSubjectNames.length === currentSubjectNames.length &&
+    expectedSubjectNames.every((subjectName) => currentSubjectNames.includes(subjectName));
+  const program = hasMatchingProgram
+    ? {
+        curriculum: state.curriculum,
+        lessons: state.lessons,
+        questions: state.questions
+      }
+    : createDerivedProgram(
+        state.profile.country,
+        state.profile.curriculum,
+        state.profile.grade,
+        state.onboarding.selectedSubjectNames,
+        state.onboarding.customSubjects
+      );
+  const selectedSubject =
+    program.curriculum.subjects.find((subject) => subject.id === state.ui.selectedSubjectId) ??
+    program.curriculum.subjects[0];
+  const selectedTopic =
+    selectedSubject?.topics.find((topic) => topic.id === state.ui.selectedTopicId) ?? selectedSubject?.topics[0];
+  const selectedSubtopic =
+    selectedTopic?.subtopics.find((subtopic) => subtopic.id === state.ui.selectedSubtopicId) ?? selectedTopic?.subtopics[0];
+  const selectedLesson =
+    program.lessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ??
+    program.lessons.find((lesson) => lesson.id === selectedSubtopic?.lessonIds[0]) ??
+    program.lessons[0];
+  const practiceQuestionId =
+    selectedLesson.practiceQuestionIds.find((questionId) => questionId === state.ui.practiceQuestionId) ??
+    selectedLesson.practiceQuestionIds[0];
+  const revisionPlan = buildRevisionPlan(
+    selectedSubject.id,
+    selectedSubject.name,
+    selectedSubject.topics.map((topic) => topic.name)
+  );
+
+  const lessonSessions = Array.isArray(state.lessonSessions)
+    ? state.lessonSessions.filter((session) => program.lessons.some((lesson) => lesson.id === session.lessonId))
+    : [];
+
+  const revisionTopics = Array.isArray(state.revisionTopics)
+    ? state.revisionTopics.filter((topic) => lessonSessions.some((session) => session.id === topic.lessonSessionId))
+    : [];
+
+  return {
+    ...state,
+    curriculum: program.curriculum,
+    lessons: program.lessons,
+    questions: program.questions,
+    progress: deriveLegacyProgress({
+      lessons: program.lessons,
+      lessonSessions
+    }),
+    sessions: deriveLegacySessions({
+      lessonSessions
+    }),
+    lessonSessions,
+    revisionTopics,
+    revisionPlan,
+    topicDiscovery: {
+      ...state.topicDiscovery,
+      selectedSubjectId: state.topicDiscovery.selectedSubjectId || selectedSubject.id
+    },
+    ui: {
+      ...state.ui,
+      selectedSubjectId: selectedSubject.id,
+      selectedTopicId: selectedTopic.id,
+      selectedSubtopicId: selectedSubtopic.id,
+      selectedLessonId: selectedLesson.id,
+      practiceQuestionId,
+      activeLessonSessionId:
+        state.ui.activeLessonSessionId && lessonSessions.some((session) => session.id === state.ui.activeLessonSessionId)
+          ? state.ui.activeLessonSessionId
+          : lessonSessions.find((session) => session.status === 'active')?.id ?? null
     }
   };
 }
@@ -521,8 +573,18 @@ export function getSelectedTopic(state: AppState): Topic {
   return subject.topics.find((topic) => topic.id === state.ui.selectedTopicId) ?? subject.topics[0];
 }
 
+export function getSelectedSubtopic(state: AppState) {
+  const topic = getSelectedTopic(state);
+
+  return topic.subtopics.find((subtopic) => subtopic.id === state.ui.selectedSubtopicId) ?? topic.subtopics[0];
+}
+
 export function getSelectedLesson(state: AppState): Lesson {
   return state.lessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ?? state.lessons[0];
+}
+
+export function getActiveLessonSession(state: AppState) {
+  return state.lessonSessions.find((session) => session.id === state.ui.activeLessonSessionId) ?? state.lessonSessions[0] ?? null;
 }
 
 export function getQuestionById(state: AppState, questionId: string): Question {
@@ -530,13 +592,13 @@ export function getQuestionById(state: AppState, questionId: string): Question {
 }
 
 export function evaluateAnswer(question: Question, answer: string): StudentAnswer {
-  const normalizedAnswer = answer.trim().toLowerCase();
-  const normalizedExpected = question.expectedAnswer.trim().toLowerCase();
+  const normalizedAnswer = normalizeAnswer(answer);
+  const acceptedAnswers = [question.expectedAnswer, ...(question.acceptedAnswers ?? [])].map(normalizeAnswer);
 
   return {
     questionId: question.id,
     answer,
-    isCorrect: normalizedAnswer === normalizedExpected,
+    isCorrect: acceptedAnswers.includes(normalizedAnswer),
     attemptedAt: isoNow()
   };
 }
@@ -555,36 +617,14 @@ export function recalculateMastery(progress: LessonProgress): LessonProgress {
   };
 }
 
-export function recordSession(
-  sessions: StudySession[],
-  mode: StudySession['mode'],
-  lessonId: string | undefined,
-  resumeLabel: string
-): StudySession[] {
-  return [
-    {
-      id: `session-${crypto.randomUUID()}`,
-      mode,
-      lessonId,
-      startedAt: isoNow(),
-      updatedAt: isoNow(),
-      resumeLabel
-    },
-    ...sessions
-  ].slice(0, 8);
+export function getActiveSessions(state: AppState) {
+  return state.lessonSessions
+    .filter((session) => session.status === 'active')
+    .sort((left, right) => Date.parse(right.lastActiveAt) - Date.parse(left.lastActiveAt));
 }
 
 export function buildRevisionTopics(state: AppState): string[] {
   return getSelectedSubject(state).topics.map((topic) => topic.name);
-}
-
-export function getSelectedSubtopic(state: AppState) {
-  const topic = getSelectedTopic(state);
-
-  return (
-    topic.subtopics.find((subtopic) => subtopic.id === state.ui.selectedSubtopicId) ??
-    topic.subtopics[0]
-  );
 }
 
 export function getLessonsForSelectedTopic(state: AppState): Lesson[] {
@@ -592,14 +632,14 @@ export function getLessonsForSelectedTopic(state: AppState): Lesson[] {
 }
 
 export function getCompletionSummary(state: AppState) {
-  const progressItems = Object.values(state.progress);
-  const completedLessons = progressItems.filter((item) => item.completed).length;
-  const totalLessons = progressItems.length;
+  const totalLessons = state.lessonSessions.length;
+  const completedLessons = state.lessonSessions.filter((session) => session.status === 'complete').length;
   const averageMastery =
     totalLessons === 0
       ? 0
       : Math.round(
-          progressItems.reduce((total, item) => total + item.masteryLevel, 0) / totalLessons
+          (state.lessonSessions.reduce((total, session) => total + session.confidenceScore * 100, 0) || 0) /
+            totalLessons
         );
 
   return {
@@ -610,8 +650,22 @@ export function getCompletionSummary(state: AppState) {
 }
 
 export function getWeakTopicLabels(state: AppState): string[] {
-  return state.lessons
-    .filter((lesson) => state.progress[lesson.id]?.masteryLevel < 70)
-    .map((lesson) => lesson.title)
+  return state.lessonSessions
+    .filter((session) => session.confidenceScore < 0.7)
+    .map((session) => session.topicTitle)
     .slice(0, 3);
+}
+
+export function upsertRevisionTopicFromSession(
+  revisionTopics: AppState['revisionTopics'],
+  lessonSession: AppState['lessonSessions'][number]
+) {
+  const nextTopic = buildRevisionTopicFromLesson(lessonSession);
+  const existing = revisionTopics.find((topic) => topic.lessonSessionId === lessonSession.id);
+
+  if (!existing) {
+    return [...revisionTopics, nextTopic];
+  }
+
+  return revisionTopics.map((topic) => (topic.lessonSessionId === lessonSession.id ? nextTopic : topic));
 }

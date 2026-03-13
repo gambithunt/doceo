@@ -363,3 +363,31 @@ export async function completeOnboarding(input: CompleteOnboardingInput) {
     subjects
   };
 }
+
+export async function resetOnboarding(profileId: string): Promise<void> {
+  const supabase = createServerSupabaseAdmin();
+
+  if (!supabase || !isSupabaseConfigured()) {
+    return;
+  }
+
+  await supabase.from('student_selected_subjects').delete().eq('profile_id', profileId);
+  await supabase.from('student_custom_subjects').delete().eq('profile_id', profileId);
+  await supabase.from('student_onboarding').delete().eq('profile_id', profileId);
+
+  await supabase
+    .from('profiles')
+    .update({
+      school_year: '',
+      term: 'Term 1',
+      grade: '',
+      grade_id: '',
+      country: '',
+      country_id: '',
+      curriculum: '',
+      curriculum_id: '',
+      recommended_start_subject_id: null,
+      recommended_start_subject_name: null
+    })
+    .eq('id', profileId);
+}

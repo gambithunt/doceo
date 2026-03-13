@@ -9,6 +9,8 @@
     "preview": "vite preview --port 5187",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "npm run check",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
@@ -17,12 +19,16 @@
     "@sveltejs/kit": "^2.53.4",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tailwindcss/vite": "^4.2.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
     "@types/node": "^25.4.0",
+    "jsdom": "^28.1.0",
     "svelte": "^5.53.9",
     "svelte-check": "^4.4.5",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.1.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.0",

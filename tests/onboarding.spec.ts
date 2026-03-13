@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createInitialState } from '../src/lib/data/platform';
 
-test('student can complete onboarding, reach the dashboard, and reopen onboarding from settings', async ({ page, request }) => {
+test('student can complete onboarding, shortlist a topic, start a lesson, and reopen onboarding from settings', async ({ page, request }) => {
   const initialState = createInitialState();
 
   await request.post('/api/state/sync', {
@@ -27,12 +27,13 @@ test('student can complete onboarding, reach the dashboard, and reopen onboardin
 
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Structured learning, not chatbot drift.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Structured learning for school students.' })).toBeVisible();
 
   const authPanel = page.locator('.auth');
   const email = `student-${Date.now()}@example.com`;
 
-  await page.getByLabel('Full name').fill('Delon Student');
+  await page.getByLabel('First name').fill('Delon');
+  await page.getByLabel('Last name').fill('Student');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill('Password123!');
   await authPanel.getByRole('button', { name: 'Create account' }).last().click();
@@ -52,17 +53,31 @@ test('student can complete onboarding, reach the dashboard, and reopen onboardin
   await page.getByRole('button', { name: 'English Home Language' }).click();
   await page.getByLabel('Add a missing subject').fill('Coding Club');
   await page.getByRole('button', { name: 'Add subject' }).click();
+  await expect(page.getByText('Coding Club').first()).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  await expect(page.getByText('Coding Club').first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Mathematics' })).toBeVisible();
-  await page.getByRole('button', { name: 'Start learning' }).click();
+  await page.getByRole('button', { name: 'Save profile and continue' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Learning, shaped around your actual school context.' })).toBeVisible();
-  await expect(page.locator('.subject-pills').getByText('Coding Club')).toBeVisible();
-  await page.screenshot({ path: 'test-results/onboarding-dashboard.png', fullPage: true });
+  await expect(page.getByRole('heading', { name: 'Choose what to learn' })).toBeVisible();
+  await expect(page.getByText('Assistant stage')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Find my section' }).first()).toBeVisible();
 
-  await page.getByRole('button', { name: 'Settings Academic profile' }).click();
+  await page.getByLabel('What do you want to work on?').fill('number patterns');
+  await page.getByRole('button', { name: 'Find my section' }).first().click();
+  await expect(page.getByText('Curriculum matches')).toBeVisible();
+  await page.locator('.topic-card').first().click();
+
+  await expect(page.getByText('Reply to continue · Ask a question anytime')).toBeVisible();
+  await page.getByPlaceholder('Type your response or ask a question...').fill('I understand the big picture.');
+  await page.getByRole('button', { name: '↑' }).click();
+  await expect(page.getByText('Key Concepts')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByText('Your progress is saved. You can resume anytime from the dashboard.')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to dashboard' }).click();
+
+  await page.getByRole('button', { name: 'Settings Academic profile and preferences' }).click();
   await expect(page.getByRole('heading', { name: 'Academic profile' })).toBeVisible();
   await page.getByRole('button', { name: 'Edit onboarding' }).click();
   await expect(

@@ -1,7 +1,21 @@
 {
-	"/": [],
+	"/": [
+		"src/routes/+page.ts"
+	],
+	"/api/ai/lesson-chat": [
+		"src/routes/api/ai/lesson-chat/+server.ts"
+	],
+	"/api/ai/lesson-selector": [
+		"src/routes/api/ai/lesson-selector/+server.ts"
+	],
+	"/api/ai/topic-shortlist": [
+		"src/routes/api/ai/topic-shortlist/+server.ts"
+	],
 	"/api/ai/tutor": [
 		"src/routes/api/ai/tutor/+server.ts"
+	],
+	"/api/curriculum/program": [
+		"src/routes/api/curriculum/program/+server.ts"
 	],
 	"/api/onboarding/complete": [
 		"src/routes/api/onboarding/complete/+server.ts"
@@ -11,6 +25,9 @@
 	],
 	"/api/onboarding/progress": [
 		"src/routes/api/onboarding/progress/+server.ts"
+	],
+	"/api/onboarding/reset": [
+		"src/routes/api/onboarding/reset/+server.ts"
 	],
 	"/api/state/bootstrap": [
 		"src/routes/api/state/bootstrap/+server.ts"

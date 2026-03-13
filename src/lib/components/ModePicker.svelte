@@ -14,11 +14,6 @@
       id: 'revision',
       label: 'Revision',
       description: 'Accelerated exam preparation with focus topics and weaknesses.'
-    },
-    {
-      id: 'ask',
-      label: 'Ask Question',
-      description: 'Guided tutoring for a specific problem without answer dumping.'
     }
   ];
 </script>

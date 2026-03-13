@@ -6,13 +6,11 @@
   const { state }: { state: AppState } = $props();
 
   const links: Array<{ id: AppScreen; label: string; caption: string }> = [
-    { id: 'dashboard', label: 'Dashboard', caption: 'Next steps and focus areas' },
-    { id: 'subject', label: 'Subjects', caption: 'Roadmap and active topics' },
-    { id: 'lesson', label: 'Lesson', caption: 'Learn in sequence' },
-    { id: 'revision', label: 'Revision', caption: 'Exam-focused practice' },
-    { id: 'ask', label: 'Ask Question', caption: 'Targeted help only' },
-    { id: 'progress', label: 'Progress', caption: 'Mastery and sessions' },
-    { id: 'settings', label: 'Settings', caption: 'Academic profile' }
+    { id: 'dashboard', label: 'Dashboard', caption: 'Home, start new, resume active lesson' },
+    { id: 'subject', label: 'Subjects', caption: 'Curriculum roadmap and topic browser' },
+    { id: 'revision', label: 'Revision', caption: 'Exam practice and spaced repetition' },
+    { id: 'progress', label: 'Progress', caption: 'Mastery, sessions, and learning style' },
+    { id: 'settings', label: 'Settings', caption: 'Academic profile and preferences' }
   ];
 
   const activeSubject = $derived(
@@ -32,11 +30,12 @@
     </div>
   </header>
 
-  <nav class="nav card">
+  <nav class="nav card" aria-label="Primary">
     {#each links as link}
       <button
         type="button"
         class:active={state.ui.currentScreen === link.id}
+        aria-current={state.ui.currentScreen === link.id ? 'page' : undefined}
         onclick={() => appState.setScreen(link.id)}
       >
         <strong>{link.label}</strong>
@@ -98,6 +97,9 @@
 
   .sidebar {
     align-content: start;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.15rem;
   }
 
   .card {

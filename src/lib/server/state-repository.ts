@@ -94,32 +94,49 @@ export async function saveAppState(state: AppState): Promise<SaveStateResult> {
     updated_at: new Date().toISOString()
   });
 
-  await supabase.from('student_progress').upsert(
-    Object.values(normalizedState.progress).map((progress) => ({
-      id: `${normalizedState.profile.id}-${progress.lessonId}`,
-      profile_id: normalizedState.profile.id,
-      lesson_id: progress.lessonId,
-      completed: progress.completed,
-      mastery_level: progress.masteryLevel,
-      weak_areas: progress.weakAreas,
-      answers_json: progress.answers,
-      time_spent_minutes: progress.timeSpentMinutes,
-      last_stage: progress.lastStage,
+  try {
+    await supabase.from('learner_profiles').upsert({
+      student_id: normalizedState.profile.id,
+      profile_json: normalizedState.learnerProfile,
       updated_at: new Date().toISOString()
-    }))
-  );
+    });
+  } catch {
+    // Optional table during migration.
+  }
 
-  await supabase.from('study_sessions').upsert(
-    normalizedState.sessions.map((session) => ({
-      id: session.id,
-      profile_id: normalizedState.profile.id,
-      mode: session.mode,
-      lesson_id: session.lessonId ?? null,
-      started_at: session.startedAt,
-      updated_at: session.updatedAt,
-      resume_label: session.resumeLabel
-    }))
-  );
+  try {
+    await supabase.from('lesson_sessions').upsert(
+      normalizedState.lessonSessions.map((session) => ({
+        id: session.id,
+        profile_id: normalizedState.profile.id,
+        lesson_id: session.lessonId,
+        status: session.status,
+        current_stage: session.currentStage,
+        confidence_score: session.confidenceScore,
+        started_at: session.startedAt,
+        last_active_at: session.lastActiveAt,
+        completed_at: session.completedAt,
+        session_json: session,
+        updated_at: new Date().toISOString()
+      }))
+    );
+  } catch {
+    // Optional table during migration.
+  }
+
+  try {
+    await supabase.from('revision_topics').upsert(
+      normalizedState.revisionTopics.map((topic) => ({
+        id: topic.lessonSessionId,
+        profile_id: normalizedState.profile.id,
+        topic_json: topic,
+        next_revision_at: topic.nextRevisionAt,
+        updated_at: new Date().toISOString()
+      }))
+    );
+  } catch {
+    // Optional table during migration.
+  }
 
   await supabase.from('analytics_events').insert(
     normalizedState.analytics.slice(0, 10).map((event) => ({
