@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyLessonAssistantResponse,
+  buildDynamicLessonFromTopic,
   calculateNextRevisionInterval,
   classifyLessonMessage,
   createDefaultLearnerProfile,
@@ -94,5 +95,22 @@ describe('lesson-system', () => {
 
     expect(normalized.lessonSessions.length).toBeGreaterThan(0);
     expect(normalized.learnerProfile.studentId).toBe(initial.profile.id);
+  });
+
+  it('builds a lesson around the exact chosen subject and topic', () => {
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-english',
+      subjectName: 'English Home Language',
+      grade: 'Grade 6',
+      topicTitle: 'Verbs',
+      topicDescription: 'Focus on action and helping verbs in simple sentences.',
+      curriculumReference: 'CAPS · Grade 6 · English Home Language'
+    });
+
+    expect(lesson.subjectId).toBe('subject-english');
+    expect(lesson.title).toContain('Verbs');
+    expect(lesson.overview.body.toLowerCase()).toContain('verbs');
+    expect(lesson.deeperExplanation.body.toLowerCase()).toContain('verbs');
+    expect(lesson.example.body.toLowerCase()).toContain('verbs');
   });
 });

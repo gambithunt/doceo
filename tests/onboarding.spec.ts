@@ -59,8 +59,11 @@ test('student can complete onboarding, shortlist a topic, start a lesson, and re
   await expect(page.getByRole('heading', { name: 'Mathematics' })).toBeVisible();
   await page.getByRole('button', { name: 'Save profile and continue' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Choose what to learn' })).toBeVisible();
   await expect(page.getByText('Assistant stage')).toBeVisible();
+  const startSomethingNew = page.getByRole('button', { name: 'Start something new instead' });
+  if (await startSomethingNew.isVisible()) {
+    await startSomethingNew.click();
+  }
   await expect(page.getByRole('button', { name: 'Find my section' }).first()).toBeVisible();
 
   await page.getByLabel('What do you want to work on?').fill('number patterns');

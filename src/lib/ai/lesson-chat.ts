@@ -24,6 +24,22 @@ function getLastMessageType(lessonSession: LessonChatRequest['lessonSession']): 
   return lessonSession.messages.at(-1)?.type ?? 'none';
 }
 
+function getCurrentStageContent(request: LessonChatRequest): string {
+  if (request.lessonSession.currentStage === 'overview') {
+    return request.lessonSession.lessonPlan.overview.body;
+  }
+
+  if (request.lessonSession.currentStage === 'concepts' || request.lessonSession.currentStage === 'detail') {
+    return request.lessonSession.lessonPlan.deeperExplanation.body;
+  }
+
+  if (request.lessonSession.currentStage === 'examples') {
+    return request.lessonSession.lessonPlan.example.body;
+  }
+
+  return 'Ask the learner to explain the idea in their own words and apply it to a small example.';
+}
+
 export function buildSystemPrompt(request: LessonChatRequest): string {
   const learnerProfile = JSON.stringify(request.learnerProfile, null, 2);
 
@@ -39,7 +55,11 @@ export function buildSystemPrompt(request: LessonChatRequest): string {
     `Topic: ${request.lessonSession.topicTitle}`,
     `Description: ${request.lessonSession.topicDescription}`,
     `Curriculum Reference: ${request.lessonSession.curriculumReference}`,
+    `Lesson Overview: ${request.lessonSession.lessonPlan.overview.body}`,
+    `Lesson Key Concepts: ${request.lessonSession.lessonPlan.deeperExplanation.body}`,
+    `Lesson Example: ${request.lessonSession.lessonPlan.example.body}`,
     `Current Stage: ${request.lessonSession.currentStage}`,
+    `Current Stage Content: ${getCurrentStageContent(request)}`,
     `Stages Completed: ${request.lessonSession.stagesCompleted.join(', ') || 'none'}`,
     `Questions Asked This Session: ${request.lessonSession.questionCount}`,
     `Reteach Attempts on Current Concept: ${request.lessonSession.reteachCount}`,

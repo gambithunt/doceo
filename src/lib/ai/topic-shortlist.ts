@@ -23,6 +23,16 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function toTopicLabel(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+
+  if (trimmed.length === 0) {
+    return 'Chosen Topic';
+  }
+
+  return trimmed.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function createTopicShortlistSystemPrompt(): string {
   return [
     'You are a curriculum mapping assistant for South African school students.',
@@ -83,7 +93,21 @@ export function buildFallbackTopicShortlist(request: TopicShortlistRequest): Top
     })
     .sort((left, right) => right.score - left.score);
 
-  const top = scored.slice(0, 6).map(({ item }, index) => ({
+  const bestMatch = scored[0]?.item;
+  const learnerTopic = {
+    id: `shortlist-picked-${normalize(request.subject)}-${normalize(request.studentInput).replace(/[^a-z0-9]+/g, '-')}`,
+    title: toTopicLabel(request.studentInput),
+    description: `Focus directly on ${request.studentInput.trim().toLowerCase()} in ${request.subject}.`,
+    curriculumReference: bestMatch
+      ? `${request.curriculum} · ${request.grade} · ${bestMatch.topicName}`
+      : `${request.curriculum} · ${request.grade} · ${request.subject}`,
+    relevance: 'Based directly on what you typed. Start here if this is the exact topic you want.',
+    topicId: bestMatch?.topicId ?? `custom-topic-${normalize(request.studentInput).replace(/[^a-z0-9]+/g, '-')}`,
+    subtopicId: bestMatch?.subtopicId ?? `custom-subtopic-${normalize(request.studentInput).replace(/[^a-z0-9]+/g, '-')}`,
+    lessonId: `generated-${normalize(request.subject).replace(/[^a-z0-9]+/g, '-')}-${normalize(request.studentInput).replace(/[^a-z0-9]+/g, '-')}`
+  };
+
+  const top = scored.slice(0, 5).map(({ item }, index) => ({
     id: `shortlist-${index + 1}-${item.lessonId}`,
     title: item.subtopicName,
     description: `Focus on ${item.subtopicName.toLowerCase()} within ${item.topicName.toLowerCase()}.`,
@@ -97,9 +121,19 @@ export function buildFallbackTopicShortlist(request: TopicShortlistRequest): Top
     lessonId: item.lessonId
   }));
 
+  const deduped = [
+    learnerTopic,
+    ...top.filter((item) => normalize(item.title) !== normalize(learnerTopic.title))
+  ].slice(0, 6);
+
   return {
-    matchedSection: top[0]?.title ?? request.availableTopics[0]?.topicName ?? 'General foundations',
-    subtopics: top
+    matchedSection:
+      bestMatch?.subtopicName ??
+      bestMatch?.topicName ??
+      request.availableTopics[0]?.subtopicName ??
+      request.availableTopics[0]?.topicName ??
+      request.subject,
+    subtopics: deduped
   };
 }
 

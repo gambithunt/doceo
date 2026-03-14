@@ -380,6 +380,7 @@ export function createInitialState(): AppState {
       activeLessonSessionId: lessonSession.id,
       pendingAssistantSessionId: null,
       composerDraft: '',
+      showTopicDiscoveryComposer: false,
       showLessonCloseConfirm: false
     }
   };
@@ -450,7 +451,16 @@ export function normalizeAppState(value: unknown): AppState {
     progress:
       input.progress && typeof input.progress === 'object' ? { ...base.progress, ...input.progress } : base.progress,
     sessions: Array.isArray(input.sessions) ? input.sessions : base.sessions,
-    lessonSessions: Array.isArray(input.lessonSessions) ? input.lessonSessions : base.lessonSessions,
+    lessonSessions: Array.isArray(input.lessonSessions)
+      ? input.lessonSessions.map((session) => ({
+          ...session,
+          lessonPlan:
+            session.lessonPlan ??
+            (Array.isArray(input.lessons) ? input.lessons.find((lesson) => lesson.id === session.lessonId) : null) ??
+            base.lessons.find((lesson) => lesson.id === session.lessonId) ??
+            base.lessonSessions[0].lessonPlan
+        }))
+      : base.lessonSessions,
     revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics : base.revisionTopics,
     analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,
     revisionPlan: input.revisionPlan ?? base.revisionPlan,
@@ -501,6 +511,16 @@ export function deriveLearningState(state: AppState): AppState {
         state.onboarding.selectedSubjectNames,
         state.onboarding.customSubjects
       );
+  const generatedLessons = state.lessons.filter((lesson) => lesson.id.startsWith('generated-'));
+  const generatedQuestions = state.questions.filter((question) => question.lessonId.startsWith('generated-'));
+  const mergedLessons = [
+    ...generatedLessons,
+    ...program.lessons.filter((lesson) => !generatedLessons.some((generated) => generated.id === lesson.id))
+  ];
+  const mergedQuestions = [
+    ...generatedQuestions,
+    ...program.questions.filter((question) => !generatedQuestions.some((generated) => generated.id === question.id))
+  ];
   const selectedSubject =
     program.curriculum.subjects.find((subject) => subject.id === state.ui.selectedSubjectId) ??
     program.curriculum.subjects[0];
@@ -509,9 +529,9 @@ export function deriveLearningState(state: AppState): AppState {
   const selectedSubtopic =
     selectedTopic?.subtopics.find((subtopic) => subtopic.id === state.ui.selectedSubtopicId) ?? selectedTopic?.subtopics[0];
   const selectedLesson =
-    program.lessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ??
-    program.lessons.find((lesson) => lesson.id === selectedSubtopic?.lessonIds[0]) ??
-    program.lessons[0];
+    mergedLessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ??
+    mergedLessons.find((lesson) => lesson.id === selectedSubtopic?.lessonIds[0]) ??
+    mergedLessons[0];
   const practiceQuestionId =
     selectedLesson.practiceQuestionIds.find((questionId) => questionId === state.ui.practiceQuestionId) ??
     selectedLesson.practiceQuestionIds[0];
@@ -522,7 +542,16 @@ export function deriveLearningState(state: AppState): AppState {
   );
 
   const lessonSessions = Array.isArray(state.lessonSessions)
-    ? state.lessonSessions.filter((session) => program.lessons.some((lesson) => lesson.id === session.lessonId))
+    ? state.lessonSessions
+        .filter((session) => mergedLessons.some((lesson) => lesson.id === session.lessonId) || Boolean(session.lessonPlan))
+        .map((session) => ({
+          ...session,
+          lessonPlan:
+            session.lessonPlan ??
+            mergedLessons.find((lesson) => lesson.id === session.lessonId) ??
+            state.lessons.find((lesson) => lesson.id === session.lessonId) ??
+            mergedLessons[0]
+        }))
     : [];
 
   const revisionTopics = Array.isArray(state.revisionTopics)
@@ -532,10 +561,10 @@ export function deriveLearningState(state: AppState): AppState {
   return {
     ...state,
     curriculum: program.curriculum,
-    lessons: program.lessons,
-    questions: program.questions,
+    lessons: mergedLessons,
+    questions: mergedQuestions,
     progress: deriveLegacyProgress({
-      lessons: program.lessons,
+      lessons: mergedLessons,
       lessonSessions
     }),
     sessions: deriveLegacySessions({

@@ -5,6 +5,8 @@ import { buildFallbackLessonChatResponse } from '$lib/ai/lesson-chat';
 import { getSelectionMode } from '$lib/data/onboarding';
 import {
   applyLessonAssistantResponse,
+  buildDynamicLessonFromTopic,
+  buildDynamicQuestionsForLesson,
   buildInitialLessonMessages,
   buildLessonSessionFromTopic,
   classifyLessonMessage,
@@ -39,6 +41,7 @@ import type {
   LearningMode,
   LessonChatRequest,
   LessonChatResponse,
+  LessonPlanResponse,
   LessonSession,
   OnboardingStep,
   RevisionTopic,
@@ -66,6 +69,8 @@ interface TopicShortlistPayload {
   provider: string;
   error?: string;
 }
+
+interface LessonPlanPayload extends LessonPlanResponse {}
 
 interface OptionsResponse<TOption> {
   options: TOption[];
@@ -334,6 +339,74 @@ function createAppStore() {
     return lessonSessions.map((item) => (item.id === nextLessonSession.id ? nextLessonSession : item));
   }
 
+  function buildDirectTopicOption(state: AppState, subjectName: string, studentInput: string): ShortlistedTopic {
+    const trimmed = studentInput.trim();
+    const formatted = trimmed.replace(/\s+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const baseId = `${subjectName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')}`;
+
+    return {
+      id: `short-direct-${baseId}`,
+      title: formatted,
+      description: `Focus directly on ${trimmed.toLowerCase()} in ${subjectName}.`,
+      curriculumReference: `${state.profile.curriculum} · ${state.profile.grade} · ${subjectName}`,
+      relevance: 'Based directly on what you typed. Start here if this is the exact topic you want.',
+      topicId: `custom-topic-${baseId}`,
+      subtopicId: `custom-subtopic-${baseId}`,
+      lessonId: `generated-${baseId}`
+    };
+  }
+
+  async function requestLessonPlan(state: AppState, subjectId: string, subjectName: string, topic: ShortlistedTopic) {
+    const fallbackLesson = buildDynamicLessonFromTopic({
+      subjectId,
+      subjectName,
+      grade: state.profile.grade,
+      topicTitle: topic.title,
+      topicDescription: topic.description,
+      curriculumReference: topic.curriculumReference
+    });
+    const fallbackQuestions = buildDynamicQuestionsForLesson(fallbackLesson, subjectName, topic.title);
+
+    try {
+      const response = await fetch('/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: state.profile,
+            subjectId,
+            subject: subjectName,
+            topicTitle: topic.title,
+            topicDescription: topic.description,
+            curriculumReference: topic.curriculumReference
+          }
+        })
+      });
+
+      if (response.ok) {
+        const payload = (await response.json()) as LessonPlanPayload;
+
+        if (payload.lesson?.title && Array.isArray(payload.questions)) {
+          return {
+            lesson: payload.lesson,
+            questions: payload.questions
+          };
+        }
+      }
+    } catch {
+      // Fall through to local generation.
+    }
+
+    return {
+      lesson: fallbackLesson,
+      questions: fallbackQuestions
+    };
+  }
+
   return {
     subscribe,
     initializeRemoteState,
@@ -543,6 +616,10 @@ function createAppStore() {
             shortlist: null,
             provider: null,
             error: null
+          },
+          ui: {
+            ...state.ui,
+            showTopicDiscoveryComposer: true
           }
         })
       ),
@@ -557,6 +634,10 @@ function createAppStore() {
             status: 'loading',
             shortlist: null,
             error: null
+          },
+          ui: {
+            ...state.ui,
+            showTopicDiscoveryComposer: true
           }
         })
       );
@@ -586,6 +667,16 @@ function createAppStore() {
           })
         });
         const payload = (await response.json()) as TopicShortlistPayload;
+        const directTopic = buildDirectTopicOption(state, subject.name, studentInput);
+        const shortlist = {
+          matchedSection: payload.response.matchedSection,
+          subtopics: [
+            directTopic,
+            ...payload.response.subtopics.filter(
+              (item) => item.title.trim().toLowerCase() !== directTopic.title.trim().toLowerCase()
+            )
+          ].slice(0, 6)
+        };
         update((current) =>
           persistAndSync({
             ...current,
@@ -595,7 +686,7 @@ function createAppStore() {
               selectedSubjectId: subject.id,
               input: studentInput,
               status: 'ready',
-              shortlist: payload.response,
+              shortlist,
               provider: payload.provider,
               error: payload.error ?? null
             }
@@ -620,12 +711,20 @@ function createAppStore() {
       }
     },
     startLessonFromShortlist: async (topic: ShortlistedTopic) => {
+      const snapshot = readState();
+      const subject =
+        snapshot.curriculum.subjects.find((item) => item.id === snapshot.topicDiscovery.selectedSubjectId) ??
+        snapshot.curriculum.subjects.find((item) => item.id === snapshot.ui.selectedSubjectId) ??
+        snapshot.curriculum.subjects[0];
+      const { lesson, questions } = await requestLessonPlan(snapshot, subject.id, subject.name, topic);
+
       update((state) => {
-        const lesson = state.lessons.find((item) => item.id === topic.lessonId) ?? state.lessons[0];
-        const subject = state.curriculum.subjects.find((item) => item.id === lesson.subjectId) ?? state.curriculum.subjects[0];
         const session = buildLessonSessionFromTopic(state.profile, lesson, topic, subject.name);
+
         return persistAndSync({
           ...state,
+          lessons: [lesson, ...state.lessons.filter((item) => item.id !== lesson.id)],
+          questions: [...questions, ...state.questions.filter((item) => !questions.some((question) => question.id === item.id))],
           learnerProfile: {
             ...state.learnerProfile,
             total_sessions: state.learnerProfile.total_sessions + 1
@@ -641,37 +740,35 @@ function createAppStore() {
             currentScreen: 'lesson',
             learningMode: 'learn',
             selectedSubjectId: subject.id,
-            selectedTopicId: topic.topicId,
-            selectedSubtopicId: topic.subtopicId,
+            selectedTopicId: lesson.topicId,
+            selectedSubtopicId: lesson.subtopicId,
             selectedLessonId: lesson.id,
             activeLessonSessionId: session.id,
-            composerDraft: ''
+            composerDraft: '',
+            showTopicDiscoveryComposer: false
           }
         });
       });
     },
-    startLessonFromSelection: (subjectId: string, sectionName: string) =>
+    startLessonFromSelection: async (subjectId: string, sectionName: string) => {
+      const snapshot = readState();
+      const subject = snapshot.curriculum.subjects.find((item) => item.id === subjectId) ?? snapshot.curriculum.subjects[0];
+      const shortlistedTopic: ShortlistedTopic = {
+        ...buildDirectTopicOption(snapshot, subject.name, sectionName),
+        title: sectionName.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        description: `Focus directly on ${sectionName.trim().toLowerCase()} in ${subject.name}.`,
+        curriculumReference: `${snapshot.profile.curriculum} · ${snapshot.profile.grade} · ${subject.name}`,
+        relevance: 'Matched from your dashboard prompt.'
+      };
+      const { lesson, questions } = await requestLessonPlan(snapshot, subject.id, subject.name, shortlistedTopic);
+
       update((state) => {
-        const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];
-        const topic = buildTopicOptions(state, subject.id).find(
-          (item) =>
-            item.subtopicName.toLowerCase() === sectionName.trim().toLowerCase() ||
-            item.topicName.toLowerCase() === sectionName.trim().toLowerCase()
-        ) ?? buildTopicOptions(state, subject.id)[0];
-        const shortlistedTopic: ShortlistedTopic = {
-          id: `short-${topic.lessonId}`,
-          title: topic.subtopicName,
-          description: state.lessons.find((item) => item.id === topic.lessonId)?.overview.body ?? topic.lessonTitle,
-          curriculumReference: `${state.profile.curriculum} · ${state.profile.grade}`,
-          relevance: 'Matched from your dashboard prompt.',
-          topicId: topic.topicId,
-          subtopicId: topic.subtopicId,
-          lessonId: topic.lessonId
-        };
-        const lesson = state.lessons.find((item) => item.id === shortlistedTopic.lessonId) ?? state.lessons[0];
         const session = buildLessonSessionFromTopic(state.profile, lesson, shortlistedTopic, subject.name);
+
         return persistAndSync({
           ...state,
+          lessons: [lesson, ...state.lessons.filter((item) => item.id !== lesson.id)],
+          questions: [...questions, ...state.questions.filter((item) => !questions.some((question) => question.id === item.id))],
           learnerProfile: {
             ...state.learnerProfile,
             total_sessions: state.learnerProfile.total_sessions + 1
@@ -682,14 +779,16 @@ function createAppStore() {
             currentScreen: 'lesson',
             learningMode: 'learn',
             selectedSubjectId: subject.id,
-            selectedTopicId: shortlistedTopic.topicId,
-            selectedSubtopicId: shortlistedTopic.subtopicId,
+            selectedTopicId: lesson.topicId,
+            selectedSubtopicId: lesson.subtopicId,
             selectedLessonId: lesson.id,
             activeLessonSessionId: session.id,
-            composerDraft: ''
+            composerDraft: '',
+            showTopicDiscoveryComposer: false
           }
         });
-      }),
+      });
+    },
     sendLessonMessage: async (message: string) => {
       const snapshot = readState();
       const lessonSession = getActiveLessonSession(snapshot);
@@ -753,7 +852,6 @@ function createAppStore() {
 
         const latest = readState();
         const currentSession = latest.lessonSessions.find((item) => item.id === lessonSession.id) ?? lessonSession;
-        const lesson = latest.lessons.find((item) => item.id === currentSession.lessonId) ?? latest.lessons[0];
         const requestPayload = {
           student: latest.profile,
           learnerProfile: latest.learnerProfile,
@@ -782,7 +880,7 @@ function createAppStore() {
           resolvedPayload = null;
         }
 
-        const localPayload = resolvedPayload ?? buildFallbackLessonChatResponse(requestPayload, lesson);
+        const localPayload = resolvedPayload ?? buildFallbackLessonChatResponse(requestPayload, currentSession.lessonPlan);
         resolved = true;
         if (pendingTimer) {
           clearTimeout(pendingTimer);
@@ -806,12 +904,11 @@ function createAppStore() {
           let nextSession = applyLessonAssistantResponse(current, assistantMessage);
 
           if (localPayload.metadata?.action === 'advance' && nextSession.currentStage !== 'complete') {
-            const lesson = state.lessons.find((item) => item.id === nextSession.lessonId) ?? state.lessons[0];
             nextSession = {
               ...nextSession,
               messages: [
                 ...nextSession.messages,
-                ...buildInitialLessonMessages(lesson, nextSession.currentStage)
+                ...buildInitialLessonMessages(nextSession.lessonPlan, nextSession.currentStage)
               ]
             };
           }
@@ -891,7 +988,8 @@ function createAppStore() {
             currentScreen: 'lesson',
             activeLessonSessionId: lessonSession.id,
             selectedSubjectId: lessonSession.subjectId,
-            selectedTopicId: lessonSession.topicId
+            selectedTopicId: lessonSession.topicId,
+            showTopicDiscoveryComposer: false
           }
         });
       }),
@@ -912,13 +1010,12 @@ function createAppStore() {
           return state;
         }
 
-        const lesson = state.lessons.find((item) => item.id === existing.lessonId) ?? state.lessons[0];
         const restarted: LessonSession = {
           ...existing,
           id: `lesson-session-${crypto.randomUUID()}`,
           currentStage: 'overview',
           stagesCompleted: [],
-          messages: buildInitialLessonMessages(lesson, 'overview'),
+          messages: buildInitialLessonMessages(existing.lessonPlan, 'overview'),
           questionCount: 0,
           reteachCount: 0,
           confidenceScore: 0.5,

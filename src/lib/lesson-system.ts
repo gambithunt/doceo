@@ -8,6 +8,7 @@ import type {
   LessonMessage,
   LessonSession,
   LessonStage,
+  Question,
   RevisionTopic,
   ShortlistedTopic,
   UserProfile
@@ -40,6 +41,68 @@ export const LESSON_STAGE_LABELS: Record<LessonStage, string> = {
 };
 
 const META_PATTERN = /<!-- DOCEO_META\n([\s\S]*?)\nDOCEO_META -->/;
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function toTopicLabel(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    return 'Core Ideas';
+  }
+
+  return trimmed.replace(/\s+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getSubjectLens(subjectName: string): {
+  conceptWord: string;
+  actionWord: string;
+  evidenceWord: string;
+  example: string;
+  misconception: string;
+} {
+  const lower = subjectName.toLowerCase();
+
+  if (lower.includes('math')) {
+    return {
+      conceptWord: 'rule or relationship',
+      actionWord: 'state the pattern and apply it step by step',
+      evidenceWord: 'worked steps',
+      example: 'Use one short sequence or equation and explain the rule before giving the answer.',
+      misconception: 'jumping to the final answer without naming the rule first'
+    };
+  }
+
+  if (lower.includes('language') || lower.includes('english') || lower.includes('afrikaans')) {
+    return {
+      conceptWord: 'language feature',
+      actionWord: 'identify it in context and explain how it works in the sentence or passage',
+      evidenceWord: 'a clear sentence example',
+      example: 'Use a short sentence and point directly to the word or phrase that shows the idea.',
+      misconception: 'naming the term without showing where it appears or what it does'
+    };
+  }
+
+  if (lower.includes('science')) {
+    return {
+      conceptWord: 'scientific idea',
+      actionWord: 'name the concept, describe the process, and connect it to an observation',
+      evidenceWord: 'a simple experiment or real-world observation',
+      example: 'Use one familiar investigation or everyday example and explain what it shows.',
+      misconception: 'remembering the word but not the process or cause-and-effect'
+    };
+  }
+
+  return {
+    conceptWord: 'core idea',
+    actionWord: 'identify the idea, explain it clearly, and apply it to one example',
+    evidenceWord: 'one concrete example',
+    example: 'Use a familiar example from the subject and explain why it fits.',
+    misconception: 'repeating a keyword without explaining the reasoning'
+  };
+}
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -284,6 +347,7 @@ export function buildLessonSessionFromTopic(
     curriculumReference: topic.curriculumReference,
     matchedSection: topic.title,
     lessonId: lesson.id,
+    lessonPlan: lesson,
     currentStage: 'overview',
     stagesCompleted: [],
     messages: buildInitialLessonMessages(lesson, 'overview'),
@@ -298,6 +362,85 @@ export function buildLessonSessionFromTopic(
     status: 'active',
     profileUpdates: []
   };
+}
+
+export function buildDynamicLessonFromTopic(input: {
+  subjectId: string;
+  subjectName: string;
+  grade: string;
+  topicTitle: string;
+  topicDescription: string;
+  curriculumReference: string;
+}): Lesson {
+  const topicTitle = toTopicLabel(input.topicTitle);
+  const lens = getSubjectLens(input.subjectName);
+  const rootId = `generated-${input.subjectId}-${slugify(topicTitle)}`;
+  const topicId = `${rootId}-topic`;
+  const subtopicId = `${rootId}-subtopic`;
+
+  return {
+    id: `${rootId}-lesson`,
+    topicId,
+    subtopicId,
+    subjectId: input.subjectId,
+    grade: input.grade,
+    title: `${input.subjectName}: ${topicTitle}`,
+    overview: {
+      title: 'Overview',
+      body: `Today we are learning **${topicTitle}** in ${input.subjectName}. Start by naming the main ${lens.conceptWord} and what the learner should notice first. ${input.topicDescription}`
+    },
+    deeperExplanation: {
+      title: 'Key Concepts',
+      body: `Focus on ${topicTitle} as a ${lens.conceptWord} in ${input.subjectName}. A strong explanation should ${lens.actionWord}. Keep the explanation precise, use curriculum language where it helps, and avoid ${lens.misconception}.`
+    },
+    example: {
+      title: 'Worked Example',
+      body: `Worked example for **${topicTitle}**: ${lens.example} Then explain why the example matches ${topicTitle}, what clue to look for, and how to avoid ${lens.misconception}.`
+    },
+    practiceQuestionIds: [`${rootId}-q-1`],
+    masteryQuestionIds: [`${rootId}-q-2`]
+  };
+}
+
+export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: string, topicTitle: string): Question[] {
+  return [
+    {
+      id: lesson.practiceQuestionIds[0],
+      lessonId: lesson.id,
+      type: 'short-answer',
+      prompt: `In your own words, what is the main idea behind ${topicTitle} in ${subjectName}?`,
+      expectedAnswer: topicTitle.toLowerCase(),
+      acceptedAnswers: [topicTitle, topicTitle.toLowerCase()],
+      rubric: `The answer should identify ${topicTitle} and explain the key idea clearly.`,
+      explanation: `A strong answer names ${topicTitle} and explains what it does or how it works in ${subjectName}.`,
+      hintLevels: [
+        `Name the idea first: ${topicTitle}.`,
+        `Then explain how it works in ${subjectName}.`
+      ],
+      misconceptionTags: [slugify(topicTitle), slugify(subjectName)],
+      difficulty: 'foundation',
+      topicId: lesson.topicId,
+      subtopicId: lesson.subtopicId
+    },
+    {
+      id: lesson.masteryQuestionIds[0],
+      lessonId: lesson.id,
+      type: 'step-by-step',
+      prompt: `Give one example of ${topicTitle} in ${subjectName} and explain why it fits.`,
+      expectedAnswer: topicTitle.toLowerCase(),
+      acceptedAnswers: [topicTitle, topicTitle.toLowerCase()],
+      rubric: `The answer should include an example and a brief explanation connected to ${topicTitle}.`,
+      explanation: `The learner should be able to produce or identify an example and justify it.`,
+      hintLevels: [
+        'Use one small example instead of a long one.',
+        `Point to the clue that shows ${topicTitle}.`
+      ],
+      misconceptionTags: [slugify(`${topicTitle}-example`)],
+      difficulty: 'core',
+      topicId: lesson.topicId,
+      subtopicId: lesson.subtopicId
+    }
+  ];
 }
 
 function buildQuestionReply(session: LessonSession, lesson: Lesson, message: string): LessonChatResponse {

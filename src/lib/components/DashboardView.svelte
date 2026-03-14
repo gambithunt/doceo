@@ -160,7 +160,7 @@
       <p>Describe the topic in your own words, then choose the closest curriculum match.</p>
     </div>
 
-    {#if !currentSession || viewState.topicDiscovery.status !== 'idle' || viewState.topicDiscovery.input.length > 0}
+    {#if viewState.ui.showTopicDiscoveryComposer || !currentSession || viewState.topicDiscovery.status !== 'idle' || viewState.topicDiscovery.input.length > 0}
       <div class="starter-form">
         <label>
           <span>Subject</span>

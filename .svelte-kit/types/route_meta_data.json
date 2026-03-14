@@ -5,6 +5,9 @@
 	"/api/ai/lesson-chat": [
 		"src/routes/api/ai/lesson-chat/+server.ts"
 	],
+	"/api/ai/lesson-plan": [
+		"src/routes/api/ai/lesson-plan/+server.ts"
+	],
 	"/api/ai/lesson-selector": [
 		"src/routes/api/ai/lesson-selector/+server.ts"
 	],

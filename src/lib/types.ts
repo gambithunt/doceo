@@ -338,6 +338,7 @@ export interface LessonSession {
   curriculumReference: string;
   matchedSection: string;
   lessonId: string;
+  lessonPlan: Lesson;
   currentStage: LessonStage;
   stagesCompleted: LessonStage[];
   messages: LessonMessage[];
@@ -364,6 +365,22 @@ export interface LessonChatRequest {
 export interface LessonChatResponse {
   displayContent: string;
   metadata: DoceoMeta | null;
+  provider: string;
+  error?: string;
+}
+
+export interface LessonPlanRequest {
+  student: UserProfile;
+  subjectId: string;
+  subject: string;
+  topicTitle: string;
+  topicDescription: string;
+  curriculumReference: string;
+}
+
+export interface LessonPlanResponse {
+  lesson: Lesson;
+  questions: Question[];
   provider: string;
   error?: string;
 }
@@ -461,6 +478,7 @@ export interface AppState {
     activeLessonSessionId: string | null;
     pendingAssistantSessionId: string | null;
     composerDraft: string;
+    showTopicDiscoveryComposer: boolean;
     showLessonCloseConfirm: boolean;
   };
 }

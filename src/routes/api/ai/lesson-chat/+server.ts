@@ -4,10 +4,11 @@ import {
   createLessonChatBody,
   parseLessonChatResponse
 } from '$lib/ai/lesson-chat';
+import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
 import { serverEnv } from '$lib/server/env';
+import { logAiInteraction } from '$lib/server/state-repository';
 import { getSupabaseAnonKey, getSupabaseFunctionsUrl } from '$lib/server/supabase';
 import type { LessonChatRequest, LessonChatResponse } from '$lib/types';
-import { createInitialState } from '$lib/data/platform';
 
 interface LessonChatBody {
   student: LessonChatRequest['student'];
@@ -48,8 +49,15 @@ export async function POST({ request, fetch }) {
   }
   const payload = raw as LessonChatBody;
   const lesson =
-    createInitialState().lessons.find((item) => item.id === payload.lessonSession.lessonId) ??
-    createInitialState().lessons[0];
+    payload.lessonSession.lessonPlan ??
+    buildDynamicLessonFromTopic({
+      subjectId: payload.lessonSession.subjectId,
+      subjectName: payload.lessonSession.subject,
+      grade: payload.student.grade,
+      topicTitle: payload.lessonSession.topicTitle,
+      topicDescription: payload.lessonSession.topicDescription,
+      curriculumReference: payload.lessonSession.curriculumReference
+    });
   const requestPayload: LessonChatRequest = {
     student: payload.student,
     learnerProfile: payload.learnerProfile,
@@ -107,6 +115,13 @@ export async function POST({ request, fetch }) {
   const responsePayload =
     (await response.json()) as import('$lib/ai/lesson-chat').GithubModelsSuccessResponse;
   const parsed = parseLessonChatResponse(responsePayload) ?? buildFallbackLessonChatResponse(requestPayload, lesson);
+
+  await logAiInteraction(
+    payload.student.id,
+    JSON.stringify(requestPayload),
+    JSON.stringify(parsed),
+    parsed.provider
+  );
 
   return json(parsed);
 }
