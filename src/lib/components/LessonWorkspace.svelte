@@ -88,15 +88,15 @@
 {#if lessonSession}
   <section class="lesson-shell">
     <header class="top-bar">
-      <button type="button" class="close-button" onclick={() => appState.setLessonCloseConfirm(true)}>Close</button>
+      <button type="button" class="btn btn-secondary close-button" onclick={() => appState.setLessonCloseConfirm(true)}>Close</button>
         <div class="title-block">
           <p>{lessonSession.subject}</p>
           <h2>{lessonSession.topicTitle}</h2>
         </div>
         {#if showDebug}
           <div class="top-actions">
-            <button type="button" class="debug">Profile</button>
-            <button type="button" class="debug">Prompt</button>
+            <button type="button" class="btn btn-secondary btn-compact debug">Profile</button>
+            <button type="button" class="btn btn-secondary btn-compact debug">Prompt</button>
           </div>
         {/if}
       </header>
@@ -141,9 +141,9 @@
     <div class="input-area">
       <p>Reply to continue · Ask a question anytime</p>
       <div class="quick-actions">
-        <button type="button" class="secondary quick" onclick={() => sendQuickReply('Slow down and break it into steps.')}>Slow down</button>
-        <button type="button" class="secondary quick" onclick={() => sendQuickReply('Give me another example for this part.')}>Give an example</button>
-        <button type="button" class="secondary quick" onclick={() => sendQuickReply('Continue to the next step.')}>Continue</button>
+        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into steps.')}>Slow down</button>
+        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me another example for this part.')}>Give an example</button>
+        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Continue to the next step.')}>Continue</button>
       </div>
       <div class="composer">
         <textarea
@@ -152,7 +152,7 @@
           placeholder="Type your response or ask a question..."
           oninput={onInput}
         ></textarea>
-        <button type="button" class="send" onclick={submit}>↑</button>
+        <button type="button" class="btn btn-primary send" onclick={submit}>↑</button>
       </div>
     </div>
   </section>
@@ -163,8 +163,8 @@
         <h3>Leave this lesson?</h3>
         <p>Your progress is saved. You can resume anytime from the dashboard.</p>
         <div class="confirm-actions">
-          <button type="button" class="secondary" onclick={() => appState.setLessonCloseConfirm(false)}>Stay here</button>
-          <button type="button" class="primary" onclick={() => appState.closeLessonToDashboard()}>Back to dashboard</button>
+          <button type="button" class="btn btn-secondary" onclick={() => appState.setLessonCloseConfirm(false)}>Stay here</button>
+          <button type="button" class="btn btn-primary" onclick={() => appState.closeLessonToDashboard()}>Back to dashboard</button>
         </div>
       </div>
     </div>
@@ -172,7 +172,7 @@
 {:else}
   <section class="empty-state">
     <h2>No active lesson</h2>
-    <button type="button" class="primary" onclick={() => appState.setScreen('dashboard')}>Return to dashboard</button>
+    <button type="button" class="btn btn-primary" onclick={() => appState.setScreen('dashboard')}>Return to dashboard</button>
   </section>
 {/if}
 
@@ -409,29 +409,8 @@
 
   .close-button,
   .debug,
-  .send,
-  .primary,
-  .secondary {
-    border-radius: 999px;
+  .send {
     font: inherit;
-    cursor: pointer;
-  }
-
-  .close-button,
-  .debug,
-  .secondary {
-    border: 1px solid var(--border);
-    background: var(--surface-soft);
-    color: var(--text);
-    padding: 0.75rem 0.95rem;
-  }
-
-  .send,
-  .primary {
-    border: 0;
-    background: var(--accent);
-    color: var(--accent-contrast);
-    padding: 0.8rem 1rem;
   }
 
   .top-actions {

@@ -54,9 +54,6 @@
       <h2>Your chosen subjects</h2>
       <p>Keep your active study subjects current. Suggested subjects come first, then you can add a custom one if needed.</p>
     </div>
-    <button type="button" class="primary" onclick={() => (showAddPanel = !showAddPanel)}>
-      {showAddPanel ? 'Close' : 'Add more'}
-    </button>
   </header>
 
   <article class="card">
@@ -70,7 +67,7 @@
           >
             {subjectName}
           </button>
-          <button type="button" class="remove-button" onclick={() => appState.removeSubjectFromProfile(subjectName)}>
+          <button type="button" class="remove-button ghost" onclick={() => appState.removeSubjectFromProfile(subjectName)}>
             Remove
           </button>
         </div>
@@ -89,7 +86,7 @@
         </label>
         <button
           type="button"
-          class="secondary"
+          class="btn btn-secondary"
           onclick={addSelectedSubject}
           disabled={addableSubjects.length === 0}
         >
@@ -100,12 +97,18 @@
           <span>Or add your own subject</span>
           <input bind:value={customSubject} placeholder="Type a subject name" />
         </label>
-        <button type="button" class="secondary" onclick={addCustomSubject}>Add custom subject</button>
+        <button type="button" class="btn btn-secondary" onclick={addCustomSubject}>Add custom subject</button>
       </div>
     {/if}
+
+    <div class="subject-actions">
+      <button type="button" class="btn btn-primary" onclick={() => (showAddPanel = !showAddPanel)}>
+        {showAddPanel ? 'Close' : 'Add more'}
+      </button>
+    </div>
   </article>
 
-  <header class="card">
+  <header class="card compact-header">
     <p class="eyebrow">Current subject</p>
     <h2>{subject.name}</h2>
     <p>Follow the topic roadmap in order so each lesson builds on the previous one.</p>
@@ -113,7 +116,7 @@
 
   <div class="grid">
     <article class="card">
-      <h3>Topics</h3>
+      <h3 class="column-heading">Topics</h3>
       <div class="stack">
         {#each subject.topics as item}
           <button type="button" class:active={item.id === topic.id} class="menu-button" onclick={() => appState.selectTopic(item.id)}>
@@ -124,7 +127,7 @@
     </article>
 
     <article class="card">
-      <h3>Subtopics</h3>
+      <h3 class="column-heading">Subtopics</h3>
       <div class="stack">
         {#each topic.subtopics as subtopic}
           <button
@@ -140,7 +143,7 @@
     </article>
 
     <article class="card">
-      <h3>Lessons</h3>
+      <h3 class="column-heading">Lessons</h3>
       <div class="stack">
         {#each lessons as lesson}
           <button
@@ -168,8 +171,7 @@
   }
 
   .hero {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
+    align-items: start;
   }
 
   .grid {
@@ -187,20 +189,27 @@
     backdrop-filter: blur(24px);
   }
 
+  .compact-header {
+    gap: 0.55rem;
+    padding-block: 1rem;
+  }
+
   .subject-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
   .subject-pill {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem;
-    border-radius: 1.1rem;
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    justify-content: space-between;
+    gap: 0.45rem;
+    padding: 0.4rem;
+    border-radius: 0.95rem;
+    background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    min-height: 3rem;
   }
 
   .subject-pill.active {
@@ -209,9 +218,7 @@
 
   .subject-button,
   .remove-button,
-  .menu-button,
-  .primary,
-  .secondary {
+  .menu-button {
     font: inherit;
     cursor: pointer;
     border: 1px solid var(--border);
@@ -223,8 +230,7 @@
   }
 
   .subject-button,
-  .menu-button,
-  .secondary {
+  .menu-button {
     background: var(--surface-soft);
     color: var(--text);
     padding: 0.8rem 1rem;
@@ -234,20 +240,27 @@
   .subject-button {
     background: transparent;
     border-color: transparent;
-    padding: 0.65rem 0.8rem;
+    padding: 0.45rem 0.7rem;
+    font-weight: 600;
+    line-height: 1.2;
+    flex: 1;
   }
 
   .remove-button {
     background: rgba(255, 255, 255, 0.78);
     color: var(--text-soft);
-    padding: 0.58rem 0.75rem;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.78rem;
   }
 
-  .primary {
-    background: var(--accent);
-    color: var(--accent-contrast);
-    border-color: transparent;
-    padding: 0.85rem 1.1rem;
+  .remove-button.ghost {
+    border-radius: 999px;
+  }
+
+  .subject-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.1rem;
   }
 
   .menu-button.active {
@@ -255,8 +268,36 @@
     background: color-mix(in srgb, var(--accent) 14%, var(--surface));
   }
 
-  button:hover {
+  .menu-button {
+    width: 100%;
+    min-height: 3rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    border-radius: 0.9rem;
+    text-align: left;
+    transition:
+      transform 170ms var(--ease-spring),
+      border-color 220ms var(--ease-soft),
+      background-color 220ms var(--ease-soft),
+      box-shadow 220ms var(--ease-soft);
+  }
+
+  .menu-button:hover {
     transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.09);
+  }
+
+  .column-heading {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  .grid .card {
+    align-content: start;
   }
 
   label {

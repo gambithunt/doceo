@@ -1,13 +1,19 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
+  import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
   import AnimatedStatNumber from '$lib/components/AnimatedStatNumber.svelte';
+  import { resolveSubjectHints } from '$lib/ai/subject-hints';
   import { getCompletionSummary } from '$lib/data/platform';
   import { getStageLabel } from '$lib/lesson-system';
   import { appState } from '$lib/stores/app-state';
-  import type { AppState, LessonSession, ShortlistedTopic, Subject } from '$lib/types';
+  import type { AppState, LessonSession, ShortlistedTopic } from '$lib/types';
 
   const { state: viewState }: { state: AppState } = $props();
   let topicInputFocused = $state(false);
   let shouldAutofillTopicInput = $state(true);
+  let promptSuggestionsText = $state('');
+  let latestHintRequest = 0;
+  let lastHintSeed = $state('');
 
   const summary = $derived(getCompletionSummary(viewState));
   const availableSubjects = $derived(viewState.curriculum.subjects);
@@ -26,8 +32,6 @@
   const selectedSubject = $derived(
     availableSubjects.find((subject) => subject.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
   );
-  const promptSuggestions = $derived.by(() => buildSubjectSuggestions(selectedSubject));
-  const promptSuggestionsText = $derived.by(() => promptSuggestions.join('\n'));
   const showingAutofillHint = $derived(viewState.topicDiscovery.input === promptSuggestionsText);
   const assistantStatus = $derived.by(() => {
     switch (viewState.topicDiscovery.status) {
@@ -47,32 +51,47 @@
       return;
     }
 
-    if (viewState.topicDiscovery.input !== promptSuggestionsText) {
-      appState.setTopicDiscoveryInput(promptSuggestionsText);
+    const hintSeed = `${selectedSubject.id}:${shouldAutofillTopicInput ? 'autofill' : 'manual'}`;
+    if (hintSeed === lastHintSeed) {
+      return;
     }
+    lastHintSeed = hintSeed;
+
+    const requestId = ++latestHintRequest;
+    void (async () => {
+      try {
+        const result = await resolveSubjectHints({
+          subject: selectedSubject,
+          curriculumId: viewState.profile.curriculumId,
+          gradeId: viewState.profile.gradeId,
+          gradeLabel: viewState.profile.grade,
+          term: viewState.profile.term,
+          fetcher: browser ? window.fetch.bind(window) : undefined,
+          headers: await getAuthenticatedHeaders()
+        });
+
+        if (requestId !== latestHintRequest) {
+          return;
+        }
+
+        const nextText = result.hints.join('\n');
+        promptSuggestionsText = nextText;
+
+        if (shouldAutofillTopicInput && viewState.topicDiscovery.input !== nextText) {
+          appState.setTopicDiscoveryInput(nextText);
+        }
+      } catch {
+        if (requestId !== latestHintRequest) {
+          return;
+        }
+
+        promptSuggestionsText = '';
+      }
+    })();
   });
 
-  function buildSubjectSuggestions(subject: Subject | null | undefined): string[] {
-    if (!subject) {
-      return [
-        'Number patterns',
-        'Fractions',
-        'Algebra basics',
-        'Geometry foundations',
-        'Word problems',
-        'The part I keep getting wrong'
-      ];
-    }
-
-    const sectionNames = subject.topics.flatMap((topic) =>
-      topic.subtopics.length > 0 ? [topic.name, ...topic.subtopics.map((subtopic) => subtopic.name)] : [topic.name]
-    );
-    const suggestions = Array.from(new Set(sectionNames.map((name) => name.trim()).filter((name) => name.length > 0))).slice(0, 12);
-
-    return suggestions.length > 0 ? suggestions : subject.topics.map((topic) => topic.name).slice(0, 12);
-  }
-
   function onInput(event: Event): void {
+    lastHintSeed = '';
     shouldAutofillTopicInput = false;
     appState.setTopicDiscoveryInput((event.currentTarget as HTMLTextAreaElement).value);
   }
@@ -82,6 +101,7 @@
       appState.setTopicDiscoveryInput('');
     }
 
+    lastHintSeed = '';
     shouldAutofillTopicInput = false;
     topicInputFocused = true;
   }
@@ -91,11 +111,13 @@
   }
 
   function onSubjectChange(event: Event): void {
+    lastHintSeed = '';
     shouldAutofillTopicInput = true;
     appState.selectSubject((event.currentTarget as HTMLSelectElement).value);
   }
 
   function resetTopicDiscovery(): void {
+    lastHintSeed = '';
     shouldAutofillTopicInput = true;
     appState.resetTopicDiscovery();
   }
@@ -141,12 +163,12 @@
 
     <div class="hero-actions">
       {#if currentSession}
-        <button type="button" class="primary wide" onclick={() => startFromBanner(currentSession)}>Resume lesson</button>
-        <button type="button" class="link-button" onclick={resetTopicDiscovery}>
+        <button type="button" class="btn btn-primary wide" onclick={() => startFromBanner(currentSession)}>Resume lesson</button>
+        <button type="button" class="btn btn-ghost link-button" onclick={resetTopicDiscovery}>
           Start something new instead
         </button>
       {:else}
-        <button type="button" class="primary wide" onclick={runShortlist}>Find my section</button>
+        <button type="button" class="btn btn-primary wide" onclick={runShortlist}>Find my section</button>
       {/if}
     </div>
   </header>
@@ -189,11 +211,11 @@
         </label>
 
         <div class="starter-actions">
-          <button type="button" class="primary" onclick={runShortlist} disabled={viewState.topicDiscovery.status === 'loading'}>
+          <button type="button" class="btn btn-primary" onclick={runShortlist} disabled={viewState.topicDiscovery.status === 'loading'}>
             {viewState.topicDiscovery.status === 'loading' ? 'Finding matches...' : 'Find my section'}
           </button>
           {#if viewState.topicDiscovery.shortlist}
-            <button type="button" class="secondary" onclick={resetTopicDiscovery}>
+            <button type="button" class="btn btn-secondary" onclick={resetTopicDiscovery}>
               Search for something else
             </button>
           {/if}
@@ -247,9 +269,9 @@
           <h4>{session.topicTitle}</h4>
           <p>Stage completed: {session.stagesCompleted.length} of 5</p>
           <div class="recent-actions">
-            <button type="button" class="primary compact" onclick={() => appState.resumeSession(session.id)}>Resume</button>
+            <button type="button" class="btn btn-primary btn-compact compact" onclick={() => appState.resumeSession(session.id)}>Resume</button>
             <details class="overflow-menu">
-              <summary class="secondary compact">More</summary>
+              <summary class="btn btn-secondary btn-compact compact">More</summary>
               <div class="overflow-panel">
                 <button type="button" class="menu-item" onclick={() => appState.resumeSession(session.id)}>View notes</button>
                 <button type="button" class="menu-item" onclick={() => appState.restartLessonSession(session.id)}>Restart</button>
@@ -349,6 +371,22 @@
     text-align: left;
     font: inherit;
     cursor: pointer;
+    transition:
+      transform 170ms var(--ease-spring),
+      border-color 220ms var(--ease-soft),
+      background-color 220ms var(--ease-soft),
+      box-shadow 220ms var(--ease-soft);
+  }
+
+  .topic-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+  }
+
+  .topic-card:active {
+    transform: translateY(0) scale(0.99);
   }
 
   .topic-index {
@@ -388,31 +426,8 @@
     cursor: pointer;
   }
 
-  .primary,
-  .secondary,
   .link-button {
-    border-radius: 999px;
-    padding: 0.85rem 1.1rem;
-  }
-
-  .primary {
-    border: 0;
-    background: var(--accent);
-    color: var(--accent-contrast);
-  }
-
-  .secondary {
-    border: 1px solid var(--border);
-    background: var(--surface-soft);
-    color: var(--text);
-  }
-
-  .link-button {
-    border: 0;
-    background: transparent;
-    color: var(--muted);
     text-align: left;
-    padding-inline: 0;
   }
 
   .wide {
@@ -457,6 +472,14 @@
     color: var(--text);
     text-align: left;
     padding: 0.75rem 0.85rem;
+    transition:
+      transform 150ms var(--ease-spring),
+      background-color 180ms var(--ease-soft);
+  }
+
+  .menu-item:hover {
+    transform: translateY(-1px);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft));
   }
 
   .menu-item.danger {
@@ -519,6 +542,19 @@
 
   .error {
     color: #b91c1c;
+  }
+
+  .recent-card {
+    transition:
+      transform 180ms var(--ease-spring),
+      border-color 220ms var(--ease-soft),
+      box-shadow 220ms var(--ease-soft);
+  }
+
+  .recent-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
   }
 
   @media (max-width: 900px) {

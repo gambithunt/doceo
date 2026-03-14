@@ -1,13 +1,12 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { derived, writable } from 'svelte/store';
+import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
 import { deduplicateSubjects } from '$lib/utils/strings';
-import { buildFallbackLessonChatResponse } from '$lib/ai/lesson-chat';
 import { getSelectionMode } from '$lib/data/onboarding';
 import {
   applyLessonAssistantResponse,
   buildDynamicLessonFromTopic,
-  buildDynamicQuestionsForLesson,
   buildInitialLessonMessages,
   buildLessonSessionFromTopic,
   classifyLessonMessage,
@@ -381,51 +380,37 @@ function createAppStore() {
   }
 
   async function requestLessonPlan(state: AppState, subjectId: string, subjectName: string, topic: ShortlistedTopic) {
-    const fallbackLesson = buildDynamicLessonFromTopic({
-      subjectId,
-      subjectName,
-      grade: state.profile.grade,
-      topicTitle: topic.title,
-      topicDescription: topic.description,
-      curriculumReference: topic.curriculumReference
-    });
-    const fallbackQuestions = buildDynamicQuestionsForLesson(fallbackLesson, subjectName, topic.title);
-
-    try {
-      const response = await fetch('/api/ai/lesson-plan', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          request: {
-            student: state.profile,
-            subjectId,
-            subject: subjectName,
-            topicTitle: topic.title,
-            topicDescription: topic.description,
-            curriculumReference: topic.curriculumReference
-          }
-        })
-      });
-
-      if (response.ok) {
-        const payload = (await response.json()) as LessonPlanPayload;
-
-        if (payload.lesson?.title && Array.isArray(payload.questions)) {
-          return {
-            lesson: payload.lesson,
-            questions: payload.questions
-          };
+    const response = await fetch('/api/ai/lesson-plan', {
+      method: 'POST',
+      headers: await getAuthenticatedHeaders({
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({
+        request: {
+          student: state.profile,
+          subjectId,
+          subject: subjectName,
+          topicTitle: topic.title,
+          topicDescription: topic.description,
+          curriculumReference: topic.curriculumReference
         }
-      }
-    } catch {
-      // Fall through to local generation.
+      })
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({ error: 'Lesson plan request failed.' }))) as { error?: string };
+      throw new Error(payload.error ?? 'Lesson plan request failed.');
+    }
+
+    const payload = (await response.json()) as LessonPlanPayload;
+
+    if (!payload.lesson?.title || !Array.isArray(payload.questions)) {
+      throw new Error('Lesson plan response was invalid.');
     }
 
     return {
-      lesson: fallbackLesson,
-      questions: fallbackQuestions
+      lesson: payload.lesson,
+      questions: payload.questions
     };
   }
 
@@ -575,14 +560,18 @@ function createAppStore() {
       try {
         const response = await fetch('/api/ai/tutor', {
           method: 'POST',
-          headers: {
+          headers: await getAuthenticatedHeaders({
             'Content-Type': 'application/json'
-          },
+          }),
           body: JSON.stringify({
             request,
             profileId: readState().profile.id
           })
         });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({ error: 'Tutor request failed' }))) as { error?: string };
+          throw new Error(payload.error ?? 'Tutor request failed');
+        }
         const payload = (await response.json()) as {
           response: AppState['askQuestion']['response'];
           provider: string;
@@ -608,8 +597,8 @@ function createAppStore() {
             askQuestion: {
               ...state.askQuestion,
               request,
-              response: buildAskQuestionResponse(request),
-              provider: 'local-fallback',
+              response: state.askQuestion.response,
+              provider: state.askQuestion.provider,
               isLoading: false,
               error: message
             }
@@ -670,9 +659,9 @@ function createAppStore() {
       try {
         const response = await fetch('/api/ai/topic-shortlist', {
           method: 'POST',
-          headers: {
+          headers: await getAuthenticatedHeaders({
             'Content-Type': 'application/json'
-          },
+          }),
           body: JSON.stringify({
             request: {
               studentId: state.profile.id,
@@ -688,6 +677,10 @@ function createAppStore() {
             }
           })
         });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({ error: 'Unable to shortlist topics right now.' }))) as { error?: string };
+          throw new Error(payload.error ?? 'Unable to shortlist topics right now.');
+        }
         const payload = (await response.json()) as TopicShortlistPayload;
         const directTopic = buildDirectTopicOption(state, subject.name, studentInput);
         const shortlist = {
@@ -725,7 +718,7 @@ function createAppStore() {
               input: studentInput,
               status: 'error',
               shortlist: null,
-              provider: 'local-fallback',
+              provider: null,
               error: message
             }
           })
@@ -738,7 +731,26 @@ function createAppStore() {
         snapshot.curriculum.subjects.find((item) => item.id === snapshot.topicDiscovery.selectedSubjectId) ??
         snapshot.curriculum.subjects.find((item) => item.id === snapshot.ui.selectedSubjectId) ??
         snapshot.curriculum.subjects[0];
-      const { lesson, questions } = await requestLessonPlan(snapshot, subject.id, subject.name, topic);
+      let lessonPlan;
+
+      try {
+        lessonPlan = await requestLessonPlan(snapshot, subject.id, subject.name, topic);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create lesson plan right now.';
+        update((state) =>
+          persistAndSync({
+            ...state,
+            topicDiscovery: {
+              ...state.topicDiscovery,
+              error: message,
+              status: 'error'
+            }
+          })
+        );
+        return;
+      }
+
+      const { lesson, questions } = lessonPlan;
 
       update((state) => {
         const session = buildLessonSessionFromTopic(state.profile, lesson, topic, subject.name);
@@ -782,7 +794,26 @@ function createAppStore() {
         curriculumReference: `${snapshot.profile.curriculum} · ${snapshot.profile.grade} · ${subject.name}`,
         relevance: 'Matched from your dashboard prompt.'
       };
-      const { lesson, questions } = await requestLessonPlan(snapshot, subject.id, subject.name, shortlistedTopic);
+      let lessonPlan;
+
+      try {
+        lessonPlan = await requestLessonPlan(snapshot, subject.id, subject.name, shortlistedTopic);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create lesson plan right now.';
+        update((state) =>
+          persistAndSync({
+            ...state,
+            topicDiscovery: {
+              ...state.topicDiscovery,
+              error: message,
+              status: 'error'
+            }
+          })
+        );
+        return;
+      }
+
+      const { lesson, questions } = lessonPlan;
 
       update((state) => {
         const session = buildLessonSessionFromTopic(state.profile, lesson, shortlistedTopic, subject.name);
@@ -888,23 +919,30 @@ function createAppStore() {
         try {
           const response = await fetch('/api/ai/lesson-chat', {
             method: 'POST',
-            headers: {
+            headers: await getAuthenticatedHeaders({
               'Content-Type': 'application/json'
-            },
+            }),
             body: JSON.stringify(requestPayload)
           });
 
-          if (response.ok) {
-            const payload = (await response.json()) as LessonChatResponse;
-            if (payload.displayContent && payload.metadata) {
-              resolvedPayload = payload;
-            }
+          if (!response.ok) {
+            const payload = (await response.json().catch(() => ({ error: 'Lesson chat request failed.' }))) as { error?: string };
+            throw new Error(payload.error ?? 'Lesson chat request failed.');
           }
-        } catch {
-          resolvedPayload = null;
+
+          const payload = (await response.json()) as LessonChatResponse;
+          if (payload.displayContent && payload.metadata) {
+            resolvedPayload = payload;
+          }
+        } catch (error) {
+          throw error;
         }
 
-        const localPayload = resolvedPayload ?? buildFallbackLessonChatResponse(requestPayload, currentLesson);
+        if (!resolvedPayload) {
+          throw new Error('Lesson chat response was invalid.');
+        }
+
+        const localPayload = resolvedPayload;
         resolved = true;
         if (pendingTimer) {
           clearTimeout(pendingTimer);

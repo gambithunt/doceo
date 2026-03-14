@@ -82,7 +82,7 @@
     </label>
   </section>
 
-  <button type="button" class="signout" onclick={() => appState.signOut()}>Sign out</button>
+  <button type="button" class="btn btn-secondary signout" onclick={() => appState.signOut()}>Sign out</button>
 </aside>
 
 <style>
@@ -168,10 +168,14 @@
   .pill {
     display: inline-flex;
     align-items: center;
-    padding: 0.45rem 0.7rem;
+    justify-content: center;
+    text-align: center;
+    min-height: 2rem;
+    padding: 0.5rem 0.95rem;
     border-radius: 999px;
     background: color-mix(in srgb, var(--accent) 18%, var(--surface));
     border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+    line-height: 1.1;
   }
 
   .pill.soft {
@@ -194,13 +198,8 @@
   }
 
   .signout {
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: var(--surface);
-    color: var(--text);
-    padding: 0.9rem 1rem;
+    width: 100%;
     font: inherit;
-    cursor: pointer;
   }
 
   .eyebrow,

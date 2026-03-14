@@ -21,6 +21,14 @@
   --radius-xl: 2rem;
   --radius-lg: 1.5rem;
   --radius-md: 1rem;
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.3, 0, 0.2, 1);
+  --motion-fast: 150ms;
+  --motion-med: 240ms;
+  --press-scale: 0.985;
+  --btn-radius: 999px;
+  --btn-pad-y: 0.72rem;
+  --btn-pad-x: 1.05rem;
   background:
     radial-gradient(circle at top left, rgba(74, 218, 154, 0.14), transparent 28%),
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 32%),
@@ -75,11 +83,128 @@ textarea {
   outline: none;
 }
 
+button,
+[role='button'],
+summary {
+  transition:
+    transform var(--motion-fast) var(--ease-spring),
+    box-shadow var(--motion-med) var(--ease-soft),
+    border-color var(--motion-med) var(--ease-soft),
+    background-color var(--motion-med) var(--ease-soft),
+    color var(--motion-med) var(--ease-soft),
+    opacity var(--motion-fast) var(--ease-soft);
+}
+
+button:hover:not(:disabled),
+[role='button']:hover,
+summary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--shadow) 45%, transparent);
+}
+
+button:active:not(:disabled),
+[role='button']:active,
+summary:active {
+  transform: translateY(0) scale(var(--press-scale));
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: wait;
+  opacity: 0.78;
+  position: relative;
+}
+
+button:disabled::after,
+[aria-disabled='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 15%, transparent) 45%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: ui-wait-sheen 1.2s linear infinite;
+  pointer-events: none;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: var(--btn-radius);
+  border: 1px solid transparent;
+  padding: var(--btn-pad-y) var(--btn-pad-x);
+  font: inherit;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  min-height: 2.4rem;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 88%, white 12%),
+    color-mix(in srgb, var(--accent) 95%, black 5%)
+  );
+  color: var(--accent-contrast);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 84%, white 16%),
+    color-mix(in srgb, var(--accent) 93%, black 7%)
+  );
+}
+
+.btn-secondary {
+  background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--border-strong) 85%, transparent);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+  padding-inline: 0.15rem;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.btn-danger {
+  background: color-mix(in srgb, #ef4444 12%, var(--surface));
+  color: #991b1b;
+  border-color: color-mix(in srgb, #ef4444 28%, var(--border));
+}
+
+.btn-compact {
+  min-height: 2.1rem;
+  padding: 0.6rem 0.9rem;
 }
 
 .panel,
@@ -96,4 +221,23 @@ h3,
 h4,
 p {
   margin: 0;
+}
+
+@keyframes ui-wait-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  [role='button'],
+  summary {
+    transition: none !important;
+  }
+
+  button:disabled::after,
+  [aria-disabled='true']::after {
+    animation: none !important;
+  }
 }

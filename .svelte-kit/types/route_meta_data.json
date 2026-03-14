@@ -11,6 +11,9 @@
 	"/api/ai/lesson-selector": [
 		"src/routes/api/ai/lesson-selector/+server.ts"
 	],
+	"/api/ai/subject-hints": [
+		"src/routes/api/ai/subject-hints/+server.ts"
+	],
 	"/api/ai/topic-shortlist": [
 		"src/routes/api/ai/topic-shortlist/+server.ts"
 	],

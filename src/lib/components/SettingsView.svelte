@@ -22,8 +22,8 @@
       <p>Revisit onboarding if your school year, term, curriculum, or subjects change.</p>
     </div>
     <div class="hero-actions">
-      <button type="button" onclick={() => editOnboarding('country')}>Edit onboarding</button>
-      <button type="button" class="danger" onclick={() => appState.resetOnboarding()}>Reset onboarding</button>
+      <button type="button" class="btn btn-primary" onclick={() => editOnboarding('country')}>Edit onboarding</button>
+      <button type="button" class="btn btn-danger" onclick={() => appState.resetOnboarding()}>Reset onboarding</button>
     </div>
   </header>
 
@@ -35,7 +35,7 @@
       <div class="row"><span>Grade</span><strong>{state.profile.grade}</strong></div>
       <div class="row"><span>School year</span><strong>{state.profile.schoolYear}</strong></div>
       <div class="row"><span>Term</span><strong>{state.profile.term}</strong></div>
-      <button type="button" class="secondary" onclick={() => editOnboarding('academic')}>Update school context</button>
+      <button type="button" class="btn btn-secondary" onclick={() => editOnboarding('academic')}>Update school context</button>
     </article>
 
     <article class="card">
@@ -52,7 +52,7 @@
         <span>Recommended start</span>
         <strong>{state.profile.recommendedStartSubjectName ?? 'Not set'}</strong>
       </div>
-      <button type="button" class="secondary" onclick={() => editOnboarding('subjects')}>Edit subjects</button>
+      <button type="button" class="btn btn-secondary" onclick={() => editOnboarding('subjects')}>Edit subjects</button>
     </article>
 
     <article class="card">
@@ -123,27 +123,8 @@
     background: var(--surface-soft);
   }
 
-  button {
+  .btn {
     justify-self: start;
-    border: 0;
-    border-radius: 999px;
-    background: var(--accent);
-    color: var(--accent-contrast);
-    padding: 0.9rem 1.2rem;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .secondary {
-    background: var(--surface-soft);
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-
-  .danger {
-    background: color-mix(in srgb, #ef4444 14%, var(--surface));
-    color: #991b1b;
-    border: 1px solid color-mix(in srgb, #ef4444 24%, var(--border));
   }
 
   .eyebrow,

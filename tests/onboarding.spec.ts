@@ -71,7 +71,7 @@ test('student can complete onboarding, shortlist a topic, start a lesson, and re
   await expect(page.getByText('Curriculum matches')).toBeVisible();
   await page.locator('.topic-card').first().click();
 
-  await expect(page.getByText('Reply to continue · Ask a question anytime')).toBeVisible();
+  await expect(page.getByPlaceholder('Type your response or ask a question...')).toBeVisible();
   await page.getByPlaceholder('Type your response or ask a question...').fill('I understand the big picture.');
   await page.getByRole('button', { name: '↑' }).click();
   await expect(page.getByText('Key Concepts')).toBeVisible();
