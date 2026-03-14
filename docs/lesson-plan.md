@@ -1,211 +1,92 @@
-# Lesson Experience Plan
+# Lesson Experience
 
-## Product Goal
-Make the lesson screen feel like a calm, structured place to learn one thing at a time.
+## What it is
 
-The learner has already chosen:
-- subject
-- section
-- lesson or revision
+The lesson screen is a one-on-one chat between the student and Doceo, an adaptive AI tutor. The student works through a topic in a structured sequence of stages. At any point they can ask a question, slow down, or ask for an example — the tutor responds in context and then returns to the lesson.
 
-At this point the interface should stop feeling like a curriculum debugger and start feeling like guided learning.
+---
 
-## Current Problems
-- The top area is fragmented into too many equal cards.
-- `Deeper Explanation` and `Mastery Retry Loop` read like internal system language, not learner language.
-- The page does not clearly answer: `What should I read first? What should I do next? Where can I ask for help?`
-- Practice and support are present, but they are not organized around learner momentum.
-- `Progress Snapshot` is useful, but it is occupying premium space too early in the reading flow.
+## Layout
 
-## Learner-First Model
-The lesson page should support two simultaneous needs:
-- progressive learning at the learner’s pace
-- immediate help when they get stuck or want clarification
+Four stacked regions, fixed height, no scroll on the outer shell:
 
-The system should feel like:
-- a clear guide
-- a patient explainer
-- a responsive helper
+1. **Top bar** — subject label, topic title, close button
+2. **Progress rail** — horizontal strip of stage chips (Overview · Key Concepts · Deep Dive · Examples · Check Understanding), each showing completed / active / upcoming state
+3. **Chat area** — scrollable message feed
+4. **Input area** — quick-reply buttons + textarea composer + send button
 
-Not like:
-- a curriculum database
-- a stack of unrelated cards
-- an assessment screen with lesson text attached
+---
 
-## Layout Direction
+## Lesson stages
 
-### 1. Header
-- Keep a very clean lesson header.
-- Show:
-  - subject
-  - section
-  - lesson title
-  - mastery pill
-- Tone should be quiet and high-confidence.
+Each stage is opened by the system with a stage-start badge and a teaching message. The AI advances stages when the student demonstrates understanding.
 
-### 2. Overview Banner
-- `Overview` should stretch across the full horizontal width near the top.
-- It should act as the anchor for the lesson.
-- It should answer:
-  - what this part is about
-  - what the learner should notice
-  - what they should be able to do after this lesson
+| Stage | Label | Purpose |
+|---|---|---|
+| `overview` | Overview | Big-picture framing of the topic |
+| `concepts` | Key Concepts | Core rules, language, and structure |
+| `detail` | Deep Dive | Step-by-step worked reasoning |
+| `examples` | Examples | Concrete worked example with explanation |
+| `check` | Check Understanding | Student explains or applies the idea |
+| `complete` | — | Session closes, topic moves to revision |
 
-### 3. Guided Lesson Flow
-- Replace the equal-card grid with a sequential learning path.
-- Suggested structure:
-  - `Overview`
-  - `Key idea 1`
-  - `Key idea 2`
-  - `Worked example`
-  - `Try it`
-- Each step should feel like part of one lesson, not a separate dashboard tile.
+---
 
-### 4. Ask-While-Learning Support
-- The learner should always have an easy way to ask a focused question without leaving the lesson context.
-- This should be integrated into the lesson flow, not hidden in a separate area.
-- Good pattern:
-  - small helper card or inline prompt:
-    - `Need help with this part?`
-    - `Ask a question`
-- The app should feel like it is always “listening” for confusion.
+## Message types
 
-### 5. Practice Area
-- Practice should sit after explanation, not compete with it at the top.
-- It should focus on one current question at a time.
-- It should support:
-  - answer input
-  - show working
-  - gentle feedback
-  - hint path
-- The practice area should feel central, not like a side widget.
+| Type | Role | Visual |
+|---|---|---|
+| `stage_start` | system | Centred pill badge |
+| `teaching` | assistant | Left-aligned bubble (default) |
+| `feedback` | assistant | Accent-tinted bubble (used on advance) |
+| `side_thread` | assistant | Blue-tinted bubble (off-topic question) |
+| `question` | user | Dark right-aligned bubble |
+| `response` | user | Dark right-aligned bubble |
 
-### 6. Progress Strip
-- `Progress Snapshot` should move to the bottom.
-- It should stretch horizontally.
-- It should be compact and secondary.
-- It should summarize:
-  - completion state
-  - current stage
-  - time spent
-  - weak areas
-  - recent answers
+---
 
-## Content Renames
-- `Deeper Explanation` should be removed as a visible label.
-- `Mastery Retry Loop` should be removed entirely from learner UI.
-- Replace system-facing labels with learner-facing labels such as:
-  - `What to notice`
-  - `How it works`
-  - `Worked example`
-  - `Try this`
-  - `Need help?`
+## Tutor behaviour
 
-## Interaction Model
+The AI receives a structured system prompt containing:
+- Student profile (name, grade, curriculum, country, term, year)
+- Full lesson plan (overview, key concepts, detailed steps, example)
+- Current stage and session history (capped at last 20 messages)
+- Learner profile signals (learning style, struggle/excelled topics)
 
-### Primary Path
-1. Learner lands in lesson.
-2. Reads the overview banner.
-3. Moves through one idea at a time.
-4. Reaches a worked example.
-5. Attempts one focused practice task.
-6. Receives feedback and either continues or asks for help.
+**Advance**: when the student clearly understands the current stage, the AI returns a brief 1–2 sentence acknowledgment with `action: advance`. The system inserts the next stage opening automatically — the AI never repeats stage content.
 
-### Support Path
-- At any point, the learner can ask:
-  - for a simpler explanation
-  - for another example
-  - what a specific line means
-  - why their answer is wrong
+**Reteach**: when the student is confused, the AI returns `action: reteach` with a different angle (step-by-step / analogy / example).
 
-### Pacing
-- Avoid dumping all lesson content as equally weighted blocks.
-- Use spacing, sequencing, and disclosure to create pace.
-- The learner should always know what the next useful action is.
+**Side thread**: off-topic questions get `action: side_thread`. The AI answers within the topic context and returns to the lesson.
 
-## Visual Direction
-- Apple-like simplicity:
-  - fewer boxes
-  - stronger hierarchy
-  - more breathing room
-  - softer transitions
-  - restrained motion
-- The top of the lesson should feel spacious and focused.
-- The page should read vertically as a guided narrative, not a control panel.
+**Voice**: always addressed directly to the student by name using "you/your". Never "students will" or "learners should".
 
-## Proposed Screen Structure
+---
 
-### Top
-- Header
-- Full-width overview banner
+## Fallback
 
-### Middle
-- Guided lesson stack:
-  - key explanation block
-  - follow-up explanation block
-  - worked example block
-  - ask-for-help inline block
-  - practice block
+When no AI is configured, a local deterministic fallback (`buildLocalLessonChatResponse`) handles all responses:
+- Question replies: topic-anchored, never echoes the student's message text
+- Response replies: advance / reteach / stay based on confusion keywords
+- Stage advancement uses the same `action` metadata contract as the AI
 
-### Bottom
-- Full-width progress strip
+---
 
-## Implementation Tasks
+## Lesson content
 
-### Phase 1: Structural Rewrite
-- Refactor `LessonWorkspace.svelte` away from the current equal-card dashboard layout.
-- Build a vertical lesson flow with clear section ordering.
-- Make `Overview` full-width at the top.
-- Remove `Deeper Explanation` and `Mastery Retry Loop` from the UI.
-- Move progress summary to a full-width footer strip.
+Lessons are either:
+- **Seeded** — from `curriculum_lessons` in Supabase (static, pre-written content)
+- **Dynamic** — built at runtime by `buildDynamicLessonFromTopic` when no seed lesson exists for the chosen topic
 
-### Phase 2: Learner Language
-- Rename visible lesson section labels to learner-friendly language.
-- Rewrite helper copy to sound direct, calm, and supportive.
-- Remove internal/system terms from the lesson interface.
+Dynamic lessons use subject-specific lens templates (concept word, action word, misconception, worked example) to generate second-person lesson content for any topic.
 
-### Phase 3: Guided Support
-- Add an inline support surface inside the lesson:
-  - `Ask a question`
-  - `Explain this more simply`
-  - `Show another example`
-- Keep support contextual to the current lesson section.
+---
 
-### Phase 4: Practice Experience
-- Redesign practice into a single focused block.
-- Improve answer input hierarchy.
-- Make hints progressive rather than dumping all help immediately.
-- Keep feedback readable and supportive.
+## Learner profile
 
-### Phase 5: Motion and Polish
-- Add subtle section-entry fades.
-- Add gentle state transitions between explanation, example, and practice.
-- Keep motion light and optional under `prefers-reduced-motion`.
+Every AI response includes a `profile_update` block. After each exchange:
+- Learning style signals are adjusted using EMA (not overwritten)
+- Concepts struggled with / excelled at are updated (capped at 25 each)
+- Session counters (questions asked, reteach events) are incremented
 
-### Phase 6: Data/Model Follow-Up
-- Review whether the current lesson data shape is sufficient for multi-step guided lessons.
-- If not, extend lesson content to support:
-  - multiple explanation steps
-  - inline support prompts
-  - richer worked examples
-  - practice variants
-
-## Open Product Decisions
-- Should the learner move through lesson sections manually, or should there be a `Next step` button?
-- Should inline help open inside the lesson page, or slide into a side panel/sheet?
-- Should practice feedback appear immediately, or only after the learner chooses `Check answer`?
-- Should we support collapsible earlier sections once the learner moves forward?
-
-## Recommended Default Decisions
-- Manual vertical reading flow with a subtle `Next step` cue, not hard pagination.
-- Inline help opens inside the lesson page near the current section.
-- Feedback appears after `Check answer`.
-- Earlier sections stay visible but compact once the learner progresses.
-
-## Build Order Recommendation
-1. Rewrite the lesson layout.
-2. Fix the content labels and reading hierarchy.
-3. Move progress to the bottom strip.
-4. Add inline lesson help.
-5. Refine practice and feedback.
-6. Add motion and polish.
+On app bootstrap, profile signals are reconstructed from the `lesson_signals` table using exponential decay weighting (14-day half-life) so recent sessions carry more weight.
