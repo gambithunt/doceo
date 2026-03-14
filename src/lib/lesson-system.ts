@@ -217,16 +217,16 @@ export function updateLearnerProfile(
     }
   }
 
+  const MAX_CONCEPT_LIST = 25;
+
   if (update.struggled_with?.length) {
-    next.concepts_struggled_with = Array.from(
-      new Set([...next.concepts_struggled_with, ...update.struggled_with])
-    );
+    const merged = Array.from(new Set([...update.struggled_with, ...next.concepts_struggled_with]));
+    next.concepts_struggled_with = merged.slice(0, MAX_CONCEPT_LIST);
   }
 
   if (update.excelled_at?.length) {
-    next.concepts_excelled_at = Array.from(
-      new Set([...next.concepts_excelled_at, ...update.excelled_at])
-    );
+    const merged = Array.from(new Set([...update.excelled_at, ...next.concepts_excelled_at]));
+    next.concepts_excelled_at = merged.slice(0, MAX_CONCEPT_LIST);
   }
 
   if (options?.subjectName) {
@@ -290,7 +290,7 @@ function getLessonSectionForStage(lesson: Lesson, stage: LessonStage): string {
   }
 
   if (stage === 'detail') {
-    return `${lesson.deeperExplanation.body}\n\nThink of the method one careful step at a time so the rule stays clear.`;
+    return (lesson.detailedSteps ?? { body: lesson.deeperExplanation.body }).body;
   }
 
   if (stage === 'examples') {
@@ -387,15 +387,19 @@ export function buildDynamicLessonFromTopic(input: {
     title: `${input.subjectName}: ${topicTitle}`,
     overview: {
       title: 'Overview',
-      body: `Today we are learning **${topicTitle}** in ${input.subjectName}. Start by naming the main ${lens.conceptWord} and what the learner should notice first. ${input.topicDescription}`
+      body: `In this lesson we are studying **${topicTitle}** in ${input.subjectName} (${input.grade}). ${input.topicDescription} By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to an example.`
     },
     deeperExplanation: {
       title: 'Key Concepts',
-      body: `Focus on ${topicTitle} as a ${lens.conceptWord} in ${input.subjectName}. A strong explanation should ${lens.actionWord}. Keep the explanation precise, use curriculum language where it helps, and avoid ${lens.misconception}.`
+      body: `The main ${lens.conceptWord} in **${topicTitle}** is what holds the idea together. To understand ${topicTitle} in ${input.subjectName}, you need to ${lens.actionWord}. The most important thing to remember is to avoid ${lens.misconception} — focus on the underlying rule, not just the final answer.`
+    },
+    detailedSteps: {
+      title: 'Step-by-Step',
+      body: `Here is how to work through **${topicTitle}** one step at a time:\n\n**Step 1.** Identify what ${topicTitle} is asking you to do — read the problem carefully and name the ${lens.conceptWord} you are working with.\n\n**Step 2.** Write down what you know and what you need to find out.\n\n**Step 3.** Apply the rule for ${topicTitle}: ${lens.actionWord}.\n\n**Step 4.** Check your answer by asking: does it match the ${lens.evidenceWord}? Have I avoided ${lens.misconception}?\n\nTake each step one at a time before moving to the next.`
     },
     example: {
       title: 'Worked Example',
-      body: `Worked example for **${topicTitle}**: ${lens.example} Then explain why the example matches ${topicTitle}, what clue to look for, and how to avoid ${lens.misconception}.`
+      body: `**Example — ${topicTitle} in ${input.subjectName}:**\n\n${lens.example}\n\nThis example works because it shows the ${lens.conceptWord} in action. Notice how each step stays connected to the rule for ${topicTitle}. Avoid ${lens.misconception} — always name the rule before you write the answer.`
     },
     practiceQuestionIds: [`${rootId}-q-1`],
     masteryQuestionIds: [`${rootId}-q-2`]
@@ -408,14 +412,14 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
       id: lesson.practiceQuestionIds[0],
       lessonId: lesson.id,
       type: 'short-answer',
-      prompt: `In your own words, what is the main idea behind ${topicTitle} in ${subjectName}?`,
-      expectedAnswer: topicTitle.toLowerCase(),
-      acceptedAnswers: [topicTitle, topicTitle.toLowerCase()],
-      rubric: `The answer should identify ${topicTitle} and explain the key idea clearly.`,
-      explanation: `A strong answer names ${topicTitle} and explains what it does or how it works in ${subjectName}.`,
+      prompt: `Explain how ${topicTitle} works in ${subjectName}. What is the key rule and why does it matter?`,
+      expectedAnswer: `explain how ${slugify(topicTitle)} works`,
+      acceptedAnswers: [],
+      rubric: `A strong answer names the key rule for ${topicTitle}, explains why it works, and does not just repeat the topic name. The learner should show understanding, not memorisation.`,
+      explanation: `Understanding ${topicTitle} means being able to say what the rule is, why it applies, and how to use it — not just naming the topic.`,
       hintLevels: [
-        `Name the idea first: ${topicTitle}.`,
-        `Then explain how it works in ${subjectName}.`
+        `Start by naming the main rule or pattern for ${topicTitle}.`,
+        `Then explain what that rule means in ${subjectName} and when you would use it.`
       ],
       misconceptionTags: [slugify(topicTitle), slugify(subjectName)],
       difficulty: 'foundation',
@@ -426,16 +430,16 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
       id: lesson.masteryQuestionIds[0],
       lessonId: lesson.id,
       type: 'step-by-step',
-      prompt: `Give one example of ${topicTitle} in ${subjectName} and explain why it fits.`,
-      expectedAnswer: topicTitle.toLowerCase(),
-      acceptedAnswers: [topicTitle, topicTitle.toLowerCase()],
-      rubric: `The answer should include an example and a brief explanation connected to ${topicTitle}.`,
-      explanation: `The learner should be able to produce or identify an example and justify it.`,
+      prompt: `Show how you would apply ${topicTitle} to solve a problem in ${subjectName}. Walk through your reasoning step by step.`,
+      expectedAnswer: `apply ${slugify(topicTitle)} step by step`,
+      acceptedAnswers: [],
+      rubric: `The answer should show at least two steps of reasoning connected to ${topicTitle}, not just a final answer. The learner must justify each step.`,
+      explanation: `Applying ${topicTitle} means showing the method, not just the result. Each step should be explained so the reasoning is visible.`,
       hintLevels: [
-        'Use one small example instead of a long one.',
-        `Point to the clue that shows ${topicTitle}.`
+        `Write down what ${topicTitle} is asking you to do first.`,
+        `Then apply the rule one step at a time and explain each move.`
       ],
-      misconceptionTags: [slugify(`${topicTitle}-example`)],
+      misconceptionTags: [slugify(`${topicTitle}-application`)],
       difficulty: 'core',
       topicId: lesson.topicId,
       subtopicId: lesson.subtopicId
@@ -443,26 +447,30 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
   ];
 }
 
-function buildQuestionReply(session: LessonSession, lesson: Lesson, message: string): LessonChatResponse {
-  const recap =
+function buildQuestionReply(session: LessonSession, lesson: Lesson, _message: string): LessonChatResponse {
+  const stageContent =
     session.currentStage === 'overview'
       ? lesson.overview.body
       : session.currentStage === 'concepts'
         ? lesson.deeperExplanation.body
         : session.currentStage === 'detail'
-          ? lesson.deeperExplanation.body
+          ? (lesson.detailedSteps ?? { body: lesson.deeperExplanation.body }).body
           : session.currentStage === 'examples'
             ? lesson.example.body
-            : 'we were checking how the idea works in practice';
+            : 'the check question where you explain the idea in your own words';
+
+  const topicName = lesson.title.replace(/^.*?:\s*/, '');
 
   const reply = [
-    `That question fits this topic, so let me answer it directly.`,
+    `Good question — let me clarify this within **${topicName}**.`,
     '',
-    `**Short answer:** ${message.replace(/\?+$/, '')} connects back to ${lesson.title.toLowerCase()} because the important move is to focus on the rule before the final answer.`,
+    `The key thing to hold onto here is the core rule for ${topicName}: ${lesson.deeperExplanation.body.split('.')[0]}.`,
+    '',
+    `If that is what you were asking about, that is the anchor to keep in mind. If your question was about something more specific, try phrasing it in your own words and I will work through it with you.`,
     '',
     '---',
     '',
-    `↩ **Back to where we were** — we were looking at ${recap.toLowerCase()}. Let's continue from there.`
+    `↩ **Back to the lesson** — we were working through: *${stageContent.split('\n')[0].replace(/\*\*/g, '')}*. Let's pick up from there.`
   ].join('\n');
 
   return {

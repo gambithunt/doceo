@@ -1,5 +1,5 @@
 import { createInitialState, normalizeAppState } from '$lib/data/platform';
-import type { AnalyticsEvent, AppState } from '$lib/types';
+import type { AnalyticsEvent, AppState, DoceoMeta, LessonSession } from '$lib/types';
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
 
 interface SnapshotRow {
@@ -120,6 +120,30 @@ export async function saveAppState(state: AppState): Promise<SaveStateResult> {
         updated_at: new Date().toISOString()
       }))
     );
+
+    // T6.3: persist individual messages to lesson_messages table
+    const allMessages = normalizedState.lessonSessions.flatMap((session) =>
+      session.messages
+        .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+        .map((msg) => ({
+          id: msg.id,
+          session_id: session.id,
+          profile_id: normalizedState.profile.id,
+          role: msg.role,
+          type: msg.type,
+          content: msg.content,
+          stage: msg.stage,
+          timestamp: msg.timestamp,
+          metadata_json: msg.metadata ?? null,
+          created_at: msg.timestamp
+        }))
+    );
+
+    if (allMessages.length > 0) {
+      await supabase
+        .from('lesson_messages')
+        .upsert(allMessages, { onConflict: 'id', ignoreDuplicates: true });
+    }
   } catch {
     // Optional table during migration.
   }
@@ -138,14 +162,15 @@ export async function saveAppState(state: AppState): Promise<SaveStateResult> {
     // Optional table during migration.
   }
 
-  await supabase.from('analytics_events').insert(
+  await supabase.from('analytics_events').upsert(
     normalizedState.analytics.slice(0, 10).map((event) => ({
       id: event.id,
       profile_id: normalizedState.profile.id,
       event_type: event.type,
       created_at: event.createdAt,
       detail: event.detail
-    }))
+    })),
+    { onConflict: 'id', ignoreDuplicates: true }
   );
 
   return {
@@ -171,6 +196,38 @@ export async function logAiInteraction(
     provider,
     request_payload: requestPayload,
     response_payload: response,
+    created_at: new Date().toISOString()
+  });
+}
+
+export async function logLessonSignal(
+  profileId: string,
+  session: LessonSession,
+  meta: DoceoMeta
+): Promise<void> {
+  const supabase = createServerSupabaseAdmin();
+
+  if (!supabase || !isSupabaseConfigured()) {
+    return;
+  }
+
+  await supabase.from('lesson_signals').insert({
+    profile_id: profileId,
+    lesson_session_id: session.id,
+    subject: session.subject,
+    topic_title: session.topicTitle,
+    confidence_assessment: meta.confidence_assessment,
+    action: meta.action,
+    reteach_style: meta.reteach_style ?? null,
+    struggled_with: meta.profile_update?.struggled_with ?? [],
+    excelled_at: meta.profile_update?.excelled_at ?? [],
+    step_by_step: meta.profile_update?.step_by_step ?? null,
+    analogies_preference: meta.profile_update?.analogies_preference ?? null,
+    visual_learner: meta.profile_update?.visual_learner ?? null,
+    real_world_examples: meta.profile_update?.real_world_examples ?? null,
+    abstract_thinking: meta.profile_update?.abstract_thinking ?? null,
+    needs_repetition: meta.profile_update?.needs_repetition ?? null,
+    quiz_performance: meta.profile_update?.quiz_performance ?? null,
     created_at: new Date().toISOString()
   });
 }

@@ -120,6 +120,7 @@ export interface Lesson {
   grade: string;
   overview: LessonSection;
   deeperExplanation: LessonSection;
+  detailedSteps?: LessonSection;
   example: LessonSection;
   practiceQuestionIds: string[];
   masteryQuestionIds: string[];

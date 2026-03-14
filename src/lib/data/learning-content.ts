@@ -26,6 +26,7 @@ interface LessonBlueprint {
   subtopicName: string;
   overview: LessonSection;
   deeperExplanation: LessonSection;
+  detailedSteps?: LessonSection;
   example: LessonSection;
   questions: QuestionBlueprint[];
 }
@@ -74,15 +75,19 @@ function createLessonBlueprints(subjectName: string): LessonBlueprint[] {
         subtopicName: 'Extending number sequences',
         overview: {
           title: 'Overview',
-          body: 'Number patterns help you predict what comes next by noticing a repeated rule.'
+          body: 'Number patterns help you predict what comes next by noticing a repeated rule. In this lesson we learn to identify the rule and use it to extend or describe a sequence.'
         },
         deeperExplanation: {
-          title: 'Deeper Explanation',
-          body: 'A pattern can increase, decrease, or repeat. The key is to state the rule and then apply it consistently.'
+          title: 'Key Concepts',
+          body: 'A number pattern can increase, decrease, or repeat. The difference between consecutive terms is called the common difference. Stating the rule first is more important than just writing the next number.'
+        },
+        detailedSteps: {
+          title: 'Step-by-Step',
+          body: '**Step 1.** Write out the sequence and look at the gap between each pair of consecutive terms.\n\n**Step 2.** Name the rule — for example, "add 4 each time" or "subtract 3 each time".\n\n**Step 3.** Apply the rule to find the next term: take the last number and add (or subtract) the common difference.\n\n**Step 4.** Check: apply the rule backwards to confirm the earlier terms still work.'
         },
         example: {
           title: 'Worked Example',
-          body: 'In 4, 8, 12, 16, the rule is add 4 each time. The next term is 20.'
+          body: '**Sequence:** 4, 8, 12, 16, ?\n\n**Step 1.** Gaps: 8−4=4, 12−8=4, 16−12=4. The common difference is 4.\n\n**Step 2.** Rule: add 4 each time.\n\n**Step 3.** Next term: 16 + 4 = **20**.\n\n**Step 4.** Check: 20 − 4 = 16 ✓'
         },
         questions: [
           {
@@ -115,15 +120,19 @@ function createLessonBlueprints(subjectName: string): LessonBlueprint[] {
         subtopicName: 'Keeping equations balanced',
         overview: {
           title: 'Overview',
-          body: 'An equation stays true when you do the same thing to both sides.'
+          body: 'An equation stays true when you do the same thing to both sides. In this lesson we learn to isolate the variable using inverse operations.'
         },
         deeperExplanation: {
-          title: 'Deeper Explanation',
-          body: 'Use inverse operations to isolate the variable while keeping the equation balanced.'
+          title: 'Key Concepts',
+          body: 'An equation is a balance. Whatever you do to one side you must do to the other. Use the inverse operation to undo what is being done to the variable: addition undoes subtraction, multiplication undoes division.'
+        },
+        detailedSteps: {
+          title: 'Step-by-Step',
+          body: '**Step 1.** Identify the variable and what is being done to it.\n\n**Step 2.** Choose the inverse operation (if the equation adds, subtract; if it multiplies, divide).\n\n**Step 3.** Apply the inverse operation to both sides of the equation.\n\n**Step 4.** Write the solution: variable = value.\n\n**Step 5.** Substitute your answer back into the original equation to verify both sides are equal.'
         },
         example: {
           title: 'Worked Example',
-          body: 'If x + 4 = 11, subtract 4 from both sides. Then x = 7.'
+          body: '**Equation:** x + 4 = 11\n\n**Step 1.** The variable is x. It has 4 added to it.\n\n**Step 2.** Inverse of +4 is −4.\n\n**Step 3.** Subtract 4 from both sides: x + 4 − 4 = 11 − 4\n\n**Step 4.** x = 7\n\n**Step 5.** Check: 7 + 4 = 11 ✓'
         },
         questions: [
           {
@@ -761,6 +770,7 @@ export function buildLearningProgram(
         grade,
         overview: blueprint.overview,
         deeperExplanation: blueprint.deeperExplanation,
+        detailedSteps: blueprint.detailedSteps,
         example: blueprint.example,
         practiceQuestionIds: lessonQuestions.map((question) => question.id),
         masteryQuestionIds: lessonQuestions.map((question) => question.id)

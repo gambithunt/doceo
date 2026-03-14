@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { z } from 'zod';
 import {
   buildFallbackLessonChatResponse,
   createLessonChatBody,
@@ -6,32 +7,29 @@ import {
 } from '$lib/ai/lesson-chat';
 import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
 import { serverEnv } from '$lib/server/env';
-import { logAiInteraction } from '$lib/server/state-repository';
+import { logAiInteraction, logLessonSignal } from '$lib/server/state-repository';
 import { getSupabaseAnonKey, getSupabaseFunctionsUrl } from '$lib/server/supabase';
 import type { LessonChatRequest, LessonChatResponse } from '$lib/types';
 
-interface LessonChatBody {
-  student: LessonChatRequest['student'];
-  learnerProfile: LessonChatRequest['learnerProfile'];
-  lessonSession: LessonChatRequest['lessonSession'];
-  message: string;
-  messageType: LessonChatRequest['messageType'];
-}
-
-function isValidLessonChatBody(value: unknown): value is LessonChatBody {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const payload = value as Partial<LessonChatBody>;
-  return Boolean(
-    payload.student &&
-      payload.learnerProfile &&
-      payload.lessonSession &&
-      typeof payload.message === 'string' &&
-      (payload.messageType === 'question' || payload.messageType === 'response')
-  );
-}
+const LessonChatBodySchema = z.object({
+  student: z.object({
+    id: z.string(),
+    fullName: z.string(),
+    grade: z.string(),
+    curriculum: z.string(),
+    country: z.string(),
+    term: z.string(),
+    schoolYear: z.string()
+  }).passthrough(),
+  learnerProfile: z.object({ studentId: z.string() }).passthrough(),
+  lessonSession: z.object({
+    id: z.string(),
+    currentStage: z.string(),
+    lessonPlan: z.record(z.unknown()).optional()
+  }).passthrough(),
+  message: z.string().min(1),
+  messageType: z.enum(['question', 'response'])
+});
 
 function hasGithubModelsConfig(): boolean {
   return (
@@ -44,10 +42,14 @@ function hasGithubModelsConfig(): boolean {
 
 export async function POST({ request, fetch }) {
   const raw = await request.json();
-  if (!isValidLessonChatBody(raw)) {
-    return json({ displayContent: 'Invalid lesson request.', metadata: null, provider: 'local-fallback', error: 'Invalid request body' }, { status: 400 });
+  const parsed = LessonChatBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return json(
+      { displayContent: 'Invalid lesson request.', metadata: null, provider: 'local-fallback', error: parsed.error.message },
+      { status: 400 }
+    );
   }
-  const payload = raw as LessonChatBody;
+  const payload = parsed.data as unknown as LessonChatRequest;
   const lesson =
     payload.lessonSession.lessonPlan ??
     buildDynamicLessonFromTopic({
@@ -58,13 +60,7 @@ export async function POST({ request, fetch }) {
       topicDescription: payload.lessonSession.topicDescription,
       curriculumReference: payload.lessonSession.curriculumReference
     });
-  const requestPayload: LessonChatRequest = {
-    student: payload.student,
-    learnerProfile: payload.learnerProfile,
-    lessonSession: payload.lessonSession,
-    message: payload.message,
-    messageType: payload.messageType
-  };
+  const requestPayload: LessonChatRequest = payload;
   const functionsUrl = getSupabaseFunctionsUrl();
   const anonKey = getSupabaseAnonKey();
 
@@ -116,12 +112,12 @@ export async function POST({ request, fetch }) {
     (await response.json()) as import('$lib/ai/lesson-chat').GithubModelsSuccessResponse;
   const parsed = parseLessonChatResponse(responsePayload) ?? buildFallbackLessonChatResponse(requestPayload, lesson);
 
-  await logAiInteraction(
-    payload.student.id,
-    JSON.stringify(requestPayload),
-    JSON.stringify(parsed),
-    parsed.provider
-  );
+  await Promise.all([
+    logAiInteraction(payload.student.id, JSON.stringify(requestPayload), JSON.stringify(parsed), parsed.provider),
+    parsed.metadata
+      ? logLessonSignal(payload.student.id, payload.lessonSession, parsed.metadata)
+      : Promise.resolve()
+  ]);
 
   return json(parsed);
 }

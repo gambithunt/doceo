@@ -7,6 +7,7 @@ import {
   onboardingCountries
 } from '$lib/data/onboarding';
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
+import { deduplicateSubjects } from '$lib/utils/strings';
 import type {
   CountryOption,
   CurriculumOption,
@@ -99,9 +100,6 @@ export interface StoredOnboardingProgress {
   };
 }
 
-function deduplicateSubjects(subjects: string[]): string[] {
-  return Array.from(new Set(subjects.map((subject) => subject.trim()).filter((subject) => subject.length > 0)));
-}
 
 function mapCurriculum(row: CurriculumRow): CurriculumOption {
   return {

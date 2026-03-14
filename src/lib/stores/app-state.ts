@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { writable } from 'svelte/store';
+import { deduplicateSubjects } from '$lib/utils/strings';
 import { buildFallbackLessonChatResponse } from '$lib/ai/lesson-chat';
 import { getSelectionMode } from '$lib/data/onboarding';
 import {
@@ -140,10 +141,6 @@ function createAnalyticsEvent(type: AnalyticsEvent['type'], detail: string): Ana
   };
 }
 
-function deduplicateSubjects(subjects: string[]): string[] {
-  return Array.from(new Set(subjects.map((subject) => subject.trim()).filter((subject) => subject.length > 0)));
-}
-
 async function fetchOptions<TOption>(query: string): Promise<TOption[]> {
   const response = await fetch(`/api/onboarding/options?${query}`);
   const payload = (await response.json()) as OptionsResponse<TOption>;
@@ -202,6 +199,7 @@ function buildTopicOptions(state: AppState, subjectId: string) {
 function createAppStore() {
   const { subscribe, update, set } = writable<AppState>(readState());
   let hasInitializedRemoteState = false;
+  let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function syncState(next: AppState): Promise<void> {
     if (!browser) {
@@ -252,7 +250,8 @@ function createAppStore() {
   function persistAndSync(next: AppState): AppState {
     const derived = deriveLearningState(next);
     persistState(derived);
-    void syncState(derived);
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => void syncState(derived), 2500);
     return derived;
   }
 
@@ -1043,98 +1042,89 @@ function createAppStore() {
         });
       }),
     signUp: async (fullName: string, email: string, password: string) => {
-      const [firstName, ...rest] = fullName.trim().split(/\s+/);
-      const metadata = {
-        full_name: fullName,
-        first_name: firstName,
-        last_name: rest.join(' ')
-      };
+      update((state) => ({ ...state, auth: { status: 'loading', error: null } }));
 
-      if (browser) {
-        try {
-          await supabase?.auth.signUp({
-            email,
-            password,
-            options: {
-              data: metadata
-            }
-          });
-        } catch {
-          // Local demo mode still allows onboarding without configured auth.
+      if (browser && supabase) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: fullName } }
+        });
+
+        if (error) {
+          update((state) => ({ ...state, auth: { status: 'signed_out', error: error.message } }));
+          return;
         }
+
+        const userId = data.user?.id ?? `demo-${crypto.randomUUID()}`;
+        update((state) =>
+          persistAndSync({
+            ...state,
+            auth: { status: 'signed_in', error: null },
+            profile: { ...state.profile, id: userId, fullName, email },
+            learnerProfile: { ...state.learnerProfile, studentId: userId },
+            ui: { ...state.ui, currentScreen: 'onboarding' }
+          })
+        );
+        return;
       }
 
+      // Local demo mode — no Supabase configured
       update((state) =>
         persistAndSync({
           ...state,
-          auth: {
-            status: 'signed_in',
-            error: null
-          },
-          profile: {
-            ...state.profile,
-            fullName,
-            email
-          },
-          ui: {
-            ...state.ui,
-            currentScreen: 'onboarding'
-          }
+          auth: { status: 'signed_in', error: null },
+          profile: { ...state.profile, fullName, email },
+          ui: { ...state.ui, currentScreen: 'onboarding' }
         })
       );
     },
     signIn: async (email: string, password: string) => {
-      if (browser) {
-        try {
-          await supabase?.auth.signInWithPassword({
-            email,
-            password
-          });
-        } catch {
-          // Local demo mode fallback.
+      update((state) => ({ ...state, auth: { status: 'loading', error: null } }));
+
+      if (browser && supabase) {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+        if (error) {
+          update((state) => ({ ...state, auth: { status: 'signed_out', error: error.message } }));
+          return;
         }
+
+        const userId = data.user?.id ?? readState().profile.id;
+        hasInitializedRemoteState = false;
+        await initializeRemoteState();
+        update((current) =>
+          persistAndSync({
+            ...current,
+            auth: { status: 'signed_in', error: null },
+            profile: { ...current.profile, id: userId, email },
+            learnerProfile: { ...current.learnerProfile, studentId: userId },
+            ui: { ...current.ui, currentScreen: current.onboarding.completed ? 'dashboard' : 'onboarding' }
+          })
+        );
+        return;
       }
 
+      // Local demo mode
       update((state) =>
         persistAndSync({
           ...state,
-          auth: {
-            status: 'signed_in',
-            error: null
-          },
-          profile: {
-            ...state.profile,
-            email
-          },
-          ui: {
-            ...state.ui,
-            currentScreen: state.onboarding.completed ? 'dashboard' : 'onboarding'
-          }
+          auth: { status: 'signed_in', error: null },
+          profile: { ...state.profile, email },
+          ui: { ...state.ui, currentScreen: state.onboarding.completed ? 'dashboard' : 'onboarding' }
         })
       );
     },
     signOut: async () => {
-      if (browser) {
-        try {
-          await supabase?.auth.signOut();
-        } catch {
-          // Ignore sign-out issues in local demo mode.
-        }
+      if (browser && supabase) {
+        await supabase.auth.signOut().catch(() => undefined);
       }
 
-      update((state) =>
-        persistAndSync({
-          ...state,
-          auth: {
-            status: 'signed_out',
-            error: null
-          },
-          ui: {
-            ...state.ui,
-            currentScreen: 'landing'
-          }
-        })
-      );
+      if (browser) {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+
+      set(createInitialState());
       await goto('/');
     },
     selectOnboardingCountry: async (countryId: string) => {

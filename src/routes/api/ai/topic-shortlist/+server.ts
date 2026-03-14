@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { z } from 'zod';
 import {
   buildFallbackTopicShortlist,
   createTopicShortlistBody,
@@ -6,24 +7,22 @@ import {
 } from '$lib/ai/topic-shortlist';
 import { serverEnv } from '$lib/server/env';
 import { getSupabaseAnonKey, getSupabaseFunctionsUrl } from '$lib/server/supabase';
-import type { TopicShortlistRequest } from '$lib/types';
 
-interface TopicShortlistBody {
-  request: TopicShortlistRequest;
-}
-
-function isValidTopicShortlistBody(value: unknown): value is TopicShortlistBody {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const payload = value as Partial<TopicShortlistBody>;
-  return Boolean(
-    payload.request &&
-      typeof payload.request.studentInput === 'string' &&
-      Array.isArray(payload.request.availableTopics)
-  );
-}
+const TopicShortlistBodySchema = z.object({
+  request: z.object({
+    studentId: z.string(),
+    studentName: z.string(),
+    studentInput: z.string().min(1),
+    availableTopics: z.array(z.object({
+      topicId: z.string(),
+      topicName: z.string(),
+      subtopicId: z.string(),
+      subtopicName: z.string(),
+      lessonId: z.string(),
+      lessonTitle: z.string()
+    }))
+  }).passthrough()
+});
 
 function hasGithubModelsConfig(): boolean {
   return (
@@ -36,20 +35,14 @@ function hasGithubModelsConfig(): boolean {
 
 export async function POST({ request, fetch }) {
   const raw = await request.json();
-  if (!isValidTopicShortlistBody(raw)) {
+  const parsed = TopicShortlistBodySchema.safeParse(raw);
+  if (!parsed.success) {
     return json(
-      {
-        response: {
-          matchedSection: 'General foundations',
-          subtopics: []
-        },
-        provider: 'local-fallback',
-        error: 'Invalid request body'
-      },
+      { response: { matchedSection: 'General foundations', subtopics: [] }, provider: 'local-fallback', error: parsed.error.message },
       { status: 400 }
     );
   }
-  const payload = raw as TopicShortlistBody;
+  const payload = parsed.data;
   const functionsUrl = getSupabaseFunctionsUrl();
   const anonKey = getSupabaseAnonKey();
 

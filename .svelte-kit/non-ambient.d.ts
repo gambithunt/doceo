@@ -51,7 +51,7 @@ declare module "$app/types" {
 			"/api/state/bootstrap": Record<string, never>;
 			"/api/state/sync": Record<string, never>
 		};
-		Pathname(): "/" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum/program" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state/bootstrap" | "/api/state/sync";
+		Pathname(): "/" | "/api/ai/lesson-chat" | "/api/ai/lesson-chat/" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/topic-shortlist" | "/api/ai/topic-shortlist/" | "/api/ai/tutor" | "/api/curriculum/program" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state/bootstrap" | "/api/state/sync";
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

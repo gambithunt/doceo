@@ -11,6 +11,7 @@
   import StudentNav from '$lib/components/StudentNav.svelte';
   import SubjectView from '$lib/components/SubjectView.svelte';
   import { createInitialState } from '$lib/data/platform';
+  import { supabase } from '$lib/supabase';
   import { appState } from '$lib/stores/app-state';
   import type { AppState } from '$lib/types';
 
@@ -25,6 +26,24 @@
 
   onMount(() => {
     void appState.initializeRemoteState();
+
+    // T2.2: Subscribe to Supabase auth state changes so sessions persist across reloads.
+    if (supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          void appState.initializeRemoteState();
+        } else if (event === 'SIGNED_OUT') {
+          void appState.signOut();
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+        unsubscribe();
+      };
+    }
+
+    return () => unsubscribe();
   });
 
   onDestroy(() => {

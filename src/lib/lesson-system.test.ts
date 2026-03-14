@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyLessonAssistantResponse,
   buildDynamicLessonFromTopic,
+  buildDynamicQuestionsForLesson,
+  buildLocalLessonChatResponse,
   calculateNextRevisionInterval,
   classifyLessonMessage,
   createDefaultLearnerProfile,
@@ -112,5 +114,94 @@ describe('lesson-system', () => {
     expect(lesson.overview.body.toLowerCase()).toContain('verbs');
     expect(lesson.deeperExplanation.body.toLowerCase()).toContain('verbs');
     expect(lesson.example.body.toLowerCase()).toContain('verbs');
+  });
+
+  // T1.2: detailedSteps is distinct from deeperExplanation
+  it('detail stage has content distinct from concepts stage', () => {
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 6',
+      topicTitle: 'Fractions',
+      topicDescription: 'Adding and subtracting fractions with unlike denominators.',
+      curriculumReference: 'CAPS · Grade 6 · Mathematics'
+    });
+
+    expect(lesson.detailedSteps).toBeDefined();
+    expect(lesson.detailedSteps.body).not.toBe(lesson.deeperExplanation.body);
+    expect(lesson.detailedSteps.body.toLowerCase()).toContain('fractions');
+  });
+
+  // T1.3: fallback question reply must not echo student message
+  it('fallback question reply does not echo the student message text', () => {
+    const state = createInitialState();
+    const lessonSession = state.lessonSessions[0];
+    const lesson = lessonSession.lessonPlan;
+    const studentMessage = 'What is the difference between a numerator and a denominator?';
+
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lessonSession,
+        message: studentMessage,
+        messageType: 'question'
+      },
+      lesson
+    );
+
+    expect(result.displayContent).not.toContain('What is the difference between a numerator');
+    expect(result.displayContent).not.toContain('numerator and a denominator');
+    expect(result.displayContent.length).toBeGreaterThan(20);
+  });
+
+  // T1.4: check question requires explanation, not just topic name recall
+  it('check question asks for explanation or application, not topic name recall', () => {
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 6',
+      topicTitle: 'Fractions',
+      topicDescription: 'Adding and subtracting fractions.',
+      curriculumReference: 'CAPS · Grade 6 · Mathematics'
+    });
+    const questions = buildDynamicQuestionsForLesson(lesson, 'Mathematics', 'Fractions');
+    const checkQuestion = questions[0];
+
+    // The prompt must not be answerable by just saying the topic name
+    expect(checkQuestion.expectedAnswer.toLowerCase()).not.toBe('fractions');
+    // Must ask for understanding (explain/apply/show/describe)
+    const promptLower = checkQuestion.prompt.toLowerCase();
+    const asksForUnderstanding =
+      promptLower.includes('explain') ||
+      promptLower.includes('show') ||
+      promptLower.includes('apply') ||
+      promptLower.includes('describe') ||
+      promptLower.includes('how') ||
+      promptLower.includes('why') ||
+      promptLower.includes('example');
+    expect(asksForUnderstanding).toBe(true);
+  });
+
+  // T3.5: AI message history is capped at 20
+  it('capped learner profile lists at max 25 entries', () => {
+    let profile = createDefaultLearnerProfile('student-1');
+
+    for (let i = 0; i < 30; i++) {
+      profile = updateLearnerProfile(profile, { struggled_with: [`concept-${i}`] });
+    }
+
+    expect(profile.concepts_struggled_with.length).toBeLessThanOrEqual(25);
+  });
+
+  // T3.6: excelled_at list is capped
+  it('capped excelled_at list at max 25 entries', () => {
+    let profile = createDefaultLearnerProfile('student-1');
+
+    for (let i = 0; i < 30; i++) {
+      profile = updateLearnerProfile(profile, { excelled_at: [`concept-${i}`] });
+    }
+
+    expect(profile.concepts_excelled_at.length).toBeLessThanOrEqual(25);
   });
 });
