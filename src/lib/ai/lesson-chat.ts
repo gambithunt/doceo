@@ -148,6 +148,7 @@ Rules:
     buildLearnerInstructions(request.learnerProfile),
     ``,
     `--- INSTRUCTIONS ---`,
+    `Always speak directly to ${request.student.fullName} using "you" and "your" — never "students", "learners", "they", or "their". Use their name naturally once or twice per response, especially when encouraging or redirecting.`,
     `Teach only the chosen topic. Do not substitute a different topic.`,
     `When the student asks a question, answer it within the topic and always return to the lesson.`,
     `Use markdown for readability. Short sentences. Explicit reasoning.`,

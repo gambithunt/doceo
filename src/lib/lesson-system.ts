@@ -386,7 +386,7 @@ export function buildDynamicLessonFromTopic(input: {
     title: `${input.subjectName}: ${topicTitle}`,
     overview: {
       title: 'Overview',
-      body: `In this lesson we are studying **${topicTitle}** in ${input.subjectName} (${input.grade}). ${input.topicDescription} By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to an example.`
+      body: `In this lesson you're studying **${topicTitle}** — a key topic in ${input.subjectName} (${input.grade}). By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to an example.`
     },
     deeperExplanation: {
       title: 'Key Concepts',
