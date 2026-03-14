@@ -128,21 +128,22 @@ describe('lesson-system', () => {
     });
 
     expect(lesson.detailedSteps).toBeDefined();
-    expect(lesson.detailedSteps.body).not.toBe(lesson.deeperExplanation.body);
-    expect(lesson.detailedSteps.body.toLowerCase()).toContain('fractions');
+    expect(lesson.detailedSteps!.body).not.toBe(lesson.deeperExplanation.body);
+    expect(lesson.detailedSteps!.body.toLowerCase()).toContain('fractions');
   });
 
   // T1.3: fallback question reply must not echo student message
   it('fallback question reply does not echo the student message text', () => {
     const state = createInitialState();
     const lessonSession = state.lessonSessions[0];
-    const lesson = lessonSession.lessonPlan;
+    const lesson = state.lessons.find((l) => l.id === lessonSession.lessonId) ?? state.lessons[0];
     const studentMessage = 'What is the difference between a numerator and a denominator?';
 
     const result = buildLocalLessonChatResponse(
       {
         student: state.profile,
         learnerProfile: state.learnerProfile,
+        lesson,
         lessonSession,
         message: studentMessage,
         messageType: 'question'
@@ -203,5 +204,20 @@ describe('lesson-system', () => {
     }
 
     expect(profile.concepts_excelled_at.length).toBeLessThanOrEqual(25);
+  });
+
+  // T3.3a: LessonSession must not embed the full lesson plan object (no structural duplication)
+  it('serialised LessonSession does not contain a lessonPlan JSON key', () => {
+    const state = createInitialState();
+    // Simulate 10 sessions for the same lesson
+    const sessions = Array.from({ length: 10 }, (_, i) => ({
+      ...state.lessonSessions[0],
+      id: `session-${i}`
+    }));
+    const testState = { ...state, lessonSessions: sessions };
+    const serialized = JSON.stringify(testState);
+    // "lessonPlan" must not appear as a key inside any session object
+    // (it may still be in state.lessons but not embedded per-session)
+    expect(serialized).not.toContain('"lessonPlan"');
   });
 });

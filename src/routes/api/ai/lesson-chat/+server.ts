@@ -22,10 +22,10 @@ const LessonChatBodySchema = z.object({
     schoolYear: z.string()
   }).passthrough(),
   learnerProfile: z.object({ studentId: z.string() }).passthrough(),
+  lesson: z.record(z.string(), z.unknown()).optional(),
   lessonSession: z.object({
     id: z.string(),
-    currentStage: z.string(),
-    lessonPlan: z.record(z.unknown()).optional()
+    currentStage: z.string()
   }).passthrough(),
   message: z.string().min(1),
   messageType: z.enum(['question', 'response'])
@@ -51,7 +51,7 @@ export async function POST({ request, fetch }) {
   }
   const payload = parsed.data as unknown as LessonChatRequest;
   const lesson =
-    payload.lessonSession.lessonPlan ??
+    payload.lesson ??
     buildDynamicLessonFromTopic({
       subjectId: payload.lessonSession.subjectId,
       subjectName: payload.lessonSession.subject,
@@ -60,7 +60,7 @@ export async function POST({ request, fetch }) {
       topicDescription: payload.lessonSession.topicDescription,
       curriculumReference: payload.lessonSession.curriculumReference
     });
-  const requestPayload: LessonChatRequest = payload;
+  const requestPayload: LessonChatRequest = { ...payload, lesson };
   const functionsUrl = getSupabaseFunctionsUrl();
   const anonKey = getSupabaseAnonKey();
 
@@ -110,14 +110,14 @@ export async function POST({ request, fetch }) {
 
   const responsePayload =
     (await response.json()) as import('$lib/ai/lesson-chat').GithubModelsSuccessResponse;
-  const parsed = parseLessonChatResponse(responsePayload) ?? buildFallbackLessonChatResponse(requestPayload, lesson);
+  const chatResponse = parseLessonChatResponse(responsePayload) ?? buildFallbackLessonChatResponse(requestPayload, lesson);
 
   await Promise.all([
-    logAiInteraction(payload.student.id, JSON.stringify(requestPayload), JSON.stringify(parsed), parsed.provider),
-    parsed.metadata
-      ? logLessonSignal(payload.student.id, payload.lessonSession, parsed.metadata)
+    logAiInteraction(payload.student.id, JSON.stringify(requestPayload), JSON.stringify(chatResponse), chatResponse.provider),
+    chatResponse.metadata
+      ? logLessonSignal(payload.student.id, payload.lessonSession, chatResponse.metadata)
       : Promise.resolve()
   ]);
 
-  return json(parsed);
+  return json(chatResponse);
 }

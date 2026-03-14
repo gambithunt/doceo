@@ -1,5 +1,6 @@
 import { createInitialState, normalizeAppState } from '$lib/data/platform';
 import type { AnalyticsEvent, AppState, DoceoMeta, LessonSession } from '$lib/types';
+import type { LessonSignalRow } from '$lib/ai/adaptive-signals';
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
 
 interface SnapshotRow {
@@ -48,6 +49,41 @@ export async function loadAppState(profileId: string): Promise<AppState> {
     return createInitialState();
   }
 
+  // T6.2: Reconstruct from normalized tables. Fall back to snapshot blob if tables are empty.
+  const [sessionsResult, learnerProfileResult, revisionResult] = await Promise.all([
+    supabase
+      .from('lesson_sessions')
+      .select('session_json')
+      .eq('profile_id', profileId)
+      .order('last_active_at', { ascending: false })
+      .limit(50),
+    supabase
+      .from('learner_profiles')
+      .select('profile_json')
+      .eq('student_id', profileId)
+      .maybeSingle<{ profile_json: AppState['learnerProfile'] }>(),
+    supabase
+      .from('revision_topics')
+      .select('topic_json')
+      .eq('profile_id', profileId)
+  ]);
+
+  const sessionRows = (sessionsResult.data ?? []) as Array<{ session_json: LessonSession }>;
+
+  if (sessionRows.length > 0) {
+    const base = createInitialState();
+    return normalizeAppState({
+      ...base,
+      profile: { ...base.profile, id: profileId },
+      learnerProfile: learnerProfileResult.data?.profile_json ?? base.learnerProfile,
+      lessonSessions: sessionRows.map((row) => row.session_json),
+      revisionTopics: (revisionResult.data ?? []).map(
+        (row: { topic_json: AppState['revisionTopics'][number] }) => row.topic_json
+      )
+    });
+  }
+
+  // Fallback: read full snapshot blob (T6.2b — keep as backup)
   const { data } = await supabase
     .from('app_state_snapshots')
     .select('state_json, updated_at')
@@ -230,6 +266,25 @@ export async function logLessonSignal(
     quiz_performance: meta.profile_update?.quiz_performance ?? null,
     created_at: new Date().toISOString()
   });
+}
+
+export async function loadSignalsForProfile(profileId: string): Promise<LessonSignalRow[]> {
+  const supabase = createServerSupabaseAdmin();
+
+  if (!supabase || !isSupabaseConfigured()) {
+    return [];
+  }
+
+  const { data } = await supabase
+    .from('lesson_signals')
+    .select(
+      'confidence_assessment, action, reteach_style, struggled_with, excelled_at, step_by_step, analogies_preference, visual_learner, real_world_examples, abstract_thinking, needs_repetition, quiz_performance, created_at'
+    )
+    .eq('profile_id', profileId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  return (data ?? []) as LessonSignalRow[];
 }
 
 export function createBackendAnalyticsEvent(detail: string): AnalyticsEvent {

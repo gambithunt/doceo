@@ -12,6 +12,12 @@ const TopicShortlistBodySchema = z.object({
   request: z.object({
     studentId: z.string(),
     studentName: z.string(),
+    country: z.string(),
+    curriculum: z.string(),
+    grade: z.string(),
+    subject: z.string(),
+    term: z.string(),
+    year: z.string(),
     studentInput: z.string().min(1),
     availableTopics: z.array(z.object({
       topicId: z.string(),
@@ -21,7 +27,7 @@ const TopicShortlistBodySchema = z.object({
       lessonId: z.string(),
       lessonTitle: z.string()
     }))
-  }).passthrough()
+  })
 });
 
 function hasGithubModelsConfig(): boolean {
@@ -99,12 +105,12 @@ export async function POST({ request, fetch }) {
 
   const responsePayload =
     (await response.json()) as import('$lib/ai/topic-shortlist').GithubModelsSuccessResponse;
-  const parsed =
+  const shortlistResponse =
     parseTopicShortlistResponse(responsePayload) ??
     buildFallbackTopicShortlist(payload.request);
 
   return json({
-    response: parsed,
+    response: shortlistResponse,
     provider: 'github-models'
   });
 }

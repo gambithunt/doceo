@@ -33,6 +33,28 @@ export function createServerSupabaseAdmin() {
   );
 }
 
+/**
+ * Creates a Supabase client scoped to the authenticated user from the request's
+ * Authorization header. Use this in server routes to enforce RLS.
+ */
+export function createServerSupabaseFromRequest(request: Request) {
+  if (!hasConfiguredPublicSupabase()) {
+    return null;
+  }
+
+  const authHeader = request.headers.get('Authorization');
+
+  return createClient(serverEnv.supabaseUrl, serverEnv.supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    },
+    global: {
+      headers: authHeader ? { Authorization: authHeader } : {}
+    }
+  });
+}
+
 export function getSupabaseFunctionsUrl(): string | null {
   if (!hasConfiguredPublicSupabase()) {
     return null;

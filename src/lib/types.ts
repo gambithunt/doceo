@@ -185,20 +185,6 @@ export interface AnalyticsEvent {
   detail: string;
 }
 
-export interface StudySession {
-  id: string;
-  mode: LearningMode;
-  lessonId?: string;
-  subjectId?: string;
-  subjectName: string;
-  sectionName: string;
-  lessonTitle: string;
-  startedAt: string;
-  updatedAt: string;
-  resumeLabel: string;
-  archivedAt?: string | null;
-}
-
 export interface AskQuestionRequest {
   question: string;
   topic: string;
@@ -339,7 +325,6 @@ export interface LessonSession {
   curriculumReference: string;
   matchedSection: string;
   lessonId: string;
-  lessonPlan: Lesson;
   currentStage: LessonStage;
   stagesCompleted: LessonStage[];
   messages: LessonMessage[];
@@ -358,6 +343,7 @@ export interface LessonSession {
 export interface LessonChatRequest {
   student: UserProfile;
   learnerProfile: LearnerProfile;
+  lesson: Lesson;
   lessonSession: LessonSession;
   message: string;
   messageType: 'question' | 'response';
@@ -448,7 +434,6 @@ export interface AppState {
   lessons: Lesson[];
   questions: Question[];
   progress: Record<string, LessonProgress>;
-  sessions: StudySession[];
   lessonSessions: LessonSession[];
   revisionTopics: RevisionTopic[];
   analytics: AnalyticsEvent[];

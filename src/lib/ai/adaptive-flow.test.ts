@@ -6,27 +6,33 @@ import { buildFallbackTopicShortlist } from '$lib/ai/topic-shortlist';
 describe('adaptive flow helpers', () => {
   it('builds a lesson system prompt with student, lesson, and learner profile context', () => {
     const state = createInitialState();
+    const session = state.lessonSessions[0];
+    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
     const prompt = buildSystemPrompt({
       student: state.profile,
       learnerProfile: state.learnerProfile,
-      lessonSession: state.lessonSessions[0],
+      lesson,
+      lessonSession: session,
       message: 'I understand.',
       messageType: 'response'
     });
 
     expect(prompt).toContain(`Name: ${state.profile.fullName}`);
-    expect(prompt).toContain(`Topic: ${state.lessonSessions[0].topicTitle}`);
+    expect(prompt).toContain(`Topic: ${session.topicTitle}`);
     expect(prompt).toContain('Learner Profile:');
-    expect(prompt).toContain(`Current Stage: ${state.lessonSessions[0].currentStage}`);
+    expect(prompt).toContain(`Current Stage: ${session.currentStage}`);
   });
 
   // T1.5: system prompt must include DOCEO_META schema with all required fields
   it('system prompt includes DOCEO_META JSON schema with all required fields', () => {
     const state = createInitialState();
+    const session = state.lessonSessions[0];
+    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
     const prompt = buildSystemPrompt({
       student: state.profile,
       learnerProfile: state.learnerProfile,
-      lessonSession: state.lessonSessions[0],
+      lesson,
+      lessonSession: session,
       message: 'I understand.',
       messageType: 'response'
     });
@@ -48,6 +54,8 @@ describe('adaptive flow helpers', () => {
   // T4.2: system prompt uses human-readable teaching instructions, not raw JSON dump
   it('system prompt uses readable teaching instructions for strong learner signals', () => {
     const state = createInitialState();
+    const session = state.lessonSessions[0];
+    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
     // Give the learner a strong step-by-step preference
     const learnerProfile = {
       ...state.learnerProfile,
@@ -58,7 +66,8 @@ describe('adaptive flow helpers', () => {
     const prompt = buildSystemPrompt({
       student: state.profile,
       learnerProfile,
-      lessonSession: state.lessonSessions[0],
+      lesson,
+      lessonSession: session,
       message: 'I understand.',
       messageType: 'response'
     });

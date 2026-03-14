@@ -26,15 +26,15 @@ function getLastMessageType(lessonSession: LessonChatRequest['lessonSession']): 
 
 function getCurrentStageContent(request: LessonChatRequest): string {
   if (request.lessonSession.currentStage === 'overview') {
-    return request.lessonSession.lessonPlan.overview.body;
+    return request.lesson.overview.body;
   }
 
   if (request.lessonSession.currentStage === 'concepts' || request.lessonSession.currentStage === 'detail') {
-    return request.lessonSession.lessonPlan.deeperExplanation.body;
+    return request.lesson.deeperExplanation.body;
   }
 
   if (request.lessonSession.currentStage === 'examples') {
-    return request.lessonSession.lessonPlan.example.body;
+    return request.lesson.example.body;
   }
 
   return 'Ask the learner to explain the idea in their own words and apply it to a small example.';
@@ -78,7 +78,7 @@ function buildLearnerInstructions(profile: LessonChatRequest['learnerProfile']):
 }
 
 export function buildSystemPrompt(request: LessonChatRequest): string {
-  const lessonPlan = request.lessonSession.lessonPlan;
+  const lessonPlan = request.lesson;
   const detailedStepsBody = lessonPlan?.detailedSteps?.body ?? lessonPlan?.deeperExplanation?.body ?? '';
 
   const doceoMetaSchema = `After every response, end with this exact block (replace values appropriately):
@@ -106,7 +106,7 @@ export function buildSystemPrompt(request: LessonChatRequest): string {
 DOCEO_META -->
 
 Rules:
-- Set "action" to "advance" when the learner clearly understands the current stage.
+- Set "action" to "advance" when the learner clearly understands the current stage. When advancing, write only a brief 1–2 sentence acknowledgment. Do NOT include or summarise the next stage content — the system loads it automatically.
 - Set "action" to "reteach" when the learner is confused or stuck.
 - Set "action" to "side_thread" when the learner asks an off-topic question.
 - Set "action" to "complete" only when the final check stage is done with confidence >= 0.7.

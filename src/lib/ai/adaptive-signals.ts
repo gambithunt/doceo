@@ -1,4 +1,4 @@
-import type { LearnerProfileUpdate } from '$lib/types';
+import type { LearnerProfile, LearnerProfileUpdate } from '$lib/types';
 
 interface LessonSignalRow {
   confidence_assessment: number;
@@ -97,6 +97,46 @@ export function buildLearnerProfileFromSignals(signals: LessonSignalRow[]): Lear
   }
 
   return update;
+}
+
+/**
+ * Merges a LearnerProfileUpdate (from buildLearnerProfileFromSignals) into an
+ * existing LearnerProfile. Numeric signal fields are overwritten; concept lists
+ * are merged and capped at 25.
+ */
+export function applySignalProfileUpdate(profile: LearnerProfile, update: LearnerProfileUpdate): LearnerProfile {
+  const signalKeys = [
+    'step_by_step',
+    'analogies_preference',
+    'visual_learner',
+    'real_world_examples',
+    'abstract_thinking',
+    'needs_repetition',
+    'quiz_performance'
+  ] as const;
+
+  const numericOverrides: Partial<LearnerProfile> = {};
+  for (const key of signalKeys) {
+    if (typeof update[key] === 'number') {
+      numericOverrides[key] = update[key] as number;
+    }
+  }
+
+  const mergedStruggled = Array.from(
+    new Set([...(update.struggled_with ?? []), ...profile.concepts_struggled_with])
+  ).slice(0, 25);
+
+  const mergedExcelled = Array.from(
+    new Set([...(update.excelled_at ?? []), ...profile.concepts_excelled_at])
+  ).slice(0, 25);
+
+  return {
+    ...profile,
+    ...numericOverrides,
+    concepts_struggled_with: mergedStruggled,
+    concepts_excelled_at: mergedExcelled,
+    last_updated_at: new Date().toISOString()
+  };
 }
 
 export type { LessonSignalRow };

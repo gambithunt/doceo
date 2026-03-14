@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLearnerProfileFromSignals } from './adaptive-signals';
+import { applySignalProfileUpdate, buildLearnerProfileFromSignals } from './adaptive-signals';
 
 function makeSignal(overrides: Partial<Parameters<typeof buildLearnerProfileFromSignals>[0][number]> = {}) {
   return {
@@ -54,6 +54,36 @@ describe('buildLearnerProfileFromSignals', () => {
     );
     const result = buildLearnerProfileFromSignals(signals);
     expect(result.struggled_with!.length).toBeLessThanOrEqual(25);
+  });
+
+  // T4.1f: applySignalProfileUpdate merges update into existing learner profile
+  it('applySignalProfileUpdate sets numeric fields from update', () => {
+    const base = {
+      studentId: 's1',
+      total_sessions: 5,
+      total_questions_asked: 10,
+      total_reteach_events: 2,
+      concepts_struggled_with: [],
+      concepts_excelled_at: [],
+      subjects_studied: [],
+      created_at: new Date().toISOString(),
+      last_updated_at: new Date().toISOString(),
+      analogies_preference: 0.3,
+      step_by_step: 0.5,
+      visual_learner: 0.5,
+      real_world_examples: 0.5,
+      abstract_thinking: 0.5,
+      needs_repetition: 0.5,
+      quiz_performance: 0.5
+    };
+    const update = { step_by_step: 0.85, struggled_with: ['Fractions'], excelled_at: ['Ratios'] };
+    const result = applySignalProfileUpdate(base, update);
+    expect(result.step_by_step).toBe(0.85);
+    expect(result.concepts_struggled_with).toContain('Fractions');
+    expect(result.concepts_excelled_at).toContain('Ratios');
+    // unchanged fields stay the same
+    expect(result.analogies_preference).toBe(0.3);
+    expect(result.studentId).toBe('s1');
   });
 
   it('weights recent signals more heavily than old ones', () => {

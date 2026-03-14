@@ -26,10 +26,12 @@ describe('lesson-chat', () => {
       messages: Array.from({ length: 50 }, (_, i) => makeMessage(i))
     };
 
+    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
     const body = createLessonChatBody(
       {
         student: state.profile,
         learnerProfile: state.learnerProfile,
+        lesson,
         lessonSession: longSession,
         message: 'Is this right?',
         messageType: 'response'

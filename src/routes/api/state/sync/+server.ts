@@ -12,6 +12,6 @@ export async function POST({ request }) {
   if (!parsed.success) {
     return json({ persisted: false, reason: parsed.error.message }, { status: 400 });
   }
-  const result = await saveAppState(parsed.data.state as Parameters<typeof saveAppState>[0]);
+  const result = await saveAppState(parsed.data.state as unknown as Parameters<typeof saveAppState>[0]);
   return json(result);
 }

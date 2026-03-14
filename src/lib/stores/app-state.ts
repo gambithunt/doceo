@@ -1,6 +1,6 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { writable } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
 import { deduplicateSubjects } from '$lib/utils/strings';
 import { buildFallbackLessonChatResponse } from '$lib/ai/lesson-chat';
 import { getSelectionMode } from '$lib/data/onboarding';
@@ -38,6 +38,7 @@ import type {
   CountryOption,
   CurriculumOption,
   GradeOption,
+  Lesson,
   LearnerProfile,
   LearningMode,
   LessonChatRequest,
@@ -196,6 +197,20 @@ function buildTopicOptions(state: AppState, subjectId: string) {
   );
 }
 
+function getLessonForSession(state: AppState, session: LessonSession): Lesson {
+  return (
+    state.lessons.find((lesson) => lesson.id === session.lessonId) ??
+    buildDynamicLessonFromTopic({
+      subjectId: session.subjectId,
+      subjectName: session.subject,
+      grade: state.profile.grade,
+      topicTitle: session.topicTitle,
+      topicDescription: session.topicDescription,
+      curriculumReference: session.curriculumReference
+    })
+  );
+}
+
 function createAppStore() {
   const { subscribe, update, set } = writable<AppState>(readState());
   let hasInitializedRemoteState = false;
@@ -261,7 +276,15 @@ function createAppStore() {
     }
 
     try {
-      const response = await fetch('/api/state/bootstrap');
+      // T2.1i: include the user's auth token so the server can resolve their profile ID
+      const headers: Record<string, string> = {};
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+      }
+      const response = await fetch('/api/state/bootstrap', { headers });
       const payload = (await response.json()) as BootstrapResponse;
       const remoteState = normalizeAppState(payload.state);
       set(
@@ -851,9 +874,11 @@ function createAppStore() {
 
         const latest = readState();
         const currentSession = latest.lessonSessions.find((item) => item.id === lessonSession.id) ?? lessonSession;
+        const currentLesson = getLessonForSession(latest, currentSession);
         const requestPayload = {
           student: latest.profile,
           learnerProfile: latest.learnerProfile,
+          lesson: currentLesson,
           lessonSession: currentSession,
           message: message.trim(),
           messageType
@@ -879,7 +904,7 @@ function createAppStore() {
           resolvedPayload = null;
         }
 
-        const localPayload = resolvedPayload ?? buildFallbackLessonChatResponse(requestPayload, currentSession.lessonPlan);
+        const localPayload = resolvedPayload ?? buildFallbackLessonChatResponse(requestPayload, currentLesson);
         resolved = true;
         if (pendingTimer) {
           clearTimeout(pendingTimer);
@@ -903,11 +928,12 @@ function createAppStore() {
           let nextSession = applyLessonAssistantResponse(current, assistantMessage);
 
           if (localPayload.metadata?.action === 'advance' && nextSession.currentStage !== 'complete') {
+            const sessionLesson = getLessonForSession(state, nextSession);
             nextSession = {
               ...nextSession,
               messages: [
                 ...nextSession.messages,
-                ...buildInitialLessonMessages(nextSession.lessonPlan, nextSession.currentStage)
+                ...buildInitialLessonMessages(sessionLesson, nextSession.currentStage)
               ]
             };
           }
@@ -1014,7 +1040,7 @@ function createAppStore() {
           id: `lesson-session-${crypto.randomUUID()}`,
           currentStage: 'overview',
           stagesCompleted: [],
-          messages: buildInitialLessonMessages(existing.lessonPlan, 'overview'),
+          messages: buildInitialLessonMessages(getLessonForSession(state, existing), 'overview'),
           questionCount: 0,
           reteachCount: 0,
           confidenceScore: 0.5,
@@ -1470,3 +1496,9 @@ function createAppStore() {
 }
 
 export const appState = createAppStore();
+
+// T5.1: Domain-scoped derived stores. Components subscribe to the narrowest relevant slice.
+export const lessonSessionStore = derived(appState, ($state) => $state.lessonSessions);
+export const profileStore = derived(appState, ($state) => $state.profile);
+export const uiStore = derived(appState, ($state) => $state.ui);
+export const revisionStore = derived(appState, ($state) => $state.revisionTopics);

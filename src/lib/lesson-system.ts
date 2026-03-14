@@ -347,7 +347,6 @@ export function buildLessonSessionFromTopic(
     curriculumReference: topic.curriculumReference,
     matchedSection: topic.title,
     lessonId: lesson.id,
-    lessonPlan: lesson,
     currentStage: 'overview',
     stagesCompleted: [],
     messages: buildInitialLessonMessages(lesson, 'overview'),
@@ -553,17 +552,13 @@ function buildResponseReply(session: LessonSession, lesson: Lesson, message: str
     };
   }
 
-  const nextBody =
-    nextStage === 'concepts'
-      ? lesson.deeperExplanation.body
-      : nextStage === 'detail'
-        ? `${lesson.deeperExplanation.body}\n\nLet's slow the reasoning down and make every move explicit.`
-        : nextStage === 'examples'
-          ? `${lesson.example.body}\n\n**Exam tip:** explain why each step works, not just what the answer is.`
-          : `Let's check your understanding now.\n\n1. What is the main idea here?\n2. How would you apply it in a similar problem?\n3. What mistake should you avoid?`;
+  const transitionLine =
+    nextStage === 'check'
+      ? `Good. Let's see how much has landed.`
+      : `Good. Let's build on that.`;
 
   return {
-    displayContent: `Good. Let's build on that.\n\n${nextBody}`,
+    displayContent: transitionLine,
     provider: 'local-fallback',
       metadata: {
         action: 'advance',

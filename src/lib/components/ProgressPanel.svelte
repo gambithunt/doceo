@@ -26,8 +26,8 @@
   <article class="panel">
     <h3>Sessions</h3>
     <ul>
-      {#each state.sessions.slice(0, 4) as session}
-        <li>{session.resumeLabel} · {session.mode} · {new Date(session.updatedAt).toLocaleString()}</li>
+      {#each state.lessonSessions.slice(0, 4) as session}
+        <li>Resume {session.topicTitle} · {session.status} · {new Date(session.lastActiveAt).toLocaleString()}</li>
       {/each}
     </ul>
   </article>
