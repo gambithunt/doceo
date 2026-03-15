@@ -44,6 +44,9 @@ declare module '$env/static/private' {
 	export const GITHUB_MODELS_TOKEN: string;
 	export const GITHUB_MODELS_ENDPOINT: string;
 	export const GITHUB_MODELS_MODEL: string;
+	export const GITHUB_MODELS_FAST: string;
+	export const GITHUB_MODELS_DEFAULT: string;
+	export const GITHUB_MODELS_THINKING: string;
 	export const STARSHIP_SHELL: string;
 	export const RUST_LOG: string;
 	export const MANPATH: string;
@@ -211,6 +214,9 @@ declare module '$env/dynamic/private' {
 		GITHUB_MODELS_TOKEN: string;
 		GITHUB_MODELS_ENDPOINT: string;
 		GITHUB_MODELS_MODEL: string;
+		GITHUB_MODELS_FAST: string;
+		GITHUB_MODELS_DEFAULT: string;
+		GITHUB_MODELS_THINKING: string;
 		STARSHIP_SHELL: string;
 		RUST_LOG: string;
 		MANPATH: string;

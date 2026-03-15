@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
 import { logAiInteraction, logLessonSignal } from '$lib/server/state-repository';
-import { getAuthenticatedEdgeContext } from '$lib/server/ai-edge';
+import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import type { LessonChatRequest, LessonChatResponse } from '$lib/types';
 
 const LessonChatBodySchema = z.object({
@@ -46,36 +46,35 @@ export async function POST({ request, fetch }) {
       curriculumReference: payload.lessonSession.curriculumReference
     });
   const requestPayload: LessonChatRequest = { ...payload, lesson };
-  const edgeContext = await getAuthenticatedEdgeContext(request);
+  const edge = await invokeAuthenticatedAiEdge<LessonChatResponse>(
+    request,
+    fetch,
+    'lesson-chat',
+    requestPayload
+  );
 
-  if (!edgeContext) {
-    return json({ error: 'Authentication required for AI lesson chat.' }, { status: 401 });
+  if (!edge.ok || !edge.payload) {
+    return json({ error: edge.error }, { status: edge.status });
   }
 
-  const functionResponse = await fetch(`${edgeContext.functionsUrl}/github-models-tutor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: edgeContext.authHeader
-      },
-      body: JSON.stringify({
-        request: requestPayload,
-        mode: 'lesson-chat'
-      })
-  });
-
-  if (!functionResponse.ok) {
-    return json({ error: `AI edge function failed with ${functionResponse.status}.` }, { status: 502 });
-  }
-
-  const functionPayload = (await functionResponse.json()) as LessonChatResponse;
+  const functionPayload = edge.payload;
 
   if (functionPayload.provider !== 'github-models' || !functionPayload.displayContent || !functionPayload.metadata) {
     return json({ error: 'AI edge function returned invalid lesson chat data.' }, { status: 502 });
   }
 
   await Promise.all([
-    logAiInteraction(payload.student.id, JSON.stringify(requestPayload), JSON.stringify(functionPayload), functionPayload.provider),
+    logAiInteraction(
+      payload.student.id,
+      JSON.stringify(requestPayload),
+      JSON.stringify(functionPayload),
+      functionPayload.provider,
+      {
+        mode: 'lesson-chat',
+        modelTier: functionPayload.modelTier,
+        model: functionPayload.model
+      }
+    ),
     logLessonSignal(payload.student.id, payload.lessonSession, functionPayload.metadata)
   ]);
   return json(functionPayload);

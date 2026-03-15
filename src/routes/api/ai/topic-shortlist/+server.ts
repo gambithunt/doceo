@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
-import { getAuthenticatedEdgeContext } from '$lib/server/ai-edge';
+import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 
 const TopicShortlistBodySchema = z.object({
   request: z.object({
@@ -29,37 +29,23 @@ export async function POST({ request, fetch }) {
   const parsed = TopicShortlistBodySchema.safeParse(raw);
   if (!parsed.success) {
     return json(
-      { response: { matchedSection: 'General foundations', subtopics: [] }, provider: 'local-fallback', error: parsed.error.message },
+      { error: parsed.error.message },
       { status: 400 }
     );
   }
   const payload = parsed.data;
-  const edgeContext = await getAuthenticatedEdgeContext(request);
-
-  if (!edgeContext) {
-    return json({ error: 'Authentication required for AI shortlist.' }, { status: 401 });
-  }
-
-  const functionResponse = await fetch(`${edgeContext.functionsUrl}/github-models-tutor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: edgeContext.authHeader
-      },
-      body: JSON.stringify({
-        request: payload.request,
-        mode: 'topic-shortlist'
-      })
-  });
-
-  if (!functionResponse.ok) {
-    return json({ error: `AI edge function failed with ${functionResponse.status}.` }, { status: 502 });
-  }
-
-  const functionPayload = (await functionResponse.json()) as {
+  const edge = await invokeAuthenticatedAiEdge<{
     response?: import('$lib/types').TopicShortlistResponse;
     provider?: string;
-  };
+    modelTier?: import('$lib/ai/model-tiers').ModelTier;
+    model?: string;
+  }>(request, fetch, 'topic-shortlist', payload.request);
+
+  if (!edge.ok || !edge.payload) {
+    return json({ error: edge.error }, { status: edge.status });
+  }
+
+  const functionPayload = edge.payload;
 
   if (!functionPayload.response || functionPayload.provider !== 'github-models') {
     return json({ error: 'AI edge function returned invalid shortlist data.' }, { status: 502 });

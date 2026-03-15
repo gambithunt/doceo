@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
   import AnimatedStatNumber from '$lib/components/AnimatedStatNumber.svelte';
+  import { extractHintChipLabels } from '$lib/components/dashboard-hints';
   import { resolveSubjectHints } from '$lib/ai/subject-hints';
   import { getCompletionSummary } from '$lib/data/platform';
   import { getStageLabel } from '$lib/lesson-system';
@@ -10,8 +11,9 @@
 
   const { state: viewState }: { state: AppState } = $props();
   let topicInputFocused = $state(false);
-  let shouldAutofillTopicInput = $state(true);
   let promptSuggestionsText = $state('');
+  let hintChipsLoading = $state(false);
+  let pendingChipLabel = $state<string | null>(null);
   let latestHintRequest = 0;
   let lastHintSeed = $state('');
 
@@ -32,7 +34,7 @@
   const selectedSubject = $derived(
     availableSubjects.find((subject) => subject.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
   );
-  const showingAutofillHint = $derived(viewState.topicDiscovery.input === promptSuggestionsText);
+  const promptSuggestionChips = $derived(extractHintChipLabels(promptSuggestionsText));
   const assistantStatus = $derived.by(() => {
     switch (viewState.topicDiscovery.status) {
       case 'loading':
@@ -47,15 +49,18 @@
   });
 
   $effect(() => {
-    if (!selectedSubject || !shouldAutofillTopicInput) {
+    if (!selectedSubject) {
       return;
     }
 
-    const hintSeed = `${selectedSubject.id}:${shouldAutofillTopicInput ? 'autofill' : 'manual'}`;
+    const hintSeed = `${viewState.profile.curriculumId}:${viewState.profile.gradeId}:${viewState.profile.term}:${selectedSubject.id}`;
     if (hintSeed === lastHintSeed) {
       return;
     }
     lastHintSeed = hintSeed;
+
+    promptSuggestionsText = '';
+    hintChipsLoading = true;
 
     const requestId = ++latestHintRequest;
     void (async () => {
@@ -63,6 +68,7 @@
         const result = await resolveSubjectHints({
           subject: selectedSubject,
           curriculumId: viewState.profile.curriculumId,
+          curriculumName: viewState.profile.curriculum,
           gradeId: viewState.profile.gradeId,
           gradeLabel: viewState.profile.grade,
           term: viewState.profile.term,
@@ -74,35 +80,24 @@
           return;
         }
 
-        const nextText = result.hints.join('\n');
-        promptSuggestionsText = nextText;
-
-        if (shouldAutofillTopicInput && viewState.topicDiscovery.input !== nextText) {
-          appState.setTopicDiscoveryInput(nextText);
-        }
+        promptSuggestionsText = result.hints.join('\n');
+        hintChipsLoading = false;
       } catch {
         if (requestId !== latestHintRequest) {
           return;
         }
 
         promptSuggestionsText = '';
+        hintChipsLoading = false;
       }
     })();
   });
 
   function onInput(event: Event): void {
-    lastHintSeed = '';
-    shouldAutofillTopicInput = false;
     appState.setTopicDiscoveryInput((event.currentTarget as HTMLTextAreaElement).value);
   }
 
   function onTopicFocus(): void {
-    if (viewState.topicDiscovery.input === promptSuggestionsText) {
-      appState.setTopicDiscoveryInput('');
-    }
-
-    lastHintSeed = '';
-    shouldAutofillTopicInput = false;
     topicInputFocused = true;
   }
 
@@ -112,13 +107,15 @@
 
   function onSubjectChange(event: Event): void {
     lastHintSeed = '';
-    shouldAutofillTopicInput = true;
+    promptSuggestionsText = '';
+    pendingChipLabel = null;
+    appState.setTopicDiscoveryInput('');
     appState.selectSubject((event.currentTarget as HTMLSelectElement).value);
   }
 
   function resetTopicDiscovery(): void {
     lastHintSeed = '';
-    shouldAutofillTopicInput = true;
+    pendingChipLabel = null;
     appState.resetTopicDiscovery();
   }
 
@@ -132,6 +129,23 @@
 
   function startTopic(topic: ShortlistedTopic): void {
     void appState.startLessonFromShortlist(topic);
+  }
+
+  function startFromSuggestion(hint: string): void {
+    if (!selectedSubject || pendingChipLabel) {
+      return;
+    }
+
+    pendingChipLabel = hint;
+    appState.setTopicDiscoveryInput(hint);
+
+    void (async () => {
+      try {
+        await appState.startLessonFromSelection(selectedSubject.id, hint);
+      } finally {
+        pendingChipLabel = null;
+      }
+    })();
   }
 
   function startFromBanner(session: LessonSession): void {
@@ -196,11 +210,45 @@
           </select>
         </label>
 
+        {#if hintChipsLoading || promptSuggestionChips.length > 0}
+          <div class="hint-panel" aria-live="polite">
+            <div class="hint-panel-copy">
+              <span class="hint-panel-title">Quick starts</span>
+              <p>Tap a suggestion to jump straight into a lesson around that theme.</p>
+            </div>
+
+            <div class="hint-chip-list">
+              {#if hintChipsLoading}
+                {#each Array.from({ length: 5 }) as _, index}
+                  <span
+                    class="hint-chip hint-chip-skeleton"
+                    aria-hidden="true"
+                    style={`--chip-index: ${index};`}
+                  ></span>
+                {/each}
+              {:else}
+                {#each promptSuggestionChips as hint, index}
+                  <button
+                    type="button"
+                    class:selected={pendingChipLabel === hint}
+                    class="hint-chip"
+                    style={`--chip-index: ${index};`}
+                    onclick={() => startFromSuggestion(hint)}
+                    disabled={Boolean(pendingChipLabel)}
+                  >
+                    <span>{hint}</span>
+                    <small>{pendingChipLabel === hint ? 'Starting...' : 'Quick start'}</small>
+                  </button>
+                {/each}
+              {/if}
+            </div>
+          </div>
+        {/if}
+
         <label>
-          <span>What do you want to work on?</span>
+          <span>Something more specific that you would like to work on</span>
           <div class="topic-input-wrap">
             <textarea
-              class:hinted={showingAutofillHint}
               rows="4"
               value={viewState.topicDiscovery.input}
               oninput={onInput}
@@ -354,6 +402,140 @@
     flex-wrap: wrap;
   }
 
+  .hint-panel,
+  .hint-panel-copy,
+  .hint-chip-list {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .hint-panel {
+    padding: 1rem 1.05rem 1.1rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+    border-radius: 1.35rem;
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 42%),
+      linear-gradient(180deg, color-mix(in srgb, white 7%, var(--surface-soft)), color-mix(in srgb, var(--surface-soft) 88%, transparent));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 18px 34px rgba(8, 15, 30, 0.18);
+    backdrop-filter: blur(18px);
+  }
+
+  .hint-panel-copy {
+    grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .hint-panel-title {
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--accent) 60%, var(--text));
+  }
+
+  .hint-panel-copy p {
+    color: var(--text-soft);
+  }
+
+  .hint-chip-list {
+    grid-template-columns: repeat(auto-fit, minmax(180px, max-content));
+    gap: 0.8rem;
+    align-items: start;
+  }
+
+  .hint-chip {
+    --chip-delay: calc(var(--chip-index, 0) * 48ms);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    gap: 0.28rem;
+    justify-items: start;
+    min-height: 4rem;
+    padding: 0.88rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, rgba(255, 255, 255, 0.16));
+    border-radius: 1.1rem;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04)),
+      color-mix(in srgb, var(--surface) 88%, rgba(255, 255, 255, 0.06));
+    color: var(--text);
+    text-align: left;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 16px 32px rgba(8, 15, 30, 0.16);
+    backdrop-filter: blur(18px);
+    transition:
+      transform 180ms var(--ease-spring),
+      border-color 220ms var(--ease-soft),
+      box-shadow 220ms var(--ease-soft),
+      background-color 220ms var(--ease-soft);
+    animation: hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both;
+  }
+
+  .hint-chip::before {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.22), transparent 38%, transparent 62%, rgba(255, 255, 255, 0.1));
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .hint-chip:hover:not(:disabled) {
+    transform: translateY(-3px) scale(1.01);
+    border-color: color-mix(in srgb, var(--accent) 48%, rgba(255, 255, 255, 0.26));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 18px 36px rgba(8, 15, 30, 0.22);
+  }
+
+  .hint-chip:active:not(:disabled) {
+    transform: translateY(0) scale(0.985);
+  }
+
+  .hint-chip:disabled {
+    cursor: default;
+  }
+
+  .hint-chip.selected {
+    border-color: color-mix(in srgb, var(--accent) 72%, white 12%);
+    background:
+      linear-gradient(145deg, color-mix(in srgb, white 20%, transparent), color-mix(in srgb, var(--accent) 10%, transparent)),
+      color-mix(in srgb, var(--accent) 18%, var(--surface));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 20px 40px rgba(8, 15, 30, 0.26);
+  }
+
+  .hint-chip span,
+  .hint-chip small {
+    position: relative;
+    z-index: 1;
+  }
+
+  .hint-chip span {
+    font-weight: 700;
+    line-height: 1.15;
+  }
+
+  .hint-chip small {
+    color: color-mix(in srgb, var(--accent) 62%, var(--text-soft));
+  }
+
+  .hint-chip-skeleton {
+    min-height: 4rem;
+    border-style: dashed;
+    background:
+      linear-gradient(110deg, rgba(255, 255, 255, 0.05) 20%, rgba(255, 255, 255, 0.14) 36%, rgba(255, 255, 255, 0.05) 54%),
+      color-mix(in srgb, var(--surface-soft) 94%, white 6%);
+    background-size: 200% 100%;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    animation:
+      hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both,
+      hint-chip-shimmer 1.6s linear infinite;
+  }
+
   .topic-list {
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
@@ -501,12 +683,8 @@
   }
 
   .topic-input-wrap textarea {
-    min-height: 11rem;
+    min-height: 9.5rem;
     resize: vertical;
-  }
-
-  .topic-input-wrap textarea.hinted {
-    color: color-mix(in srgb, var(--muted) 76%, var(--text-soft) 24%);
   }
 
   .progress-copy {
@@ -557,11 +735,49 @@
     box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
   }
 
+  @keyframes hint-chip-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(16px) scale(0.92);
+      filter: blur(6px);
+    }
+
+    55% {
+      opacity: 1;
+      transform: translateY(-3px) scale(1.03);
+      filter: blur(0);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes hint-chip-shimmer {
+    from {
+      background-position: 200% 0;
+    }
+
+    to {
+      background-position: -20% 0;
+    }
+  }
+
   @media (max-width: 900px) {
     .hero,
     .starter-copy,
     .stats {
       grid-template-columns: 1fr;
+    }
+
+    .hint-panel-copy {
+      grid-template-columns: 1fr;
+    }
+
+    .hint-chip-list {
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     }
   }
 

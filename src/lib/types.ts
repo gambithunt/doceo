@@ -1,5 +1,6 @@
 export type ThemeMode = 'light' | 'dark';
 export type LearningMode = 'learn' | 'revision';
+export type { ModelTier } from '$lib/ai/model-tiers';
 export type AppScreen =
   | 'landing'
   | 'onboarding'
@@ -353,6 +354,8 @@ export interface LessonChatResponse {
   displayContent: string;
   metadata: DoceoMeta | null;
   provider: string;
+  modelTier?: import('$lib/ai/model-tiers').ModelTier;
+  model?: string;
   error?: string;
 }
 
@@ -369,6 +372,8 @@ export interface LessonPlanResponse {
   lesson: Lesson;
   questions: Question[];
   provider: string;
+  modelTier?: import('$lib/ai/model-tiers').ModelTier;
+  model?: string;
   error?: string;
 }
 

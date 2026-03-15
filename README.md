@@ -89,7 +89,9 @@ VITE_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 GITHUB_MODELS_TOKEN=...
 GITHUB_MODELS_ENDPOINT=https://models.github.ai/inference/chat/completions
-GITHUB_MODELS_MODEL=openai/gpt-4.1-mini
+GITHUB_MODELS_FAST=openai/gpt-4.1-nano
+GITHUB_MODELS_DEFAULT=openai/gpt-4o-mini
+GITHUB_MODELS_THINKING=openai/gpt-4.1-mini
 ```
 
 5. Apply the local database schema:
@@ -101,7 +103,7 @@ supabase db reset
 6. Make the GitHub Models secrets available to the edge function:
 
 ```bash
-supabase secrets set GITHUB_MODELS_TOKEN=... GITHUB_MODELS_ENDPOINT=https://models.github.ai/inference/chat/completions GITHUB_MODELS_MODEL=openai/gpt-4.1-mini
+supabase secrets set GITHUB_MODELS_TOKEN=... GITHUB_MODELS_ENDPOINT=https://models.github.ai/inference/chat/completions GITHUB_MODELS_FAST=openai/gpt-4.1-nano GITHUB_MODELS_DEFAULT=openai/gpt-4o-mini GITHUB_MODELS_THINKING=openai/gpt-4.1-mini
 ```
 
 7. Serve the edge function locally if you want to test that path directly:
@@ -110,7 +112,9 @@ supabase secrets set GITHUB_MODELS_TOKEN=... GITHUB_MODELS_ENDPOINT=https://mode
 supabase functions serve github-models-tutor --env-file .env
 ```
 
-The app will prefer the Supabase edge function path when Supabase is configured. If it is not configured, it falls back to the local deterministic tutor response.
+All AI calls go through authenticated app routes to the Supabase edge function. If auth is missing or a model tier is not configured, the request fails closed instead of falling back locally.
+
+`GITHUB_MODELS_MODEL` is now a legacy variable and is not used by the tiered router.
 
 This repo uses a separate local Supabase port range to avoid collisions:
 

@@ -794,6 +794,20 @@ function createAppStore() {
         curriculumReference: `${snapshot.profile.curriculum} · ${snapshot.profile.grade} · ${subject.name}`,
         relevance: 'Matched from your dashboard prompt.'
       };
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            selectedSubjectId: subject.id,
+            input: sectionName,
+            status: 'loading',
+            error: null
+          }
+        })
+      );
+
       let lessonPlan;
 
       try {
@@ -805,6 +819,8 @@ function createAppStore() {
             ...state,
             topicDiscovery: {
               ...state.topicDiscovery,
+              selectedSubjectId: subject.id,
+              input: sectionName,
               error: message,
               status: 'error'
             }
@@ -827,6 +843,13 @@ function createAppStore() {
             total_sessions: state.learnerProfile.total_sessions + 1
           },
           lessonSessions: upsertLessonSession(state.lessonSessions, session),
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            selectedSubjectId: subject.id,
+            input: sectionName,
+            status: 'ready',
+            error: null
+          },
           ui: {
             ...state.ui,
             currentScreen: 'lesson',

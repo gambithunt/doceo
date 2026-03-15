@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { logAiInteraction } from '$lib/server/state-repository';
-import { getAuthenticatedEdgeContext } from '$lib/server/ai-edge';
+import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 interface LessonPlanBody {
@@ -34,29 +34,18 @@ export async function POST({ request, fetch }) {
   }
 
   const payload = raw as LessonPlanBody;
-  const edgeContext = await getAuthenticatedEdgeContext(request);
+  const edge = await invokeAuthenticatedAiEdge<LessonPlanResponse>(
+    request,
+    fetch,
+    'lesson-plan',
+    payload.request
+  );
 
-  if (!edgeContext) {
-    return json({ error: 'Authentication required for AI lesson plans.' }, { status: 401 });
+  if (!edge.ok || !edge.payload) {
+    return json({ error: edge.error }, { status: edge.status });
   }
 
-  const functionResponse = await fetch(`${edgeContext.functionsUrl}/github-models-tutor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: edgeContext.authHeader
-      },
-      body: JSON.stringify({
-        request: payload.request,
-        mode: 'lesson-plan'
-      })
-  });
-
-  if (!functionResponse.ok) {
-    return json({ error: `AI edge function failed with ${functionResponse.status}.` }, { status: 502 });
-  }
-
-  const functionPayload = (await functionResponse.json()) as LessonPlanResponse;
+  const functionPayload = edge.payload;
 
   if (functionPayload.provider !== 'github-models' || !functionPayload.lesson) {
     return json({ error: 'AI edge function returned invalid lesson plan data.' }, { status: 502 });
@@ -66,7 +55,12 @@ export async function POST({ request, fetch }) {
     payload.request.student.id,
     JSON.stringify(payload.request),
     JSON.stringify(functionPayload),
-    functionPayload.provider
+    functionPayload.provider,
+    {
+      mode: 'lesson-plan',
+      modelTier: functionPayload.modelTier,
+      model: functionPayload.model
+    }
   );
   return json(functionPayload);
 }

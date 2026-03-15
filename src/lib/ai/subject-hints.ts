@@ -2,7 +2,8 @@ import { browser } from '$app/environment';
 import type { SchoolTerm, Subject } from '$lib/types';
 
 export const SUBJECT_HINT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const SUBJECT_HINT_CACHE_PREFIX = 'doceo-subject-hints';
+const SUBJECT_HINT_CACHE_PREFIX = 'doceo-subject-hints:v2';
+const MIN_HINTS = 5;
 const MAX_HINTS = 8;
 const STOP_WORDS = new Set([
   'about',
@@ -32,9 +33,20 @@ const GENERIC_SECTION_NAMES = new Set([
   'foundations',
   'using what you know'
 ]);
+const GENERIC_HINT_PATTERNS = [
+  /\bapplying knowledge\b/,
+  /\breal[- ]world\b/,
+  /\bexamples?\b/,
+  /\bbasics\b/,
+  /\bterminology\b/,
+  /\brevision\b/,
+  /\bconcepts?\b/,
+  /\bknowledge\b/
+];
 
-interface SubjectHintRequest {
+export interface SubjectHintRequest {
   curriculumId: string;
+  curriculumName: string;
   gradeId: string;
   gradeLabel: string;
   term: SchoolTerm;
@@ -66,9 +78,17 @@ interface StorageLike {
 
 type StorageAdapter = StorageLike | Map<string, string> | undefined;
 
+interface ReferenceHintContext {
+  curriculumName: string;
+  gradeLabel: string;
+  term: SchoolTerm;
+  subjectName: string;
+}
+
 interface ResolveSubjectHintsInput {
   subject: Subject;
   curriculumId: string;
+  curriculumName: string;
   gradeId: string;
   gradeLabel: string;
   term: SchoolTerm;
@@ -123,6 +143,24 @@ function getSubjectHintCacheKey(curriculumId: string, gradeId: string, term: Sch
   return `${SUBJECT_HINT_CACHE_PREFIX}:${curriculumId}:${gradeId}:${term}:${subjectId}`;
 }
 
+export function getReferenceHintTopics(context: ReferenceHintContext): string[] {
+  const curriculum = normalizeText(context.curriculumName);
+  const grade = normalizeText(context.gradeLabel);
+  const subject = normalizeText(context.subjectName);
+
+  if (curriculum === 'ieb' && grade === 'grade 6' && context.term === 'Term 1' && subject === 'biology') {
+    return [
+      'Photosynthesis',
+      'Nutrients in Food',
+      'Nutrition and Diet-Related Diseases',
+      'The Human Digestive System',
+      'Ecosystems and Food Webs'
+    ];
+  }
+
+  return [];
+}
+
 function buildSubjectVocabulary(subject: Subject): Set<string> {
   const vocabulary = new Set<string>();
   const sections = [
@@ -143,6 +181,34 @@ function buildSubjectVocabulary(subject: Subject): Set<string> {
   }
 
   return vocabulary;
+}
+
+function buildVocabularyFromSections(sections: string[]): Set<string> {
+  const vocabulary = new Set<string>();
+
+  for (const section of sections) {
+    const normalized = normalizeText(section);
+    if (normalized.length > 0) {
+      vocabulary.add(normalized);
+    }
+
+    for (const token of tokenize(section)) {
+      vocabulary.add(token);
+    }
+  }
+
+  return vocabulary;
+}
+
+function hasSpecificSubjectSections(subject: Subject): boolean {
+  const sections = subject.topics.flatMap((topic) =>
+    topic.subtopics.length > 0 ? [topic.name, ...topic.subtopics.map((subtopic) => subtopic.name)] : [topic.name]
+  );
+
+  return sections.some((section) => {
+    const normalized = normalizeText(section);
+    return normalized.length > 0 && !GENERIC_SECTION_NAMES.has(normalized);
+  });
 }
 
 function isHintRelevantToSubject(hint: string, vocabulary: Set<string>): boolean {
@@ -195,6 +261,11 @@ function looksLikeSentenceHint(hint: string): boolean {
   );
 }
 
+function looksGeneric(hint: string): boolean {
+  const normalized = normalizeText(hint);
+  return GENERIC_HINT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export function buildDeterministicSubjectHints(subject: Subject | null | undefined, term: SchoolTerm): string[] {
   if (!subject) {
     return [];
@@ -217,7 +288,7 @@ export function buildDeterministicSubjectHints(subject: Subject | null | undefin
 
   return selectTermWindow(
     [
-    `${subject.name} basics`,
+      `${subject.name} basics`,
       `${subject.name} terminology`,
       `${subject.name} diagrams`,
       `${subject.name} processes`,
@@ -228,15 +299,18 @@ export function buildDeterministicSubjectHints(subject: Subject | null | undefin
   ).slice(0, MAX_HINTS);
 }
 
-export function validateSubjectHints(hints: string[], subject: Subject): string[] {
-  const vocabulary = buildSubjectVocabulary(subject);
+export function validateSubjectHints(hints: string[], subject: Subject, referenceTopics: string[] = []): string[] {
+  const subjectVocabulary = buildSubjectVocabulary(subject);
+  const referenceVocabulary = buildVocabularyFromSections(referenceTopics);
+  const vocabulary = new Set([...subjectVocabulary, ...referenceVocabulary]);
+  const requireCurriculumOverlap = hasSpecificSubjectSections(subject) || referenceTopics.length > 0;
 
-  return Array.from(new Set(hints.map((hint) => hint.trim()).filter((hint) => hint.length > 0))).filter(
-    (hint) =>
-      !GENERIC_SECTION_NAMES.has(normalizeText(hint)) &&
-      !looksLikeSentenceHint(hint) &&
-      isHintRelevantToSubject(hint, vocabulary)
-  );
+  const validated = Array.from(new Set(hints.map((hint) => hint.trim()).filter((hint) => hint.length > 0)))
+    .filter((hint) => !GENERIC_SECTION_NAMES.has(normalizeText(hint)) && !looksLikeSentenceHint(hint) && !looksGeneric(hint))
+    .filter((hint) => (requireCurriculumOverlap ? isHintRelevantToSubject(hint, vocabulary) : tokenize(hint).length > 0))
+    .slice(0, MAX_HINTS);
+
+  return validated.length >= MIN_HINTS ? validated : [];
 }
 
 function readSubjectHintCache(
@@ -296,21 +370,32 @@ function writeSubjectHintCache(
 export function createSubjectHintsSystemPrompt(): string {
   return [
     'You create short learning prompt hints for school students.',
-    'Use the supplied subject, grade, term, topic, and subtopic names.',
+    'Use the supplied curriculum, subject, grade, term, topic, and subtopic names.',
     'Return JSON only with exactly this key: hints.',
-    'Each hint must be a short topic-like phrase with 2 to 5 words, not a full sentence.',
+    'Return 5 to 8 concrete curriculum topic names.',
+    'Each hint must be a short topic-like phrase with 1 to 6 words, not a full sentence.',
     'Do not start hints with verbs like define, explain, apply, connect, or analyze.',
-    'Do not invent concepts outside the supplied curriculum sections.'
+    'Do not return generic study phrases like applying knowledge, real-world examples, or key concepts.',
+    'Use specific topic names that match the requested school context.'
   ].join(' ');
 }
 
 export function createSubjectHintsUserPrompt(request: SubjectHintRequest): string {
+  const referenceTopics = getReferenceHintTopics({
+    curriculumName: request.curriculumName,
+    gradeLabel: request.gradeLabel,
+    term: request.term,
+    subjectName: request.subject.name
+  });
+
   return JSON.stringify({
     curriculumId: request.curriculumId,
+    curriculum: request.curriculumName,
     gradeId: request.gradeId,
     grade: request.gradeLabel,
     term: request.term,
     subject: request.subject.name,
+    reference_topics: referenceTopics,
     sections: request.subject.topics.map((topic) => ({
       topic: topic.name,
       subtopics: topic.subtopics.map((subtopic) => subtopic.name)
@@ -373,6 +458,7 @@ export async function resolveSubjectHints(input: ResolveSubjectHintsInput): Prom
     body: JSON.stringify({
       request: {
         curriculumId: input.curriculumId,
+        curriculumName: input.curriculumName,
         gradeId: input.gradeId,
         gradeLabel: input.gradeLabel,
         term: input.term,

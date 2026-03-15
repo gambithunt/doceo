@@ -3,7 +3,9 @@ import type { Subject } from '$lib/types';
 import {
   SUBJECT_HINT_CACHE_TTL_MS,
   buildDeterministicSubjectHints,
-  resolveSubjectHints
+  createSubjectHintsUserPrompt,
+  resolveSubjectHints,
+  validateSubjectHints
 } from '$lib/ai/subject-hints';
 
 function createBiologySubject(): Subject {
@@ -88,10 +90,13 @@ describe('subject hints', () => {
   it('reuses cached hints before expiry to avoid extra model calls', async () => {
     const fetcher = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
+        json: async () => ({
           response: {
             hints: [
               'Animal and plant cells',
+              'Organelles and functions',
+              'Photosynthesis',
+              'Conditions for photosynthesis',
               'Chlorophyll'
             ]
           },
@@ -105,6 +110,7 @@ describe('subject hints', () => {
     const first = await resolveSubjectHints({
       subject: createBiologySubject(),
       curriculumId: 'caps',
+      curriculumName: 'CAPS',
       gradeId: 'grade-10',
       gradeLabel: 'Grade 10',
       term: 'Term 1',
@@ -116,6 +122,7 @@ describe('subject hints', () => {
     const second = await resolveSubjectHints({
       subject: createBiologySubject(),
       curriculumId: 'caps',
+      curriculumName: 'CAPS',
       gradeId: 'grade-10',
       gradeLabel: 'Grade 10',
       term: 'Term 1',
@@ -136,7 +143,13 @@ describe('subject hints', () => {
         ok: true,
         json: async () => ({
           response: {
-            hints: ['Animal and plant cells']
+            hints: [
+              'Animal and plant cells',
+              'Organelles and functions',
+              'Photosynthesis',
+              'Conditions for photosynthesis',
+              'Chlorophyll'
+            ]
           },
           provider: 'github-models'
         })
@@ -145,7 +158,13 @@ describe('subject hints', () => {
         ok: true,
         json: async () => ({
           response: {
-            hints: ['Conditions for photosynthesis']
+            hints: [
+              'Conditions for photosynthesis',
+              'Chlorophyll',
+              'Photosynthesis',
+              'Cell structure',
+              'Animal and plant cells'
+            ]
           },
           provider: 'github-models'
         })
@@ -157,6 +176,7 @@ describe('subject hints', () => {
     const first = await resolveSubjectHints({
       subject: createBiologySubject(),
       curriculumId: 'caps',
+      curriculumName: 'CAPS',
       gradeId: 'grade-10',
       gradeLabel: 'Grade 10',
       term: 'Term 1',
@@ -168,6 +188,7 @@ describe('subject hints', () => {
     const second = await resolveSubjectHints({
       subject: createBiologySubject(),
       curriculumId: 'caps',
+      curriculumName: 'CAPS',
       gradeId: 'grade-10',
       gradeLabel: 'Grade 10',
       term: 'Term 1',
@@ -196,6 +217,7 @@ describe('subject hints', () => {
       resolveSubjectHints({
         subject: createBiologySubject(),
         curriculumId: 'caps',
+        curriculumName: 'CAPS',
         gradeId: 'grade-10',
         gradeLabel: 'Grade 10',
         term: 'Term 1',
@@ -213,7 +235,13 @@ describe('subject hints', () => {
         ok: true,
         json: async () => ({
           response: {
-            hints: ['Cell structure', 'Plant cells']
+            hints: [
+              'Cell structure',
+              'Plant cells',
+              'Animal and plant cells',
+              'Organelles and functions',
+              'Photosynthesis'
+            ]
           },
           provider: 'github-models'
         })
@@ -222,7 +250,13 @@ describe('subject hints', () => {
         ok: true,
         json: async () => ({
           response: {
-            hints: ['Photosynthesis', 'Chlorophyll']
+            hints: [
+              'Photosynthesis',
+              'Chlorophyll',
+              'Conditions for photosynthesis',
+              'Cell structure',
+              'Organelles and functions'
+            ]
           },
           provider: 'github-models'
         })
@@ -233,6 +267,7 @@ describe('subject hints', () => {
     const termOne = await resolveSubjectHints({
       subject: createBiologySubject(),
       curriculumId: 'caps',
+      curriculumName: 'CAPS',
       gradeId: 'grade-10',
       gradeLabel: 'Grade 10',
       term: 'Term 1',
@@ -244,6 +279,7 @@ describe('subject hints', () => {
     const termTwo = await resolveSubjectHints({
       subject: createBiologySubject(),
       curriculumId: 'caps',
+      curriculumName: 'CAPS',
       gradeId: 'grade-10',
       gradeLabel: 'Grade 10',
       term: 'Term 2',
@@ -274,6 +310,7 @@ describe('subject hints', () => {
       resolveSubjectHints({
         subject: createBiologySubject(),
         curriculumId: 'caps',
+        curriculumName: 'CAPS',
         gradeId: 'grade-10',
         gradeLabel: 'Grade 10',
         term: 'Term 1',
@@ -282,5 +319,52 @@ describe('subject hints', () => {
         now: Date.now()
       })
     ).rejects.toThrow('Subject hints response was invalid.');
+  });
+
+  it('includes curriculum-specific biology reference topics for IEB Grade 6 Term 1', () => {
+    const prompt = createSubjectHintsUserPrompt({
+      curriculumId: 'ieb',
+      curriculumName: 'IEB',
+      gradeId: 'grade-6',
+      gradeLabel: 'Grade 6',
+      term: 'Term 1',
+      subject: {
+        id: 'subject-biology',
+        name: 'Biology',
+        topics: []
+      }
+    });
+
+    expect(prompt).toContain('Photosynthesis');
+    expect(prompt).toContain('Nutrients in Food');
+    expect(prompt).toContain('The Human Digestive System');
+    expect(prompt).toContain('Ecosystems and Food Webs');
+  });
+
+  it('accepts validated hints through reference topics when the subject has no structured sections', () => {
+    const result = validateSubjectHints(
+      [
+        'Photosynthesis',
+        'Nutrients in Food',
+        'Nutrition and Diet-Related Diseases',
+        'The Human Digestive System',
+        'Ecosystems and Food Webs'
+      ],
+      {
+        id: 'subject-biology',
+        name: 'Biology',
+        topics: []
+      },
+      [
+        'Photosynthesis',
+        'Nutrients in Food',
+        'Nutrition and Diet-Related Diseases',
+        'The Human Digestive System',
+        'Ecosystems and Food Webs'
+      ]
+    );
+
+    expect(result).toHaveLength(5);
+    expect(result).toContain('Photosynthesis');
   });
 });

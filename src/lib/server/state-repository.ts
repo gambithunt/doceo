@@ -218,7 +218,12 @@ export async function logAiInteraction(
   profileId: string,
   requestPayload: string,
   response: string,
-  provider: string
+  provider: string,
+  meta?: {
+    mode?: string;
+    modelTier?: string;
+    model?: string;
+  }
 ): Promise<void> {
   const supabase = createServerSupabaseAdmin();
 
@@ -226,12 +231,30 @@ export async function logAiInteraction(
     return;
   }
 
+  const wrapPayload = (payload: string): string => {
+    if (!meta || (!meta.mode && !meta.modelTier && !meta.model)) {
+      return payload;
+    }
+
+    try {
+      return JSON.stringify({
+        payload: JSON.parse(payload),
+        meta
+      });
+    } catch {
+      return JSON.stringify({
+        payload,
+        meta
+      });
+    }
+  };
+
   await supabase.from('ai_interactions').insert({
     id: crypto.randomUUID(),
     profile_id: profileId,
     provider,
-    request_payload: requestPayload,
-    response_payload: response,
+    request_payload: wrapPayload(requestPayload),
+    response_payload: wrapPayload(response),
     created_at: new Date().toISOString()
   });
 }
