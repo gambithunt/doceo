@@ -231,15 +231,13 @@
                   <button
                     type="button"
                     class:selected={pendingChipLabel === hint}
+                    class:loading={pendingChipLabel === hint}
                     class="hint-chip"
                     style={`--chip-index: ${index};`}
                     onclick={() => startFromSuggestion(hint)}
                     disabled={Boolean(pendingChipLabel)}
                   >
                     <span>{hint}</span>
-                    {#if pendingChipLabel === hint}
-                      <small class="hint-chip-status">Starting...</small>
-                    {/if}
                   </button>
                 {/each}
               {/if}
@@ -247,7 +245,7 @@
           </div>
         {/if}
 
-        <label>
+        <label class="topic-detail-field">
           <span>Something more specific that you would like to work on</span>
           <div class="topic-input-wrap">
             <textarea
@@ -441,9 +439,9 @@
   }
 
   .hint-chip-list {
-    grid-template-columns: repeat(auto-fit, minmax(180px, max-content));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 0.8rem;
-    align-items: start;
+    align-items: stretch;
   }
 
   .hint-chip {
@@ -451,10 +449,11 @@
     position: relative;
     overflow: hidden;
     display: grid;
-    gap: 0.28rem;
+    place-content: center start;
     justify-items: start;
-    min-height: 4rem;
-    padding: 0.88rem 1rem;
+    min-height: 7.25rem;
+    height: 7.25rem;
+    padding: 1rem 1.05rem;
     border: 1px solid color-mix(in srgb, var(--accent) 26%, rgba(255, 255, 255, 0.16));
     border-radius: 1.1rem;
     background:
@@ -467,10 +466,11 @@
       0 16px 32px rgba(8, 15, 30, 0.16);
     backdrop-filter: blur(18px);
     transition:
-      transform 180ms var(--ease-spring),
+      transform 220ms var(--ease-spring),
       border-color 220ms var(--ease-soft),
       box-shadow 220ms var(--ease-soft),
-      background-color 220ms var(--ease-soft);
+      background-color 220ms var(--ease-soft),
+      filter 220ms var(--ease-soft);
     animation: hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both;
   }
 
@@ -479,17 +479,21 @@
     position: absolute;
     inset: 1px;
     border-radius: inherit;
-    background: linear-gradient(120deg, rgba(255, 255, 255, 0.22), transparent 38%, transparent 62%, rgba(255, 255, 255, 0.1));
-    opacity: 0.55;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22), transparent 42%),
+      linear-gradient(120deg, rgba(255, 255, 255, 0.22), transparent 38%, transparent 62%, rgba(255, 255, 255, 0.1));
+    opacity: 0.62;
     pointer-events: none;
+    transition: opacity 180ms var(--ease-soft);
   }
 
   .hint-chip:hover:not(:disabled) {
-    transform: translateY(-3px) scale(1.01);
+    transform: translateY(-5px) scale(1.02);
     border-color: color-mix(in srgb, var(--accent) 48%, rgba(255, 255, 255, 0.26));
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.22),
-      0 18px 36px rgba(8, 15, 30, 0.22);
+      0 22px 38px rgba(8, 15, 30, 0.24);
+    filter: saturate(1.04);
   }
 
   .hint-chip:active:not(:disabled) {
@@ -498,6 +502,10 @@
 
   .hint-chip:disabled {
     cursor: default;
+  }
+
+  .hint-chip:disabled:not(.loading) {
+    opacity: 1;
   }
 
   .hint-chip.selected {
@@ -513,8 +521,22 @@
       hint-chip-bounce-stretch 460ms cubic-bezier(0.2, 0.9, 0.28, 1.14) both;
   }
 
-  .hint-chip span,
-  .hint-chip small {
+  .hint-chip.loading {
+    overflow: hidden;
+  }
+
+  .hint-chip.loading::after {
+    content: '';
+    position: absolute;
+    inset: -18% auto -18% -42%;
+    width: 42%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+    transform: skewX(-18deg);
+    animation: hint-chip-loading-sheen 900ms ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  .hint-chip span {
     position: relative;
     z-index: 1;
   }
@@ -522,15 +544,13 @@
   .hint-chip span {
     font-weight: 700;
     line-height: 1.15;
-  }
-
-  .hint-chip-status {
-    color: color-mix(in srgb, var(--accent) 62%, var(--text-soft));
-    animation: hint-chip-status-fade 180ms ease-out both;
+    max-width: 15ch;
+    text-wrap: balance;
   }
 
   .hint-chip-skeleton {
-    min-height: 4rem;
+    min-height: 7.25rem;
+    height: 7.25rem;
     border-style: dashed;
     background:
       linear-gradient(110deg, rgba(255, 255, 255, 0.05) 20%, rgba(255, 255, 255, 0.14) 36%, rgba(255, 255, 255, 0.05) 54%),
@@ -688,6 +708,11 @@
     position: relative;
   }
 
+  .topic-detail-field {
+    display: grid;
+    gap: 0.8rem;
+  }
+
   .topic-input-wrap textarea {
     min-height: 9.5rem;
     resize: vertical;
@@ -789,15 +814,13 @@
     }
   }
 
-  @keyframes hint-chip-status-fade {
+  @keyframes hint-chip-loading-sheen {
     from {
-      opacity: 0;
-      transform: translateY(3px);
+      transform: translateX(-12%) skewX(-18deg);
     }
 
     to {
-      opacity: 1;
-      transform: translateY(0);
+      transform: translateX(360%) skewX(-18deg);
     }
   }
 

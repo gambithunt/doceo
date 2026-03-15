@@ -802,7 +802,6 @@ function createAppStore() {
             ...state.topicDiscovery,
             selectedSubjectId: subject.id,
             input: sectionName,
-            status: 'loading',
             error: null
           }
         })
