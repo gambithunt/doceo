@@ -13,7 +13,7 @@
   let topicInputFocused = $state(false);
   let promptSuggestionsText = $state('');
   let hintChipsLoading = $state(false);
-  let pendingChipLabel = $state<string | null>(null);
+  let pendingChipId = $state<string | null>(null);
   let latestHintRequest = 0;
   let lastHintSeed = $state('');
 
@@ -34,7 +34,12 @@
   const selectedSubject = $derived(
     availableSubjects.find((subject) => subject.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
   );
-  const promptSuggestionChips = $derived(extractHintChipLabels(promptSuggestionsText));
+  const promptSuggestionChips = $derived(
+    extractHintChipLabels(promptSuggestionsText).map((label, index) => ({
+      id: `${selectedSubject?.id ?? 'subject'}:${index}:${label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      label
+    }))
+  );
   const assistantStatus = $derived.by(() => {
     switch (viewState.topicDiscovery.status) {
       case 'loading':
@@ -108,14 +113,14 @@
   function onSubjectChange(event: Event): void {
     lastHintSeed = '';
     promptSuggestionsText = '';
-    pendingChipLabel = null;
+    pendingChipId = null;
     appState.setTopicDiscoveryInput('');
     appState.selectSubject((event.currentTarget as HTMLSelectElement).value);
   }
 
   function resetTopicDiscovery(): void {
     lastHintSeed = '';
-    pendingChipLabel = null;
+    pendingChipId = null;
     appState.resetTopicDiscovery();
   }
 
@@ -131,19 +136,19 @@
     void appState.startLessonFromShortlist(topic);
   }
 
-  function startFromSuggestion(hint: string): void {
-    if (!selectedSubject || pendingChipLabel) {
+  function startFromSuggestion(chipId: string, hint: string): void {
+    if (!selectedSubject || pendingChipId) {
       return;
     }
 
-    pendingChipLabel = hint;
+    pendingChipId = chipId;
     appState.setTopicDiscoveryInput(hint);
 
     void (async () => {
       try {
         await appState.startLessonFromSelection(selectedSubject.id, hint);
       } finally {
-        pendingChipLabel = null;
+        pendingChipId = null;
       }
     })();
   }
@@ -227,17 +232,17 @@
                   ></span>
                 {/each}
               {:else}
-                {#each promptSuggestionChips as hint, index}
+                {#each promptSuggestionChips as chip, index}
                   <button
                     type="button"
-                    class:selected={pendingChipLabel === hint}
-                    class:loading={pendingChipLabel === hint}
+                    class:selected={pendingChipId === chip.id}
+                    class:loading={pendingChipId === chip.id}
                     class="hint-chip"
                     style={`--chip-index: ${index};`}
-                    onclick={() => startFromSuggestion(hint)}
-                    disabled={Boolean(pendingChipLabel)}
+                    onclick={() => startFromSuggestion(chip.id, chip.label)}
+                    disabled={Boolean(pendingChipId)}
                   >
-                    <span>{hint}</span>
+                    <span>{chip.label}</span>
                   </button>
                 {/each}
               {/if}
@@ -480,11 +485,23 @@
     inset: 1px;
     border-radius: inherit;
     background:
-      radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.22), transparent 42%),
-      linear-gradient(120deg, rgba(255, 255, 255, 0.22), transparent 38%, transparent 62%, rgba(255, 255, 255, 0.1));
-    opacity: 0.62;
+      linear-gradient(140deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 34%, rgba(255, 255, 255, 0) 62%),
+      radial-gradient(120% 90% at 12% 14%, rgba(152, 255, 222, 0.1), transparent 38%);
+    opacity: 0.78;
     pointer-events: none;
     transition: opacity 180ms var(--ease-soft);
+  }
+
+  .hint-chip::after {
+    content: '';
+    position: absolute;
+    inset: auto 10% 10% auto;
+    width: 42%;
+    height: 42%;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(9, 16, 31, 0.22), transparent 72%);
+    opacity: 0.5;
+    pointer-events: none;
   }
 
   .hint-chip:hover:not(:disabled) {
@@ -525,13 +542,19 @@
     overflow: hidden;
   }
 
-  .hint-chip.loading::after {
+  .hint-chip.loading::before {
+    background:
+      linear-gradient(140deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.03) 34%, rgba(255, 255, 255, 0) 62%),
+      radial-gradient(120% 90% at 12% 14%, rgba(152, 255, 222, 0.14), transparent 38%);
+  }
+
+  .hint-chip.loading > span::after {
     content: '';
     position: absolute;
-    inset: -18% auto -18% -42%;
-    width: 42%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
-    transform: skewX(-18deg);
+    inset: -145% auto -145% -130%;
+    width: 120%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+    transform: rotate(14deg);
     animation: hint-chip-loading-sheen 900ms ease-in-out infinite;
     pointer-events: none;
   }
@@ -816,11 +839,11 @@
 
   @keyframes hint-chip-loading-sheen {
     from {
-      transform: translateX(-12%) skewX(-18deg);
+      transform: translateX(-16%) rotate(14deg);
     }
 
     to {
-      transform: translateX(360%) skewX(-18deg);
+      transform: translateX(265%) rotate(14deg);
     }
   }
 
