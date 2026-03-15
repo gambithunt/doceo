@@ -237,7 +237,9 @@
                     disabled={Boolean(pendingChipLabel)}
                   >
                     <span>{hint}</span>
-                    <small>{pendingChipLabel === hint ? 'Starting...' : 'Quick start'}</small>
+                    {#if pendingChipLabel === hint}
+                      <small class="hint-chip-status">Starting...</small>
+                    {/if}
                   </button>
                 {/each}
               {/if}
@@ -506,6 +508,9 @@
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.22),
       0 20px 40px rgba(8, 15, 30, 0.26);
+    animation:
+      hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both,
+      hint-chip-bounce-stretch 460ms cubic-bezier(0.2, 0.9, 0.28, 1.14) both;
   }
 
   .hint-chip span,
@@ -519,8 +524,9 @@
     line-height: 1.15;
   }
 
-  .hint-chip small {
+  .hint-chip-status {
     color: color-mix(in srgb, var(--accent) 62%, var(--text-soft));
+    animation: hint-chip-status-fade 180ms ease-out both;
   }
 
   .hint-chip-skeleton {
@@ -762,6 +768,36 @@
 
     to {
       background-position: -20% 0;
+    }
+  }
+
+  @keyframes hint-chip-bounce-stretch {
+    0% {
+      transform: translateY(0) scale(1);
+    }
+
+    32% {
+      transform: translateY(-1px) scaleX(1.045) scaleY(0.96);
+    }
+
+    62% {
+      transform: translateY(0) scaleX(0.985) scaleY(1.03);
+    }
+
+    100% {
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes hint-chip-status-fade {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 
