@@ -235,12 +235,15 @@
                 {#each promptSuggestionChips as chip, index}
                   <button
                     type="button"
+                    id={`quick-start-${chip.id}`}
+                    data-chip-id={chip.id}
+                    aria-busy={pendingChipId === chip.id}
                     class:selected={pendingChipId === chip.id}
                     class:loading={pendingChipId === chip.id}
                     class="hint-chip"
                     style={`--chip-index: ${index};`}
                     onclick={() => startFromSuggestion(chip.id, chip.label)}
-                    disabled={Boolean(pendingChipId)}
+                    disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
                   >
                     <span>{chip.label}</span>
                   </button>
@@ -418,13 +421,8 @@
     padding: 1rem 1.05rem 1.1rem;
     border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
     border-radius: 1.35rem;
-    background:
-      radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 42%),
-      linear-gradient(180deg, color-mix(in srgb, white 7%, var(--surface-soft)), color-mix(in srgb, var(--surface-soft) 88%, transparent));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.16),
-      0 18px 34px rgba(8, 15, 30, 0.18);
-    backdrop-filter: blur(18px);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 94%, white 6%), color-mix(in srgb, var(--surface) 92%, transparent));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
   .hint-panel-copy {
@@ -452,7 +450,6 @@
   .hint-chip {
     --chip-delay: calc(var(--chip-index, 0) * 48ms);
     position: relative;
-    overflow: hidden;
     display: grid;
     place-content: center start;
     justify-items: start;
@@ -461,60 +458,26 @@
     padding: 1rem 1.05rem;
     border: 1px solid color-mix(in srgb, var(--accent) 26%, rgba(255, 255, 255, 0.16));
     border-radius: 1.1rem;
-    background:
-      linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04)),
-      color-mix(in srgb, var(--surface) 88%, rgba(255, 255, 255, 0.06));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, white 6%), color-mix(in srgb, var(--surface-strong) 94%, black 6%));
     color: var(--text);
     text-align: left;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.18),
-      0 16px 32px rgba(8, 15, 30, 0.16);
-    backdrop-filter: blur(18px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     transition:
-      transform 220ms var(--ease-spring),
-      border-color 220ms var(--ease-soft),
-      box-shadow 220ms var(--ease-soft),
-      background-color 220ms var(--ease-soft),
-      filter 220ms var(--ease-soft);
+      transform 180ms var(--ease-spring),
+      border-color 180ms var(--ease-soft),
+      background-color 180ms var(--ease-soft);
     animation: hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both;
-  }
-
-  .hint-chip::before {
-    content: '';
-    position: absolute;
-    inset: 1px;
-    border-radius: inherit;
-    background:
-      linear-gradient(140deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 34%, rgba(255, 255, 255, 0) 62%),
-      radial-gradient(120% 90% at 12% 14%, rgba(152, 255, 222, 0.1), transparent 38%);
-    opacity: 0.78;
-    pointer-events: none;
-    transition: opacity 180ms var(--ease-soft);
-  }
-
-  .hint-chip::after {
-    content: '';
-    position: absolute;
-    inset: auto 10% 10% auto;
-    width: 42%;
-    height: 42%;
-    border-radius: 999px;
-    background: radial-gradient(circle, rgba(9, 16, 31, 0.22), transparent 72%);
-    opacity: 0.5;
-    pointer-events: none;
+    will-change: transform;
   }
 
   .hint-chip:hover:not(:disabled) {
-    transform: translateY(-5px) scale(1.02);
+    transform: translateY(-3px);
     border-color: color-mix(in srgb, var(--accent) 48%, rgba(255, 255, 255, 0.26));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.22),
-      0 22px 38px rgba(8, 15, 30, 0.24);
-    filter: saturate(1.04);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 86%, var(--accent) 10%), color-mix(in srgb, var(--surface-strong) 92%, black 8%));
   }
 
   .hint-chip:active:not(:disabled) {
-    transform: translateY(0) scale(0.985);
+    transform: translateY(0) scale(0.99);
   }
 
   .hint-chip:disabled {
@@ -527,36 +490,16 @@
 
   .hint-chip.selected {
     border-color: color-mix(in srgb, var(--accent) 72%, white 12%);
-    background:
-      linear-gradient(145deg, color-mix(in srgb, white 20%, transparent), color-mix(in srgb, var(--accent) 10%, transparent)),
-      color-mix(in srgb, var(--accent) 18%, var(--surface));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.22),
-      0 20px 40px rgba(8, 15, 30, 0.26);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 76%, var(--accent) 18%), color-mix(in srgb, var(--surface-strong) 86%, var(--accent) 12%));
     animation:
       hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both,
       hint-chip-bounce-stretch 460ms cubic-bezier(0.2, 0.9, 0.28, 1.14) both;
   }
 
   .hint-chip.loading {
-    overflow: hidden;
-  }
-
-  .hint-chip.loading::before {
-    background:
-      linear-gradient(140deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.03) 34%, rgba(255, 255, 255, 0) 62%),
-      radial-gradient(120% 90% at 12% 14%, rgba(152, 255, 222, 0.14), transparent 38%);
-  }
-
-  .hint-chip.loading > span::after {
-    content: '';
-    position: absolute;
-    inset: -145% auto -145% -130%;
-    width: 120%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
-    transform: rotate(14deg);
-    animation: hint-chip-loading-sheen 900ms ease-in-out infinite;
-    pointer-events: none;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 72%, var(--accent) 22%), color-mix(in srgb, var(--surface-strong) 84%, var(--accent) 14%));
+    border-color: color-mix(in srgb, var(--accent) 78%, white 10%);
+    animation: hint-chip-glow-pulse 960ms ease-in-out infinite alternate;
   }
 
   .hint-chip span {
@@ -575,14 +518,9 @@
     min-height: 7.25rem;
     height: 7.25rem;
     border-style: dashed;
-    background:
-      linear-gradient(110deg, rgba(255, 255, 255, 0.05) 20%, rgba(255, 255, 255, 0.14) 36%, rgba(255, 255, 255, 0.05) 54%),
-      color-mix(in srgb, var(--surface-soft) 94%, white 6%);
-    background-size: 200% 100%;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    animation:
-      hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both,
-      hint-chip-shimmer 1.6s linear infinite;
+    background: color-mix(in srgb, var(--surface-soft) 94%, white 6%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    animation: hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both;
   }
 
   .topic-list {
@@ -809,16 +747,6 @@
     }
   }
 
-  @keyframes hint-chip-shimmer {
-    from {
-      background-position: 200% 0;
-    }
-
-    to {
-      background-position: -20% 0;
-    }
-  }
-
   @keyframes hint-chip-bounce-stretch {
     0% {
       transform: translateY(0) scale(1);
@@ -837,13 +765,17 @@
     }
   }
 
-  @keyframes hint-chip-loading-sheen {
+  @keyframes hint-chip-glow-pulse {
     from {
-      transform: translateX(-16%) rotate(14deg);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 0 0 rgba(95, 227, 182, 0.08);
     }
 
     to {
-      transform: translateX(265%) rotate(14deg);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 0 18px rgba(95, 227, 182, 0.18);
     }
   }
 
