@@ -232,18 +232,18 @@
                   ></span>
                 {/each}
               {:else}
-                {#each promptSuggestionChips as chip, index}
+                {#each promptSuggestionChips as chip, index (chip.id)}
                   <button
                     type="button"
                     id={`quick-start-${chip.id}`}
                     data-chip-id={chip.id}
                     aria-busy={pendingChipId === chip.id}
+                    aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
                     class:selected={pendingChipId === chip.id}
                     class:loading={pendingChipId === chip.id}
                     class="hint-chip"
                     style={`--chip-index: ${index};`}
                     onclick={() => startFromSuggestion(chip.id, chip.label)}
-                    disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
                   >
                     <span>{chip.label}</span>
                   </button>
@@ -484,22 +484,19 @@
     cursor: default;
   }
 
-  .hint-chip:disabled:not(.loading) {
-    opacity: 1;
+  .hint-chip[aria-disabled='true'] {
+    pointer-events: none;
   }
 
   .hint-chip.selected {
     border-color: color-mix(in srgb, var(--accent) 72%, white 12%);
     background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 76%, var(--accent) 18%), color-mix(in srgb, var(--surface-strong) 86%, var(--accent) 12%));
-    animation:
-      hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both,
-      hint-chip-bounce-stretch 460ms cubic-bezier(0.2, 0.9, 0.28, 1.14) both;
   }
 
   .hint-chip.loading {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 72%, var(--accent) 22%), color-mix(in srgb, var(--surface-strong) 84%, var(--accent) 14%));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 70%, var(--accent) 24%), color-mix(in srgb, var(--surface-strong) 82%, var(--accent) 16%));
     border-color: color-mix(in srgb, var(--accent) 78%, white 10%);
-    animation: hint-chip-glow-pulse 960ms ease-in-out infinite alternate;
+    animation: hint-chip-loading-sway 1020ms ease-in-out infinite;
   }
 
   .hint-chip span {
@@ -747,35 +744,25 @@
     }
   }
 
-  @keyframes hint-chip-bounce-stretch {
-    0% {
-      transform: translateY(0) scale(1);
-    }
-
-    32% {
-      transform: translateY(-1px) scaleX(1.045) scaleY(0.96);
-    }
-
-    62% {
-      transform: translateY(0) scaleX(0.985) scaleY(1.03);
-    }
-
-    100% {
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes hint-chip-glow-pulse {
+  @keyframes hint-chip-loading-sway {
     from {
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.08),
-        0 0 0 rgba(95, 227, 182, 0.08);
+      transform: translateY(0) rotate(0deg);
+    }
+
+    25% {
+      transform: translateY(-2px) rotate(-0.75deg);
+    }
+
+    50% {
+      transform: translateY(-3px) rotate(0.45deg);
+    }
+
+    75% {
+      transform: translateY(-2px) rotate(0.9deg);
     }
 
     to {
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.12),
-        0 0 18px rgba(95, 227, 182, 0.18);
+      transform: translateY(0) rotate(0deg);
     }
   }
 
