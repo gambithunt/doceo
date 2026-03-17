@@ -40,5 +40,8 @@
 	],
 	"/api/state/sync": [
 		"src/routes/api/state/sync/+server.ts"
+	],
+	"/api/subjects/verify": [
+		"src/routes/api/subjects/verify/+server.ts"
 	]
 }

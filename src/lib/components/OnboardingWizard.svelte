@@ -1,7 +1,7 @@
 <script lang="ts">
   import { appState } from '$lib/stores/app-state';
   import { getRecommendedSubject } from '$lib/data/onboarding';
-  import type { AppState, OnboardingStep, SchoolTerm, SubjectOption } from '$lib/types';
+  import type { AppState, OnboardingStep, SchoolTerm, SubjectOption, SubjectVerificationState } from '$lib/types';
 
   const { state }: { state: AppState } = $props();
 
@@ -104,6 +104,18 @@
 
   function groupedSubjects(category: SubjectOption['category']): SubjectOption[] {
     return state.onboarding.options.subjects.filter((subject) => subject.category === category);
+  }
+
+  const verification = $derived(state.onboarding.subjectVerification as SubjectVerificationState);
+
+  async function submitVerify(): Promise<void> {
+    const name = verification.input.trim();
+    if (!name || verification.status === 'loading') return;
+    await appState.verifyAndAddSubject(name);
+  }
+
+  function handleVerifyKey(event: KeyboardEvent): void {
+    if (event.key === 'Enter') submitVerify();
   }
 </script>
 
@@ -336,25 +348,54 @@
           <label class="grow">
             <span>Add a missing subject</span>
             <input
-              value={state.onboarding.customSubjectInput}
+              value={verification.input}
               placeholder="Type the subject name"
-              oninput={(event) => appState.setOnboardingCustomSubjectInput((event.currentTarget as HTMLInputElement).value)}
+              disabled={verification.status === 'loading'}
+              oninput={(event) => appState.setSubjectVerificationInput((event.currentTarget as HTMLInputElement).value)}
+              onkeydown={handleVerifyKey}
             />
           </label>
           <button
             type="button"
             class="secondary add-subject"
-            onclick={() => appState.addOnboardingCustomSubject()}
+            disabled={verification.status === 'loading' || !verification.input.trim()}
+            onclick={submitVerify}
           >
-            Add subject
+            {verification.status === 'loading' ? 'Checking...' : 'Add subject'}
           </button>
         </div>
+
+        {#if verification.status === 'verified'}
+          <div class="verify-feedback verify-ok">
+            <strong>{verification.normalizedName}</strong> was recognised and added to your subjects.
+            <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Add another</button>
+          </div>
+        {:else if verification.status === 'provisional'}
+          <div class="verify-feedback verify-warn">
+            Couldn't verify <strong>{verification.normalizedName}</strong> right now — it's been saved locally and will be confirmed later.
+            <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Try another</button>
+          </div>
+        {:else if verification.status === 'invalid'}
+          <div class="verify-feedback verify-error">
+            {#if verification.suggestion}
+              Did you mean <strong>{verification.suggestion}</strong>? {verification.reason}
+            {:else}
+              {verification.reason ?? 'That doesn\'t look like a recognised school subject.'}
+            {/if}
+            <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Try again</button>
+          </div>
+        {:else if verification.status === 'error'}
+          <div class="verify-feedback verify-error">
+            {verification.reason ?? 'Something went wrong. Please try again.'}
+            <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Try again</button>
+          </div>
+        {/if}
 
         {#if state.onboarding.customSubjects.length > 0}
           <div class="tags">
             {#each state.onboarding.customSubjects as subject}
               <button type="button" class="tag" onclick={() => appState.removeOnboardingCustomSubject(subject)}>
-                {subject}
+                {subject} ·
               </button>
             {/each}
           </div>
@@ -719,6 +760,43 @@
     border: 1px dashed var(--border);
     background: var(--surface-soft);
     color: var(--text-soft);
+  }
+
+  .verify-feedback {
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    font-size: 0.9rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  .verify-ok {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .verify-warn {
+    background: color-mix(in srgb, #f5a623 10%, var(--surface));
+    border-color: color-mix(in srgb, #f5a623 30%, transparent);
+  }
+
+  .verify-error {
+    background: color-mix(in srgb, #e74c3c 10%, var(--surface));
+    border-color: color-mix(in srgb, #e74c3c 25%, transparent);
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.85rem;
   }
 
   .actions {

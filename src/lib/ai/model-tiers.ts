@@ -6,12 +6,14 @@ export type AiMode =
   | 'topic-shortlist'
   | 'lesson-selector'
   | 'lesson-plan'
-  | 'lesson-chat';
+  | 'lesson-chat'
+  | 'subject-verify';
 
 const DEFAULT_MODEL_TIER_BY_MODE: Record<AiMode, ModelTier> = {
   'subject-hints': 'fast',
   'topic-shortlist': 'fast',
   'lesson-selector': 'fast',
+  'subject-verify': 'fast',
   tutor: 'default',
   'lesson-chat': 'default',
   'lesson-plan': 'thinking'

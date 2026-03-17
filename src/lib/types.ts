@@ -82,6 +82,20 @@ export interface SubjectOption {
   gradeId: string;
   name: string;
   category: 'core' | 'elective' | 'language';
+  source?: 'seeded' | 'user_contributed';
+}
+
+export type SubjectVerificationStatus = 'idle' | 'loading' | 'verified' | 'invalid' | 'provisional' | 'error';
+
+export interface SubjectVerificationState {
+  status: SubjectVerificationStatus;
+  input: string;
+  subjectId: string | null;
+  normalizedName: string | null;
+  category: 'core' | 'language' | 'elective' | null;
+  reason: string | null;
+  suggestion: string | null;
+  provisional: boolean;
 }
 
 export interface QuestionOption {
@@ -419,6 +433,7 @@ export interface AppState {
     customSubjects: string[];
     customSubjectInput: string;
     selectionMode: SubjectSelectionMode;
+    subjectVerification: SubjectVerificationState;
     isSaving: boolean;
     error: string | null;
     recommendation: {

@@ -76,6 +76,24 @@ interface LessonSelectorRequest {
   availableSections: string[];
 }
 
+interface SubjectVerifyRequest {
+  name: string;
+  curriculumId: string;
+  curriculum: string;
+  gradeId: string;
+  grade: string;
+  country: string;
+}
+
+interface SubjectVerifyResult {
+  valid: boolean;
+  normalizedName: string | null;
+  category: 'core' | 'language' | 'elective' | null;
+  gradeBand: 'intermediate' | 'senior' | 'fet' | null;
+  reason: string | null;
+  suggestion: string | null;
+}
+
 interface UserProfile {
   id: string;
   fullName: string;
@@ -246,7 +264,7 @@ interface GithubModelsRequestBody {
 }
 
 type EdgePayload = {
-  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest;
+  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest | SubjectVerifyRequest;
   mode?: AiMode;
   modelTier?: ModelTier;
 };
@@ -286,7 +304,8 @@ function isAiMode(value: unknown): value is AiMode {
     value === 'topic-shortlist' ||
     value === 'lesson-selector' ||
     value === 'lesson-plan' ||
-    value === 'lesson-chat'
+    value === 'lesson-chat' ||
+    value === 'subject-verify'
   );
 }
 
@@ -885,6 +904,43 @@ function parseLessonChatResponse(content: string): { displayContent: string; met
   };
 }
 
+function buildSubjectVerifySystemPrompt(): string {
+  return [
+    'You are a curriculum expert for South African school education (Grades 5–12).',
+    'You validate whether a subject name is a real, recognised school subject for a given curriculum and grade.',
+    'Return JSON only — no markdown, no explanation — with exactly these keys:',
+    '{ "valid": boolean, "normalizedName": string | null, "category": "core" | "language" | "elective" | null,',
+    '"gradeBand": "intermediate" | "senior" | "fet" | null, "reason": string | null, "suggestion": string | null }',
+    'Grade bands: intermediate = Grades 5–6, senior = Grades 7–9, fet = Grades 10–12.',
+    'Rules:',
+    '- Set valid=true only if the subject is legitimately taught in South African schools for the given curriculum and grade band.',
+    '- normalizedName must be the official, correctly capitalised subject name (e.g. "Business Studies", not "business studies" or "bussiness").',
+    '- category: "core" for Mathematics/Mathematical Literacy, "language" for any language subject, "elective" for everything else.',
+    '- gradeBand: the grade band where this subject is offered. If offered in multiple bands, return the band that matches the student\'s grade.',
+    '- reason: brief explanation if valid=false, otherwise null.',
+    '- suggestion: the correct name if the student likely misspelled, otherwise null.',
+    '- If the input is gibberish, a person\'s name, or clearly not a school subject, set valid=false.'
+  ].join(' ');
+}
+
+function buildSubjectVerifyUserPrompt(request: SubjectVerifyRequest): string {
+  return JSON.stringify({
+    subject_name: request.name,
+    curriculum: request.curriculum,
+    grade: request.grade,
+    country: request.country
+  });
+}
+
+function parseSubjectVerifyResponse(content: string): SubjectVerifyResult | null {
+  const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const parsed = parseJson<SubjectVerifyResult>(cleaned);
+  if (parsed && typeof parsed.valid === 'boolean') {
+    return parsed;
+  }
+  return null;
+}
+
 function buildGithubRequest(
   model: string,
   temperature: number,
@@ -950,6 +1006,11 @@ function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: 
       ]);
     case 'lesson-chat':
       return buildGithubRequest(model, 0.4, buildLessonChatMessages(request as LessonChatRequest));
+    case 'subject-verify':
+      return buildGithubRequest(model, 0.1, [
+        { role: 'system', content: buildSubjectVerifySystemPrompt() },
+        { role: 'user', content: buildSubjectVerifyUserPrompt(request as SubjectVerifyRequest) }
+      ]);
   }
 }
 
@@ -995,6 +1056,12 @@ function buildModeResponse(
       const response = parseLessonChatResponse(content);
       return response
         ? { ...response, provider: PROVIDER, modelTier, model }
+        : null;
+    }
+    case 'subject-verify': {
+      const result = parseSubjectVerifyResponse(content);
+      return result
+        ? { result, provider: PROVIDER, modelTier, model }
         : null;
     }
   }

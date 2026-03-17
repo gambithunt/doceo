@@ -268,6 +268,16 @@ export function createInitialState(): AppState {
       customSubjects: [],
       customSubjectInput: '',
       selectionMode: getSelectionMode(selectedStructuredSubjectIds, [], false),
+      subjectVerification: {
+        status: 'idle',
+        input: '',
+        subjectId: null,
+        normalizedName: null,
+        category: null,
+        reason: null,
+        suggestion: null,
+        provisional: false
+      },
       isSaving: false,
       error: null,
       recommendation,

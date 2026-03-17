@@ -49,6 +49,7 @@ import type {
   SchoolTerm,
   ShortlistedTopic,
   SubjectOption,
+  SubjectVerificationState,
   ThemeMode,
   TopicShortlistResponse
 } from '$lib/types';
@@ -1392,6 +1393,212 @@ function createAppStore() {
           }
         })
       ),
+    setSubjectVerificationInput: (input: string) =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            subjectVerification: { ...state.onboarding.subjectVerification, input }
+          }
+        })
+      ),
+    resetSubjectVerification: () =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            subjectVerification: {
+              status: 'idle',
+              input: '',
+              subjectId: null,
+              normalizedName: null,
+              category: null,
+              reason: null,
+              suggestion: null,
+              provisional: false
+            } satisfies SubjectVerificationState
+          }
+        })
+      ),
+    verifyAndAddSubject: async (name: string) => {
+      const current = readState();
+      const { selectedCurriculumId: curriculumId, selectedGradeId: gradeId } = current.onboarding;
+      const { curriculum, curriculumId: profileCurriculumId } = current.profile;
+      const resolvedCurriculumId = curriculumId || profileCurriculumId;
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            subjectVerification: {
+              ...state.onboarding.subjectVerification,
+              status: 'loading',
+              input: name
+            }
+          }
+        })
+      );
+
+      const headers = await getAuthenticatedHeaders();
+      let response: Response;
+
+      try {
+        response = await fetch('/api/subjects/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({
+            name,
+            curriculumId: resolvedCurriculumId,
+            curriculum: curriculum || resolvedCurriculumId,
+            gradeId,
+            grade: current.profile.grade || gradeId,
+            country: current.profile.country || 'South Africa'
+          })
+        });
+      } catch {
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              subjectVerification: {
+                ...state.onboarding.subjectVerification,
+                status: 'error',
+                reason: 'Network error — please try again.'
+              }
+            }
+          })
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              subjectVerification: {
+                ...state.onboarding.subjectVerification,
+                status: 'error',
+                reason: 'Verification failed — please try again.'
+              }
+            }
+          })
+        );
+        return;
+      }
+
+      const data = (await response.json()) as {
+        result: {
+          valid: boolean;
+          normalizedName: string | null;
+          category: 'core' | 'language' | 'elective' | null;
+          reason: string | null;
+          suggestion: string | null;
+        };
+        subjectId: string;
+        provider: string;
+        provisional: boolean;
+      };
+
+      const { result, subjectId, provisional } = data;
+
+      if (provisional) {
+        // LLM unavailable — store as custom subject, flag provisional
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              customSubjects: deduplicateSubjects([...state.onboarding.customSubjects, name]),
+              subjectVerification: {
+                status: 'provisional',
+                input: name,
+                subjectId: null,
+                normalizedName: name,
+                category: null,
+                reason: null,
+                suggestion: null,
+                provisional: true
+              } satisfies SubjectVerificationState
+            }
+          })
+        );
+        return;
+      }
+
+      if (!result.valid) {
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              subjectVerification: {
+                status: 'invalid',
+                input: name,
+                subjectId: null,
+                normalizedName: null,
+                category: null,
+                reason: result.reason,
+                suggestion: result.suggestion,
+                provisional: false
+              } satisfies SubjectVerificationState
+            }
+          })
+        );
+        return;
+      }
+
+      // Valid — add to selected subjects
+      const displayName = result.normalizedName ?? name;
+      update((state) => {
+        const alreadySelected =
+          state.onboarding.selectedSubjectIds.includes(subjectId) ||
+          state.onboarding.selectedSubjectNames.includes(displayName);
+
+        if (alreadySelected) {
+          return persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              subjectVerification: {
+                status: 'verified',
+                input: name,
+                subjectId,
+                normalizedName: displayName,
+                category: result.category,
+                reason: null,
+                suggestion: null,
+                provisional: false
+              } satisfies SubjectVerificationState
+            }
+          });
+        }
+
+        return persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            selectedSubjectIds: [...state.onboarding.selectedSubjectIds, subjectId],
+            selectedSubjectNames: [...state.onboarding.selectedSubjectNames, displayName],
+            subjectVerification: {
+              status: 'verified',
+              input: name,
+              subjectId,
+              normalizedName: displayName,
+              category: result.category,
+              reason: null,
+              suggestion: null,
+              provisional: false
+            } satisfies SubjectVerificationState
+          }
+        });
+      });
+    },
     setOnboardingUnsure: (isUnsure: boolean) =>
       update((state) =>
         persistAndSync({
