@@ -114,7 +114,12 @@
       <span>Password</span>
       <input bind:value={password} type="password" />
     </label>
-    <button type="button" onclick={submitAuth} disabled={viewState.auth.status === 'loading'}>
+    <button
+      type="button"
+      aria-busy={viewState.auth.status === 'loading'}
+      onclick={submitAuth}
+      disabled={viewState.auth.status === 'loading'}
+    >
       {viewState.auth.status === 'loading' ? 'Working...' : authMode === 'signup' ? 'Create account' : 'Sign in'}
     </button>
     {#if viewState.auth.error}

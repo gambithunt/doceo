@@ -1442,8 +1442,27 @@ function createAppStore() {
         })
       );
 
-      const headers = await getAuthenticatedHeaders();
+      let headers: Record<string, string>;
       let response: Response;
+
+      try {
+        headers = await getAuthenticatedHeaders();
+      } catch {
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              subjectVerification: {
+                ...state.onboarding.subjectVerification,
+                status: 'error',
+                reason: 'You must be signed in to add a subject.'
+              }
+            }
+          })
+        );
+        return;
+      }
 
       try {
         response = await fetch('/api/subjects/verify', {

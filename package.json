@@ -11,7 +11,8 @@
     "typecheck": "npm run check",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:reset": "npx supabase db reset && docker exec supabase_db_doceo psql 'postgresql://supabase_auth_admin:postgres@localhost/postgres' -c \"UPDATE auth.users SET confirmation_token=COALESCE(confirmation_token,''), recovery_token=COALESCE(recovery_token,''), email_change_token_new=COALESCE(email_change_token_new,''), email_change=COALESCE(email_change,'');\""
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

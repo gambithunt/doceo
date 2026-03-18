@@ -267,7 +267,13 @@
         </label>
 
         <div class="starter-actions">
-          <button type="button" class="btn btn-primary" onclick={runShortlist} disabled={viewState.topicDiscovery.status === 'loading'}>
+          <button
+            type="button"
+            class="btn btn-primary"
+            aria-busy={viewState.topicDiscovery.status === 'loading'}
+            onclick={runShortlist}
+            disabled={viewState.topicDiscovery.status === 'loading'}
+          >
             {viewState.topicDiscovery.status === 'loading' ? 'Finding matches...' : 'Find my section'}
           </button>
           {#if viewState.topicDiscovery.shortlist}

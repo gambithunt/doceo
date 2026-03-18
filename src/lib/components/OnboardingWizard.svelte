@@ -358,10 +358,20 @@
           <button
             type="button"
             class="secondary add-subject"
+            class:is-checking={verification.status === 'loading'}
+            aria-busy={verification.status === 'loading'}
             disabled={verification.status === 'loading' || !verification.input.trim()}
             onclick={submitVerify}
           >
-            {verification.status === 'loading' ? 'Checking...' : 'Add subject'}
+            {#if verification.status === 'loading'}
+              <span class="busy-indicator" aria-hidden="true">
+                <span></span>
+                <span></span>
+              </span>
+              <span>Checking</span>
+            {:else}
+              <span>Add subject</span>
+            {/if}
           </button>
         </div>
 
@@ -463,7 +473,7 @@
         </button>
 
         {#if state.onboarding.currentStep === 'review'}
-          <button type="button" onclick={complete} disabled={state.onboarding.isSaving}>
+          <button type="button" aria-busy={state.onboarding.isSaving} onclick={complete} disabled={state.onboarding.isSaving}>
             {state.onboarding.isSaving ? 'Saving profile...' : 'Save profile and continue'}
           </button>
         {:else}
@@ -713,9 +723,38 @@
   }
 
   .add-subject {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
     align-self: end;
     padding: 0.72rem 1rem;
     white-space: nowrap;
+  }
+
+  .add-subject.is-checking {
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    color: var(--text);
+  }
+
+  .busy-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.26rem;
+  }
+
+  .busy-indicator span {
+    width: 0.38rem;
+    height: 0.38rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 72%, white 28%);
+    opacity: 0.34;
+    animation: verify-dot-breathe 1.15s ease-in-out infinite;
+  }
+
+  .busy-indicator span:last-child {
+    animation-delay: 0.18s;
   }
 
   .unsure {
@@ -850,6 +889,27 @@
 
     .hero {
       padding: 1.25rem;
+    }
+  }
+
+  @keyframes verify-dot-breathe {
+    0%,
+    100% {
+      opacity: 0.34;
+      transform: scale(0.9);
+    }
+
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .busy-indicator span {
+      animation: none;
+      opacity: 0.72;
+      transform: none;
     }
   }
 </style>

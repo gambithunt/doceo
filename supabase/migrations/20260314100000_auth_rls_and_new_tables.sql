@@ -17,7 +17,6 @@ alter table profiles
 -- ─────────────────────────────────────────
 alter table profiles enable row level security;
 alter table app_state_snapshots enable row level security;
-alter table lesson_sessions enable row level security;
 alter table student_progress enable row level security;
 alter table analytics_events enable row level security;
 alter table ai_interactions enable row level security;
@@ -32,14 +31,6 @@ create policy "profiles: own rows only" on profiles
 
 -- app_state_snapshots (profile_id = profiles.id, which has auth_user_id = auth.uid())
 create policy "snapshots: own rows only" on app_state_snapshots
-  for all using (
-    profile_id in (
-      select id from profiles where auth_user_id = auth.uid()
-    )
-  );
-
--- lesson_sessions
-create policy "lesson_sessions: own rows only" on lesson_sessions
   for all using (
     profile_id in (
       select id from profiles where auth_user_id = auth.uid()
@@ -71,35 +62,7 @@ create policy "ai_interactions: own rows only" on ai_interactions
   );
 
 -- ─────────────────────────────────────────
--- 4. lesson_messages table (T6.3)
--- ─────────────────────────────────────────
-create table if not exists lesson_messages (
-  id text primary key,
-  session_id text not null references lesson_sessions(id) on delete cascade,
-  profile_id text not null references profiles(id) on delete cascade,
-  role text not null check (role in ('user', 'assistant', 'system')),
-  type text not null,
-  content text not null,
-  stage text not null,
-  timestamp timestamptz not null,
-  metadata_json jsonb,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists lesson_messages_session_idx on lesson_messages(session_id);
-create index if not exists lesson_messages_profile_idx on lesson_messages(profile_id);
-
-alter table lesson_messages enable row level security;
-
-create policy "lesson_messages: own rows only" on lesson_messages
-  for all using (
-    profile_id in (
-      select id from profiles where auth_user_id = auth.uid()
-    )
-  );
-
--- ─────────────────────────────────────────
--- 5. lesson_signals table (T4.1)
+-- 4. lesson_signals table (T4.1)
 -- ─────────────────────────────────────────
 create table if not exists lesson_signals (
   id uuid primary key default gen_random_uuid(),
@@ -135,26 +98,3 @@ create policy "lesson_signals: own rows only" on lesson_signals
     )
   );
 
--- ─────────────────────────────────────────
--- 6. learner_profiles RLS
--- ─────────────────────────────────────────
-alter table learner_profiles enable row level security;
-
-create policy "learner_profiles: own rows only" on learner_profiles
-  for all using (
-    student_id in (
-      select id from profiles where auth_user_id = auth.uid()
-    )
-  );
-
--- ─────────────────────────────────────────
--- 7. revision_topics RLS
--- ─────────────────────────────────────────
-alter table revision_topics enable row level security;
-
-create policy "revision_topics: own rows only" on revision_topics
-  for all using (
-    profile_id in (
-      select id from profiles where auth_user_id = auth.uid()
-    )
-  );

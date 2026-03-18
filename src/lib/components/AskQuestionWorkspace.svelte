@@ -53,7 +53,7 @@
         <span>Current attempt or working</span>
         <textarea bind:value={currentAttempt} rows="5"></textarea>
       </label>
-      <button type="button" onclick={submit} disabled={state.askQuestion.isLoading}>
+      <button type="button" aria-busy={state.askQuestion.isLoading} onclick={submit} disabled={state.askQuestion.isLoading}>
         {state.askQuestion.isLoading ? 'Generating...' : 'Generate guided response'}
       </button>
     </article>

@@ -110,26 +110,15 @@ summary:active {
 
 button:disabled,
 [aria-disabled='true'] {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.78;
-  position: relative;
 }
 
-button:disabled::after,
-[aria-disabled='true']::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(
-    110deg,
-    transparent 0%,
-    color-mix(in srgb, var(--accent) 15%, transparent) 45%,
-    transparent 100%
-  );
-  transform: translateX(-100%);
-  animation: ui-wait-sheen 1.2s linear infinite;
-  pointer-events: none;
+button[aria-busy='true'],
+[role='button'][aria-busy='true'],
+summary[aria-busy='true'] {
+  cursor: wait;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 button:focus-visible,
@@ -223,21 +212,10 @@ p {
   margin: 0;
 }
 
-@keyframes ui-wait-sheen {
-  to {
-    transform: translateX(100%);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   button,
   [role='button'],
   summary {
     transition: none !important;
-  }
-
-  button:disabled::after,
-  [aria-disabled='true']::after {
-    animation: none !important;
   }
 }
