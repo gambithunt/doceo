@@ -186,16 +186,34 @@
 
 <style>
   .lesson-shell {
-    --chat-assistant-bg: color-mix(in srgb, white 92%, var(--surface-strong));
+    --lesson-shell-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 96%, transparent),
+      color-mix(in srgb, var(--surface) 100%, transparent)
+    );
+    --lesson-shell-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
+    --lesson-shell-shadow: var(--shadow);
+    --lesson-input-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 92%, transparent),
+      color-mix(in srgb, var(--surface-soft) 92%, transparent)
+    );
+    --lesson-stage-surface: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+    --lesson-stage-active-surface: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 12%, var(--surface-strong)),
+      color-mix(in srgb, var(--accent) 6%, var(--surface))
+    );
+    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 96%, transparent);
     --chat-assistant-border: color-mix(in srgb, var(--border-strong) 88%, transparent);
     --chat-assistant-text: var(--text);
-    --chat-check-bg: color-mix(in srgb, var(--accent) 8%, white 92%);
+    --chat-check-bg: color-mix(in srgb, var(--accent) 8%, var(--surface-strong));
     --chat-check-border: color-mix(in srgb, var(--accent) 24%, var(--border));
-    --chat-side-thread-bg: color-mix(in srgb, #8ec5ff 9%, white 91%);
+    --chat-side-thread-bg: color-mix(in srgb, #8ec5ff 9%, var(--surface-strong));
     --chat-side-thread-border: color-mix(in srgb, #8ec5ff 24%, var(--border));
-    --chat-stage-bg: color-mix(in srgb, #f7f3ea 94%, white 6%);
-    --chat-stage-text: color-mix(in srgb, var(--text-soft) 84%, #5f6672 16%);
-    --chat-stage-border: color-mix(in srgb, var(--border-strong) 78%, #d9cfbf 22%);
+    --chat-stage-bg: color-mix(in srgb, var(--surface-soft) 92%, rgba(236, 228, 214, 0.5));
+    --chat-stage-text: color-mix(in srgb, var(--text-soft) 88%, #5f6672 12%);
+    --chat-stage-border: color-mix(in srgb, var(--border-strong) 78%, rgba(217, 207, 191, 0.22));
     --chat-user-bg: color-mix(in srgb, #111827 92%, black 8%);
     --chat-user-text: #f8fafc;
     display: grid;
@@ -207,16 +225,34 @@
   }
 
   :global(:root[data-theme='dark']) .lesson-shell {
-    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 92%, white 3%);
-    --chat-assistant-border: color-mix(in srgb, #30445f 62%, var(--border));
+    --lesson-shell-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 98%, transparent),
+      color-mix(in srgb, var(--surface) 100%, transparent)
+    );
+    --lesson-shell-border: color-mix(in srgb, var(--border-strong) 92%, transparent);
+    --lesson-shell-shadow: var(--shadow-strong);
+    --lesson-input-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 96%, transparent),
+      color-mix(in srgb, var(--surface-soft) 96%, transparent)
+    );
+    --lesson-stage-surface: color-mix(in srgb, var(--surface-soft) 92%, transparent);
+    --lesson-stage-active-surface: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 14%, var(--surface-strong)),
+      color-mix(in srgb, var(--accent) 8%, var(--surface))
+    );
+    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 94%, transparent);
+    --chat-assistant-border: color-mix(in srgb, var(--border-strong) 96%, transparent);
     --chat-assistant-text: #eef5ff;
     --chat-check-bg: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    --chat-check-border: color-mix(in srgb, var(--accent) 32%, rgba(255, 255, 255, 0.06));
+    --chat-check-border: color-mix(in srgb, var(--accent) 32%, var(--border));
     --chat-side-thread-bg: color-mix(in srgb, #5eb3ff 12%, var(--surface-strong));
-    --chat-side-thread-border: color-mix(in srgb, #5eb3ff 34%, rgba(255, 255, 255, 0.08));
-    --chat-stage-bg: rgba(233, 227, 215, 0.96);
-    --chat-stage-text: #5d6470;
-    --chat-stage-border: rgba(205, 193, 173, 0.78);
+    --chat-side-thread-border: color-mix(in srgb, #5eb3ff 34%, var(--border));
+    --chat-stage-bg: color-mix(in srgb, var(--surface-soft) 96%, rgba(233, 227, 215, 0.14));
+    --chat-stage-text: color-mix(in srgb, var(--text-soft) 88%, #d7dee8 12%);
+    --chat-stage-border: color-mix(in srgb, var(--border-strong) 92%, rgba(205, 193, 173, 0.2));
     --chat-user-bg: linear-gradient(180deg, rgba(24, 26, 30, 0.98), rgba(15, 17, 20, 0.98));
     --chat-user-text: #f8fafc;
   }
@@ -236,11 +272,11 @@
   .lesson-header,
   .lesson-body,
   .confirm-card {
-    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+    border: 1px solid var(--lesson-shell-border);
     border-radius: 1.4rem;
-    background: color-mix(in srgb, white 92%, var(--surface-strong));
+    background: var(--lesson-shell-surface);
     padding: 1rem 1.1rem;
-    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+    box-shadow: var(--lesson-shell-shadow);
     animation: fade-up 220ms ease;
   }
 
@@ -286,17 +322,13 @@
     border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
     color: var(--muted);
     white-space: nowrap;
-    background: color-mix(in srgb, white 72%, transparent);
+    background: var(--lesson-stage-surface);
   }
 
   .stage.active {
     border-color: color-mix(in srgb, var(--accent) 42%, transparent);
     color: var(--text);
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 12%, white),
-      color-mix(in srgb, var(--accent) 6%, var(--surface))
-    );
+    background: var(--lesson-stage-active-surface);
   }
 
   .stage.completed {
@@ -425,7 +457,7 @@
     gap: 0.8rem;
     padding: 0.95rem 1.15rem 1.1rem;
     border-top: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-    background: linear-gradient(180deg, color-mix(in srgb, white 84%, transparent), color-mix(in srgb, white 94%, transparent));
+    background: var(--lesson-input-surface);
   }
 
   .input-area p {
@@ -438,7 +470,7 @@
     min-height: 72px;
     border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
     border-radius: 1rem;
-    background: color-mix(in srgb, white 94%, var(--surface-soft));
+    background: color-mix(in srgb, var(--surface-tint) 92%, transparent);
     color: var(--text);
     padding: 0.9rem 1rem;
     font: inherit;
