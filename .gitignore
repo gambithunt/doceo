@@ -44,3 +44,6 @@ supabase/.branches/
 
 # Local AI / agent tooling
 .claude/
+
+#sim links for guiding ai
+docs/design/
