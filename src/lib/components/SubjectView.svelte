@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { appState } from '$lib/stores/app-state';
   import { getLessonsForSelectedTopic, getSelectedSubject, getSelectedTopic } from '$lib/data/platform';
+  import { subjectPath } from '$lib/routing';
   import type { AppState } from '$lib/types';
 
   const { state: viewState }: { state: AppState } = $props();
@@ -45,6 +47,15 @@
     customSubject = '';
     showAddPanel = false;
   }
+
+  function openSubject(subjectId: string): void {
+    appState.selectSubject(subjectId);
+    void goto(subjectPath(subjectId));
+  }
+
+  function openLesson(lessonId: string): void {
+    appState.launchLesson(lessonId);
+  }
 </script>
 
 <section class="view">
@@ -63,7 +74,7 @@
           <button
             type="button"
             class="subject-button"
-            onclick={() => appState.selectSubject(viewState.curriculum.subjects.find((item) => item.name === subjectName)?.id ?? viewState.ui.selectedSubjectId)}
+            onclick={() => openSubject(viewState.curriculum.subjects.find((item) => item.name === subjectName)?.id ?? viewState.ui.selectedSubjectId)}
           >
             {subjectName}
           </button>
@@ -150,7 +161,7 @@
             type="button"
             class:active={lesson.id === viewState.ui.selectedLessonId}
             class="menu-button"
-            onclick={() => appState.selectLesson(lesson.id)}
+            onclick={() => openLesson(lesson.id)}
           >
             {lesson.title}
           </button>

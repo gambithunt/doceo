@@ -1,4 +1,5 @@
 {
+	"/(app)": [],
 	"/": [
 		"src/routes/+page.ts"
 	],
@@ -43,5 +44,15 @@
 	],
 	"/api/subjects/verify": [
 		"src/routes/api/subjects/verify/+server.ts"
-	]
+	],
+	"/(app)/dashboard": [],
+	"/(app)/lesson": [],
+	"/(app)/lesson/session/[id]": [],
+	"/(app)/lesson/[id]": [],
+	"/onboarding": [],
+	"/(app)/progress": [],
+	"/(app)/revision": [],
+	"/(app)/settings": [],
+	"/(app)/subjects": [],
+	"/(app)/subjects/[id]": []
 }

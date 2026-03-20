@@ -28,6 +28,12 @@ import {
   recalculateMastery,
   upsertRevisionTopicFromSession
 } from '$lib/data/platform';
+import {
+  dashboardPath,
+  lessonSessionPath,
+  onboardingPath,
+  revisionPath
+} from '$lib/routing';
 import { supabase } from '$lib/supabase';
 import type {
   AnalyticsEvent,
@@ -142,6 +148,12 @@ function createAnalyticsEvent(type: AnalyticsEvent['type'], detail: string): Ana
   };
 }
 
+function navigate(path: string): void {
+  if (browser) {
+    void goto(path);
+  }
+}
+
 async function fetchOptions<TOption>(query: string): Promise<TOption[]> {
   const response = await fetch(`/api/onboarding/options?${query}`);
   const payload = (await response.json()) as OptionsResponse<TOption>;
@@ -209,6 +221,35 @@ function getLessonForSession(state: AppState, session: LessonSession): Lesson {
       curriculumReference: session.curriculumReference
     })
   );
+}
+
+const MUTUALLY_EXCLUSIVE_SUBJECT_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
+  ['Mathematics', 'Mathematical Literacy']
+];
+
+function applyOnboardingSubjectExclusivity(
+  subjectId: string,
+  selectedSubjectIds: string[],
+  subjects: SubjectOption[]
+): string[] {
+  const subject = subjects.find((item) => item.id === subjectId);
+
+  if (!subject) {
+    return selectedSubjectIds;
+  }
+
+  if (selectedSubjectIds.includes(subjectId)) {
+    return selectedSubjectIds.filter((item) => item !== subjectId);
+  }
+
+  const conflictGroup = MUTUALLY_EXCLUSIVE_SUBJECT_GROUPS.find((group) => group.includes(subject.name));
+  const conflictingNames = conflictGroup?.filter((name) => name !== subject.name) ?? [];
+  const withoutConflicts = selectedSubjectIds.filter((id) => {
+    const selected = subjects.find((item) => item.id === id);
+    return selected ? !conflictingNames.includes(selected.name) : true;
+  });
+
+  return [...withoutConflicts, subjectId];
 }
 
 function createAppStore() {
@@ -441,7 +482,7 @@ function createAppStore() {
       ),
     setLessonCloseConfirm: (showLessonCloseConfirm: boolean) =>
       update((state) => persistAndSync({ ...state, ui: { ...state.ui, showLessonCloseConfirm } })),
-    closeLessonToDashboard: () =>
+    closeLessonToDashboard: () => {
       update((state) =>
         persistAndSync({
           ...state,
@@ -451,7 +492,9 @@ function createAppStore() {
             showLessonCloseConfirm: false
           }
         })
-      ),
+      );
+      navigate(dashboardPath());
+    },
     updateComposerDraft: (composerDraft: string) =>
       update((state) => persistAndSync({ ...state, ui: { ...state.ui, composerDraft } })),
     selectSubject: (subjectId: string) =>
@@ -523,6 +566,82 @@ function createAppStore() {
           }
         });
       }),
+    launchLesson: (lessonId: string) => {
+      const snapshot = readState();
+      const lesson = snapshot.lessons.find((item) => item.id === lessonId) ?? snapshot.lessons[0];
+
+      if (!lesson) {
+        return;
+      }
+
+      const existingSession =
+        snapshot.lessonSessions.find((session) => session.lessonId === lesson.id && session.status === 'active') ??
+        snapshot.lessonSessions.find((session) => session.lessonId === lesson.id);
+
+      if (existingSession) {
+        const existingLesson = snapshot.lessons.find((item) => item.id === existingSession.lessonId) ?? lesson;
+        update((state) =>
+          persistAndSync({
+            ...state,
+            ui: {
+              ...state.ui,
+              currentScreen: 'lesson',
+              learningMode: 'learn',
+              activeLessonSessionId: existingSession.id,
+              selectedSubjectId: existingSession.subjectId,
+              selectedTopicId: existingSession.topicId,
+              selectedSubtopicId: existingLesson.subtopicId,
+              selectedLessonId: existingSession.lessonId,
+              composerDraft: '',
+              showTopicDiscoveryComposer: false
+            }
+          })
+        );
+        navigate(lessonSessionPath(existingSession.id));
+        return;
+      }
+
+      const subject = snapshot.curriculum.subjects.find((item) => item.id === lesson.subjectId) ?? snapshot.curriculum.subjects[0];
+      const session = buildLessonSessionFromTopic(
+        snapshot.profile,
+        lesson,
+        {
+          ...buildDirectTopicOption(snapshot, subject.name, lesson.title),
+          id: `short-lesson-${lesson.id}`,
+          title: lesson.title,
+          description: lesson.overview.body,
+          topicId: lesson.topicId,
+          subtopicId: lesson.subtopicId,
+          lessonId: lesson.id,
+          relevance: 'Opened directly from your subject roadmap.'
+        },
+        subject.name
+      );
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          learnerProfile: {
+            ...state.learnerProfile,
+            total_sessions: state.learnerProfile.total_sessions + 1
+          },
+          lessonSessions: upsertLessonSession(state.lessonSessions, session),
+          ui: {
+            ...state.ui,
+            currentScreen: 'lesson',
+            learningMode: 'learn',
+            activeLessonSessionId: session.id,
+            selectedSubjectId: lesson.subjectId,
+            selectedTopicId: lesson.topicId,
+            selectedSubtopicId: lesson.subtopicId,
+            selectedLessonId: lesson.id,
+            composerDraft: '',
+            showTopicDiscoveryComposer: false
+          }
+        })
+      );
+      navigate(lessonSessionPath(session.id));
+    },
     selectPracticeQuestion: (questionId: string) =>
       update((state) => persistAndSync({ ...state, ui: { ...state.ui, practiceQuestionId: questionId } })),
     answerQuestion: (questionId: string, answer: string) =>
@@ -758,9 +877,11 @@ function createAppStore() {
       }
 
       const { lesson, questions } = lessonPlan;
+      let nextSessionId = '';
 
       update((state) => {
         const session = buildLessonSessionFromTopic(state.profile, lesson, topic, subject.name);
+        nextSessionId = session.id;
 
         return persistAndSync({
           ...state,
@@ -790,6 +911,10 @@ function createAppStore() {
           }
         });
       });
+
+      if (nextSessionId) {
+        navigate(lessonSessionPath(nextSessionId));
+      }
     },
     startLessonFromSelection: async (subjectId: string, sectionName: string) => {
       const snapshot = readState();
@@ -836,9 +961,11 @@ function createAppStore() {
       }
 
       const { lesson, questions } = lessonPlan;
+      let nextSessionId = '';
 
       update((state) => {
         const session = buildLessonSessionFromTopic(state.profile, lesson, shortlistedTopic, subject.name);
+        nextSessionId = session.id;
 
         return persistAndSync({
           ...state,
@@ -870,6 +997,10 @@ function createAppStore() {
           }
         });
       });
+
+      if (nextSessionId) {
+        navigate(lessonSessionPath(nextSessionId));
+      }
     },
     sendLessonMessage: async (message: string) => {
       const snapshot = readState();
@@ -1051,7 +1182,7 @@ function createAppStore() {
         );
       }
     },
-    startRevisionFromSelection: (subjectId: string, sectionName: string, _focusDetail: string) =>
+    startRevisionFromSelection: (subjectId: string, sectionName: string, _focusDetail: string) => {
       update((state) => {
         const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];
         return persistAndSync({
@@ -1064,14 +1195,18 @@ function createAppStore() {
           },
           analytics: [createAnalyticsEvent('revision_generated', sectionName), ...state.analytics]
         });
-      }),
-    resumeSession: (sessionId: string) =>
+      });
+      navigate(revisionPath());
+    },
+    resumeSession: (sessionId: string) => {
+      let resumedSessionId = '';
       update((state) => {
         const lessonSession = state.lessonSessions.find((item) => item.id === sessionId) ?? state.lessonSessions[0];
 
         if (!lessonSession) {
           return state;
         }
+        resumedSessionId = lessonSession.id;
 
         return persistAndSync({
           ...state,
@@ -1084,7 +1219,11 @@ function createAppStore() {
             showTopicDiscoveryComposer: false
           }
         });
-      }),
+      });
+      if (resumedSessionId) {
+        navigate(lessonSessionPath(resumedSessionId));
+      }
+    },
     archiveSession: (sessionId: string) =>
       update((state) =>
         persistAndSync({
@@ -1094,7 +1233,8 @@ function createAppStore() {
           )
         })
       ),
-    restartLessonSession: (sessionId: string) =>
+    restartLessonSession: (sessionId: string) => {
+      let restartedSessionId = '';
       update((state) => {
         const existing = state.lessonSessions.find((item) => item.id === sessionId);
 
@@ -1119,6 +1259,7 @@ function createAppStore() {
           status: 'active',
           profileUpdates: []
         };
+        restartedSessionId = restarted.id;
 
         return persistAndSync({
           ...state,
@@ -1133,7 +1274,11 @@ function createAppStore() {
             selectedLessonId: restarted.lessonId
           }
         });
-      }),
+      });
+      if (restartedSessionId) {
+        navigate(lessonSessionPath(restartedSessionId));
+      }
+    },
     signUp: async (fullName: string, email: string, password: string) => {
       update((state) => ({ ...state, auth: { status: 'loading', error: null } }));
 
@@ -1159,6 +1304,7 @@ function createAppStore() {
             ui: { ...state.ui, currentScreen: 'onboarding' }
           })
         );
+        navigate(onboardingPath());
         return;
       }
 
@@ -1171,6 +1317,7 @@ function createAppStore() {
           ui: { ...state.ui, currentScreen: 'onboarding' }
         })
       );
+      navigate(onboardingPath());
     },
     signIn: async (email: string, password: string) => {
       update((state) => ({ ...state, auth: { status: 'loading', error: null } }));
@@ -1195,6 +1342,7 @@ function createAppStore() {
             ui: { ...current.ui, currentScreen: current.onboarding.completed ? 'dashboard' : 'onboarding' }
           })
         );
+        navigate(readState().onboarding.completed ? dashboardPath() : onboardingPath());
         return;
       }
 
@@ -1207,6 +1355,7 @@ function createAppStore() {
           ui: { ...state.ui, currentScreen: state.onboarding.completed ? 'dashboard' : 'onboarding' }
         })
       );
+      navigate(readState().onboarding.completed ? dashboardPath() : onboardingPath());
     },
     signOut: async () => {
       if (browser && supabase) {
@@ -1353,9 +1502,11 @@ function createAppStore() {
         if (!subject) {
           return state;
         }
-        const selectedSubjectIds = state.onboarding.selectedSubjectIds.includes(subjectId)
-          ? state.onboarding.selectedSubjectIds.filter((item) => item !== subjectId)
-          : [...state.onboarding.selectedSubjectIds, subjectId];
+        const selectedSubjectIds = applyOnboardingSubjectExclusivity(
+          subjectId,
+          state.onboarding.selectedSubjectIds,
+          state.onboarding.options.subjects
+        );
         const selectedSubjectNames = deduplicateSubjects(
           state.onboarding.options.subjects
             .filter((item) => selectedSubjectIds.includes(item.id))
@@ -1706,6 +1857,7 @@ function createAppStore() {
           }
         });
       });
+      navigate(dashboardPath());
     },
     addSubjectToProfile: async (subjectName: string) => {
       update((state) =>
@@ -1761,6 +1913,7 @@ function createAppStore() {
           }
         })
       );
+      navigate(onboardingPath());
     },
     generateRevisionPlan: () =>
       update((state) =>
@@ -1772,7 +1925,7 @@ function createAppStore() {
           }
         })
       ),
-    runRevisionSession: (topic: RevisionTopic) =>
+    runRevisionSession: (topic: RevisionTopic) => {
       update((state) =>
         persistAndSync({
           ...state,
@@ -1783,7 +1936,9 @@ function createAppStore() {
             activeLessonSessionId: topic.lessonSessionId
           }
         })
-      )
+      );
+      navigate(revisionPath());
+    }
   };
 }
 

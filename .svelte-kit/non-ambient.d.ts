@@ -27,12 +27,15 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/" | "/api" | "/api/ai" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum" | "/api/curriculum/program" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects" | "/api/subjects/verify";
+		RouteId(): "/(app)" | "/" | "/api" | "/api/ai" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum" | "/api/curriculum/program" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects" | "/api/subjects/verify" | "/(app)/dashboard" | "/(app)/lesson" | "/(app)/lesson/session" | "/(app)/lesson/session/[id]" | "/(app)/lesson/[id]" | "/onboarding" | "/(app)/progress" | "/(app)/revision" | "/(app)/settings" | "/(app)/subjects" | "/(app)/subjects/[id]";
 		RouteParams(): {
-			
+			"/(app)/lesson/session/[id]": { id: string };
+			"/(app)/lesson/[id]": { id: string };
+			"/(app)/subjects/[id]": { id: string }
 		};
 		LayoutParams(): {
-			"/": Record<string, never>;
+			"/(app)": { id?: string };
+			"/": { id?: string };
 			"/api": Record<string, never>;
 			"/api/ai": Record<string, never>;
 			"/api/ai/lesson-chat": Record<string, never>;
@@ -52,9 +55,20 @@ declare module "$app/types" {
 			"/api/state/bootstrap": Record<string, never>;
 			"/api/state/sync": Record<string, never>;
 			"/api/subjects": Record<string, never>;
-			"/api/subjects/verify": Record<string, never>
+			"/api/subjects/verify": Record<string, never>;
+			"/(app)/dashboard": Record<string, never>;
+			"/(app)/lesson": { id?: string };
+			"/(app)/lesson/session": { id?: string };
+			"/(app)/lesson/session/[id]": { id: string };
+			"/(app)/lesson/[id]": { id: string };
+			"/onboarding": Record<string, never>;
+			"/(app)/progress": Record<string, never>;
+			"/(app)/revision": Record<string, never>;
+			"/(app)/settings": Record<string, never>;
+			"/(app)/subjects": { id?: string };
+			"/(app)/subjects/[id]": { id: string }
 		};
-		Pathname(): "/" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum/program" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects/verify";
+		Pathname(): "/" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum/program" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects/verify" | "/dashboard" | "/lesson" | `/lesson/session/${string}` & {} | `/lesson/${string}` & {} | "/onboarding" | "/progress" | "/revision" | "/settings" | "/subjects" | `/subjects/${string}` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

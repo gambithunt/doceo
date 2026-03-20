@@ -172,7 +172,7 @@
 {:else}
   <section class="empty-state">
     <h2>No active lesson</h2>
-    <button type="button" class="btn btn-primary" onclick={() => appState.setScreen('dashboard')}>Return to dashboard</button>
+    <button type="button" class="btn btn-primary" onclick={() => appState.closeLessonToDashboard()}>Return to dashboard</button>
   </section>
 {/if}
 

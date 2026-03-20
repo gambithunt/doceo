@@ -20,7 +20,7 @@
   const stepDescriptions: Record<OnboardingStep, string> = {
     country: 'Start with the country so the app can present the right curriculum structure and school context.',
     academic: 'Your curriculum, grade, school year, and term shape the lessons and recommendations you will see next.',
-    subjects: 'Choose everything relevant this year. If something is missing, add it manually and we will keep it in your profile.',
+    subjects: 'Choose everything relevant this year. Add anything missing and keep moving.',
     review: 'Check the learning profile before you continue into the dashboard and subject recommendations.'
   };
 
@@ -53,6 +53,24 @@
   );
   const currentStepTitle = $derived(stepTitles[state.onboarding.currentStep]);
   const currentStepDescription = $derived(stepDescriptions[state.onboarding.currentStep]);
+  const optionSubjectNames = $derived(state.onboarding.options.subjects.map((subject) => subject.name));
+  const recognisedAddedSubjects = $derived(
+    state.onboarding.selectedSubjectNames.filter(
+      (subjectName) =>
+        !optionSubjectNames.includes(subjectName) && !state.onboarding.customSubjects.includes(subjectName)
+    )
+  );
+  const reviewRecommendation = $derived.by(() => {
+    if (state.onboarding.currentStep !== 'review') {
+      return null;
+    }
+
+    if (selectedCount <= 1 || !liveRecommendation.subjectName) {
+      return null;
+    }
+
+    return liveRecommendation;
+  });
   const footerTitle = $derived.by(() => {
     if (state.onboarding.currentStep === 'country') {
       return countryName;
@@ -66,7 +84,7 @@
       return selectedCountLabel;
     }
 
-    return liveRecommendation.subjectName ?? 'Ready to continue';
+    return 'Profile ready';
   });
   const footerDetail = $derived.by(() => {
     if (state.onboarding.currentStep === 'country') {
@@ -83,7 +101,7 @@
         : 'Keep going once you have captured everything you study.';
     }
 
-    return 'Final check before you enter the dashboard.';
+    return 'Save this profile to enter the dashboard and recommendations.';
   });
 
   function goToStep(step: OnboardingStep): void {
@@ -166,6 +184,22 @@
   function handleVerifyKey(event: KeyboardEvent): void {
     if (event.key === 'Enter') submitVerify();
   }
+
+  function isSubjectBlocked(subject: SubjectOption): boolean {
+    if (state.onboarding.selectedSubjectIds.includes(subject.id)) {
+      return false;
+    }
+
+    if (subject.name === 'Mathematics') {
+      return state.onboarding.selectedSubjectNames.includes('Mathematical Literacy');
+    }
+
+    if (subject.name === 'Mathematical Literacy') {
+      return state.onboarding.selectedSubjectNames.includes('Mathematics');
+    }
+
+    return false;
+  }
 </script>
 
 <section class="wizard-shell">
@@ -177,10 +211,12 @@
     </div>
 
     <div class="header-aside">
-      <div class="selection-pill">
-        <strong>{selectedCount}</strong>
-        <span>{selectedCount === 1 ? 'subject selected' : 'subjects selected'}</span>
-      </div>
+      {#if state.onboarding.currentStep !== 'review'}
+        <div class="selection-pill">
+          <strong>{selectedCount}</strong>
+          <span>{selectedCount === 1 ? 'subject selected' : 'subjects selected'}</span>
+        </div>
+      {/if}
       <p class="header-meta">{countryName} · {curriculumName} · {currentGradeLabel}</p>
     </div>
   </header>
@@ -212,10 +248,6 @@
       <div class="context-pill">
         <span>Grade</span>
         <strong>{currentGradeLabel}</strong>
-      </div>
-      <div class="context-pill">
-        <span>Recommended start</span>
-        <strong>{liveRecommendation.subjectName ?? 'Pending'}</strong>
       </div>
     </div>
   </section>
@@ -293,21 +325,10 @@
       {/if}
 
       {#if state.onboarding.currentStep === 'subjects'}
-        <div class="selection-meta">
-          <div>
-            <strong>{selectedCount}</strong>
-            <span>subjects selected</span>
-          </div>
-          <div>
-            <strong>{state.onboarding.selectionMode === 'unsure' ? 'Not sure' : 'Structured profile'}</strong>
-            <span>selection state</span>
-          </div>
-        </div>
-
         <div class="category-block">
           <div class="category-head">
             <h3>Core</h3>
-            <span>{groupedSubjects('core').length}</span>
+            <span class="category-count">{groupedSubjects('core').length}</span>
           </div>
           {#if groupedSubjects('core').length > 0}
             <div class="subject-grid">
@@ -315,7 +336,9 @@
                 <button
                   type="button"
                   class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
+                  class:blocked={isSubjectBlocked(subject)}
                   class="subject-tile"
+                  disabled={isSubjectBlocked(subject)}
                   onclick={() => appState.toggleOnboardingSubject(subject.id)}
                 >
                   <span class="subject-name">{subject.name}</span>
@@ -331,7 +354,7 @@
         <div class="category-block">
           <div class="category-head">
             <h3>Languages</h3>
-            <span>{groupedSubjects('language').length}</span>
+            <span class="category-count">{groupedSubjects('language').length}</span>
           </div>
           {#if groupedSubjects('language').length > 0}
             <div class="subject-grid">
@@ -355,7 +378,7 @@
         <div class="category-block">
           <div class="category-head">
             <h3>Other subjects</h3>
-            <span>{groupedSubjects('elective').length}</span>
+            <span class="category-count">{groupedSubjects('elective').length}</span>
           </div>
           {#if groupedSubjects('elective').length > 0}
             <div class="subject-grid">
@@ -408,8 +431,8 @@
         </div>
 
         {#if verification.status === 'verified'}
-          <div class="verify-feedback verify-ok">
-            <strong>{verification.normalizedName}</strong> was recognised and added to your subjects.
+          <div class="verify-feedback verify-ok verify-compact">
+            Added <strong>{verification.normalizedName}</strong> to your subjects.
             <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Add another</button>
           </div>
         {:else if verification.status === 'provisional'}
@@ -433,13 +456,37 @@
           </div>
         {/if}
 
+        {#if recognisedAddedSubjects.length > 0}
+          <div class="category-block">
+            <div class="category-head">
+              <h3>Added subjects</h3>
+              <span class="category-count">{recognisedAddedSubjects.length}</span>
+            </div>
+            <div class="subject-grid">
+              {#each recognisedAddedSubjects as subject}
+                <div class="subject-tile active added-subject-tile">
+                  <span class="subject-name">{subject}</span>
+                  <span class="subject-check added-badge" aria-hidden="true">✓</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
         {#if state.onboarding.customSubjects.length > 0}
-          <div class="tags">
-            {#each state.onboarding.customSubjects as subject}
-              <button type="button" class="tag" onclick={() => appState.removeOnboardingCustomSubject(subject)}>
-                {subject} ·
-              </button>
-            {/each}
+          <div class="category-block">
+            <div class="category-head">
+              <h3>Custom subjects</h3>
+              <span class="category-count">{state.onboarding.customSubjects.length}</span>
+            </div>
+            <div class="subject-grid">
+              {#each state.onboarding.customSubjects as subject}
+                <button type="button" class="subject-tile active removable-subject-tile" onclick={() => appState.removeOnboardingCustomSubject(subject)}>
+                  <span class="subject-name">{subject}</span>
+                  <span class="subject-check remove-badge" aria-hidden="true">×</span>
+                </button>
+              {/each}
+            </div>
           </div>
         {/if}
 
@@ -449,42 +496,57 @@
             checked={state.onboarding.selectionMode === 'unsure'}
             onchange={(event) => appState.setOnboardingUnsure((event.currentTarget as HTMLInputElement).checked)}
           />
-          <span>I’m not sure yet. Let me continue and refine this later.</span>
+          <span>Not sure yet. Continue now and refine this later.</span>
         </label>
       {/if}
 
       {#if state.onboarding.currentStep === 'review'}
-        <div class="review-grid">
-          <div class="review-card">
-            <span>Country</span>
-            <strong>{state.onboarding.options.countries.find((country) => country.id === state.onboarding.selectedCountryId)?.name}</strong>
+        <div class="review-stack">
+          <div class="review-grid">
+            <div class="review-card">
+              <span>Country</span>
+              <strong>{state.onboarding.options.countries.find((country) => country.id === state.onboarding.selectedCountryId)?.name}</strong>
+            </div>
+            <div class="review-card">
+              <span>Curriculum</span>
+              <strong>{state.onboarding.options.curriculums.find((curriculum) => curriculum.id === state.onboarding.selectedCurriculumId)?.name}</strong>
+            </div>
+            <div class="review-card">
+              <span>Grade</span>
+              <strong>{currentGradeLabel}</strong>
+            </div>
+            <div class="review-card">
+              <span>School year / term</span>
+              <strong>{state.onboarding.schoolYear} · {state.onboarding.term}</strong>
+            </div>
           </div>
-          <div class="review-card">
-            <span>Curriculum</span>
-            <strong>{state.onboarding.options.curriculums.find((curriculum) => curriculum.id === state.onboarding.selectedCurriculumId)?.name}</strong>
-          </div>
-          <div class="review-card">
-            <span>Grade</span>
-            <strong>{currentGradeLabel}</strong>
-          </div>
-          <div class="review-card">
-            <span>School year / term</span>
-            <strong>{state.onboarding.schoolYear} · {state.onboarding.term}</strong>
-          </div>
-        </div>
 
-        <div class="review-card wide">
-          <span>Selected subjects</span>
-          <strong>{state.onboarding.selectedSubjectNames.join(', ') || 'None selected'}</strong>
-          {#if state.onboarding.customSubjects.length > 0}
-            <p>Custom subjects: {state.onboarding.customSubjects.join(', ')}</p>
+          <div class="review-card review-subjects">
+            <div class="review-section-head">
+              <span>Selected subjects</span>
+              <strong>{selectedCountLabel}</strong>
+            </div>
+
+            {#if selectedCount > 0}
+              <div class="review-chip-list">
+                {#each state.onboarding.selectedSubjectNames as subject}
+                  <span class="review-chip">{subject}</span>
+                {/each}
+                {#each state.onboarding.customSubjects as subject}
+                  <span class="review-chip review-chip-custom">{subject}</span>
+                {/each}
+              </div>
+            {:else}
+              <p class="review-note">No subjects are locked in yet. You can still save this profile and refine the list later.</p>
+            {/if}
+          </div>
+
+          {#if reviewRecommendation}
+            <div class="review-note-card">
+              <span>Suggested starting point</span>
+              <p><strong>{reviewRecommendation.subjectName}</strong> {reviewRecommendation.reason}</p>
+            </div>
           {/if}
-        </div>
-
-        <div class="recommendation-card">
-          <p class="eyebrow">Recommended start</p>
-          <h3>{liveRecommendation.subjectName ?? 'Choose a subject first'}</h3>
-          <p>{liveRecommendation.reason}</p>
         </div>
       {/if}
 
@@ -533,7 +595,8 @@
   .progress-shell,
   .selection-grid,
   .form-grid,
-  .review-grid {
+  .review-grid,
+  .review-stack {
     display: grid;
     gap: 1rem;
   }
@@ -567,8 +630,8 @@
 
   .header-copy h1 {
     margin: 0;
-    font-size: clamp(2rem, 4vw, 3.35rem);
-    line-height: 0.98;
+    font-size: clamp(1.85rem, 3.7vw, 3rem);
+    line-height: 1;
     letter-spacing: -0.045em;
     font-weight: 700;
   }
@@ -583,7 +646,6 @@
 
   .step-kicker,
   .context-pill span,
-  .selection-meta span,
   .category-head span,
   .review-card span,
   .footer-status span,
@@ -627,7 +689,7 @@
 
   .step-strip {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.65rem;
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
@@ -635,7 +697,6 @@
   .choice-card,
   .term-chip,
   .subject-tile,
-  .tag,
   .secondary {
     border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
     background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
@@ -648,8 +709,8 @@
     display: flex;
     align-items: center;
     gap: 0.8rem;
-    min-height: 3.4rem;
-    padding: 0.8rem 1rem;
+    min-height: 3.15rem;
+    padding: 0.75rem 0.95rem;
     border-radius: 1.2rem;
     text-align: left;
     box-shadow: none;
@@ -686,23 +747,24 @@
   }
 
   .context-strip {
-    display: grid;
-    gap: 0.75rem;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
   }
 
   .context-pill {
-    display: grid;
-    gap: 0.3rem;
-    padding: 0.95rem 1rem;
-    border-radius: 1.2rem;
-    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.68rem 0.9rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-soft) 56%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   }
 
   .context-pill strong {
     margin: 0;
-    font-size: 1rem;
+    font-size: 0.94rem;
     font-weight: 600;
   }
 
@@ -734,31 +796,8 @@
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
-  .selection-meta {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
-  }
-
-  .selection-meta div {
-    display: grid;
-    gap: 0.2rem;
-    padding: 1rem 1.05rem;
-    border-radius: 1.2rem;
-    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-  }
-
-  .selection-meta strong {
-    margin: 0;
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-  }
-
   .category-block,
-  .review-card,
-  .recommendation-card {
+  .review-card {
     display: grid;
     gap: 0.8rem;
   }
@@ -775,6 +814,18 @@
     font-size: 1.02rem;
     font-weight: 600;
     letter-spacing: -0.01em;
+  }
+
+  .category-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.7rem;
+    height: 1.7rem;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   }
 
   label {
@@ -794,8 +845,7 @@
     letter-spacing: 0;
   }
 
-  .term-row,
-  .tags {
+  .term-row {
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
@@ -831,8 +881,8 @@
   }
 
   .subject-check {
-    width: 1.35rem;
-    height: 1.35rem;
+    width: 1.5rem;
+    height: 1.5rem;
     border-radius: 999px;
     display: grid;
     place-items: center;
@@ -840,7 +890,8 @@
     background: transparent;
     color: transparent;
     font-family: var(--mono);
-    font-size: 0.76rem;
+    font-size: 0.82rem;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface-strong) 26%, transparent);
   }
 
   .subject-tile:hover:not(:disabled) {
@@ -851,17 +902,46 @@
   .subject-tile.active {
     background: linear-gradient(
       135deg,
-      color-mix(in srgb, var(--accent) 13%, var(--surface)),
-      color-mix(in srgb, var(--accent) 6%, var(--surface-soft))
+      color-mix(in srgb, var(--accent) 18%, var(--surface)),
+      color-mix(in srgb, var(--accent) 9%, var(--surface-soft))
     );
-    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 56%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 14%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
   .subject-tile.active .subject-check {
     background: var(--accent);
     border-color: color-mix(in srgb, var(--accent) 50%, transparent);
     color: var(--accent-contrast);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+
+  .subject-tile.blocked {
+    opacity: 0.54;
+  }
+
+  .subject-tile.blocked .subject-name {
+    color: var(--muted);
+  }
+
+  .added-subject-tile {
+    cursor: default;
+  }
+
+  .added-badge {
+    background: color-mix(in srgb, var(--accent) 88%, white 12%);
+    color: var(--accent-contrast) !important;
+    border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+    box-shadow: none !important;
+  }
+
+  .removable-subject-tile .remove-badge {
+    background: color-mix(in srgb, var(--accent) 88%, white 12%);
+    color: var(--accent-contrast) !important;
+    border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+    box-shadow: none !important;
   }
 
   .custom-row {
@@ -924,8 +1004,8 @@
   }
 
   .verify-ok {
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
   }
 
   .verify-warn {
@@ -938,23 +1018,23 @@
     border-color: color-mix(in srgb, #e74c3c 25%, transparent);
   }
 
-  .tag {
-    padding: 0.55rem 0.82rem;
-    border-radius: 999px;
+  .verify-compact {
+    padding-block: 0.72rem;
+    font-size: 0.9rem;
   }
 
   .unsure {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.92rem 1rem;
+    padding: 0.84rem 0.95rem;
     border-radius: 1.15rem;
-    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 46%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
   }
 
   .unsure span {
-    font-size: 0.96rem;
+    font-size: 0.9rem;
     line-height: 1.45;
     color: var(--text-soft);
   }
@@ -970,32 +1050,73 @@
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   }
 
-  .review-card,
-  .recommendation-card {
-    padding: 1rem 1.05rem;
+  .review-card {
+    padding: 0.95rem 1rem;
     border-radius: 1.15rem;
     background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
     border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
   }
 
-  .review-card.wide {
-    grid-column: 1 / -1;
+  .review-section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
   }
 
-  .recommendation-card {
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 14%, var(--surface)),
-      color-mix(in srgb, var(--surface-soft) 86%, transparent)
-    );
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  .review-subjects {
+    gap: 0.9rem;
   }
 
   .review-card strong,
-  .recommendation-card h3 {
+  .review-section-head strong {
     margin: 0;
     font-size: 1.05rem;
     font-weight: 600;
+  }
+
+  .review-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+  }
+
+  .review-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.2rem;
+    padding: 0.55rem 0.8rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-tint) 90%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+
+  .review-chip-custom {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-tint));
+    border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+
+  .review-note,
+  .review-note-card p {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.55;
+  }
+
+  .review-note-card {
+    display: grid;
+    gap: 0.4rem;
+    padding: 0.9rem 1rem;
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  }
+
+  .review-note-card strong {
+    color: var(--text);
   }
 
   .empty-state {
@@ -1069,7 +1190,6 @@
 
   @media (max-width: 1180px) {
     .step-strip,
-    .context-strip,
     .subject-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1077,7 +1197,6 @@
 
   @media (max-width: 900px) {
     .setup-header,
-    .selection-meta,
     .custom-row {
       grid-template-columns: 1fr;
     }
@@ -1088,8 +1207,13 @@
     }
 
     .step-strip,
-    .context-strip {
+    .step-strip {
       grid-template-columns: 1fr;
+    }
+
+    .context-strip {
+      flex-direction: column;
+      align-items: stretch;
     }
 
     .sticky-footer {

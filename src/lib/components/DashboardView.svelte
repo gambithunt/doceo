@@ -29,7 +29,8 @@
     viewState.lessonSessions
       .filter((session) => session.status !== 'archived')
       .sort((left, right) => Date.parse(right.lastActiveAt) - Date.parse(left.lastActiveAt))
-      .slice(0, 6)
+      .filter((session) => session.id !== currentSession?.id)
+      .slice(0, 4)
   );
   const selectedSubject = $derived(
     availableSubjects.find((subject) => subject.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
@@ -156,49 +157,40 @@
   function startFromBanner(session: LessonSession): void {
     appState.resumeSession(session.id);
   }
+
+  function stageProgressLabel(session: LessonSession): string {
+    return `Stage ${Math.min(session.stagesCompleted.length + 1, 5)} of 5 · ${getStageLabel(session.currentStage)}`;
+  }
 </script>
 
 <section class="view">
   <header class="hero card">
     <div class="hero-copy">
-      <p class="eyebrow">{currentSession ? 'Continue where you left off' : 'Start new'}</p>
-      {#if currentSession}
-        <h2>{currentSession.subject}</h2>
-        <p class="topic-title">{currentSession.topicTitle}</p>
-        <p class="topic-copy">{currentSession.topicDescription}</p>
-        <div class="progress-copy">
-          <span>Progress</span>
-          <strong>
-            Stage {Math.min(currentSession.stagesCompleted.length + 1, 5)} of 5 ·
-            {getStageLabel(currentSession.currentStage)}
-          </strong>
-        </div>
-        <small>Last opened {new Date(currentSession.lastActiveAt).toLocaleString()}</small>
-      {:else}
-        <h2>Choose what to learn</h2>
-        <p>Tell the assistant what you want to work on and it will match that to your curriculum.</p>
-      {/if}
+      <p class="eyebrow">Start new</p>
+      <h2>Choose what to learn</h2>
+      <p>Describe the topic in your own words and the assistant will match it to the right section.</p>
     </div>
 
-    <div class="hero-actions">
-      {#if currentSession}
-        <button type="button" class="btn btn-primary wide" onclick={() => startFromBanner(currentSession)}>Resume lesson</button>
-        <button type="button" class="btn btn-ghost link-button" onclick={resetTopicDiscovery}>
-          Start something new instead
-        </button>
-      {:else}
-        <button type="button" class="btn btn-primary wide" onclick={runShortlist}>Find my section</button>
-      {/if}
-    </div>
+    {#if currentSession}
+      <div class="resume-strip">
+        <div class="resume-copy">
+          <p class="eyebrow">Resume lesson</p>
+          <strong>{currentSession.topicTitle}</strong>
+          <p>{currentSession.subject} · {stageProgressLabel(currentSession)}</p>
+          <small>Last opened {new Date(currentSession.lastActiveAt).toLocaleString()}</small>
+        </div>
+        <button type="button" class="btn btn-secondary" onclick={() => startFromBanner(currentSession)}>Resume</button>
+      </div>
+    {/if}
   </header>
 
   <section class="card starter">
     <div class="starter-copy">
       <div>
-        <p class="eyebrow">Assistant stage</p>
+        <p class="eyebrow">Topic matcher</p>
         <h3>{assistantStatus}</h3>
       </div>
-      <p>Describe the topic in your own words, then choose the closest curriculum match.</p>
+      <p>Pick the subject, describe the section, and continue into the closest match.</p>
     </div>
 
     {#if viewState.ui.showTopicDiscoveryComposer || !currentSession || viewState.topicDiscovery.status !== 'idle' || viewState.topicDiscovery.input.length > 0}
@@ -254,10 +246,10 @@
         {/if}
 
         <label class="topic-detail-field">
-          <span>Something more specific that you would like to work on</span>
+          <span>What do you want to work on?</span>
           <div class="topic-input-wrap">
             <textarea
-              rows="4"
+              rows="3"
               value={viewState.topicDiscovery.input}
               oninput={onInput}
               onfocus={onTopicFocus}
@@ -319,31 +311,40 @@
     <div class="section-head">
       <div>
         <p class="eyebrow">Recent lessons</p>
-        <h3>Pick up a recent topic</h3>
+        <h3>{recentLessons.length > 0 ? 'Pick up a recent topic' : 'Your recent work will appear here'}</h3>
       </div>
     </div>
 
-    <div class="recent-grid">
-      {#each recentLessons as session}
-        <article class="recent-card">
-          <small>{new Date(session.lastActiveAt).toLocaleDateString()}</small>
-          <strong>{session.subject}</strong>
-          <h4>{session.topicTitle}</h4>
-          <p>Stage completed: {session.stagesCompleted.length} of 5</p>
-          <div class="recent-actions">
-            <button type="button" class="btn btn-primary btn-compact compact" onclick={() => appState.resumeSession(session.id)}>Resume</button>
-            <details class="overflow-menu">
-              <summary class="btn btn-secondary btn-compact compact">More</summary>
-              <div class="overflow-panel">
-                <button type="button" class="menu-item" onclick={() => appState.resumeSession(session.id)}>View notes</button>
-                <button type="button" class="menu-item" onclick={() => appState.restartLessonSession(session.id)}>Restart</button>
-                <button type="button" class="menu-item danger" onclick={() => appState.archiveSession(session.id)}>Archive</button>
-              </div>
-            </details>
-          </div>
-        </article>
-      {/each}
-    </div>
+    {#if recentLessons.length > 0}
+      <div class="recent-grid">
+        {#each recentLessons as session}
+          <article class="recent-card">
+            <div class="recent-meta">
+              <small>{session.subject}</small>
+              <small>{new Date(session.lastActiveAt).toLocaleDateString()}</small>
+            </div>
+            <h4>{session.topicTitle}</h4>
+            <p>{stageProgressLabel(session)}</p>
+            <div class="recent-actions">
+              <button type="button" class="btn btn-secondary btn-compact compact" onclick={() => appState.resumeSession(session.id)}>Resume</button>
+              <details class="overflow-menu">
+                <summary class="btn btn-secondary btn-compact compact">More</summary>
+                <div class="overflow-panel">
+                  <button type="button" class="menu-item" onclick={() => appState.resumeSession(session.id)}>View notes</button>
+                  <button type="button" class="menu-item" onclick={() => appState.restartLessonSession(session.id)}>Restart</button>
+                  <button type="button" class="menu-item danger" onclick={() => appState.archiveSession(session.id)}>Archive</button>
+                </div>
+              </details>
+            </div>
+          </article>
+        {/each}
+      </div>
+    {:else}
+      <div class="recent-empty">
+        <strong>No recent lessons yet</strong>
+        <p>Start with the topic matcher above and your recent lessons will appear here with title and progress.</p>
+      </div>
+    {/if}
   </section>
 
   <section class="stats">
@@ -376,37 +377,88 @@
     gap: 1rem;
   }
 
+  .view {
+    --sans: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--sans);
+  }
+
   .card,
   .recent-card {
-    border: 1px solid var(--border);
-    border-radius: 1.6rem;
-    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, transparent), var(--surface));
     padding: 1.2rem;
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-strong);
+    backdrop-filter: blur(26px);
   }
 
   .hero {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-    align-items: end;
+    gap: 1.1rem;
+    padding: 1.3rem 1.45rem;
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 8%, var(--surface)),
+      color-mix(in srgb, var(--surface-strong) 90%, transparent)
+    );
   }
 
   .hero-copy,
-  .hero-actions,
+  .resume-strip,
+  .resume-copy,
   .starter-copy,
   .shortlist-header,
   .section-head,
   .recent-card {
     display: grid;
-    gap: 0.7rem;
+    gap: 0.6rem;
   }
 
-  .hero-actions {
-    justify-items: stretch;
+  .hero-copy {
+    max-width: 34rem;
+  }
+
+  .hero-copy h2 {
+    font-size: clamp(1.85rem, 3.7vw, 3rem);
+    line-height: 1;
+    letter-spacing: -0.045em;
+    font-weight: 700;
+  }
+
+  .hero-copy p:last-child {
+    max-width: 30rem;
+    color: var(--text-soft);
+    line-height: 1.5;
+  }
+
+  .resume-strip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.82rem 0.95rem;
+    border-radius: 1.2rem;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 64%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+  }
+
+  .resume-copy p,
+  .resume-copy small {
+    color: var(--text-soft);
+  }
+
+  .resume-copy strong {
+    font-size: 1.02rem;
+    font-weight: 600;
   }
 
   .starter-copy {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+    align-items: baseline;
+  }
+
+  .starter {
+    gap: 1.05rem;
+    padding: 1.3rem 1.35rem;
   }
 
   .starter-actions,
@@ -424,11 +476,10 @@
   }
 
   .hint-panel {
-    padding: 1rem 1.05rem 1.1rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-    border-radius: 1.35rem;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 94%, white 6%), color-mix(in srgb, var(--surface) 92%, transparent));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    padding: 0.9rem 0.95rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+    border-radius: 1.2rem;
+    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
   }
 
   .hint-panel-copy {
@@ -437,10 +488,11 @@
   }
 
   .hint-panel-title {
-    font-size: 0.78rem;
-    letter-spacing: 0.12em;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--accent) 60%, var(--text));
+    color: var(--muted);
+    font-family: var(--mono);
   }
 
   .hint-panel-copy p {
@@ -449,37 +501,28 @@
 
   .hint-chip-list {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.8rem;
+    gap: 0.7rem;
     align-items: stretch;
   }
 
   .hint-chip {
-    --chip-delay: calc(var(--chip-index, 0) * 48ms);
-    position: relative;
     display: grid;
     place-content: center start;
     justify-items: start;
-    min-height: 7.25rem;
-    height: 7.25rem;
-    padding: 1rem 1.05rem;
-    border: 1px solid color-mix(in srgb, var(--accent) 26%, rgba(255, 255, 255, 0.16));
-    border-radius: 1.1rem;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, white 6%), color-mix(in srgb, var(--surface-strong) 94%, black 6%));
+    min-height: 5.35rem;
+    height: 5.35rem;
+    padding: 0.9rem 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border-radius: 1.2rem;
+    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
     color: var(--text);
     text-align: left;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    transition:
-      transform 180ms var(--ease-spring),
-      border-color 180ms var(--ease-soft),
-      background-color 180ms var(--ease-soft);
-    animation: hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both;
-    will-change: transform;
+    box-shadow: none;
   }
 
   .hint-chip:hover:not(:disabled) {
-    transform: translateY(-3px);
-    border-color: color-mix(in srgb, var(--accent) 48%, rgba(255, 255, 255, 0.26));
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 86%, var(--accent) 10%), color-mix(in srgb, var(--surface-strong) 92%, black 8%));
+    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   }
 
   .hint-chip:active:not(:disabled) {
@@ -495,19 +538,20 @@
   }
 
   .hint-chip.selected {
-    border-color: color-mix(in srgb, var(--accent) 72%, white 12%);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 76%, var(--accent) 18%), color-mix(in srgb, var(--surface-strong) 86%, var(--accent) 12%));
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 18%, var(--surface)),
+      color-mix(in srgb, var(--accent) 9%, var(--surface-soft))
+    );
+    border-color: color-mix(in srgb, var(--accent) 56%, transparent);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 14%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
   .hint-chip.loading {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 70%, var(--accent) 24%), color-mix(in srgb, var(--surface-strong) 82%, var(--accent) 16%));
-    border-color: color-mix(in srgb, var(--accent) 78%, white 10%);
-    animation: hint-chip-loading-sway 1020ms ease-in-out infinite;
-  }
-
-  .hint-chip span {
-    position: relative;
-    z-index: 1;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   }
 
   .hint-chip span {
@@ -518,16 +562,15 @@
   }
 
   .hint-chip-skeleton {
-    min-height: 7.25rem;
-    height: 7.25rem;
+    min-height: 5.35rem;
+    height: 5.35rem;
     border-style: dashed;
-    background: color-mix(in srgb, var(--surface-soft) 94%, white 6%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    animation: hint-chip-pop 620ms var(--chip-delay) var(--ease-spring) both;
+    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
   }
 
   .topic-list {
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.7rem;
   }
 
   .topic-card {
@@ -535,26 +578,20 @@
     grid-template-columns: auto 1fr;
     gap: 1rem;
     align-items: start;
-    border: 1px solid var(--border);
-    border-left: 4px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
     border-radius: 1.2rem;
-    background: var(--surface-soft);
-    padding: 1rem;
+    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+    padding: 0.92rem 0.95rem;
     text-align: left;
     font: inherit;
     cursor: pointer;
-    transition:
-      transform 170ms var(--ease-spring),
-      border-color 220ms var(--ease-soft),
-      background-color 220ms var(--ease-soft),
-      box-shadow 220ms var(--ease-soft);
+    box-shadow: none;
   }
 
   .topic-card:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
-    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
   }
 
   .topic-card:active {
@@ -563,8 +600,9 @@
 
   .topic-index {
     color: var(--muted);
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     letter-spacing: 0.08em;
+    font-family: var(--mono);
   }
 
   .topic-card p,
@@ -577,15 +615,41 @@
 
   .recent-grid {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.7rem;
+  }
+
+  .recent-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .recent-empty {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.9rem 0.95rem;
+    border-radius: 1.15rem;
+    border: 1px dashed color-mix(in srgb, var(--border-strong) 82%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
+    min-height: 8.5rem;
+    align-content: center;
   }
 
   .stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.7rem;
   }
 
   .stat-card {
     align-items: center;
     text-align: center;
+    min-height: 5.6rem;
+    gap: 0.35rem;
+    padding: 0.85rem 0.95rem;
+    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    box-shadow: var(--shadow);
   }
 
   button,
@@ -598,16 +662,8 @@
     cursor: pointer;
   }
 
-  .link-button {
-    text-align: left;
-  }
-
-  .wide {
-    width: 100%;
-  }
-
   .compact {
-    padding: 0.7rem 0.95rem;
+    padding: 0.66rem 0.9rem;
   }
 
   .overflow-menu {
@@ -630,28 +686,27 @@
     display: grid;
     gap: 0.35rem;
     padding: 0.45rem;
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
     border-radius: 1rem;
-    background: var(--surface);
-    box-shadow: var(--shadow);
+    background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
+    box-shadow: 0 18px 40px color-mix(in srgb, var(--shadow) 42%, transparent);
+    backdrop-filter: blur(22px);
     z-index: 5;
   }
 
   .menu-item {
-    border: 0;
-    border-radius: 0.8rem;
-    background: var(--surface-soft);
+    border: 1px solid transparent;
+    border-radius: 0.95rem;
+    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
     color: var(--text);
     text-align: left;
     padding: 0.75rem 0.85rem;
-    transition:
-      transform 150ms var(--ease-spring),
-      background-color 180ms var(--ease-soft);
   }
 
   .menu-item:hover {
     transform: translateY(-1px);
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft));
+    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   }
 
   .menu-item.danger {
@@ -661,11 +716,11 @@
   select,
   textarea {
     width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 1rem;
-    background: var(--surface-soft);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
+    border-radius: 1.1rem;
+    background: color-mix(in srgb, var(--surface-tint) 92%, transparent);
     color: var(--text);
-    padding: 0.9rem 1rem;
+    padding: 0.96rem 1rem;
   }
 
   .topic-input-wrap {
@@ -674,19 +729,12 @@
 
   .topic-detail-field {
     display: grid;
-    gap: 0.8rem;
+    gap: 0.65rem;
   }
 
   .topic-input-wrap textarea {
-    min-height: 9.5rem;
+    min-height: 5.9rem;
     resize: vertical;
-  }
-
-  .progress-copy {
-    display: flex;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-    align-items: center;
   }
 
   .eyebrow,
@@ -705,12 +753,28 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.72rem;
+    font-family: var(--mono);
   }
 
-  .topic-title {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--text);
+  .hero-copy h2,
+  .section-head h3,
+  .starter-copy h3 {
+    letter-spacing: -0.02em;
+  }
+
+  .section-head h3,
+  .starter-copy h3,
+  .recent-card h4 {
+    font-size: 1.02rem;
+    font-weight: 600;
+  }
+
+  .starter-actions .btn-primary {
+    box-shadow: 0 8px 16px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .recent {
+    padding: 1.2rem 1.35rem;
   }
 
   .error {
@@ -718,62 +782,18 @@
   }
 
   .recent-card {
-    transition:
-      transform 180ms var(--ease-spring),
-      border-color 220ms var(--ease-soft),
-      box-shadow 220ms var(--ease-soft);
+    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
   }
 
   .recent-card:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-    box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
-  }
-
-  @keyframes hint-chip-pop {
-    0% {
-      opacity: 0;
-      transform: translateY(16px) scale(0.92);
-      filter: blur(6px);
-    }
-
-    55% {
-      opacity: 1;
-      transform: translateY(-3px) scale(1.03);
-      filter: blur(0);
-    }
-
-    100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-      filter: blur(0);
-    }
-  }
-
-  @keyframes hint-chip-loading-sway {
-    from {
-      transform: translateY(0) rotate(0deg);
-    }
-
-    25% {
-      transform: translateY(-2px) rotate(-0.75deg);
-    }
-
-    50% {
-      transform: translateY(-3px) rotate(0.45deg);
-    }
-
-    75% {
-      transform: translateY(-2px) rotate(0.9deg);
-    }
-
-    to {
-      transform: translateY(0) rotate(0deg);
-    }
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
   }
 
   @media (max-width: 900px) {
-    .hero,
+    .resume-strip,
     .starter-copy,
     .stats {
       grid-template-columns: 1fr;

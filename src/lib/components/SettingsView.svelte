@@ -1,12 +1,14 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { appState } from '$lib/stores/app-state';
+  import { onboardingPath } from '$lib/routing';
   import type { AppState, OnboardingStep } from '$lib/types';
 
   const { state }: { state: AppState } = $props();
 
   function editOnboarding(step: OnboardingStep): void {
     appState.setOnboardingStep(step);
-    appState.setScreen('onboarding');
+    void goto(onboardingPath());
   }
 
   function percent(value: number): string {
