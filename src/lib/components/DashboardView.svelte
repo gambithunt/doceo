@@ -382,20 +382,45 @@
   .view {
     --sans: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
     --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --dashboard-card-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 96%, transparent),
+      color-mix(in srgb, var(--surface) 100%, transparent)
+    );
+    --dashboard-card-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
+    --dashboard-card-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+    --dashboard-soft-surface: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+    --dashboard-strong-surface: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+    --dashboard-input-surface: color-mix(in srgb, var(--surface-tint) 92%, transparent);
+    --dashboard-overlay-blur: blur(12px);
     font-family: var(--sans);
     gap: 0.75rem;
     width: 100%;
     align-content: start;
   }
 
+  :global(:root[data-theme='dark']) .view {
+    --dashboard-card-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 98%, transparent),
+      color-mix(in srgb, var(--surface) 100%, transparent)
+    );
+    --dashboard-card-border: color-mix(in srgb, var(--border-strong) 92%, transparent);
+    --dashboard-card-shadow: var(--shadow-strong);
+    --dashboard-soft-surface: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+    --dashboard-strong-surface: color-mix(in srgb, var(--surface-strong) 98%, transparent);
+    --dashboard-input-surface: color-mix(in srgb, var(--surface-tint) 96%, transparent);
+    --dashboard-overlay-blur: blur(20px);
+  }
+
   .card,
   .recent-card {
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border: 1px solid var(--dashboard-card-border);
     border-radius: var(--radius-xl);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, transparent), var(--surface));
+    background: var(--dashboard-card-surface);
     padding: 1.2rem;
-    box-shadow: var(--shadow-strong);
-    backdrop-filter: blur(26px);
+    box-shadow: var(--dashboard-card-shadow);
+    backdrop-filter: var(--dashboard-overlay-blur);
   }
 
   .dashboard-head {
@@ -481,8 +506,8 @@
     gap: 0.85rem;
     padding: 0.62rem 0.76rem;
     border-radius: 1rem;
-    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-    background: color-mix(in srgb, var(--surface-soft) 54%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 74%, transparent);
+    background: var(--dashboard-soft-surface);
     max-width: 34rem;
   }
 
@@ -562,16 +587,16 @@
     gap: 0.9rem;
     min-height: 4rem;
     padding: 1rem 1.05rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
     border-radius: 1.2rem;
-    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+    background: var(--dashboard-soft-surface);
     color: var(--text);
     text-align: left;
     box-shadow: none;
   }
 
   .hint-chip:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
+    background: var(--dashboard-strong-surface);
     border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
     box-shadow:
       inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
@@ -604,7 +629,7 @@
   }
 
   .hint-chip.loading {
-    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
+    background: color-mix(in srgb, var(--accent) 8%, var(--dashboard-soft-surface));
     border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   }
 
@@ -649,7 +674,7 @@
   .hint-chip-skeleton {
     min-height: 4rem;
     border-style: dashed;
-    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
+    background: color-mix(in srgb, var(--dashboard-soft-surface) 84%, transparent);
   }
 
   .topic-list {
@@ -662,9 +687,9 @@
     grid-template-columns: auto 1fr;
     gap: 1rem;
     align-items: start;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
     border-radius: 1.2rem;
-    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+    background: var(--dashboard-soft-surface);
     padding: 0.92rem 0.95rem;
     text-align: left;
     font: inherit;
@@ -675,7 +700,7 @@
   .topic-card:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
+    background: var(--dashboard-strong-surface);
   }
 
   .topic-card:active {
@@ -743,18 +768,18 @@
     display: grid;
     gap: 0.35rem;
     padding: 0.45rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
     border-radius: 1rem;
-    background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
+    background: var(--dashboard-card-surface);
     box-shadow: 0 18px 40px color-mix(in srgb, var(--shadow) 42%, transparent);
-    backdrop-filter: blur(22px);
+    backdrop-filter: var(--dashboard-overlay-blur);
     z-index: 5;
   }
 
   .menu-item {
     border: 1px solid transparent;
     border-radius: 0.95rem;
-    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+    background: var(--dashboard-soft-surface);
     color: var(--text);
     text-align: left;
     padding: 0.75rem 0.85rem;
@@ -762,7 +787,7 @@
 
   .menu-item:hover {
     transform: translateY(-1px);
-    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
+    background: var(--dashboard-strong-surface);
     border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   }
 
@@ -773,9 +798,9 @@
   select,
   textarea {
     width: 100%;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 88%, transparent);
     border-radius: 1.1rem;
-    background: color-mix(in srgb, var(--surface-tint) 92%, transparent);
+    background: var(--dashboard-input-surface);
     color: var(--text);
     padding: 0.96rem 1rem;
   }
@@ -844,14 +869,14 @@
   }
 
   .recent-card {
-    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: var(--dashboard-soft-surface);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
   }
 
   .recent-card:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
-    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
+    background: var(--dashboard-strong-surface);
   }
 
   .recent-note {

@@ -106,6 +106,15 @@
   .sidebar {
     --sans: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
     --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sidebar-card-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 96%, transparent),
+      color-mix(in srgb, var(--surface) 100%, transparent)
+    );
+    --sidebar-card-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
+    --sidebar-card-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+    --sidebar-soft-surface: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+    --sidebar-overlay-blur: blur(12px);
     align-content: start;
     min-height: 0;
     overflow-y: auto;
@@ -113,13 +122,25 @@
     font-family: var(--sans);
   }
 
+  :global(:root[data-theme='dark']) .sidebar {
+    --sidebar-card-surface: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-strong) 98%, transparent),
+      color-mix(in srgb, var(--surface) 100%, transparent)
+    );
+    --sidebar-card-border: color-mix(in srgb, var(--border-strong) 92%, transparent);
+    --sidebar-card-shadow: var(--shadow-strong);
+    --sidebar-soft-surface: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+    --sidebar-overlay-blur: blur(20px);
+  }
+
   .card {
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border: 1px solid var(--sidebar-card-border);
     border-radius: var(--radius-xl);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, transparent), var(--surface));
+    background: var(--sidebar-card-surface);
     padding: 1rem;
-    box-shadow: var(--shadow-strong);
-    backdrop-filter: blur(26px);
+    box-shadow: var(--sidebar-card-shadow);
+    backdrop-filter: var(--sidebar-overlay-blur);
   }
 
   .brand-top,
@@ -134,7 +155,7 @@
     background: linear-gradient(
       135deg,
       color-mix(in srgb, var(--accent) 8%, var(--surface)),
-      color-mix(in srgb, var(--surface-strong) 90%, transparent)
+      color-mix(in srgb, var(--surface-strong) 96%, transparent)
     );
   }
 
@@ -152,9 +173,9 @@
   .nav button {
     display: grid;
     gap: 0.24rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
     border-radius: 1.05rem;
-    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+    background: var(--sidebar-soft-surface);
     color: var(--text);
     padding: 0.72rem 0.82rem;
     text-align: left;
@@ -200,8 +221,8 @@
     min-height: 1.8rem;
     padding: 0.45rem 0.72rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-tint) 90%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+    background: color-mix(in srgb, var(--surface-tint) 94%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
     line-height: 1.1;
     max-width: min(100%, 14rem);
     font-size: 0.88rem;
