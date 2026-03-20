@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { getActiveLessonSession } from '$lib/data/platform';
   import { getStageIcon, getStageLabel, LESSON_STAGE_ORDER } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
@@ -87,74 +88,81 @@
 
 {#if lessonSession}
   <section class="lesson-shell">
-    <header class="top-bar">
-      <button type="button" class="btn btn-secondary close-button" onclick={() => appState.setLessonCloseConfirm(true)}>Close</button>
+    <header class="lesson-header">
+      <div class="top-bar">
+        <button type="button" class="btn btn-secondary close-button" onclick={() => appState.setLessonCloseConfirm(true)}>
+          Back to dashboard
+        </button>
         <div class="title-block">
           <p>{lessonSession.subject}</p>
           <h2>{lessonSession.topicTitle}</h2>
         </div>
-        {#if showDebug}
-          <div class="top-actions">
+        <div class="top-actions">
+          <ThemeToggle theme={viewState.ui.theme} />
+          {#if showDebug}
             <button type="button" class="btn btn-secondary btn-compact debug">Profile</button>
             <button type="button" class="btn btn-secondary btn-compact debug">Prompt</button>
-          </div>
-        {/if}
-      </header>
-
-    <nav class="progress-rail" aria-label="Lesson stages">
-      {#each visibleStages as stage}
-        <div class:completed={statusForStage(stage) === 'completed'} class:active={statusForStage(stage) === 'active'} class="stage">
-          <span class="icon">{statusForStage(stage) === 'completed' ? '✓' : getStageIcon(stage)}</span>
-          <span>{getStageLabel(stage)}</span>
+          {/if}
         </div>
-      {/each}
-    </nav>
+      </div>
 
-    <div class="chat-area" bind:this={chatElement}>
-      {#each lessonSession.messages as message}
-        {#if message.type === 'stage_start'}
-          <div class="stage-badge">{message.content}</div>
-        {:else}
-          <article class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}>
-            {#if message.type === 'question'}
-              <small>❓ Question</small>
-            {/if}
-            {#if message.type === 'side_thread'}
-              <small>↳ Side Thread</small>
-            {/if}
-            <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
+      <nav class="progress-rail" aria-label="Lesson stages">
+        {#each visibleStages as stage}
+          <div class:completed={statusForStage(stage) === 'completed'} class:active={statusForStage(stage) === 'active'} class="stage">
+            <span class="icon">{statusForStage(stage) === 'completed' ? '✓' : getStageIcon(stage)}</span>
+            <span>{getStageLabel(stage)}</span>
+          </div>
+        {/each}
+      </nav>
+    </header>
+
+    <section class="lesson-body">
+      <div class="chat-area" bind:this={chatElement}>
+        {#each lessonSession.messages as message}
+          {#if message.type === 'stage_start'}
+            <div class="stage-badge">{message.content}</div>
+          {:else}
+            <article class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}>
+              {#if message.type === 'question'}
+                <small>❓ Question</small>
+              {/if}
+              {#if message.type === 'side_thread'}
+                <small>↳ Side Thread</small>
+              {/if}
+              <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
+            </article>
+          {/if}
+        {/each}
+
+        {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
+          <article class="bubble assistant pending enter-assistant">
+            <div class="typing-dots" aria-label="Assistant is typing" role="status">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
           </article>
         {/if}
-      {/each}
-
-      {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
-        <article class="bubble assistant pending enter-assistant">
-          <div class="typing-dots" aria-label="Assistant is typing" role="status">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-        </article>
-      {/if}
-    </div>
-
-    <div class="input-area">
-      <p>Reply to continue · Ask a question anytime</p>
-      <div class="quick-actions">
-        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into steps.')}>Slow down</button>
-        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me another example for this part.')}>Give an example</button>
-        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Continue to the next step.')}>Continue</button>
       </div>
-      <div class="composer">
-        <textarea
-          rows="3"
-          bind:value={composer}
-          placeholder="Type your response or ask a question..."
-          oninput={onInput}
-        ></textarea>
-        <button type="button" class="btn btn-primary send" onclick={submit}>↑</button>
+
+      <div class="input-area">
+        <p>Reply to continue or ask a question at any point.</p>
+        <div class="quick-actions">
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into steps.')}>Slow down</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me another example for this part.')}>Give an example</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Continue to the next step.')}>Continue</button>
+        </div>
+        <div class="composer">
+          <textarea
+            rows="3"
+            bind:value={composer}
+            placeholder="Type your response or ask a question..."
+            oninput={onInput}
+          ></textarea>
+          <button type="button" class="btn btn-primary send" onclick={submit}>↑</button>
+        </div>
       </div>
-    </div>
+    </section>
   </section>
 
   {#if viewState.ui.showLessonCloseConfirm}
@@ -178,23 +186,23 @@
 
 <style>
   .lesson-shell {
-    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 92%, white 8%);
-    --chat-assistant-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
+    --chat-assistant-bg: color-mix(in srgb, white 92%, var(--surface-strong));
+    --chat-assistant-border: color-mix(in srgb, var(--border-strong) 88%, transparent);
     --chat-assistant-text: var(--text);
-    --chat-check-bg: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
-    --chat-check-border: color-mix(in srgb, var(--accent) 26%, var(--border));
-    --chat-side-thread-bg: color-mix(in srgb, #8ec5ff 12%, var(--surface-strong));
-    --chat-side-thread-border: color-mix(in srgb, #8ec5ff 30%, var(--border));
-    --chat-stage-bg: color-mix(in srgb, var(--surface-strong) 88%, #ece4d6 12%);
-    --chat-stage-text: color-mix(in srgb, var(--text-soft) 78%, #5f6672 22%);
-    --chat-stage-border: color-mix(in srgb, var(--border-strong) 72%, #d9cfbf 28%);
+    --chat-check-bg: color-mix(in srgb, var(--accent) 8%, white 92%);
+    --chat-check-border: color-mix(in srgb, var(--accent) 24%, var(--border));
+    --chat-side-thread-bg: color-mix(in srgb, #8ec5ff 9%, white 91%);
+    --chat-side-thread-border: color-mix(in srgb, #8ec5ff 24%, var(--border));
+    --chat-stage-bg: color-mix(in srgb, #f7f3ea 94%, white 6%);
+    --chat-stage-text: color-mix(in srgb, var(--text-soft) 84%, #5f6672 16%);
+    --chat-stage-border: color-mix(in srgb, var(--border-strong) 78%, #d9cfbf 22%);
     --chat-user-bg: color-mix(in srgb, #111827 92%, black 8%);
     --chat-user-text: #f8fafc;
     display: grid;
-    gap: 1rem;
+    gap: 0.9rem;
     height: 100%;
     min-height: 0;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
   }
 
@@ -213,8 +221,10 @@
     --chat-user-text: #f8fafc;
   }
 
+  .lesson-header,
   .top-bar,
   .progress-rail,
+  .lesson-body,
   .input-area,
   .confirm-actions,
   .composer,
@@ -223,26 +233,34 @@
     gap: 0.9rem;
   }
 
-  .top-bar,
-  .progress-rail,
-  .input-area,
+  .lesson-header,
+  .lesson-body,
   .confirm-card {
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
     border-radius: 1.4rem;
-    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
+    background: color-mix(in srgb, white 92%, var(--surface-strong));
     padding: 1rem 1.1rem;
-    box-shadow: var(--shadow);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
     animation: fade-up 220ms ease;
+  }
+
+  .lesson-header {
+    display: grid;
+    gap: 0.9rem;
+    padding: 0.95rem 1.05rem;
   }
 
   .top-bar {
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
   }
 
   .title-block {
     display: grid;
     gap: 0.25rem;
+    justify-items: end;
+    text-align: right;
   }
 
   .title-block p {
@@ -255,23 +273,30 @@
   .progress-rail {
     align-items: center;
     overflow-x: auto;
+    gap: 0.65rem;
+    padding-top: 0.1rem;
   }
 
   .stage {
     display: inline-flex;
     align-items: center;
     gap: 0.55rem;
-    padding: 0.6rem 0.8rem;
+    padding: 0.55rem 0.78rem;
     border-radius: 999px;
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
     color: var(--muted);
     white-space: nowrap;
+    background: color-mix(in srgb, white 72%, transparent);
   }
 
   .stage.active {
-    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
     color: var(--text);
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 12%, white),
+      color-mix(in srgb, var(--accent) 6%, var(--surface))
+    );
   }
 
   .stage.completed {
@@ -280,13 +305,21 @@
     border-color: transparent;
   }
 
+  .lesson-body {
+    display: grid;
+    gap: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+  }
+
   .chat-area {
     display: grid;
     gap: 0.9rem;
     align-content: start;
     min-height: 0;
     overflow-y: auto;
-    padding: 0 0.4rem 0.35rem 0;
+    padding: 1.15rem 1.15rem 0.85rem;
     scroll-behavior: smooth;
     overscroll-behavior: contain;
   }
@@ -301,7 +334,7 @@
     background: var(--chat-stage-bg);
     color: var(--chat-stage-text);
     border: 1px solid var(--chat-stage-border);
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
     font-size: 0.82rem;
     font-weight: 600;
     letter-spacing: 0.01em;
@@ -389,6 +422,10 @@
     align-self: end;
     position: relative;
     z-index: 1;
+    gap: 0.8rem;
+    padding: 0.95rem 1.15rem 1.1rem;
+    border-top: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, white 84%, transparent), color-mix(in srgb, white 94%, transparent));
   }
 
   .input-area p {
@@ -398,10 +435,10 @@
 
   .composer textarea {
     flex: 1;
-    min-height: 78px;
-    border: 1px solid var(--border);
+    min-height: 72px;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
     border-radius: 1rem;
-    background: var(--surface-soft);
+    background: color-mix(in srgb, white 94%, var(--surface-soft));
     color: var(--text);
     padding: 0.9rem 1rem;
     font: inherit;
@@ -416,6 +453,7 @@
   .top-actions {
     display: flex;
     gap: 0.65rem;
+    align-items: center;
   }
 
   .quick {
@@ -482,7 +520,13 @@
 
   @media (max-width: 780px) {
     .top-bar {
-      grid-template-columns: 1fr;
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .top-actions {
+      justify-content: space-between;
+      flex-wrap: wrap;
     }
 
     .composer {
@@ -491,6 +535,11 @@
 
     .quick-actions {
       flex-wrap: wrap;
+    }
+
+    .title-block {
+      justify-items: start;
+      text-align: left;
     }
   }
 

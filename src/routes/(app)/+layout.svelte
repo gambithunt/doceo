@@ -25,8 +25,10 @@
 </script>
 
 {#if $appState.auth.status === 'signed_in' && $appState.onboarding.completed}
-  <div class="app-shell">
-    <StudentNav state={$appState} />
+  <div class:lesson-mode={$page.url.pathname.startsWith('/lesson')} class="app-shell">
+    {#if !$page.url.pathname.startsWith('/lesson')}
+      <StudentNav state={$appState} />
+    {/if}
 
     <main class:lesson-mode={$page.url.pathname.startsWith('/lesson')} class="main-content">
       {@render children()}
@@ -48,6 +50,12 @@
     overflow: hidden;
   }
 
+  .app-shell.lesson-mode {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 0.9rem 1rem 1rem;
+  }
+
   .main-content {
     display: grid;
     gap: 1rem;
@@ -58,6 +66,7 @@
 
   .main-content.lesson-mode {
     overflow: hidden;
+    gap: 0;
   }
 
   @media (max-width: 1024px) {

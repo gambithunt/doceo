@@ -1,14 +1,16 @@
-import { createServerSupabaseFromRequest, getSupabaseFunctionsUrl } from '$lib/server/supabase';
+import { createServerSupabaseFromRequest, getSupabaseFunctionsUrl, getSupabaseAnonKey } from '$lib/server/supabase';
 import type { AiMode, ModelTier } from '$lib/ai/model-tiers';
 
 export async function getAuthenticatedEdgeContext(request: Request): Promise<{
   authHeader: string;
+  anonKey: string;
   functionsUrl: string;
 } | null> {
   const authHeader = request.headers.get('Authorization');
   const functionsUrl = getSupabaseFunctionsUrl();
+  const anonKey = getSupabaseAnonKey();
 
-  if (!authHeader || !functionsUrl) {
+  if (!authHeader || !functionsUrl || !anonKey) {
     return null;
   }
 
@@ -29,6 +31,7 @@ export async function getAuthenticatedEdgeContext(request: Request): Promise<{
 
   return {
     authHeader,
+    anonKey,
     functionsUrl
   };
 }
@@ -61,7 +64,8 @@ export async function invokeAuthenticatedAiEdge<TResponse>(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: edgeContext.authHeader
+      Authorization: edgeContext.authHeader,
+      apikey: edgeContext.anonKey
     },
     body: JSON.stringify({
       request: requestPayload,

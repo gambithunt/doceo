@@ -4,16 +4,19 @@ import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 const {
   getUser,
   createServerSupabaseFromRequest,
-  getSupabaseFunctionsUrl
+  getSupabaseFunctionsUrl,
+  getSupabaseAnonKey
 } = vi.hoisted(() => ({
   getUser: vi.fn(),
   createServerSupabaseFromRequest: vi.fn(),
-  getSupabaseFunctionsUrl: vi.fn()
+  getSupabaseFunctionsUrl: vi.fn(),
+  getSupabaseAnonKey: vi.fn()
 }));
 
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseFromRequest,
-  getSupabaseFunctionsUrl
+  getSupabaseFunctionsUrl,
+  getSupabaseAnonKey
 }));
 
 describe('invokeAuthenticatedAiEdge', () => {
@@ -21,6 +24,7 @@ describe('invokeAuthenticatedAiEdge', () => {
     vi.resetAllMocks();
 
     getSupabaseFunctionsUrl.mockReturnValue('http://127.0.0.1:55121/functions/v1');
+    getSupabaseAnonKey.mockReturnValue('test-anon-key');
     getUser.mockResolvedValue({
       data: {
         user: { id: 'student-1' }
