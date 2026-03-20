@@ -47,12 +47,10 @@
 	],
 	"/(app)/dashboard": [],
 	"/(app)/lesson": [],
-	"/(app)/lesson/session/[id]": [],
 	"/(app)/lesson/[id]": [],
 	"/onboarding": [],
 	"/(app)/progress": [],
 	"/(app)/revision": [],
 	"/(app)/settings": [],
-	"/(app)/subjects": [],
 	"/(app)/subjects/[id]": []
 }

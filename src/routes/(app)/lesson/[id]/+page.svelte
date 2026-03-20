@@ -3,13 +3,15 @@
   import LessonWorkspace from '$lib/components/LessonWorkspace.svelte';
   import { appState } from '$lib/stores/app-state';
 
-  let launchedLessonId = $state('');
-
   $effect(() => {
-    const lessonId = $page.params.id;
-    if (lessonId && launchedLessonId !== lessonId) {
-      launchedLessonId = lessonId;
-      appState.launchLesson(lessonId);
+    const sessionId = $page.params.id;
+    if (sessionId && $appState.ui.activeLessonSessionId !== sessionId) {
+      appState.resumeSession(sessionId);
+      return;
+    }
+
+    if ($appState.ui.currentScreen !== 'lesson') {
+      appState.setScreen('lesson');
     }
   });
 </script>

@@ -24,8 +24,8 @@ export function subjectPath(subjectId: string): string {
   return `/subjects/${encodeURIComponent(subjectId)}`;
 }
 
-export function lessonSessionPath(sessionId: string): string {
-  return `/lesson/session/${encodeURIComponent(sessionId)}`;
+export function lessonPath(sessionId: string): string {
+  return `/lesson/${encodeURIComponent(sessionId)}`;
 }
 
 export function pathForScreen(screen: AppScreen, state: AppState): string {
@@ -43,7 +43,7 @@ export function pathForScreen(screen: AppScreen, state: AppState): string {
     case 'subject':
       return subjectPath(state.ui.selectedSubjectId);
     case 'lesson':
-      return state.ui.activeLessonSessionId ? lessonSessionPath(state.ui.activeLessonSessionId) : dashboardPath();
+      return state.ui.activeLessonSessionId ? lessonPath(state.ui.activeLessonSessionId) : dashboardPath();
     case 'landing':
     default:
       return '/';

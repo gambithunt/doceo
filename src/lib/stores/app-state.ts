@@ -30,7 +30,7 @@ import {
 } from '$lib/data/platform';
 import {
   dashboardPath,
-  lessonSessionPath,
+  lessonPath,
   onboardingPath,
   revisionPath
 } from '$lib/routing';
@@ -597,7 +597,7 @@ function createAppStore() {
             }
           })
         );
-        navigate(lessonSessionPath(existingSession.id));
+        navigate(lessonPath(existingSession.id));
         return;
       }
 
@@ -640,7 +640,7 @@ function createAppStore() {
           }
         })
       );
-      navigate(lessonSessionPath(session.id));
+      navigate(lessonPath(session.id));
     },
     selectPracticeQuestion: (questionId: string) =>
       update((state) => persistAndSync({ ...state, ui: { ...state.ui, practiceQuestionId: questionId } })),
@@ -913,7 +913,7 @@ function createAppStore() {
       });
 
       if (nextSessionId) {
-        navigate(lessonSessionPath(nextSessionId));
+        navigate(lessonPath(nextSessionId));
       }
     },
     startLessonFromSelection: async (subjectId: string, sectionName: string) => {
@@ -999,7 +999,7 @@ function createAppStore() {
       });
 
       if (nextSessionId) {
-        navigate(lessonSessionPath(nextSessionId));
+        navigate(lessonPath(nextSessionId));
       }
     },
     sendLessonMessage: async (message: string) => {
@@ -1221,7 +1221,7 @@ function createAppStore() {
         });
       });
       if (resumedSessionId) {
-        navigate(lessonSessionPath(resumedSessionId));
+        navigate(lessonPath(resumedSessionId));
       }
     },
     archiveSession: (sessionId: string) =>
@@ -1276,7 +1276,7 @@ function createAppStore() {
         });
       });
       if (restartedSessionId) {
-        navigate(lessonSessionPath(restartedSessionId));
+        navigate(lessonPath(restartedSessionId));
       }
     },
     signUp: async (fullName: string, email: string, password: string) => {

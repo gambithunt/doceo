@@ -1,7 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
-  import { dashboardPath, lessonSessionPath } from '$lib/routing';
+  import { dashboardPath, lessonPath } from '$lib/routing';
   import { appState } from '$lib/stores/app-state';
 
   $effect(() => {
@@ -10,7 +10,7 @@
     }
 
     const nextPath = $appState.ui.activeLessonSessionId
-      ? lessonSessionPath($appState.ui.activeLessonSessionId)
+      ? lessonPath($appState.ui.activeLessonSessionId)
       : dashboardPath();
     void goto(nextPath);
   });

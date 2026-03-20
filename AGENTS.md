@@ -12,6 +12,7 @@
 
 ## UI Work
 - Use the ui-design skill
-- Use the ui-review skill when evaluating or revising interfaces
+- Read `/docs/desgin-langauge.md` before implementing or revising app UI so new work matches the established component language
+- Use `/docs/desgin-langauge.md` as the local source of truth for component hierarchy, tile states, spacing, and copy restraint
 
 ----
