@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
+import { buildFallbackLessonChatResponse } from '$lib/ai/lesson-chat';
 import { logAiInteraction, logLessonSignal } from '$lib/server/state-repository';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import type { LessonChatRequest, LessonChatResponse } from '$lib/types';
@@ -54,13 +55,13 @@ export async function POST({ request, fetch }) {
   );
 
   if (!edge.ok || !edge.payload) {
-    return json({ error: edge.error }, { status: edge.status });
+    return json(buildFallbackLessonChatResponse(requestPayload, lesson));
   }
 
   const functionPayload = edge.payload;
 
   if (functionPayload.provider !== 'github-models' || !functionPayload.displayContent || !functionPayload.metadata) {
-    return json({ error: 'AI edge function returned invalid lesson chat data.' }, { status: 502 });
+    return json(buildFallbackLessonChatResponse(requestPayload, lesson));
   }
 
   await Promise.all([
