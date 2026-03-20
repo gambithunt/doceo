@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
+import { dev } from '$app/environment';
 import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
 import { buildFallbackLessonChatResponse } from '$lib/ai/lesson-chat';
 import { logAiInteraction, logLessonSignal } from '$lib/server/state-repository';
@@ -55,12 +56,14 @@ export async function POST({ request, fetch }) {
   );
 
   if (!edge.ok || !edge.payload) {
+    if (dev) console.warn('[lesson-chat] Edge function unavailable, using local fallback.', edge);
     return json(buildFallbackLessonChatResponse(requestPayload, lesson));
   }
 
   const functionPayload = edge.payload;
 
   if (functionPayload.provider !== 'github-models' || !functionPayload.displayContent || !functionPayload.metadata) {
+    if (dev) console.warn('[lesson-chat] Edge function returned invalid payload, using local fallback.', functionPayload);
     return json(buildFallbackLessonChatResponse(requestPayload, lesson));
   }
 

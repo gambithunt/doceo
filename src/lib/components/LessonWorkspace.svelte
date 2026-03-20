@@ -1,10 +1,10 @@
 <script lang="ts">
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { getActiveLessonSession } from '$lib/data/platform';
-  import { getStageIcon, getStageLabel, LESSON_STAGE_ORDER } from '$lib/lesson-system';
+  import { getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
   import { appState } from '$lib/stores/app-state';
-  import type { AppState, LessonMessage, LessonStage } from '$lib/types';
+  import type { AppState, ConceptItem, LessonMessage, LessonStage } from '$lib/types';
   import { dev } from '$app/environment';
 
   const { state: viewState }: { state: AppState } = $props();
@@ -24,9 +24,10 @@
     expandedConcepts = next;
   }
 
-  function askAboutConcept(name: string): void {
-    composer = `Can you explain more about ${name}?`;
-    appState.updateComposerDraft(composer);
+  function askAboutConcept(concept: ConceptItem): void {
+    const message = `[CONCEPT: ${concept.name}]\nCan you explain this in more detail?`;
+    composer = message;
+    appState.updateComposerDraft(message);
   }
 
   const visibleStages = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete');
@@ -125,8 +126,8 @@
       <nav class="progress-rail" aria-label="Lesson stages">
         {#each visibleStages as stage}
           <div class:completed={statusForStage(stage) === 'completed'} class:active={statusForStage(stage) === 'active'} class="stage">
-            <span class="icon">{statusForStage(stage) === 'completed' ? '✓' : getStageIcon(stage)}</span>
-            <span>{getStageLabel(stage)}</span>
+            <span class="icon">{statusForStage(stage) === 'completed' ? '✓' : getStageNumber(stage)}</span>
+            <span class="stage-text">{getStageLabel(stage)}</span>
           </div>
         {/each}
       </nav>
@@ -139,7 +140,7 @@
             <div class="stage-badge">{message.content}</div>
           {:else if message.type === 'concept_cards'}
             <div class="concept-cards-panel">
-              <p class="concept-cards-label">{message.content}</p>
+              <p class="concept-cards-label">Pick a concept to go deeper 🔍</p>
               {#each message.conceptItems ?? [] as concept, i}
                 {@const key = `${message.id}-${i}`}
                 <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
@@ -157,9 +158,12 @@
                         <span class="concept-example-label">Example</span>
                         <div>{@html renderSimpleMarkdown(concept.example)}</div>
                       </div>
-                      <button type="button" class="concept-ask-link" onclick={() => askAboutConcept(concept.name)}>
-                        Ask Doceo about this →
-                      </button>
+                      <div class="concept-actions">
+                        <button type="button" class="concept-ask-link" onclick={() => askAboutConcept(concept)}>
+                          <span>Ask Doceo to explain this</span>
+                          <span aria-hidden="true">→</span>
+                        </button>
+                      </div>
                     </div>
                   {/if}
                 </div>
@@ -190,12 +194,12 @@
       </div>
 
       <div class="input-area">
-        <p>Reply to continue or ask a question at any point.</p>
+        <p>What do you want to try next? Reply, ask a question, or tap a shortcut.</p>
         <div class="quick-actions">
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into smaller steps.')}>Slow down</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me a different example for this part.')}>Different example</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you check me?')}>Check me</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I have a question about this.')}>I have a question</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into smaller steps.')}>Slow down 🐢</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me a different example for this part.')}>Different example ✨</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you check me?')}>Check me ✅</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I have a question about this.')}>I have a question 🙋</button>
         </div>
         <div class="composer">
           <textarea
@@ -339,7 +343,7 @@
 
   .title-block {
     display: grid;
-    gap: 0.25rem;
+    gap: 0.32rem;
     justify-items: end;
     text-align: right;
   }
@@ -347,43 +351,92 @@
   .title-block p {
     color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+
+  .title-block h2 {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: clamp(1.45rem, 2vw, 1.95rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    font-weight: 650;
+    color: color-mix(in srgb, var(--text) 92%, #1d4ed8 8%);
   }
 
   .progress-rail {
     align-items: center;
     overflow-x: auto;
-    gap: 0.65rem;
+    gap: 0.5rem;
     padding-top: 0.1rem;
   }
 
   .stage {
     display: inline-flex;
     align-items: center;
-    gap: 0.55rem;
-    padding: 0.55rem 0.78rem;
+    gap: 0.45rem;
+    padding: 0.45rem 0.78rem 0.45rem 0.5rem;
     border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
-    color: var(--muted);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    color: color-mix(in srgb, var(--muted) 80%, var(--text) 20%);
     white-space: nowrap;
     background: var(--lesson-stage-surface);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .stage.active {
-    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
     color: var(--text);
     background: var(--lesson-stage-active-surface);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 14%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
   }
 
   .stage.completed {
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-strong));
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  .stage .icon {
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    font-size: 0.73rem;
+    font-weight: 700;
+    color: var(--text-soft);
+    flex-shrink: 0;
+  }
+
+  .stage.active .icon {
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+    color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+  }
+
+  .stage.completed .icon {
     background: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 44%, transparent);
     color: var(--accent-contrast);
-    border-color: transparent;
+  }
+
+  .stage-text {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
   }
 
   .lesson-body {
     display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
     gap: 0;
     min-height: 0;
     overflow: hidden;
@@ -392,11 +445,11 @@
 
   .chat-area {
     display: grid;
-    gap: 0.9rem;
+    gap: 1.1rem;
     align-content: start;
     min-height: 0;
     overflow-y: auto;
-    padding: 1.15rem 1.15rem 0.85rem;
+    padding: 1.3rem 1.3rem 1rem;
     scroll-behavior: smooth;
     overscroll-behavior: contain;
   }
@@ -412,22 +465,25 @@
     color: var(--chat-stage-text);
     border: 1px solid var(--chat-stage-border);
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    letter-spacing: 0.01em;
+    letter-spacing: 0;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     animation: badge-arrive 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .bubble {
-    max-width: 88%;
-    padding: 0.98rem 1.08rem;
+    max-width: 68%;
+    padding: 1.05rem 1.22rem;
     border-radius: 1.22rem;
     border: 1px solid var(--chat-assistant-border);
     background: var(--chat-assistant-bg);
     color: var(--chat-assistant-text);
     display: grid;
-    gap: 0.45rem;
-    line-height: 1.6;
+    gap: 0.6rem;
+    line-height: 1.76;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 0.99rem;
     transform-origin: left bottom;
     will-change: transform, opacity, filter;
     box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
@@ -441,11 +497,16 @@
   .bubble.assistant.check {
     background: var(--chat-check-bg);
     border-color: var(--chat-check-border);
+    border-left: 3px solid color-mix(in srgb, var(--accent) 72%, transparent);
+    padding-left: calc(1.22rem - 2px);
   }
 
   .bubble.assistant.side-thread {
     background: var(--chat-side-thread-bg);
     border-color: var(--chat-side-thread-border);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+    max-width: 62%;
+    gap: 0.45rem;
   }
 
   .bubble.user {
@@ -459,12 +520,26 @@
   }
 
   .bubble.user.question {
-    background: #2d2520;
+    justify-self: start;
+    max-width: 26rem;
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 76%, white 24%),
+      color-mix(in srgb, var(--accent) 58%, #d9fff0 42%)
+    );
+    border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+    color: var(--accent-contrast);
+    box-shadow: 0 14px 28px color-mix(in srgb, var(--accent) 18%, transparent);
+    transform-origin: left bottom;
   }
 
   .bubble small {
     font-weight: 700;
-    opacity: 0.85;
+    opacity: 0.8;
+    font-size: 0.74rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
   }
 
   .bubble-body :global(p),
@@ -480,12 +555,50 @@
 
   .bubble-body {
     display: grid;
-    gap: 0.45rem;
+    gap: 0.7rem;
     animation: content-fade 260ms ease;
   }
 
+  .bubble.assistant:not(.side-thread):not(.check) .bubble-body :global(p:last-child) {
+    margin-top: 0.15rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    color: var(--text-soft);
+  }
+
+  .bubble-body :global(ul),
+  .bubble-body :global(ol) {
+    padding-left: 1.4rem;
+    display: grid;
+    gap: 0.55rem;
+    margin: 0;
+  }
+
+  .bubble-body :global(ol) {
+    list-style: decimal;
+  }
+
   .bubble-body :global(ul) {
-    padding-left: 1.1rem;
+    list-style: disc;
+  }
+
+  .bubble-body :global(li) {
+    line-height: 1.6;
+    padding-left: 0.2rem;
+  }
+
+  .bubble-body :global(li strong) {
+    font-weight: 650;
+    color: var(--text);
+  }
+
+  .bubble.assistant.side-thread .bubble-body {
+    gap: 0.55rem;
+  }
+
+  .bubble.assistant.side-thread .bubble-body :global(p) {
+    font-size: 0.95rem;
+    line-height: 1.68;
   }
 
   .bubble-body :global(hr) {
@@ -507,7 +620,8 @@
 
   .input-area p {
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: 0.88rem;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
   }
 
   .composer textarea {
@@ -518,7 +632,9 @@
     background: color-mix(in srgb, var(--surface-tint) 92%, transparent);
     color: var(--text);
     padding: 0.9rem 1rem;
-    font: inherit;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
   }
 
   .close-button,
@@ -535,6 +651,13 @@
 
   .quick {
     padding: 0.65rem 0.9rem;
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 14%, var(--border));
+  }
+
+  .quick:hover {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
   }
 
   .enter-assistant {
@@ -598,18 +721,20 @@
   /* Concept cards */
   .concept-cards-panel {
     display: grid;
-    gap: 0.55rem;
+    gap: 0.48rem;
+    max-width: 68%;
     animation: bubble-in-assistant 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
   }
 
   .concept-cards-label {
-    font-size: 0.8rem;
+    font-size: 0.84rem;
     color: var(--muted);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     font-weight: 600;
-    margin: 0;
-    padding: 0 0.1rem;
+    margin: 0 0 0.1rem;
+    padding: 0 0.15rem;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    letter-spacing: 0;
   }
 
   .concept-card {
@@ -617,63 +742,79 @@
     border-radius: 1rem;
     background: var(--chat-assistant-bg);
     overflow: hidden;
-    transition: border-color 140ms ease;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
   }
 
   .concept-card.expanded {
-    border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    background: color-mix(in srgb, var(--accent) 4%, var(--chat-assistant-bg));
+    box-shadow:
+      0 10px 28px color-mix(in srgb, var(--accent) 8%, rgba(15, 23, 42, 0.06)),
+      0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
   }
 
   .concept-card-header {
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 0.8rem;
-    padding: 0.82rem 1rem;
+    gap: 0.85rem;
+    padding: 0.88rem 1rem;
     background: transparent;
     border: none;
     cursor: pointer;
     color: var(--text);
-    font: inherit;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 0.93rem;
     text-align: left;
+    line-height: 1.4;
   }
 
   .concept-card-header:hover {
-    background: color-mix(in srgb, var(--accent) 4%, transparent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
   }
 
   .concept-card-title {
     flex: 1;
     display: grid;
-    gap: 0.18rem;
+    gap: 0.2rem;
   }
 
   .concept-name {
-    font-weight: 650;
-    font-size: 0.93rem;
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text);
   }
 
   .concept-summary {
-    font-size: 0.82rem;
+    font-size: 0.84rem;
     color: var(--text-soft);
+    line-height: 1.45;
   }
 
   .concept-chevron {
-    font-size: 0.65rem;
-    opacity: 0.55;
+    font-size: 0.62rem;
+    opacity: 0.32;
     flex-shrink: 0;
+    transition: opacity 140ms ease;
+  }
+
+  .concept-card.expanded .concept-chevron {
+    opacity: 0.7;
   }
 
   .concept-card-body {
-    padding: 0 1rem 1rem;
+    padding: 0 1.05rem 1.05rem;
     display: grid;
-    gap: 0.75rem;
+    gap: 0.8rem;
     animation: content-fade 200ms ease;
+    border-top: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+    margin-top: -1px;
+    padding-top: 0.9rem;
   }
 
   .concept-detail {
-    font-size: 0.9rem;
-    line-height: 1.62;
+    font-size: 0.91rem;
+    line-height: 1.68;
     color: var(--text);
   }
 
@@ -682,18 +823,23 @@
   }
 
   .concept-detail :global(strong) {
-    font-weight: 650;
+    font-weight: 600;
+    color: var(--text);
   }
 
   .concept-example {
     display: grid;
-    gap: 0.3rem;
-    padding: 0.7rem 0.85rem;
+    gap: 0.35rem;
+    padding: 0.72rem 0.9rem;
     border-radius: 0.72rem;
-    background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 8%, var(--surface-soft)),
+      color-mix(in srgb, #f8fffb 88%, var(--surface-strong) 12%)
+    );
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
     font-size: 0.88rem;
-    line-height: 1.55;
+    line-height: 1.58;
   }
 
   .concept-example :global(p) {
@@ -701,31 +847,43 @@
   }
 
   .concept-example-label {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--accent);
-    opacity: 0.85;
+    letter-spacing: 0.09em;
+    color: color-mix(in srgb, var(--accent) 72%, var(--text-soft) 28%);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  .concept-actions {
+    display: flex;
+    align-items: center;
+    padding-top: 0.05rem;
   }
 
   .concept-ask-link {
     display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
     align-self: start;
-    background: transparent;
-    border: none;
-    padding: 0;
-    font: inherit;
-    font-size: 0.84rem;
+    min-height: 2.4rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 0.86rem;
     font-weight: 600;
-    color: var(--accent);
+    color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%);
     cursor: pointer;
-    opacity: 0.9;
+    letter-spacing: 0.01em;
   }
 
   .concept-ask-link:hover {
-    opacity: 1;
-    text-decoration: underline;
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
   }
 
   @media (max-width: 780px) {

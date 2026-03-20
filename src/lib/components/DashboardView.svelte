@@ -395,15 +395,15 @@
         {#each recentLessons as session}
           <article class="recent-card">
             <div class="recent-meta">
-              <small>{session.subject}</small>
-              <small>{new Date(session.lastActiveAt).toLocaleDateString()}</small>
+              <small class="recent-subject">{session.subject}</small>
+              <small class="recent-date">{new Date(session.lastActiveAt).toLocaleDateString()}</small>
             </div>
-            <h4>{session.subject} - {session.topicTitle}</h4>
-            <p>{stageProgressLabel(session)}</p>
+            <h4>{session.topicTitle}</h4>
+            <p class="recent-stage">{stageProgressLabel(session)}</p>
             <div class="recent-actions">
-              <button type="button" class="btn btn-secondary btn-compact compact" onclick={() => appState.resumeSession(session.id)}>Resume</button>
+              <button type="button" class="btn btn-primary btn-compact compact recent-resume" onclick={() => appState.resumeSession(session.id)}>Resume</button>
               <details class="overflow-menu">
-                <summary class="btn btn-secondary btn-compact compact">More</summary>
+                <summary class="btn btn-secondary btn-compact compact icon-summary" aria-label="More options">⋯</summary>
                 <div class="overflow-panel">
                   <button type="button" class="menu-item" onclick={() => appState.resumeSession(session.id)}>View notes</button>
                   <button type="button" class="menu-item" onclick={() => appState.restartLessonSession(session.id)}>Restart</button>
@@ -850,6 +850,17 @@
     align-items: center;
   }
 
+  .recent-subject {
+    font-size: 0.84rem;
+    font-weight: 500;
+    color: var(--text-soft);
+  }
+
+  .recent-date {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
   button,
   select,
   textarea {
@@ -862,6 +873,14 @@
 
   .compact {
     padding: 0.66rem 0.9rem;
+  }
+
+  .icon-summary {
+    min-width: 2.45rem;
+    padding-inline: 0.72rem;
+    justify-content: center;
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .overflow-menu {
@@ -1004,10 +1023,24 @@
     border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
   }
 
+  .recent-card h4 {
+    font-size: 1.02rem;
+    line-height: 1.26;
+  }
+
+  .recent-stage {
+    font-size: 0.9rem;
+    color: var(--text-soft);
+  }
+
   .recent-card:hover {
     transform: translateY(-2px);
     border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
     background: var(--dashboard-strong-surface);
+  }
+
+  .recent-resume {
+    box-shadow: 0 8px 16px color-mix(in srgb, var(--accent) 14%, transparent);
   }
 
   .recent-note {

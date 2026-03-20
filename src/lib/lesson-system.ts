@@ -318,10 +318,10 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
   const intro = getLessonSectionForStage(lesson, stage);
   const closingPrompt =
     stage === 'orientation'
-      ? 'Does this make sense so far? Reply to continue or ask a question anytime.'
+      ? 'Does this connect for you? Ask me anything — or tell me what stands out.'
       : stage === 'check'
-        ? 'Try answering in your own words. What stands out to you first?'
-        : 'Does this make sense? Tell me what feels clear or where you want to slow down.';
+        ? 'Put it in your own words. What would you say is the main idea here?'
+        : 'What feels clear so far? Tell me where you want to slow down.';
 
   const messages: LessonMessage[] = [
     buildStageStartMessage(stage),
@@ -348,7 +348,7 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
       id: `msg-${crypto.randomUUID()}`,
       role: 'system',
       type: 'concept_cards',
-      content: 'Key concepts — tap to explore each one in depth',
+      content: 'Tap any concept to explore it in depth',
       stage,
       timestamp: isoNow(),
       metadata: null,
@@ -529,16 +529,55 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
   ];
 }
 
-function buildQuestionReply(session: LessonSession, lesson: Lesson, _message: string): LessonChatResponse {
+function buildQuestionReply(session: LessonSession, lesson: Lesson, message: string): LessonChatResponse {
+  // Handle concept card clarification requests ([CONCEPT: name] prefix)
+  const conceptMatch = message.match(/^\[CONCEPT:\s*(.+?)\]/);
+  if (conceptMatch && lesson.keyConcepts?.length) {
+    const conceptName = conceptMatch[1].trim();
+    const concept = lesson.keyConcepts.find(
+      (c) => c.name.toLowerCase() === conceptName.toLowerCase()
+    );
+
+    if (concept) {
+      const reply = [
+        `Let me break down **${concept.name}** for you.`,
+        '',
+        concept.detail,
+        '',
+        `**Example:**`,
+        '',
+        concept.example,
+        '',
+        '---',
+        '',
+        `Once this clicks, we can pick up where we left off. What part of this is clearest to you so far?`
+      ].join('\n');
+
+      return {
+        displayContent: reply,
+        provider: 'local-fallback',
+        metadata: {
+          action: 'stay',
+          next_stage: null,
+          reteach_style: null,
+          reteach_count: session.reteachCount,
+          confidence_assessment: session.confidenceScore,
+          profile_update: {}
+        }
+      };
+    }
+  }
+
+  // General question fallback
   const stageContent = getLessonSectionForStage(lesson, session.currentStage);
   const topicName = lesson.title.replace(/^.*?:\s*/, '');
 
   const reply = [
     `Good question — let me clarify this within **${topicName}**.`,
     '',
-    `The key thing to hold onto here is the core rule for ${topicName}: ${lesson.concepts.body.split('.')[0]}.`,
+    `The key anchor for ${topicName} is: ${lesson.concepts.body.split('.')[0]}.`,
     '',
-    `If that is what you were asking about, that is the anchor to keep in mind. If your question was about something more specific, try phrasing it in your own words and I will work through it with you.`,
+    `If your question was about something more specific, try phrasing it in your own words and I will work through it with you.`,
     '',
     '---',
     '',

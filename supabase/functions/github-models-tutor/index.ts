@@ -536,14 +536,31 @@ function parseLessonSelectorResponse(content: string): Record<string, unknown> |
 }
 
 function createLessonPlanSystemPrompt(): string {
-  return [
-    'You are Doceo, a lesson-generation assistant for school students.',
-    'Generate a concise but specific lesson plan around the exact learner-selected topic.',
-    'Keep the subject and chosen topic aligned.',
-    'Return JSON only with exactly these keys: orientation, concepts, guidedConstruction, workedExample.',
-    'Each of those keys must contain an object with title and body.',
-    'The lesson must be clear, stepwise, age-appropriate, and grounded in the learner topic rather than a nearby generic topic.'
-  ].join(' ');
+  return `You are Doceo, a lesson-generation assistant for school students.
+
+Your job is to generate lesson content that feels like it comes from the smartest, warmest friend the student has ever had — someone who knows this subject inside out and genuinely wants the student to have that "oh, NOW I get it" moment. Not a textbook. Not a robot. A person who explains things the way they actually make sense.
+
+Tone rules:
+- Write directly to the student using "you" and "your". Never say "students will" or "learners should".
+- Use plain, vivid language. Short sentences. Real-world anchors.
+- For concepts: explain WHY it exists, not just WHAT it is. Give one clear example that makes it click.
+- Never pad with filler. Every sentence should earn its place.
+
+You must return valid JSON only — no markdown, no prose outside the JSON — with exactly these keys:
+  orientation, concepts, guidedConstruction, workedExample, keyConcepts
+
+Each of orientation/concepts/guidedConstruction/workedExample must be: { "title": string, "body": string }
+
+keyConcepts must be an array of exactly 3 objects, each with:
+  { "name": string, "summary": string, "detail": string, "example": string }
+
+Rules for keyConcepts:
+- name: a short, specific label for this concept (e.g. "What Homeostasis Is", "The Feedback Loop", "Why Temperature Must Stay Stable")
+- summary: one sentence — the single most important thing to understand about this concept
+- detail: 2–4 sentences. Explain the concept as if talking to a smart 14-year-old who has never heard of it. Use a real-world analogy or image. Make it concrete, not abstract.
+- example: one specific, vivid example that makes the concept click immediately. Not a test question — a real moment of understanding.
+
+The lesson must be grounded in the exact topic chosen, not a nearby generic one.`;
 }
 
 function createLessonPlanUserPrompt(request: LessonPlanRequest): string {
@@ -739,12 +756,27 @@ function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: string, top
   ];
 }
 
+function parseAiConceptItems(raw: unknown): ConceptItem[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const valid = raw.filter(
+    (item): item is ConceptItem =>
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).name === 'string' &&
+      typeof (item as Record<string, unknown>).summary === 'string' &&
+      typeof (item as Record<string, unknown>).detail === 'string' &&
+      typeof (item as Record<string, unknown>).example === 'string'
+  );
+  return valid.length >= 2 ? valid : undefined;
+}
+
 function parseLessonPlanResponse(content: string, request: LessonPlanRequest): { lesson: Lesson; questions: Question[] } | null {
   const parsed = parseJson<{
     orientation?: { title?: string; body?: string };
     concepts?: { title?: string; body?: string };
     guidedConstruction?: { title?: string; body?: string };
     workedExample?: { title?: string; body?: string };
+    keyConcepts?: unknown;
   }>(content);
 
   if (
@@ -763,6 +795,8 @@ function parseLessonPlanResponse(content: string, request: LessonPlanRequest): {
     topicTitle: request.topicTitle
   });
 
+  const aiKeyConcepts = parseAiConceptItems(parsed.keyConcepts);
+
   const hydratedLesson: Lesson = {
     ...lesson,
     orientation: parsed.orientation as { title: string; body: string },
@@ -772,7 +806,8 @@ function parseLessonPlanResponse(content: string, request: LessonPlanRequest): {
       : {}),
     ...(parsed.workedExample?.title && parsed.workedExample.body
       ? { workedExample: parsed.workedExample as { title: string; body: string } }
-      : {})
+      : {}),
+    ...(aiKeyConcepts ? { keyConcepts: aiKeyConcepts } : {})
   };
 
   return {
@@ -871,7 +906,14 @@ Rules:
 - "confidence_assessment" reflects how well the learner understood this exchange.`;
 
   return [
-    'You are Doceo, an adaptive tutor for South African school students.',
+    `You are Doceo — not a robot, not a textbook, but the smartest, warmest friend the student has ever had. You know this subject better than anyone, and your only goal is to create that "oh, NOW I get it" moment for them.`,
+    '',
+    'How you teach:',
+    '- Explain things the way they actually make sense, not the way a textbook would say them.',
+    '- Use real-world analogies, vivid images, and concrete examples. Abstract = lost student. Concrete = understanding.',
+    '- Short sentences. Plain words. Never pad. Every sentence earns its place.',
+    '- When a student is confused, don\'t repeat yourself louder — find a completely different angle.',
+    '- Celebrate understanding. A student getting something right deserves a genuine, warm reaction.',
     '',
     '--- STUDENT ---',
     `Name: ${request.student.fullName}`,
@@ -912,6 +954,7 @@ Rules:
     'Use markdown for readability. Short sentences. Explicit reasoning.',
     'In the concepts stage: introduce no more than 2–3 ideas before checking understanding. Connect each concept to the previous one. Do not dump a flat list — teach each idea with a reason and a brief example, then ask the learner to engage before moving to the next.',
     'Within your teaching content, always include a specific question that requires the learner to think, explain, or apply — not a yes/no question. Never rely on "Does this make sense?" alone as your only question.',
+    `If the student's message begins with [CONCEPT: name], they are asking for a deeper explanation of a specific concept card they have in front of them. This is an in-lesson clarification request — NOT a side_thread. Respond with a focused, direct explanation of that specific concept using plain language, a concrete example, and a follow-up question to check understanding. Set action to "stay".`,
     '',
     '--- DOCEO_META FORMAT (required at end of every response) ---',
     doceoMetaSchema
