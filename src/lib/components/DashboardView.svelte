@@ -13,6 +13,8 @@
   let topicInputFocused = $state(false);
   let promptSuggestionsText = $state('');
   let hintChipsLoading = $state(false);
+  let hintChipsRefreshing = $state(false);
+  let hintRefreshError = $state('');
   let pendingChipId = $state<string | null>(null);
   let latestHintRequest = 0;
   let lastHintSeed = $state('');
@@ -54,49 +56,70 @@
     }
   });
 
-  $effect(() => {
+  async function loadSubjectHints(forceRefresh = false): Promise<void> {
     if (!selectedSubject) {
       return;
     }
 
     const hintSeed = `${viewState.profile.curriculumId}:${viewState.profile.gradeId}:${viewState.profile.term}:${selectedSubject.id}`;
-    if (hintSeed === lastHintSeed) {
+    if (!forceRefresh && hintSeed === lastHintSeed) {
       return;
     }
-    lastHintSeed = hintSeed;
 
-    promptSuggestionsText = '';
-    hintChipsLoading = true;
+    lastHintSeed = hintSeed;
+    hintRefreshError = '';
+
+    if (forceRefresh) {
+      hintChipsRefreshing = true;
+    } else {
+      promptSuggestionsText = '';
+      hintChipsLoading = true;
+    }
 
     const requestId = ++latestHintRequest;
-    void (async () => {
-      try {
-        const result = await resolveSubjectHints({
-          subject: selectedSubject,
-          curriculumId: viewState.profile.curriculumId,
-          curriculumName: viewState.profile.curriculum,
-          gradeId: viewState.profile.gradeId,
-          gradeLabel: viewState.profile.grade,
-          term: viewState.profile.term,
-          fetcher: browser ? window.fetch.bind(window) : undefined,
-          headers: await getAuthenticatedHeaders()
-        });
 
-        if (requestId !== latestHintRequest) {
-          return;
-        }
+    try {
+      const result = await resolveSubjectHints({
+        subject: selectedSubject,
+        curriculumId: viewState.profile.curriculumId,
+        curriculumName: viewState.profile.curriculum,
+        gradeId: viewState.profile.gradeId,
+        gradeLabel: viewState.profile.grade,
+        term: viewState.profile.term,
+        forceRefresh,
+        fetcher: browser ? window.fetch.bind(window) : undefined,
+        headers: await getAuthenticatedHeaders()
+      });
 
-        promptSuggestionsText = result.hints.join('\n');
-        hintChipsLoading = false;
-      } catch {
-        if (requestId !== latestHintRequest) {
-          return;
-        }
-
-        promptSuggestionsText = '';
-        hintChipsLoading = false;
+      if (requestId !== latestHintRequest) {
+        return;
       }
-    })();
+
+      promptSuggestionsText = result.hints.join('\n');
+      hintChipsLoading = false;
+      hintChipsRefreshing = false;
+    } catch {
+      if (requestId !== latestHintRequest) {
+        return;
+      }
+
+      if (!forceRefresh) {
+        promptSuggestionsText = '';
+      } else {
+        hintRefreshError = "Couldn't refresh suggestions right now.";
+      }
+
+      hintChipsLoading = false;
+      hintChipsRefreshing = false;
+    }
+  }
+
+  $effect(() => {
+    if (!selectedSubject) {
+      return;
+    }
+
+    void loadSubjectHints();
   });
 
   function onInput(event: Event): void {
@@ -114,6 +137,8 @@
   function onSubjectChange(event: Event): void {
     lastHintSeed = '';
     promptSuggestionsText = '';
+    hintRefreshError = '';
+    hintChipsRefreshing = false;
     pendingChipId = null;
     appState.setTopicDiscoveryInput('');
     appState.selectSubject((event.currentTarget as HTMLSelectElement).value);
@@ -122,7 +147,16 @@
   function resetTopicDiscovery(): void {
     lastHintSeed = '';
     pendingChipId = null;
+    hintRefreshError = '';
     appState.resetTopicDiscovery();
+  }
+
+  function refreshSubjectHints(): void {
+    if (!selectedSubject || hintChipsLoading || hintChipsRefreshing) {
+      return;
+    }
+
+    void loadSubjectHints(true);
   }
 
   function runShortlist(): void {
@@ -159,7 +193,7 @@
   }
 
   function stageProgressLabel(session: LessonSession): string {
-    return `Stage ${Math.min(session.stagesCompleted.length + 1, 5)} of 5 · ${getStageLabel(session.currentStage)}`;
+    return `Stage ${Math.min(session.stagesCompleted.length + 1, 6)} of 6 · ${getStageLabel(session.currentStage)}`;
   }
 </script>
 
@@ -210,90 +244,113 @@
       </div>
     </div>
 
-    {#if viewState.ui.showTopicDiscoveryComposer || !currentSession || viewState.topicDiscovery.status !== 'idle' || viewState.topicDiscovery.input.length > 0}
-      <div class="starter-form">
-        <label>
-          <span>Subject</span>
-          <select
-            value={selectedSubject?.id}
-            onchange={onSubjectChange}
-          >
-            {#each availableSubjects as subject}
-              <option value={subject.id}>{subject.name}</option>
-            {/each}
-          </select>
-        </label>
+    <div class="starter-form">
+      <label>
+        <span>Subject</span>
+        <select
+          value={selectedSubject?.id}
+          onchange={onSubjectChange}
+        >
+          {#each availableSubjects as subject}
+            <option value={subject.id}>{subject.name}</option>
+          {/each}
+        </select>
+      </label>
 
-        {#if hintChipsLoading || promptSuggestionChips.length > 0}
-          <div class="hint-panel" aria-live="polite">
-            <div class="hint-panel-copy">
+      {#if hintChipsLoading || promptSuggestionChips.length > 0}
+        <div class="hint-panel" aria-live="polite">
+          <div class="hint-panel-copy">
+            <div class="hint-panel-head">
               <span class="hint-panel-title">Quick starts</span>
-              <p>Start with a suggested lesson.</p>
+              <button
+                type="button"
+                class="btn btn-secondary btn-compact refresh-hints"
+                aria-busy={hintChipsRefreshing}
+                disabled={hintChipsLoading || hintChipsRefreshing}
+                onclick={refreshSubjectHints}
+              >
+                {hintChipsRefreshing ? 'Refreshing...' : 'Refresh suggestions'}
+              </button>
             </div>
+            <p>Start with a suggested lesson.</p>
+          </div>
 
-            <div class="hint-chip-list">
-              {#if hintChipsLoading}
-                {#each Array.from({ length: 5 }) as _, index}
-                  <span
-                    class="hint-chip hint-chip-skeleton"
-                    aria-hidden="true"
-                    style={`--chip-index: ${index};`}
-                  ></span>
-                {/each}
-              {:else}
-                {#each promptSuggestionChips as chip, index (chip.id)}
-                  <button
-                    type="button"
-                    id={`quick-start-${chip.id}`}
-                    data-chip-id={chip.id}
-                    aria-busy={pendingChipId === chip.id}
-                    aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
-                    class:selected={pendingChipId === chip.id}
-                    class:loading={pendingChipId === chip.id}
-                    class="hint-chip"
-                    style={`--chip-index: ${index};`}
-                    onclick={() => startFromSuggestion(chip.id, chip.label)}
-                  >
-                    <span class="hint-chip-name">{chip.label}</span>
+          <div class="hint-chip-list">
+            {#if hintChipsLoading}
+              {#each Array.from({ length: 5 }) as _, index}
+                <span
+                  class="hint-chip hint-chip-skeleton"
+                  aria-hidden="true"
+                  style={`--chip-index: ${index};`}
+                ></span>
+              {/each}
+            {:else}
+              {#each promptSuggestionChips as chip, index (chip.id)}
+                <button
+                  type="button"
+                  id={`quick-start-${chip.id}`}
+                  data-chip-id={chip.id}
+                  aria-busy={pendingChipId === chip.id}
+                  aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
+                  class:selected={pendingChipId === chip.id}
+                  class:loading={pendingChipId === chip.id}
+                  class="hint-chip"
+                  style={`--chip-index: ${index};`}
+                  onclick={() => startFromSuggestion(chip.id, chip.label)}
+                >
+                  <span class="hint-chip-name">{chip.label}</span>
+                  {#if pendingChipId === chip.id}
+                    <span class="hint-chip-loading" aria-hidden="true">
+                      <span class="busy-indicator">
+                        <span></span>
+                        <span></span>
+                      </span>
+                      <span class="hint-chip-loading-label">Loading</span>
+                    </span>
+                  {:else}
                     <span class="hint-chip-action" aria-hidden="true">></span>
-                  </button>
-                {/each}
-              {/if}
-            </div>
+                  {/if}
+                </button>
+              {/each}
+            {/if}
           </div>
-        {/if}
 
-        <label class="topic-detail-field">
-          <span>What do you want to work on?</span>
-          <div class="topic-input-wrap">
-            <textarea
-              rows="3"
-              value={viewState.topicDiscovery.input}
-              oninput={onInput}
-              onfocus={onTopicFocus}
-              onblur={onTopicBlur}
-            ></textarea>
-          </div>
-        </label>
-
-        <div class="starter-actions">
-          <button
-            type="button"
-            class="btn btn-primary"
-            aria-busy={viewState.topicDiscovery.status === 'loading'}
-            onclick={runShortlist}
-            disabled={viewState.topicDiscovery.status === 'loading'}
-          >
-            {viewState.topicDiscovery.status === 'loading' ? 'Finding matches...' : 'Find my section'}
-          </button>
-          {#if viewState.topicDiscovery.shortlist}
-            <button type="button" class="btn btn-secondary" onclick={resetTopicDiscovery}>
-              Search for something else
-            </button>
+          {#if hintRefreshError}
+            <p class="hint-refresh-error">{hintRefreshError}</p>
           {/if}
         </div>
+      {/if}
+
+      <label class="topic-detail-field">
+        <span>What do you want to work on?</span>
+        <div class="topic-input-wrap">
+          <textarea
+            rows="3"
+            value={viewState.topicDiscovery.input}
+            oninput={onInput}
+            onfocus={onTopicFocus}
+            onblur={onTopicBlur}
+          ></textarea>
+        </div>
+      </label>
+
+      <div class="starter-actions">
+        <button
+          type="button"
+          class="btn btn-primary"
+          aria-busy={viewState.topicDiscovery.status === 'loading'}
+          onclick={runShortlist}
+          disabled={viewState.topicDiscovery.status === 'loading'}
+        >
+          {viewState.topicDiscovery.status === 'loading' ? 'Finding matches...' : 'Find my section'}
+        </button>
+        {#if viewState.topicDiscovery.shortlist}
+          <button type="button" class="btn btn-secondary" onclick={resetTopicDiscovery}>
+            Search for something else
+          </button>
+        {/if}
       </div>
-    {/if}
+    </div>
 
     {#if viewState.topicDiscovery.error}
       <p class="error">{viewState.topicDiscovery.error}</p>
@@ -446,7 +503,7 @@
 
   .dashboard-title {
     max-width: 31rem;
-    gap: 0.28rem;
+    gap: 0.2rem;
   }
 
   .dashboard-title h2 {
@@ -457,9 +514,10 @@
   }
 
   .dashboard-title p:last-child {
-    max-width: 25rem;
+    max-width: 23rem;
+    font-size: 0.95rem;
     color: var(--text-soft);
-    line-height: 1.35;
+    line-height: 1.42;
   }
 
   .dashboard-summary {
@@ -475,7 +533,7 @@
   .summary-item {
     display: inline-flex;
     align-items: baseline;
-    gap: 0.35rem;
+    gap: 0.28rem;
     padding: 0;
     border: 0;
     background: transparent;
@@ -488,15 +546,17 @@
 
   .summary-item dt {
     color: var(--muted);
-    font-size: 0.7rem;
-    letter-spacing: 0.08em;
+    order: 2;
+    font-size: 0.66rem;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     font-family: var(--mono);
   }
 
   .summary-item dd {
-    font-size: 0.9rem;
-    font-weight: 600;
+    order: 1;
+    font-size: 1rem;
+    font-weight: 700;
     line-height: 1;
   }
 
@@ -519,6 +579,14 @@
   .resume-copy strong {
     font-size: 0.98rem;
     font-weight: 600;
+  }
+
+  .resume-copy p {
+    font-size: 0.95rem;
+  }
+
+  .resume-copy small {
+    font-size: 0.82rem;
   }
 
   .starter-copy {
@@ -561,17 +629,30 @@
     gap: 0.2rem;
   }
 
+  .hint-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
   .hint-panel-title {
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-family: var(--mono);
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--text-soft);
   }
 
   .hint-panel-copy p {
     color: var(--text-soft);
+    font-size: 0.95rem;
     line-height: 1.45;
+  }
+
+  .refresh-hints {
+    font-size: 0.78rem;
+    min-height: 2rem;
+    padding: 0.5rem 0.82rem;
   }
 
   .hint-chip-list {
@@ -634,8 +715,8 @@
   }
 
   .hint-chip-name {
-    font-size: 1rem;
-    line-height: 1.35;
+    font-size: 0.95rem;
+    line-height: 1.28;
     font-weight: 500;
     text-wrap: pretty;
   }
@@ -671,10 +752,48 @@
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
   }
 
+  .hint-chip-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-self: end;
+    color: var(--text);
+  }
+
+  .hint-chip-loading-label {
+    font-size: 0.82rem;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .busy-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.26rem;
+  }
+
+  .busy-indicator span {
+    width: 0.38rem;
+    height: 0.38rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 72%, white 28%);
+    opacity: 0.34;
+    animation: verify-dot-breathe 1.15s ease-in-out infinite;
+  }
+
+  .busy-indicator span:last-child {
+    animation-delay: 0.18s;
+  }
+
   .hint-chip-skeleton {
     min-height: 4rem;
     border-style: dashed;
     background: color-mix(in srgb, var(--dashboard-soft-surface) 84%, transparent);
+  }
+
+  .hint-refresh-error {
+    color: #b91c1c;
+    font-size: 0.84rem;
   }
 
   .topic-list {
@@ -814,6 +933,12 @@
     gap: 0.42rem;
   }
 
+  .topic-detail-field > span {
+    font-size: 0.83rem;
+    font-weight: 500;
+    color: var(--text-soft);
+  }
+
   .topic-input-wrap textarea {
     min-height: 3.35rem;
     resize: vertical;
@@ -845,10 +970,19 @@
   }
 
   .section-head h3,
-  .starter-copy h3,
   .recent-card h4 {
     font-size: 0.98rem;
     font-weight: 600;
+  }
+
+  .starter-copy h3 {
+    font-size: 1.12rem;
+    font-weight: 650;
+  }
+
+  .section-head h3 {
+    font-size: 1.02rem;
+    font-weight: 650;
   }
 
   .starter-actions .btn-primary {
@@ -881,7 +1015,7 @@
 
   .recent-note {
     color: var(--text-soft);
-    font-size: 0.95rem;
+    font-size: 0.93rem;
     padding: 0.15rem 0 0;
   }
 
@@ -902,6 +1036,27 @@
 
     .hint-chip-list {
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+  }
+
+  @keyframes verify-dot-breathe {
+    0%,
+    100% {
+      opacity: 0.34;
+      transform: scale(0.9);
+    }
+
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .busy-indicator span {
+      animation: none;
+      opacity: 0.72;
+      transform: none;
     }
   }
 

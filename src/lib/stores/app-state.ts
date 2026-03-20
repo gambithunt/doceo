@@ -602,20 +602,28 @@ function createAppStore() {
       }
 
       const subject = snapshot.curriculum.subjects.find((item) => item.id === lesson.subjectId) ?? snapshot.curriculum.subjects[0];
+      const topicName = lesson.title.replace(/^.*?:\s*/, '');
+      const topicStub = subject.topics.find((t) => t.id === lesson.topicId) ?? {
+        id: lesson.topicId,
+        name: topicName,
+        subtopics: []
+      };
+      const subtopicStub = topicStub.subtopics.find((s) => s.id === lesson.subtopicId) ?? {
+        id: lesson.subtopicId,
+        name: '',
+        lessonIds: [lesson.id]
+      };
       const session = buildLessonSessionFromTopic(
         snapshot.profile,
+        subject,
+        topicStub,
+        subtopicStub,
         lesson,
         {
-          ...buildDirectTopicOption(snapshot, subject.name, lesson.title),
-          id: `short-lesson-${lesson.id}`,
-          title: lesson.title,
-          description: lesson.overview.body,
-          topicId: lesson.topicId,
-          subtopicId: lesson.subtopicId,
-          lessonId: lesson.id,
-          relevance: 'Opened directly from your subject roadmap.'
-        },
-        subject.name
+          topicDescription: lesson.orientation.body,
+          curriculumReference: `${snapshot.profile.curriculum} · ${snapshot.profile.grade} · ${subject.name}`,
+          matchedSection: topicName
+        }
       );
 
       update((state) =>
@@ -653,7 +661,7 @@ function createAppStore() {
           ...lessonProgress,
           answers: [evaluated, ...lessonProgress.answers],
           timeSpentMinutes: lessonProgress.timeSpentMinutes + 4,
-          lastStage: evaluated.isCorrect ? 'check' : 'detail'
+          lastStage: evaluated.isCorrect ? 'check' : 'construction'
         });
 
         return persistAndSync({
@@ -880,7 +888,20 @@ function createAppStore() {
       let nextSessionId = '';
 
       update((state) => {
-        const session = buildLessonSessionFromTopic(state.profile, lesson, topic, subject.name);
+        const topicStub = { id: topic.topicId, name: topic.title, subtopics: [] };
+        const subtopicStub = { id: topic.subtopicId, name: '', lessonIds: [lesson.id] };
+        const session = buildLessonSessionFromTopic(
+          state.profile,
+          subject,
+          topicStub,
+          subtopicStub,
+          lesson,
+          {
+            topicDescription: topic.description,
+            curriculumReference: topic.curriculumReference,
+            matchedSection: topic.title
+          }
+        );
         nextSessionId = session.id;
 
         return persistAndSync({
@@ -964,7 +985,20 @@ function createAppStore() {
       let nextSessionId = '';
 
       update((state) => {
-        const session = buildLessonSessionFromTopic(state.profile, lesson, shortlistedTopic, subject.name);
+        const topicStub2 = { id: shortlistedTopic.topicId, name: shortlistedTopic.title, subtopics: [] };
+        const subtopicStub2 = { id: shortlistedTopic.subtopicId, name: '', lessonIds: [lesson.id] };
+        const session = buildLessonSessionFromTopic(
+          state.profile,
+          subject,
+          topicStub2,
+          subtopicStub2,
+          lesson,
+          {
+            topicDescription: shortlistedTopic.description,
+            curriculumReference: shortlistedTopic.curriculumReference,
+            matchedSection: shortlistedTopic.title
+          }
+        );
         nextSessionId = session.id;
 
         return persistAndSync({
@@ -1245,9 +1279,9 @@ function createAppStore() {
         const restarted: LessonSession = {
           ...existing,
           id: `lesson-session-${crypto.randomUUID()}`,
-          currentStage: 'overview',
+          currentStage: 'orientation',
           stagesCompleted: [],
-          messages: buildInitialLessonMessages(getLessonForSession(state, existing), 'overview'),
+          messages: buildInitialLessonMessages(getLessonForSession(state, existing), 'orientation'),
           questionCount: 0,
           reteachCount: 0,
           confidenceScore: 0.5,

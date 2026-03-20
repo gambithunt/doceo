@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LESSON_STAGE_ORDER,
   applyLessonAssistantResponse,
   buildDynamicLessonFromTopic,
   buildDynamicQuestionsForLesson,
+  buildInitialLessonMessages,
   buildLocalLessonChatResponse,
+  buildLessonSessionFromTopic,
   calculateNextRevisionInterval,
   classifyLessonMessage,
   createDefaultLearnerProfile,
+  getNextStage,
+  getStageNumber,
   parseDoceoMeta,
   stripDoceoMeta,
   updateLearnerProfile
@@ -61,7 +66,7 @@ describe('lesson-system', () => {
       role: 'assistant',
       type: 'feedback',
       content: 'Good. Let us move on.',
-      stage: 'overview',
+      stage: 'orientation',
       timestamp: new Date().toISOString(),
       metadata: {
         action: 'advance',
@@ -74,7 +79,7 @@ describe('lesson-system', () => {
     });
 
     expect(updated.currentStage).toBe('concepts');
-    expect(updated.stagesCompleted).toContain('overview');
+    expect(updated.stagesCompleted).toContain('orientation');
   });
 
   it('calculates spaced repetition intervals', () => {
@@ -99,7 +104,35 @@ describe('lesson-system', () => {
     expect(normalized.learnerProfile.studentId).toBe(initial.profile.id);
   });
 
-  it('builds a lesson around the exact chosen subject and topic', () => {
+  // --- New lesson structure tests ---
+
+  it('LESSON_STAGE_ORDER is the 7-stage pipeline', () => {
+    expect(LESSON_STAGE_ORDER).toEqual([
+      'orientation', 'concepts', 'construction', 'examples', 'practice', 'check', 'complete'
+    ]);
+  });
+
+  it('getNextStage advances through the pipeline correctly', () => {
+    expect(getNextStage('orientation')).toBe('concepts');
+    expect(getNextStage('concepts')).toBe('construction');
+    expect(getNextStage('construction')).toBe('examples');
+    expect(getNextStage('examples')).toBe('practice');
+    expect(getNextStage('practice')).toBe('check');
+    expect(getNextStage('check')).toBe('complete');
+    expect(getNextStage('complete')).toBeNull();
+  });
+
+  it('getStageNumber returns 1-based index capped at 6', () => {
+    expect(getStageNumber('orientation')).toBe(1);
+    expect(getStageNumber('concepts')).toBe(2);
+    expect(getStageNumber('construction')).toBe(3);
+    expect(getStageNumber('examples')).toBe(4);
+    expect(getStageNumber('practice')).toBe(5);
+    expect(getStageNumber('check')).toBe(6);
+    expect(getStageNumber('complete')).toBe(6);
+  });
+
+  it('builds a lesson with all 9 sections around the exact chosen subject and topic', () => {
     const lesson = buildDynamicLessonFromTopic({
       subjectId: 'subject-english',
       subjectName: 'English Home Language',
@@ -111,13 +144,26 @@ describe('lesson-system', () => {
 
     expect(lesson.subjectId).toBe('subject-english');
     expect(lesson.title).toContain('Verbs');
-    expect(lesson.overview.body.toLowerCase()).toContain('verbs');
-    expect(lesson.deeperExplanation.body.toLowerCase()).toContain('verbs');
-    expect(lesson.example.body.toLowerCase()).toContain('verbs');
+
+    // All 9 sections must be present with non-empty title and body
+    const sections = [
+      lesson.orientation, lesson.mentalModel, lesson.concepts,
+      lesson.guidedConstruction, lesson.workedExample, lesson.practicePrompt,
+      lesson.commonMistakes, lesson.transferChallenge, lesson.summary
+    ];
+    for (const section of sections) {
+      expect(section).toBeDefined();
+      expect(section.title.length).toBeGreaterThan(0);
+      expect(section.body.length).toBeGreaterThan(0);
+    }
+
+    // Topic name should appear in content
+    expect(lesson.orientation.body.toLowerCase()).toContain('verbs');
+    expect(lesson.concepts.body.toLowerCase()).toContain('verbs');
+    expect(lesson.workedExample.body.toLowerCase()).toContain('verbs');
   });
 
-  // T1.2: detailedSteps is distinct from deeperExplanation
-  it('detail stage has content distinct from concepts stage', () => {
+  it('construction stage content is distinct from concepts stage content', () => {
     const lesson = buildDynamicLessonFromTopic({
       subjectId: 'subject-math',
       subjectName: 'Mathematics',
@@ -127,9 +173,96 @@ describe('lesson-system', () => {
       curriculumReference: 'CAPS · Grade 6 · Mathematics'
     });
 
-    expect(lesson.detailedSteps).toBeDefined();
-    expect(lesson.detailedSteps!.body).not.toBe(lesson.deeperExplanation.body);
-    expect(lesson.detailedSteps!.body.toLowerCase()).toContain('fractions');
+    expect(lesson.guidedConstruction.body).not.toBe(lesson.concepts.body);
+    expect(lesson.guidedConstruction.body.toLowerCase()).toContain('fractions');
+  });
+
+  it('buildLessonSessionFromTopic initialises currentStage to orientation', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+    const session = buildLessonSessionFromTopic(
+      state.profile,
+      subject,
+      topic,
+      subtopic,
+      lesson
+    );
+
+    expect(session.currentStage).toBe('orientation');
+    expect(session.stagesCompleted).toEqual([]);
+  });
+
+  it('buildInitialLessonMessages for orientation includes orientation body', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const messages = buildInitialLessonMessages(lesson, 'orientation');
+
+    expect(messages.length).toBe(2);
+    expect(messages[0].type).toBe('stage_start');
+    expect(messages[1].role).toBe('assistant');
+    expect(messages[1].content).toContain(lesson.orientation.body);
+  });
+
+  // Backward-compatibility: old stage names must not crash
+  it('old session with currentStage overview does not crash applyLessonAssistantResponse', () => {
+    const state = createInitialState();
+    const oldSession = { ...state.lessonSessions[0], currentStage: 'overview' as never };
+    expect(() => applyLessonAssistantResponse(oldSession, {
+      id: 'msg-1',
+      role: 'assistant',
+      type: 'teaching',
+      content: 'Good.',
+      stage: 'overview' as never,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'stay',
+        next_stage: null,
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.5,
+        profile_update: {}
+      }
+    })).not.toThrow();
+  });
+
+  it('old session with currentStage detail does not crash applyLessonAssistantResponse', () => {
+    const state = createInitialState();
+    const oldSession = { ...state.lessonSessions[0], currentStage: 'detail' as never };
+    expect(() => applyLessonAssistantResponse(oldSession, {
+      id: 'msg-1',
+      role: 'assistant',
+      type: 'teaching',
+      content: 'Good.',
+      stage: 'detail' as never,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'stay',
+        next_stage: null,
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.5,
+        profile_update: {}
+      }
+    })).not.toThrow();
+  });
+
+  it('normalizeAppState migrates old overview/detail stages to new names', () => {
+    const initial = createInitialState();
+    const oldSession = {
+      ...initial.lessonSessions[0],
+      currentStage: 'overview',
+      stagesCompleted: ['detail']
+    };
+    const normalized = normalizeAppState({
+      ...initial,
+      lessonSessions: [oldSession]
+    });
+
+    expect(normalized.lessonSessions[0].currentStage).toBe('orientation');
+    expect(normalized.lessonSessions[0].stagesCompleted).toContain('construction');
   });
 
   // T1.3: fallback question reply must not echo student message

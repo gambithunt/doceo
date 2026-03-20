@@ -136,6 +136,73 @@ describe('subject hints', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it('can force refresh hints even while the cached pack is still fresh', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          response: {
+            hints: [
+              'Animal and plant cells',
+              'Organelles and functions',
+              'Photosynthesis',
+              'Conditions for photosynthesis',
+              'Chlorophyll'
+            ]
+          },
+          provider: 'github-models'
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          response: {
+            hints: [
+              'Cell structure',
+              'Animal and plant cells',
+              'Chlorophyll',
+              'Conditions for photosynthesis',
+              'Photosynthesis'
+            ]
+          },
+          provider: 'github-models'
+        })
+      });
+
+    const storage = new Map<string, string>();
+    const now = new Date('2026-03-14T10:00:00.000Z').getTime();
+
+    const first = await resolveSubjectHints({
+      subject: createBiologySubject(),
+      curriculumId: 'caps',
+      curriculumName: 'CAPS',
+      gradeId: 'grade-10',
+      gradeLabel: 'Grade 10',
+      term: 'Term 1',
+      fetcher,
+      storage,
+      now
+    });
+
+    const second = await resolveSubjectHints({
+      subject: createBiologySubject(),
+      curriculumId: 'caps',
+      curriculumName: 'CAPS',
+      gradeId: 'grade-10',
+      gradeLabel: 'Grade 10',
+      term: 'Term 1',
+      forceRefresh: true,
+      fetcher,
+      storage,
+      now: now + 60_000
+    });
+
+    expect(first.hints).not.toEqual(second.hints);
+    expect(second.hints).toContain('Cell structure');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it('refreshes expired hints and replaces the cached pack', async () => {
     const fetcher = vi
       .fn()

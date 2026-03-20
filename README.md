@@ -8,6 +8,10 @@ Doceo is a SvelteKit-based AI-assisted learning platform for structured school l
 
 The current implementation includes a real onboarding flow, typed curriculum and onboarding models, seeded lesson and question content, mastery tracking, local and Supabase-backed persistence, revision planning, ask-question guidance, analytics events, Playwright smoke tests, and a light/dark IBM Plex Mono UI aligned to the project spec in [docs/prompt.md](/Users/delon/Documents/code/projects/doceo/docs/prompt.md).
 
+# Local user for testing
+test@doceo.local
+testpass123
+
 ## Stack
 
 - SvelteKit

@@ -25,17 +25,15 @@ function getLastMessageType(lessonSession: LessonChatRequest['lessonSession']): 
 }
 
 function getCurrentStageContent(request: LessonChatRequest): string {
-  if (request.lessonSession.currentStage === 'overview') {
-    return request.lesson.overview.body;
-  }
+  const stage = request.lessonSession.currentStage;
+  const lesson = request.lesson;
 
-  if (request.lessonSession.currentStage === 'concepts' || request.lessonSession.currentStage === 'detail') {
-    return request.lesson.deeperExplanation.body;
-  }
-
-  if (request.lessonSession.currentStage === 'examples') {
-    return request.lesson.example.body;
-  }
+  if (stage === 'orientation') return lesson.orientation.body;
+  if (stage === 'concepts') return lesson.concepts.body;
+  if (stage === 'construction') return lesson.guidedConstruction.body;
+  if (stage === 'examples') return lesson.workedExample.body;
+  if (stage === 'practice') return lesson.practicePrompt.body;
+  if (stage === 'complete') return lesson.summary.body;
 
   return 'Ask the learner to explain the idea in their own words and apply it to a small example.';
 }
@@ -78,14 +76,13 @@ function buildLearnerInstructions(profile: LessonChatRequest['learnerProfile']):
 }
 
 export function buildSystemPrompt(request: LessonChatRequest): string {
-  const lessonPlan = request.lesson;
-  const detailedStepsBody = lessonPlan?.detailedSteps?.body ?? lessonPlan?.deeperExplanation?.body ?? '';
+  const lesson = request.lesson;
 
   const doceoMetaSchema = `After every response, end with this exact block (replace values appropriately):
 <!-- DOCEO_META
 {
   "action": "advance" | "reteach" | "side_thread" | "complete" | "stay",
-  "next_stage": "overview" | "concepts" | "detail" | "examples" | "check" | "complete" | null,
+  "next_stage": "orientation" | "concepts" | "construction" | "examples" | "practice" | "check" | "complete" | null,
   "reteach_style": "analogy" | "example" | "step_by_step" | "visual" | null,
   "reteach_count": <integer>,
   "confidence_assessment": <float 0.0–1.0>,
@@ -106,11 +103,12 @@ export function buildSystemPrompt(request: LessonChatRequest): string {
 DOCEO_META -->
 
 Rules:
-- Set "action" to "advance" when the learner clearly understands the current stage. When advancing, write only a brief 1–2 sentence acknowledgment. Do NOT include or summarise the next stage content — the system loads it automatically.
+- Set "action" to "advance" ONLY when the learner has answered a check question with a substantive response that demonstrates real understanding. A learner saying "continue", "next", "ok", "yes", "sure", "I think I understand this", or any single-word or short acknowledgement does NOT qualify — respond by asking a specific check question instead (e.g. "Can you explain why...?" or "What do you think would happen if...?").
 - Set "action" to "reteach" when the learner is confused or stuck.
 - Set "action" to "side_thread" when the learner asks an off-topic question.
 - Set "action" to "complete" only when the final check stage is done with confidence >= 0.7.
-- Set "action" to "stay" when uncertain.
+- Set "action" to "stay" when uncertain or when waiting for a substantive answer before advancing.
+- When advancing, write only a brief 1–2 sentence acknowledgment. Do NOT include or summarise the next stage content — the system loads it automatically.
 - "next_stage" must be the next stage name when action is "advance", otherwise null.
 - "confidence_assessment" reflects how well the learner understood this exchange (0 = no understanding, 1 = full mastery).`;
 
@@ -130,10 +128,10 @@ Rules:
     `Topic: ${request.lessonSession.topicTitle}`,
     `Description: ${request.lessonSession.topicDescription}`,
     `Curriculum Reference: ${request.lessonSession.curriculumReference}`,
-    `Lesson Overview: ${lessonPlan?.overview?.body ?? ''}`,
-    `Lesson Key Concepts: ${lessonPlan?.deeperExplanation?.body ?? ''}`,
-    `Lesson Detailed Steps: ${detailedStepsBody}`,
-    `Lesson Example: ${lessonPlan?.example?.body ?? ''}`,
+    `Lesson Orientation: ${lesson?.orientation?.body ?? ''}`,
+    `Lesson Key Concepts: ${lesson?.concepts?.body ?? ''}`,
+    `Lesson Guided Construction: ${lesson?.guidedConstruction?.body ?? ''}`,
+    `Lesson Worked Example: ${lesson?.workedExample?.body ?? ''}`,
     ``,
     `--- SESSION ---`,
     `Current Stage: ${request.lessonSession.currentStage}`,
@@ -152,6 +150,8 @@ Rules:
     `Teach only the chosen topic. Do not substitute a different topic.`,
     `When the student asks a question, answer it within the topic and always return to the lesson.`,
     `Use markdown for readability. Short sentences. Explicit reasoning.`,
+    `In the concepts stage: introduce no more than 2–3 ideas before checking understanding. Connect each concept to the previous one. Do not dump a flat list — teach each idea with a reason and a brief example, then ask the learner to engage before moving to the next.`,
+    `Within your teaching content, always include a specific question that requires the learner to think, explain, or apply — not a yes/no question. Never rely on "Does this make sense?" alone as your only question.`,
     ``,
     `--- DOCEO_META FORMAT (required at end of every response) ---`,
     doceoMetaSchema

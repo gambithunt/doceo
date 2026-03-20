@@ -13,7 +13,7 @@ export type AppScreen =
 export type OnboardingStep = 'country' | 'academic' | 'subjects' | 'review';
 export type SchoolTerm = 'Term 1' | 'Term 2' | 'Term 3' | 'Term 4';
 export type SubjectSelectionMode = 'structured' | 'mixed' | 'unsure';
-export type LessonStage = 'overview' | 'concepts' | 'detail' | 'examples' | 'check' | 'complete';
+export type LessonStage = 'orientation' | 'concepts' | 'construction' | 'examples' | 'practice' | 'check' | 'complete';
 export type QuestionType =
   | 'multiple-choice'
   | 'short-answer'
@@ -133,10 +133,15 @@ export interface Lesson {
   title: string;
   subjectId: string;
   grade: string;
-  overview: LessonSection;
-  deeperExplanation: LessonSection;
-  detailedSteps?: LessonSection;
-  example: LessonSection;
+  orientation: LessonSection;
+  mentalModel: LessonSection;
+  concepts: LessonSection;
+  guidedConstruction: LessonSection;
+  workedExample: LessonSection;
+  practicePrompt: LessonSection;
+  commonMistakes: LessonSection;
+  transferChallenge: LessonSection;
+  summary: LessonSection;
   practiceQuestionIds: string[];
   masteryQuestionIds: string[];
 }

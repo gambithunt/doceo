@@ -92,6 +92,7 @@ interface ResolveSubjectHintsInput {
   gradeId: string;
   gradeLabel: string;
   term: SchoolTerm;
+  forceRefresh?: boolean;
   fetcher?: typeof fetch;
   headers?: Record<string, string>;
   storage?: StorageAdapter;
@@ -441,7 +442,7 @@ export async function resolveSubjectHints(input: ResolveSubjectHintsInput): Prom
   const ttlMs = input.ttlMs ?? SUBJECT_HINT_CACHE_TTL_MS;
   const cached = readSubjectHintCache(input.subject, input.curriculumId, input.gradeId, input.term, storage, now);
 
-  if (cached.fresh) {
+  if (!input.forceRefresh && cached.fresh) {
     return cached.fresh;
   }
 

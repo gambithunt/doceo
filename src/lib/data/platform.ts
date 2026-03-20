@@ -125,7 +125,7 @@ function deriveLegacyProgress(state: Pick<AppState, 'lessons' | 'lessonSessions'
           timeSpentMinutes: latest
             ? Math.max(1, Math.round((Date.parse(latest.lastActiveAt) - Date.parse(latest.startedAt)) / 60000))
             : 0,
-          lastStage: latest?.currentStage ?? 'overview'
+          lastStage: latest?.currentStage ?? 'orientation'
         }
       ];
     })
@@ -169,7 +169,7 @@ function buildSeedShortlistedTopic(lesson: Lesson): ShortlistedTopic {
   return {
     id: `short-${lesson.id}`,
     title: lesson.title.replace(/^.*?:\s*/, ''),
-    description: lesson.overview.body,
+    description: lesson.orientation.body,
     curriculumReference: `${lesson.grade} · ${lesson.title}`,
     relevance: 'Recommended starting point from your current curriculum.',
     topicId: lesson.topicId,
@@ -224,27 +224,34 @@ export function createInitialState(): AppState {
   const selectedTopic = program.curriculum.subjects[0].topics[0];
   const selectedSubtopic = selectedTopic.subtopics[0];
   const learnerProfile = createDefaultLearnerProfile('student-demo');
+  const demoProfile = {
+    id: 'student-demo',
+    fullName: 'Demo Student',
+    email: 'student@example.com',
+    role: 'student' as const,
+    schoolYear: defaultSchoolYear,
+    term: defaultTerm,
+    grade: 'Grade 6',
+    gradeId: selectedGradeId,
+    country: 'South Africa',
+    countryId: selectedCountryId,
+    curriculum: 'CAPS',
+    curriculumId: selectedCurriculumId,
+    recommendedStartSubjectId: recommendation.subjectId,
+    recommendedStartSubjectName: recommendation.subjectName
+  };
   const seedTopic = buildSeedShortlistedTopic(selectedLesson);
   const lessonSession = buildLessonSessionFromTopic(
-    {
-      id: 'student-demo',
-      fullName: 'Demo Student',
-      email: 'student@example.com',
-      role: 'student',
-      schoolYear: defaultSchoolYear,
-      term: defaultTerm,
-      grade: 'Grade 6',
-      gradeId: selectedGradeId,
-      country: 'South Africa',
-      countryId: selectedCountryId,
-      curriculum: 'CAPS',
-      curriculumId: selectedCurriculumId,
-      recommendedStartSubjectId: recommendation.subjectId,
-      recommendedStartSubjectName: recommendation.subjectName
-    },
+    demoProfile,
+    program.curriculum.subjects[0],
+    selectedTopic,
+    selectedSubtopic,
     selectedLesson,
-    seedTopic,
-    program.curriculum.subjects[0].name
+    {
+      topicDescription: seedTopic.description,
+      curriculumReference: seedTopic.curriculumReference,
+      matchedSection: seedTopic.title
+    }
   );
 
   const baseState: AppState = {
@@ -288,22 +295,7 @@ export function createInitialState(): AppState {
         subjects: availableSubjects
       }
     },
-    profile: {
-      id: 'student-demo',
-      fullName: 'Demo Student',
-      email: 'student@example.com',
-      role: 'student',
-      schoolYear: defaultSchoolYear,
-      term: defaultTerm,
-      grade: 'Grade 6',
-      gradeId: selectedGradeId,
-      country: 'South Africa',
-      countryId: selectedCountryId,
-      curriculum: 'CAPS',
-      curriculumId: selectedCurriculumId,
-      recommendedStartSubjectId: recommendation.subjectId,
-      recommendedStartSubjectName: recommendation.subjectName
-    },
+    profile: demoProfile,
     learnerProfile,
     curriculum: program.curriculum,
     lessons: program.lessons,
@@ -371,6 +363,15 @@ export function createInitialState(): AppState {
   return deriveLearningState(baseState);
 }
 
+const STAGE_MIGRATIONS: Record<string, string> = {
+  overview: 'orientation',
+  detail: 'construction'
+};
+
+function migrateStage(stage: string): import('$lib/types').LessonStage {
+  return (STAGE_MIGRATIONS[stage] ?? stage) as import('$lib/types').LessonStage;
+}
+
 export function normalizeAppState(value: unknown): AppState {
   const base = createInitialState();
 
@@ -434,7 +435,13 @@ export function normalizeAppState(value: unknown): AppState {
     progress:
       input.progress && typeof input.progress === 'object' ? { ...base.progress, ...input.progress } : base.progress,
     lessonSessions: Array.isArray(input.lessonSessions)
-      ? input.lessonSessions.map((session) => ({ ...session }))
+      ? input.lessonSessions.map((session) => ({
+          ...session,
+          currentStage: migrateStage(session.currentStage),
+          stagesCompleted: Array.isArray(session.stagesCompleted)
+            ? session.stagesCompleted.map(migrateStage)
+            : []
+        }))
       : base.lessonSessions,
     revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics : base.revisionTopics,
     analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,

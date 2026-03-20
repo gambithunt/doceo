@@ -11,7 +11,7 @@ The lesson screen is a one-on-one chat between the student and Doceo, an adaptiv
 Four stacked regions, fixed height, no scroll on the outer shell:
 
 1. **Top bar** — subject label, topic title, close button
-2. **Progress rail** — horizontal strip of stage chips (Overview · Key Concepts · Deep Dive · Examples · Check Understanding), each showing completed / active / upcoming state
+2. **Progress rail** — horizontal strip of stage chips (Orientation · Key Concepts · Guided Construction · Examples · Active Practice · Check Understanding), each showing completed / active / upcoming state
 3. **Chat area** — scrollable message feed
 4. **Input area** — quick-reply buttons + textarea composer + send button
 
@@ -23,10 +23,11 @@ Each stage is opened by the system with a stage-start badge and a teaching messa
 
 | Stage | Label | Purpose |
 |---|---|---|
-| `overview` | Overview | Big-picture framing of the topic |
+| `orientation` | Orientation | Hook and relevance — why this topic matters |
 | `concepts` | Key Concepts | Core rules, language, and structure |
-| `detail` | Deep Dive | Step-by-step worked reasoning |
-| `examples` | Examples | Concrete worked example with explanation |
+| `construction` | Guided Construction | Step-by-step reasoning walkthrough |
+| `examples` | Examples | Concrete worked example with full explanation |
+| `practice` | Active Practice | Student attempts a similar problem |
 | `check` | Check Understanding | Student explains or applies the idea |
 | `complete` | — | Session closes, topic moves to revision |
 
@@ -49,7 +50,7 @@ Each stage is opened by the system with a stage-start badge and a teaching messa
 
 The AI receives a structured system prompt containing:
 - Student profile (name, grade, curriculum, country, term, year)
-- Full lesson plan (overview, key concepts, detailed steps, example)
+- Full lesson plan (orientation, key concepts, guided construction, worked example)
 - Current stage and session history (capped at last 20 messages)
 - Learner profile signals (learning style, struggle/excelled topics)
 

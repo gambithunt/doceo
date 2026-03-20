@@ -9,7 +9,7 @@ function makeMessage(i: number): LessonMessage {
     role: i % 2 === 0 ? 'user' : 'assistant',
     type: 'teaching',
     content: `Message ${i}`,
-    stage: 'overview',
+    stage: 'orientation',
     timestamp: new Date().toISOString(),
     metadata: null
   };

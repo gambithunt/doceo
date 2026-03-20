@@ -154,32 +154,59 @@ export async function loadLearningProgram(input: ProgramInput): Promise<Learning
     return buildLocalProgram(input);
   }
 
-  const lessons: Lesson[] = lessonRows.map((row) => ({
-    id: row.id,
-    topicId: row.topic_id,
-    subtopicId: row.subtopic_id,
-    title: row.title,
-    subjectId: row.subject_id,
-    grade: row.grade_label,
-    overview: {
-      title: row.overview_title,
-      body: row.overview_body
-    },
-    deeperExplanation: {
-      title: row.deeper_explanation_title,
-      body: row.deeper_explanation_body
-    },
-    example: {
-      title: row.example_title,
-      body: row.example_body
-    },
-    practiceQuestionIds: questionRows
-      .filter((question) => question.lesson_id === row.id)
-      .map((question) => question.id),
-    masteryQuestionIds: questionRows
-      .filter((question) => question.lesson_id === row.id)
-      .map((question) => question.id)
-  }));
+  const lessons: Lesson[] = lessonRows.map((row) => {
+    const topicName = row.title.replace(/^.*?:\s*/, '');
+    return {
+      id: row.id,
+      topicId: row.topic_id,
+      subtopicId: row.subtopic_id,
+      title: row.title,
+      subjectId: row.subject_id,
+      grade: row.grade_label,
+      orientation: {
+        title: row.overview_title,
+        body: row.overview_body
+      },
+      mentalModel: {
+        title: 'Big Picture',
+        body: `Before diving into rules, picture **${topicName}** as one connected idea. Once you have the big picture, the details fall into place.`
+      },
+      concepts: {
+        title: row.deeper_explanation_title,
+        body: row.deeper_explanation_body
+      },
+      guidedConstruction: {
+        title: 'Guided Construction',
+        body: `Let's work through **${topicName}** step by step. Identify what the problem asks, apply the rule, and check your reasoning at each step.`
+      },
+      workedExample: {
+        title: row.example_title,
+        body: row.example_body
+      },
+      practicePrompt: {
+        title: 'Active Practice',
+        body: `Now try it yourself. Apply what you have learned about **${topicName}** to a similar problem. Write out each step and explain your reasoning.`
+      },
+      commonMistakes: {
+        title: 'Common Mistakes',
+        body: `The most common error with **${topicName}** is skipping the reasoning step. Always name the rule first, then apply it.`
+      },
+      transferChallenge: {
+        title: 'Transfer Challenge',
+        body: `Can you apply **${topicName}** in a different context? Identify the same core idea in a new situation.`
+      },
+      summary: {
+        title: 'Summary',
+        body: `**${topicName} — key takeaways:**\n\n${row.deeper_explanation_body.split('\n')[0]}\n\nIf you can explain this to someone else using one example, you've got it.`
+      },
+      practiceQuestionIds: questionRows
+        .filter((question) => question.lesson_id === row.id)
+        .map((question) => question.id),
+      masteryQuestionIds: questionRows
+        .filter((question) => question.lesson_id === row.id)
+        .map((question) => question.id)
+    };
+  });
 
   const questions: Question[] = questionRows.map((row) => ({
     id: row.id,

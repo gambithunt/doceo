@@ -768,10 +768,33 @@ export function buildLearningProgram(
         title: blueprint.title,
         subjectId: `subject-${subjectSlug}`,
         grade,
-        overview: blueprint.overview,
-        deeperExplanation: blueprint.deeperExplanation,
-        detailedSteps: blueprint.detailedSteps,
-        example: blueprint.example,
+        orientation: blueprint.overview,
+        mentalModel: {
+          title: 'Big Picture',
+          body: `Before diving into rules, picture **${blueprint.topicName}** as one connected idea. The key is to see how the parts relate before memorising any steps. Once you have the big picture, the details fall into place.`
+        },
+        concepts: blueprint.deeperExplanation,
+        guidedConstruction: blueprint.detailedSteps ?? {
+          title: 'Guided Construction',
+          body: `Let's work through **${blueprint.topicName}** step by step. Start by identifying what the problem is asking, then apply the rule and check your reasoning at each step.`
+        },
+        workedExample: blueprint.example,
+        practicePrompt: {
+          title: 'Active Practice',
+          body: `Now try it yourself. Apply what you have learned about **${blueprint.topicName}** to a similar problem. Write out each step and explain your reasoning before checking the answer.`
+        },
+        commonMistakes: {
+          title: 'Common Mistakes',
+          body: `The most common error with **${blueprint.topicName}** is skipping the reasoning step and going straight to the answer. Always name the rule first, then apply it. Check your answer against what the problem asked.`
+        },
+        transferChallenge: {
+          title: 'Transfer Challenge',
+          body: `Can you apply **${blueprint.topicName}** in a different context? Think about where this pattern or rule shows up in a slightly different form. Identify the same core idea in a new situation.`
+        },
+        summary: {
+          title: 'Summary',
+          body: `**${blueprint.topicName} — key takeaways:**\n\n${blueprint.deeperExplanation.body.split('\n')[0]}\n\nIf you can explain this to someone else using one example, you've got it.`
+        },
         practiceQuestionIds: lessonQuestions.map((question) => question.id),
         masteryQuestionIds: lessonQuestions.map((question) => question.id)
       });

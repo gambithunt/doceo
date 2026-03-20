@@ -7,7 +7,7 @@ import {
 } from '../../../src/lib/ai/model-tiers.ts';
 
 type SchoolTerm = 'Term 1' | 'Term 2' | 'Term 3' | 'Term 4';
-type LessonStage = 'overview' | 'concepts' | 'detail' | 'examples' | 'check' | 'complete';
+type LessonStage = 'orientation' | 'concepts' | 'construction' | 'examples' | 'practice' | 'check' | 'complete';
 type AssistantAction = 'advance' | 'reteach' | 'side_thread' | 'complete' | 'stay';
 type ReteachStyle = 'analogy' | 'example' | 'step_by_step' | 'visual';
 
@@ -123,10 +123,15 @@ interface Lesson {
   title: string;
   subjectId: string;
   grade: string;
-  overview: LessonSection;
-  deeperExplanation: LessonSection;
-  detailedSteps?: LessonSection;
-  example: LessonSection;
+  orientation: LessonSection;
+  mentalModel: LessonSection;
+  concepts: LessonSection;
+  guidedConstruction: LessonSection;
+  workedExample: LessonSection;
+  practicePrompt: LessonSection;
+  commonMistakes: LessonSection;
+  transferChallenge: LessonSection;
+  summary: LessonSection;
   practiceQuestionIds: string[];
   masteryQuestionIds: string[];
 }
@@ -527,7 +532,7 @@ function createLessonPlanSystemPrompt(): string {
     'You are Doceo, a lesson-generation assistant for school students.',
     'Generate a concise but specific lesson plan around the exact learner-selected topic.',
     'Keep the subject and chosen topic aligned.',
-    'Return JSON only with exactly these keys: overview, deeperExplanation, example.',
+    'Return JSON only with exactly these keys: orientation, concepts, guidedConstruction, workedExample.',
     'Each of those keys must contain an object with title and body.',
     'The lesson must be clear, stepwise, age-appropriate, and grounded in the learner topic rather than a nearby generic topic.'
   ].join(' ');
@@ -616,21 +621,41 @@ function buildDynamicLessonFromTopic(input: {
     subjectId: input.subjectId,
     grade: input.grade,
     title: `${input.subjectName}: ${topicTitle}`,
-    overview: {
-      title: 'Overview',
-      body: `In this lesson you're studying **${topicTitle}** - a key topic in ${input.subjectName} (${input.grade}). By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to an example.`
+    orientation: {
+      title: 'Orientation',
+      body: `In this lesson you're exploring **${topicTitle}** in ${input.subjectName} (${input.grade}). By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to a real example.`
     },
-    deeperExplanation: {
+    mentalModel: {
+      title: 'Big Picture',
+      body: `Before diving into rules, picture **${topicTitle}** as a lens that helps you see patterns in ${input.subjectName}. The ${lens.conceptWord} is at the centre — hold that picture in mind as we build the details.`
+    },
+    concepts: {
       title: 'Key Concepts',
-      body: `The main ${lens.conceptWord} in **${topicTitle}** is what holds the idea together. To understand ${topicTitle} in ${input.subjectName}, you need to ${lens.actionWord}. The most important thing to remember is to avoid ${lens.misconception} - focus on the underlying rule, not just the final answer.`
+      body: `The main ${lens.conceptWord} in **${topicTitle}** is what holds the idea together. To understand ${topicTitle} in ${input.subjectName}, you need to ${lens.actionWord}. Avoid ${lens.misconception} — focus on the underlying rule.`
     },
-    detailedSteps: {
-      title: 'Step-by-Step',
-      body: `Here is how to work through **${topicTitle}** one step at a time:\n\n**Step 1.** Identify what ${topicTitle} is asking you to do - read the problem carefully and name the ${lens.conceptWord} you are working with.\n\n**Step 2.** Write down what you know and what you need to find out.\n\n**Step 3.** Apply the rule for ${topicTitle}: ${lens.actionWord}.\n\n**Step 4.** Check your answer by asking: does it match the ${lens.evidenceWord}? Have I avoided ${lens.misconception}?\n\nTake each step one at a time before moving to the next.`
+    guidedConstruction: {
+      title: 'Guided Construction',
+      body: `Here is how to think through **${topicTitle}** step by step:\n\n**Step 1.** Identify the ${lens.conceptWord} you are working with.\n\n**Step 2.** Write down what you know and what you need to find.\n\n**Step 3.** Apply the rule: ${lens.actionWord}.\n\n**Step 4.** Check: does your answer match the ${lens.evidenceWord}? Have you avoided ${lens.misconception}?`
     },
-    example: {
+    workedExample: {
       title: 'Worked Example',
-      body: `**Example - ${topicTitle} in ${input.subjectName}:**\n\n${lens.example}\n\nThis example works because it shows the ${lens.conceptWord} in action. Notice how each step stays connected to the rule for ${topicTitle}. Avoid ${lens.misconception} - always name the rule before you write the answer.`
+      body: `**Example — ${topicTitle} in ${input.subjectName}:**\n\n${lens.example}\n\nNotice how each step stays connected to the rule for ${topicTitle}. Always name the ${lens.conceptWord} first, then apply it.`
+    },
+    practicePrompt: {
+      title: 'Active Practice',
+      body: `Now try it yourself. Apply **${topicTitle}** to a similar problem. Write out each step and explain your reasoning.`
+    },
+    commonMistakes: {
+      title: 'Common Mistakes',
+      body: `The most common error with **${topicTitle}** is ${lens.misconception}. Fix: always name the ${lens.conceptWord} before applying it, and check each step against the ${lens.evidenceWord}.`
+    },
+    transferChallenge: {
+      title: 'Transfer Challenge',
+      body: `Can you apply **${topicTitle}** in a different context? Identify where the same ${lens.conceptWord} shows up in a new situation and explain why the rule still applies.`
+    },
+    summary: {
+      title: 'Summary',
+      body: `**${topicTitle} — key takeaways:**\n\n1. The core ${lens.conceptWord} defines this topic.\n2. Apply it by: ${lens.actionWord}.\n3. Evidence: ${lens.evidenceWord}.\n4. Avoid: ${lens.misconception}.`
     },
     practiceQuestionIds: [`${rootId}-q-1`],
     masteryQuestionIds: [`${rootId}-q-2`]
@@ -680,18 +705,17 @@ function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: string, top
 
 function parseLessonPlanResponse(content: string, request: LessonPlanRequest): { lesson: Lesson; questions: Question[] } | null {
   const parsed = parseJson<{
-    overview?: { title?: string; body?: string };
-    deeperExplanation?: { title?: string; body?: string };
-    example?: { title?: string; body?: string };
+    orientation?: { title?: string; body?: string };
+    concepts?: { title?: string; body?: string };
+    guidedConstruction?: { title?: string; body?: string };
+    workedExample?: { title?: string; body?: string };
   }>(content);
 
   if (
-    !parsed?.overview?.title ||
-    !parsed.overview.body ||
-    !parsed.deeperExplanation?.title ||
-    !parsed.deeperExplanation.body ||
-    !parsed.example?.title ||
-    !parsed.example.body
+    !parsed?.orientation?.title ||
+    !parsed.orientation.body ||
+    !parsed.concepts?.title ||
+    !parsed.concepts.body
   ) {
     return null;
   }
@@ -705,9 +729,14 @@ function parseLessonPlanResponse(content: string, request: LessonPlanRequest): {
 
   const hydratedLesson: Lesson = {
     ...lesson,
-    overview: parsed.overview,
-    deeperExplanation: parsed.deeperExplanation,
-    example: parsed.example
+    orientation: parsed.orientation as { title: string; body: string },
+    concepts: parsed.concepts as { title: string; body: string },
+    ...(parsed.guidedConstruction?.title && parsed.guidedConstruction.body
+      ? { guidedConstruction: parsed.guidedConstruction as { title: string; body: string } }
+      : {}),
+    ...(parsed.workedExample?.title && parsed.workedExample.body
+      ? { workedExample: parsed.workedExample as { title: string; body: string } }
+      : {})
   };
 
   return {
@@ -721,17 +750,15 @@ function getLastMessageType(lessonSession: LessonChatRequest['lessonSession']): 
 }
 
 function getCurrentStageContent(request: LessonChatRequest): string {
-  if (request.lessonSession.currentStage === 'overview') {
-    return request.lesson.overview.body;
-  }
+  const stage = request.lessonSession.currentStage;
+  const lesson = request.lesson;
 
-  if (request.lessonSession.currentStage === 'concepts' || request.lessonSession.currentStage === 'detail') {
-    return request.lesson.deeperExplanation.body;
-  }
-
-  if (request.lessonSession.currentStage === 'examples') {
-    return request.lesson.example.body;
-  }
+  if (stage === 'orientation') return lesson.orientation.body;
+  if (stage === 'concepts') return lesson.concepts.body;
+  if (stage === 'construction') return lesson.guidedConstruction.body;
+  if (stage === 'examples') return lesson.workedExample.body;
+  if (stage === 'practice') return lesson.practicePrompt.body;
+  if (stage === 'complete') return lesson.summary.body;
 
   return 'Ask the learner to explain the idea in their own words and apply it to a small example.';
 }
@@ -771,14 +798,13 @@ function buildLearnerInstructions(profile: LessonChatRequest['learnerProfile']):
 }
 
 function buildLessonChatSystemPrompt(request: LessonChatRequest): string {
-  const lessonPlan = request.lesson;
-  const detailedStepsBody = lessonPlan?.detailedSteps?.body ?? lessonPlan?.deeperExplanation?.body ?? '';
+  const lesson = request.lesson;
 
   const doceoMetaSchema = `After every response, end with this exact block (replace values appropriately):
 <!-- DOCEO_META
 {
   "action": "advance" | "reteach" | "side_thread" | "complete" | "stay",
-  "next_stage": "overview" | "concepts" | "detail" | "examples" | "check" | "complete" | null,
+  "next_stage": "orientation" | "concepts" | "construction" | "examples" | "practice" | "check" | "complete" | null,
   "reteach_style": "analogy" | "example" | "step_by_step" | "visual" | null,
   "reteach_count": <integer>,
   "confidence_assessment": <float 0.0-1.0>,
@@ -799,11 +825,12 @@ function buildLessonChatSystemPrompt(request: LessonChatRequest): string {
 DOCEO_META -->
 
 Rules:
-- Set "action" to "advance" when the learner clearly understands the current stage. When advancing, write only a brief 1-2 sentence acknowledgment. Do not include or summarise the next stage content because the system loads it automatically.
+- Set "action" to "advance" ONLY when the learner has answered a check question with a substantive response that demonstrates real understanding. A learner saying "continue", "next", "ok", "yes", "sure", "I think I understand this", or any single-word or short acknowledgement does NOT qualify — respond by asking a specific check question instead (e.g. "Can you explain why...?" or "What do you think would happen if...?").
 - Set "action" to "reteach" when the learner is confused or stuck.
 - Set "action" to "side_thread" when the learner asks an off-topic question.
 - Set "action" to "complete" only when the final check stage is done with confidence >= 0.7.
-- Set "action" to "stay" when uncertain.
+- Set "action" to "stay" when uncertain or when waiting for a substantive answer before advancing.
+- When advancing, write only a brief 1-2 sentence acknowledgment. Do not include or summarise the next stage content because the system loads it automatically.
 - "next_stage" must be the next stage name when action is "advance", otherwise null.
 - "confidence_assessment" reflects how well the learner understood this exchange.`;
 
@@ -823,10 +850,10 @@ Rules:
     `Topic: ${request.lessonSession.topicTitle}`,
     `Description: ${request.lessonSession.topicDescription}`,
     `Curriculum Reference: ${request.lessonSession.curriculumReference}`,
-    `Lesson Overview: ${lessonPlan?.overview?.body ?? ''}`,
-    `Lesson Key Concepts: ${lessonPlan?.deeperExplanation?.body ?? ''}`,
-    `Lesson Detailed Steps: ${detailedStepsBody}`,
-    `Lesson Example: ${lessonPlan?.example?.body ?? ''}`,
+    `Lesson Orientation: ${lesson?.orientation?.body ?? ''}`,
+    `Lesson Key Concepts: ${lesson?.concepts?.body ?? ''}`,
+    `Lesson Guided Construction: ${lesson?.guidedConstruction?.body ?? ''}`,
+    `Lesson Worked Example: ${lesson?.workedExample?.body ?? ''}`,
     '',
     '--- SESSION ---',
     `Current Stage: ${request.lessonSession.currentStage}`,
@@ -844,6 +871,8 @@ Rules:
     'Teach only the chosen topic. Do not substitute a different topic.',
     'When the student asks a question, answer it within the topic and always return to the lesson.',
     'Use markdown for readability. Short sentences. Explicit reasoning.',
+    'In the concepts stage: introduce no more than 2–3 ideas before checking understanding. Connect each concept to the previous one. Do not dump a flat list — teach each idea with a reason and a brief example, then ask the learner to engage before moving to the next.',
+    'Within your teaching content, always include a specific question that requires the learner to think, explain, or apply — not a yes/no question. Never rely on "Does this make sense?" alone as your only question.',
     '',
     '--- DOCEO_META FORMAT (required at end of every response) ---',
     doceoMetaSchema

@@ -148,9 +148,10 @@
       <div class="input-area">
         <p>Reply to continue or ask a question at any point.</p>
         <div class="quick-actions">
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into steps.')}>Slow down</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me another example for this part.')}>Give an example</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Continue to the next step.')}>Continue</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into smaller steps.')}>Slow down</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me a different example for this part.')}>Different example</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you check me?')}>Check me</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I have a question about this.')}>I have a question</button>
         </div>
         <div class="composer">
           <textarea

@@ -10,32 +10,37 @@ import type {
   LessonStage,
   Question,
   RevisionTopic,
-  ShortlistedTopic,
+  Subject,
+  Subtopic,
+  Topic,
   UserProfile
 } from '$lib/types';
 
 export const LESSON_STAGE_ORDER: LessonStage[] = [
-  'overview',
+  'orientation',
   'concepts',
-  'detail',
+  'construction',
   'examples',
+  'practice',
   'check',
   'complete'
 ];
 
 export const LESSON_STAGE_ICONS: Record<Exclude<LessonStage, 'complete'>, string> = {
-  overview: '◎',
+  orientation: '◎',
   concepts: '◈',
-  detail: '◉',
+  construction: '◉',
   examples: '◇',
+  practice: '◆',
   check: '△'
 };
 
 export const LESSON_STAGE_LABELS: Record<LessonStage, string> = {
-  overview: 'Overview',
+  orientation: 'Orientation',
   concepts: 'Key Concepts',
-  detail: 'Deep Dive',
-  examples: 'Examples',
+  construction: 'Guided Construction',
+  examples: 'Worked Example',
+  practice: 'Active Practice',
   check: 'Check Understanding',
   complete: 'Complete'
 };
@@ -114,14 +119,14 @@ function clamp01(value: number): number {
 
 export function getStageNumber(stage: LessonStage): number {
   const index = LESSON_STAGE_ORDER.indexOf(stage);
-  return index === -1 ? 1 : Math.min(index + 1, 5);
+  return index === -1 ? 1 : Math.min(index + 1, 6);
 }
 
 export function getNextStage(stage: LessonStage): LessonStage | null {
   const index = LESSON_STAGE_ORDER.indexOf(stage);
 
-  if (index === -1 || index >= LESSON_STAGE_ORDER.length - 2) {
-    return stage === 'check' ? 'complete' : null;
+  if (index === -1 || index >= LESSON_STAGE_ORDER.length - 1) {
+    return null;
   }
 
   return LESSON_STAGE_ORDER[index + 1];
@@ -281,29 +286,37 @@ export function buildStageStartMessage(stage: LessonStage): LessonMessage {
 }
 
 function getLessonSectionForStage(lesson: Lesson, stage: LessonStage): string {
-  if (stage === 'overview') {
-    return lesson.overview.body;
+  if (stage === 'orientation') {
+    return lesson.orientation.body;
   }
 
   if (stage === 'concepts') {
-    return lesson.deeperExplanation.body;
+    return lesson.concepts.body;
   }
 
-  if (stage === 'detail') {
-    return (lesson.detailedSteps ?? { body: lesson.deeperExplanation.body }).body;
+  if (stage === 'construction') {
+    return lesson.guidedConstruction.body;
   }
 
   if (stage === 'examples') {
-    return lesson.example.body;
+    return lesson.workedExample.body;
   }
 
-  return `Let's check how well this is landing before we move on.`;
+  if (stage === 'practice') {
+    return lesson.practicePrompt.body;
+  }
+
+  if (stage === 'complete') {
+    return lesson.summary.body;
+  }
+
+  return `Let's check how well this has landed before we move on.`;
 }
 
 export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): LessonMessage[] {
   const intro = getLessonSectionForStage(lesson, stage);
   const closingPrompt =
-    stage === 'overview'
+    stage === 'orientation'
       ? 'Does this make sense so far? Reply to continue or ask a question anytime.'
       : stage === 'check'
         ? 'Try answering in your own words. What stands out to you first?'
@@ -332,24 +345,30 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
 
 export function buildLessonSessionFromTopic(
   profile: UserProfile,
+  subject: Subject,
+  topic: Topic,
+  subtopic: Subtopic,
   lesson: Lesson,
-  topic: ShortlistedTopic,
-  subjectName: string
+  overrides?: {
+    topicDescription?: string;
+    curriculumReference?: string;
+    matchedSection?: string;
+  }
 ): LessonSession {
   return {
     id: `lesson-session-${crypto.randomUUID()}`,
     studentId: profile.id,
-    subjectId: lesson.subjectId,
-    subject: subjectName,
-    topicId: topic.topicId,
-    topicTitle: topic.title,
-    topicDescription: topic.description,
-    curriculumReference: topic.curriculumReference,
-    matchedSection: topic.title,
+    subjectId: subject.id,
+    subject: subject.name,
+    topicId: topic.id,
+    topicTitle: topic.name,
+    topicDescription: overrides?.topicDescription ?? subtopic.name,
+    curriculumReference: overrides?.curriculumReference ?? `${lesson.grade} · ${lesson.title}`,
+    matchedSection: overrides?.matchedSection ?? topic.name,
     lessonId: lesson.id,
-    currentStage: 'overview',
+    currentStage: 'orientation',
     stagesCompleted: [],
-    messages: buildInitialLessonMessages(lesson, 'overview'),
+    messages: buildInitialLessonMessages(lesson, 'orientation'),
     questionCount: 0,
     reteachCount: 0,
     confidenceScore: 0.5,
@@ -384,21 +403,41 @@ export function buildDynamicLessonFromTopic(input: {
     subjectId: input.subjectId,
     grade: input.grade,
     title: `${input.subjectName}: ${topicTitle}`,
-    overview: {
-      title: 'Overview',
-      body: `In this lesson you're studying **${topicTitle}** — a key topic in ${input.subjectName} (${input.grade}). By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to an example.`
+    orientation: {
+      title: 'Orientation',
+      body: `In this lesson you're exploring **${topicTitle}** in ${input.subjectName} (${input.grade}). By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to a real example. This topic matters because it unlocks a core pattern you'll use again and again.`
     },
-    deeperExplanation: {
+    mentalModel: {
+      title: 'Big Picture',
+      body: `Think of **${topicTitle}** as a lens that helps you see patterns in ${input.subjectName}. Before diving into rules, picture the overall shape of the idea: there is a ${lens.conceptWord} at the centre, a process that connects things, and a way to check if you've applied it correctly. Hold that picture in mind as we build the details.`
+    },
+    concepts: {
       title: 'Key Concepts',
-      body: `The main ${lens.conceptWord} in **${topicTitle}** is what holds the idea together. To understand ${topicTitle} in ${input.subjectName}, you need to ${lens.actionWord}. The most important thing to remember is to avoid ${lens.misconception} — focus on the underlying rule, not just the final answer.`
+      body: `The main ${lens.conceptWord} in **${topicTitle}** is what holds the idea together. To understand ${topicTitle} in ${input.subjectName}, you need to ${lens.actionWord}. Focus on no more than three core ideas at once: (1) what ${topicTitle} is, (2) why the rule works, and (3) when to apply it. Avoid ${lens.misconception}.`
     },
-    detailedSteps: {
-      title: 'Step-by-Step',
-      body: `Here is how to work through **${topicTitle}** one step at a time:\n\n**Step 1.** Identify what ${topicTitle} is asking you to do — read the problem carefully and name the ${lens.conceptWord} you are working with.\n\n**Step 2.** Write down what you know and what you need to find out.\n\n**Step 3.** Apply the rule for ${topicTitle}: ${lens.actionWord}.\n\n**Step 4.** Check your answer by asking: does it match the ${lens.evidenceWord}? Have I avoided ${lens.misconception}?\n\nTake each step one at a time before moving to the next.`
+    guidedConstruction: {
+      title: 'Guided Construction',
+      body: `Here is how to think through **${topicTitle}** step by step:\n\n**Step 1.** Read the problem and identify the ${lens.conceptWord} you are working with.\n\n**Step 2.** Write down what you know and what you need to find.\n\n**Step 3.** Apply the rule: ${lens.actionWord}.\n\n**Step 4.** Check your reasoning — does your answer match the ${lens.evidenceWord}? Have you avoided ${lens.misconception}?\n\nNarrate each decision as you go. The goal is to make your thinking visible.`
     },
-    example: {
+    workedExample: {
       title: 'Worked Example',
-      body: `**Example — ${topicTitle} in ${input.subjectName}:**\n\n${lens.example}\n\nThis example works because it shows the ${lens.conceptWord} in action. Notice how each step stays connected to the rule for ${topicTitle}. Avoid ${lens.misconception} — always name the rule before you write the answer.`
+      body: `**Example — ${topicTitle} in ${input.subjectName}:**\n\n${lens.example}\n\nNotice how each step stays connected to the rule for ${topicTitle}. The key move is to name the ${lens.conceptWord} first, then apply it. Avoid ${lens.misconception} — always justify each step before writing the answer.`
+    },
+    practicePrompt: {
+      title: 'Active Practice',
+      body: `Now it's your turn. Try applying **${topicTitle}** to a similar problem. Attempt it first before checking. Write out each step and explain why you made each move. If you get stuck, name the exact step where you lost the thread — that is usually where the ${lens.conceptWord} needs revisiting.`
+    },
+    commonMistakes: {
+      title: 'Common Mistakes',
+      body: `The most common error with **${topicTitle}** is ${lens.misconception}. When this happens, students often get the right process but wrong result — or skip a step that looks obvious but isn't. Fix: always name the ${lens.conceptWord} before applying it, and check each step against the ${lens.evidenceWord}.`
+    },
+    transferChallenge: {
+      title: 'Transfer Challenge',
+      body: `Can you apply **${topicTitle}** in a slightly different context? Think about a situation in ${input.subjectName} where the same ${lens.conceptWord} shows up but looks different on the surface. Identify the pattern, adapt the rule, and explain why it still applies. This is how you move from knowing to understanding.`
+    },
+    summary: {
+      title: 'Summary',
+      body: `**${topicTitle} — key takeaways:**\n\n1. The core ${lens.conceptWord} is what defines this topic.\n2. Apply it by: ${lens.actionWord}.\n3. Evidence of understanding: ${lens.evidenceWord}.\n4. Avoid: ${lens.misconception}.\n\nIf you can explain ${topicTitle} to someone else using one example, you've got it.`
     },
     practiceQuestionIds: [`${rootId}-q-1`],
     masteryQuestionIds: [`${rootId}-q-2`]
@@ -447,23 +486,13 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
 }
 
 function buildQuestionReply(session: LessonSession, lesson: Lesson, _message: string): LessonChatResponse {
-  const stageContent =
-    session.currentStage === 'overview'
-      ? lesson.overview.body
-      : session.currentStage === 'concepts'
-        ? lesson.deeperExplanation.body
-        : session.currentStage === 'detail'
-          ? (lesson.detailedSteps ?? { body: lesson.deeperExplanation.body }).body
-          : session.currentStage === 'examples'
-            ? lesson.example.body
-            : 'the check question where you explain the idea in your own words';
-
+  const stageContent = getLessonSectionForStage(lesson, session.currentStage);
   const topicName = lesson.title.replace(/^.*?:\s*/, '');
 
   const reply = [
     `Good question — let me clarify this within **${topicName}**.`,
     '',
-    `The key thing to hold onto here is the core rule for ${topicName}: ${lesson.deeperExplanation.body.split('.')[0]}.`,
+    `The key thing to hold onto here is the core rule for ${topicName}: ${lesson.concepts.body.split('.')[0]}.`,
     '',
     `If that is what you were asking about, that is the anchor to keep in mind. If your question was about something more specific, try phrasing it in your own words and I will work through it with you.`,
     '',
@@ -498,7 +527,7 @@ function buildResponseReply(session: LessonSession, lesson: Lesson, message: str
 
   if (session.currentStage === 'check' && !indicatesConfusion) {
     return {
-      displayContent: `Nice. You explained the idea clearly enough to finish this lesson.\n\n**Summary:** ${lesson.overview.body}\n\nYou can move this topic into revision next.`,
+      displayContent: `Nice. You explained the idea clearly enough to finish this lesson.\n\n**Summary:** ${lesson.orientation.body}\n\nYou can move this topic into revision next.`,
       provider: 'local-fallback',
       metadata: {
         action: 'complete',
@@ -560,19 +589,19 @@ function buildResponseReply(session: LessonSession, lesson: Lesson, message: str
   return {
     displayContent: transitionLine,
     provider: 'local-fallback',
-      metadata: {
-        action: 'advance',
-        next_stage: nextStage,
-        reteach_style: null,
-        reteach_count: 0,
-        confidence_assessment: 0.74,
-        profile_update: {
-          abstract_thinking: 0.66,
-          quiz_performance: nextStage === 'check' ? 0.72 : undefined
-        }
+    metadata: {
+      action: 'advance',
+      next_stage: nextStage,
+      reteach_style: null,
+      reteach_count: 0,
+      confidence_assessment: 0.74,
+      profile_update: {
+        abstract_thinking: 0.66,
+        quiz_performance: nextStage === 'check' ? 0.72 : undefined
       }
-    };
-  }
+    }
+  };
+}
 
 export function buildLocalLessonChatResponse(
   request: LessonChatRequest,

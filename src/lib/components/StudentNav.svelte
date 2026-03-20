@@ -170,6 +170,11 @@
     color: var(--muted);
   }
 
+  .brand-copy p {
+    font-size: 0.96rem;
+    line-height: 1.4;
+  }
+
   .nav button {
     display: grid;
     gap: 0.24rem;
@@ -185,16 +190,16 @@
   }
 
   .nav button strong {
-    font-size: 0.96rem;
+    font-size: 0.98rem;
     font-weight: 600;
   }
 
   .nav button span {
-    font-size: 0.75rem;
+    font-size: 0.82rem;
     letter-spacing: 0;
     text-transform: none;
-    color: var(--muted);
-    line-height: 1.35;
+    color: var(--text-soft);
+    line-height: 1.4;
   }
 
   .nav button.active {
@@ -218,14 +223,14 @@
     align-items: center;
     justify-content: flex-start;
     text-align: left;
-    min-height: 1.8rem;
+    min-height: 1.95rem;
     padding: 0.45rem 0.72rem;
     border-radius: 999px;
     background: color-mix(in srgb, var(--surface-tint) 94%, transparent);
     border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
     line-height: 1.1;
     max-width: min(100%, 14rem);
-    font-size: 0.88rem;
+    font-size: 0.92rem;
     font-weight: 500;
   }
 
@@ -253,5 +258,14 @@
     letter-spacing: 0.08em;
     font-size: 0.72rem;
     font-family: var(--mono);
+  }
+
+  .stat-row span {
+    font-size: 0.92rem;
+  }
+
+  .stat-row strong {
+    font-size: 0.96rem;
+    font-weight: 600;
   }
 </style>
