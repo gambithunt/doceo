@@ -42,17 +42,18 @@
   .app-shell {
     height: 100vh;
     display: grid;
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-    gap: 1.5rem;
-    padding: 1.5rem;
+    grid-template-columns: minmax(244px, 296px) minmax(0, 1fr);
+    gap: 1.25rem;
+    padding: 1.25rem;
     overflow: hidden;
   }
 
   .main-content {
     display: grid;
-    gap: 1.25rem;
+    gap: 1rem;
     min-height: 0;
     overflow: auto;
+    align-items: start;
   }
 
   .main-content.lesson-mode {

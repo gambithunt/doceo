@@ -164,22 +164,40 @@
 </script>
 
 <section class="view">
-  <header class="hero card">
-    <div class="hero-copy">
-      <p class="eyebrow">Start new</p>
-      <h2>Choose what to learn</h2>
-      <p>Describe the topic in your own words and the assistant will match it to the right section.</p>
+  <header class="dashboard-head">
+    <div class="dashboard-top">
+      <div class="dashboard-title">
+        <h2>Choose what to learn</h2>
+        <p>Describe a topic to find the closest section.</p>
+      </div>
+
+      <dl class="dashboard-summary" aria-label="Learning summary">
+        <div class="summary-item">
+          <dt>Completed</dt>
+          <dd><AnimatedStatNumber value={summary.completedLessons} />/{summary.totalLessons}</dd>
+        </div>
+        <div class="summary-item">
+          <dt>Mastery</dt>
+          <dd><AnimatedStatNumber value={summary.averageMastery} suffix="%" /></dd>
+        </div>
+        <div class="summary-item">
+          <dt>Active</dt>
+          <dd><AnimatedStatNumber value={activeLessons.length} /></dd>
+        </div>
+      </dl>
     </div>
 
     {#if currentSession}
       <div class="resume-strip">
         <div class="resume-copy">
           <p class="eyebrow">Resume lesson</p>
-          <strong>{currentSession.topicTitle}</strong>
-          <p>{currentSession.subject} · {stageProgressLabel(currentSession)}</p>
+          <strong>{currentSession.subject} - {currentSession.topicTitle}</strong>
+          <p>{stageProgressLabel(currentSession)}</p>
           <small>Last opened {new Date(currentSession.lastActiveAt).toLocaleString()}</small>
         </div>
-        <button type="button" class="btn btn-secondary" onclick={() => startFromBanner(currentSession)}>Resume</button>
+        <button type="button" class="btn btn-secondary btn-compact compact" onclick={() => startFromBanner(currentSession)}>
+          Resume
+        </button>
       </div>
     {/if}
   </header>
@@ -188,9 +206,8 @@
     <div class="starter-copy">
       <div>
         <p class="eyebrow">Topic matcher</p>
-        <h3>{assistantStatus}</h3>
+        <h3>{viewState.topicDiscovery.shortlist ? 'Pick your topic to begin' : 'Find the right section'}</h3>
       </div>
-      <p>Pick the subject, describe the section, and continue into the closest match.</p>
     </div>
 
     {#if viewState.ui.showTopicDiscoveryComposer || !currentSession || viewState.topicDiscovery.status !== 'idle' || viewState.topicDiscovery.input.length > 0}
@@ -211,7 +228,7 @@
           <div class="hint-panel" aria-live="polite">
             <div class="hint-panel-copy">
               <span class="hint-panel-title">Quick starts</span>
-              <p>Tap a suggestion to jump straight into a lesson around that theme.</p>
+              <p>Start with a suggested lesson.</p>
             </div>
 
             <div class="hint-chip-list">
@@ -237,7 +254,8 @@
                     style={`--chip-index: ${index};`}
                     onclick={() => startFromSuggestion(chip.id, chip.label)}
                   >
-                    <span>{chip.label}</span>
+                    <span class="hint-chip-name">{chip.label}</span>
+                    <span class="hint-chip-action" aria-hidden="true">></span>
                   </button>
                 {/each}
               {/if}
@@ -307,11 +325,11 @@
     {/if}
   </section>
 
-  <section class="card recent">
+  <section class="card recent" class:empty-state={recentLessons.length === 0}>
     <div class="section-head">
       <div>
         <p class="eyebrow">Recent lessons</p>
-        <h3>{recentLessons.length > 0 ? 'Pick up a recent topic' : 'Your recent work will appear here'}</h3>
+        <h3>{recentLessons.length > 0 ? 'Pick up where you left off' : 'Recent lessons'}</h3>
       </div>
     </div>
 
@@ -323,7 +341,7 @@
               <small>{session.subject}</small>
               <small>{new Date(session.lastActiveAt).toLocaleDateString()}</small>
             </div>
-            <h4>{session.topicTitle}</h4>
+            <h4>{session.subject} - {session.topicTitle}</h4>
             <p>{stageProgressLabel(session)}</p>
             <div class="recent-actions">
               <button type="button" class="btn btn-secondary btn-compact compact" onclick={() => appState.resumeSession(session.id)}>Resume</button>
@@ -340,39 +358,23 @@
         {/each}
       </div>
     {:else}
-      <div class="recent-empty">
-        <strong>No recent lessons yet</strong>
-        <p>Start with the topic matcher above and your recent lessons will appear here with title and progress.</p>
-      </div>
+      <p class="recent-note">Recent lessons will appear here.</p>
     {/if}
-  </section>
-
-  <section class="stats">
-    <article class="card stat-card">
-      <strong><AnimatedStatNumber value={summary.completedLessons} />/{summary.totalLessons}</strong>
-      <span>Completed</span>
-    </article>
-    <article class="card stat-card">
-      <strong><AnimatedStatNumber value={summary.averageMastery} suffix="%" /></strong>
-      <span>Mastery</span>
-    </article>
-    <article class="card stat-card">
-      <strong><AnimatedStatNumber value={activeLessons.length} /></strong>
-      <span>Active</span>
-    </article>
   </section>
 </section>
 
 <style>
   .view,
-  .hero,
+  .dashboard-head,
+  .dashboard-top,
+  .dashboard-title,
+  .dashboard-summary,
   .starter,
   .starter-form,
   .shortlist,
   .topic-list,
   .recent,
-  .recent-grid,
-  .stats {
+  .recent-grid {
     display: grid;
     gap: 1rem;
   }
@@ -381,6 +383,9 @@
     --sans: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
     --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     font-family: var(--sans);
+    gap: 0.75rem;
+    width: 100%;
+    align-content: start;
   }
 
   .card,
@@ -393,17 +398,17 @@
     backdrop-filter: blur(26px);
   }
 
-  .hero {
-    gap: 1.1rem;
-    padding: 1.3rem 1.45rem;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 8%, var(--surface)),
-      color-mix(in srgb, var(--surface-strong) 90%, transparent)
-    );
+  .dashboard-head {
+    gap: 0.5rem;
   }
 
-  .hero-copy,
+  .dashboard-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 0.8rem;
+  }
+
+  .dashboard-title,
   .resume-strip,
   .resume-copy,
   .starter-copy,
@@ -414,31 +419,71 @@
     gap: 0.6rem;
   }
 
-  .hero-copy {
-    max-width: 34rem;
+  .dashboard-title {
+    max-width: 31rem;
+    gap: 0.28rem;
   }
 
-  .hero-copy h2 {
-    font-size: clamp(1.85rem, 3.7vw, 3rem);
+  .dashboard-title h2 {
+    font-size: clamp(1.42rem, 2.7vw, 2.2rem);
     line-height: 1;
     letter-spacing: -0.045em;
     font-weight: 700;
   }
 
-  .hero-copy p:last-child {
-    max-width: 30rem;
+  .dashboard-title p:last-child {
+    max-width: 25rem;
     color: var(--text-soft);
-    line-height: 1.5;
+    line-height: 1.35;
+  }
+
+  .dashboard-summary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.85rem;
+    max-width: none;
+    margin: 0;
+  }
+
+  .summary-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .summary-item dt,
+  .summary-item dd {
+    margin: 0;
+  }
+
+  .summary-item dt {
+    color: var(--muted);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: var(--mono);
+  }
+
+  .summary-item dd {
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1;
   }
 
   .resume-strip {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.9rem;
-    padding: 0.82rem 0.95rem;
-    border-radius: 1.2rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 64%, transparent);
-    background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+    gap: 0.85rem;
+    padding: 0.62rem 0.76rem;
+    border-radius: 1rem;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 54%, transparent);
+    max-width: 34rem;
   }
 
   .resume-copy p,
@@ -447,18 +492,21 @@
   }
 
   .resume-copy strong {
-    font-size: 1.02rem;
+    font-size: 0.98rem;
     font-weight: 600;
   }
 
   .starter-copy {
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
-    align-items: baseline;
+    gap: 0.35rem;
   }
 
   .starter {
-    gap: 1.05rem;
-    padding: 1.3rem 1.35rem;
+    gap: 0.7rem;
+    padding: 0.92rem 1rem;
+  }
+
+  .starter-form {
+    gap: 0.8rem;
   }
 
   .starter-actions,
@@ -468,23 +516,24 @@
     flex-wrap: wrap;
   }
 
+  .starter-actions {
+    margin-top: -0.1rem;
+  }
+
   .hint-panel,
   .hint-panel-copy,
   .hint-chip-list {
     display: grid;
-    gap: 0.8rem;
   }
 
   .hint-panel {
-    padding: 0.9rem 0.95rem 1rem;
-    border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-    border-radius: 1.2rem;
-    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
+    gap: 0.55rem;
   }
 
   .hint-panel-copy {
-    grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
-    align-items: center;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 0.2rem;
   }
 
   .hint-panel-title {
@@ -497,21 +546,22 @@
 
   .hint-panel-copy p {
     color: var(--text-soft);
+    line-height: 1.45;
   }
 
   .hint-chip-list {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.7rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
     align-items: stretch;
   }
 
   .hint-chip {
     display: grid;
-    place-content: center start;
-    justify-items: start;
-    min-height: 5.35rem;
-    height: 5.35rem;
-    padding: 0.9rem 0.95rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.9rem;
+    min-height: 4rem;
+    padding: 1rem 1.05rem;
     border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
     border-radius: 1.2rem;
     background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
@@ -522,7 +572,11 @@
 
   .hint-chip:hover:not(:disabled) {
     background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
-    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent),
+      0 0 20px color-mix(in srgb, var(--accent) 10%, transparent);
   }
 
   .hint-chip:active:not(:disabled) {
@@ -554,16 +608,46 @@
     border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   }
 
-  .hint-chip span {
-    font-weight: 700;
-    line-height: 1.15;
-    max-width: 15ch;
-    text-wrap: balance;
+  .hint-chip-name {
+    font-size: 1rem;
+    line-height: 1.35;
+    font-weight: 500;
+    text-wrap: pretty;
+  }
+
+  .hint-chip-action {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface-strong) 26%, transparent);
+  }
+
+  .hint-chip:hover:not(:disabled) .hint-chip-action {
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+    color: var(--text);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--surface-strong) 20%, transparent),
+      0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .hint-chip.selected .hint-chip-action,
+  .hint-chip.loading .hint-chip-action {
+    background: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    color: var(--accent-contrast);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
   }
 
   .hint-chip-skeleton {
-    min-height: 5.35rem;
-    height: 5.35rem;
+    min-height: 4rem;
     border-style: dashed;
     background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
   }
@@ -608,7 +692,7 @@
   .topic-card p,
   .topic-card small,
   .starter-copy p,
-  .hero-copy p,
+  .dashboard-title p,
   .recent-card p {
     color: var(--text-soft);
   }
@@ -623,33 +707,6 @@
     justify-content: space-between;
     gap: 0.75rem;
     align-items: center;
-  }
-
-  .recent-empty {
-    display: grid;
-    gap: 0.45rem;
-    padding: 0.9rem 0.95rem;
-    border-radius: 1.15rem;
-    border: 1px dashed color-mix(in srgb, var(--border-strong) 82%, transparent);
-    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
-    min-height: 8.5rem;
-    align-content: center;
-  }
-
-  .stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.7rem;
-  }
-
-  .stat-card {
-    align-items: center;
-    text-align: center;
-    min-height: 5.6rem;
-    gap: 0.35rem;
-    padding: 0.85rem 0.95rem;
-    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-    box-shadow: var(--shadow);
   }
 
   button,
@@ -729,11 +786,11 @@
 
   .topic-detail-field {
     display: grid;
-    gap: 0.65rem;
+    gap: 0.42rem;
   }
 
   .topic-input-wrap textarea {
-    min-height: 5.9rem;
+    min-height: 3.35rem;
     resize: vertical;
   }
 
@@ -756,7 +813,7 @@
     font-family: var(--mono);
   }
 
-  .hero-copy h2,
+  .dashboard-title h2,
   .section-head h3,
   .starter-copy h3 {
     letter-spacing: -0.02em;
@@ -765,7 +822,7 @@
   .section-head h3,
   .starter-copy h3,
   .recent-card h4 {
-    font-size: 1.02rem;
+    font-size: 0.98rem;
     font-weight: 600;
   }
 
@@ -774,7 +831,12 @@
   }
 
   .recent {
-    padding: 1.2rem 1.35rem;
+    padding: 0.92rem 1rem;
+    gap: 0.55rem;
+  }
+
+  .recent.empty-state {
+    padding-bottom: 0.85rem;
   }
 
   .error {
@@ -792,11 +854,21 @@
     background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
   }
 
+  .recent-note {
+    color: var(--text-soft);
+    font-size: 0.95rem;
+    padding: 0.15rem 0 0;
+  }
+
   @media (max-width: 900px) {
-    .resume-strip,
-    .starter-copy,
-    .stats {
+    .dashboard-top,
+    .dashboard-summary,
+    .resume-strip {
       grid-template-columns: 1fr;
+    }
+
+    .dashboard-summary {
+      justify-content: flex-start;
     }
 
     .hint-panel-copy {

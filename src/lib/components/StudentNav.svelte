@@ -14,6 +14,13 @@
 
   const { state }: { state: AppState } = $props();
 
+  const profileSubjects = $derived([
+    ...state.onboarding.selectedSubjectNames,
+    ...state.onboarding.customSubjects
+  ]);
+  const visibleProfileSubjects = $derived(profileSubjects.slice(0, 3));
+  const hiddenProfileSubjectCount = $derived(Math.max(profileSubjects.length - visibleProfileSubjects.length, 0));
+
   const links = $derived([
     { id: 'dashboard', label: 'Dashboard', caption: 'Home, start new, resume active lesson', path: dashboardPath() },
     { id: 'subject', label: 'Subjects', caption: 'Curriculum roadmap and topic browser', path: subjectPath(state.ui.selectedSubjectId) },
@@ -71,16 +78,14 @@
     </div>
     <div class="stat-row">
       <span>Subjects</span>
-      <strong>{state.onboarding.selectedSubjectNames.length + state.onboarding.customSubjects.length}</strong>
+      <strong>{profileSubjects.length}</strong>
     </div>
     <div class="subjects">
-      {#each state.onboarding.selectedSubjectNames.slice(0, 4) as subject}
+      {#each visibleProfileSubjects as subject}
         <span class="pill">{subject}</span>
       {/each}
-      {#if state.onboarding.customSubjects.length > 0}
-        {#each state.onboarding.customSubjects.slice(0, 2) as subject}
-          <span class="pill soft">{subject}</span>
-        {/each}
+      {#if hiddenProfileSubjectCount > 0}
+        <span class="pill soft">+{hiddenProfileSubjectCount} more</span>
       {/if}
     </div>
   </section>
@@ -95,7 +100,7 @@
   .nav,
   .info-card {
     display: grid;
-    gap: 1rem;
+    gap: 0.85rem;
   }
 
   .sidebar {
@@ -112,7 +117,7 @@
     border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
     border-radius: var(--radius-xl);
     background: linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, transparent), var(--surface));
-    padding: 1.15rem;
+    padding: 1rem;
     box-shadow: var(--shadow-strong);
     backdrop-filter: blur(26px);
   }
@@ -134,7 +139,7 @@
   }
 
   .brand-copy h1 {
-    font-size: 1.4rem;
+    font-size: 1.34rem;
     line-height: 1;
     letter-spacing: -0.03em;
   }
@@ -146,12 +151,12 @@
 
   .nav button {
     display: grid;
-    gap: 0.3rem;
+    gap: 0.24rem;
     border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-    border-radius: 1.2rem;
+    border-radius: 1.05rem;
     background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
     color: var(--text);
-    padding: 0.82rem 0.92rem;
+    padding: 0.72rem 0.82rem;
     text-align: left;
     font: inherit;
     cursor: pointer;
@@ -164,41 +169,42 @@
   }
 
   .nav button span {
-    font-size: 0.77rem;
+    font-size: 0.75rem;
     letter-spacing: 0;
     text-transform: none;
     color: var(--muted);
+    line-height: 1.35;
   }
 
   .nav button.active {
     background: linear-gradient(
       135deg,
-      color-mix(in srgb, var(--accent) 12%, var(--surface)),
-      color-mix(in srgb, var(--accent) 6%, var(--surface-soft))
+      color-mix(in srgb, var(--accent) 10%, var(--surface)),
+      color-mix(in srgb, var(--accent) 5%, var(--surface-soft))
     );
-    border-color: color-mix(in srgb, var(--accent) 44%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
     box-shadow: inset 0 1px 0 color-mix(in srgb, white 18%, transparent);
   }
 
   .subjects {
     display: flex;
-    gap: 0.55rem;
+    gap: 0.45rem;
     flex-wrap: wrap;
   }
 
   .pill {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    text-align: center;
-    min-height: 2rem;
-    padding: 0.55rem 0.8rem;
+    justify-content: flex-start;
+    text-align: left;
+    min-height: 1.8rem;
+    padding: 0.45rem 0.72rem;
     border-radius: 999px;
     background: color-mix(in srgb, var(--surface-tint) 90%, transparent);
     border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
     line-height: 1.1;
-    max-width: 100%;
-    font-size: 0.95rem;
+    max-width: min(100%, 14rem);
+    font-size: 0.88rem;
     font-weight: 500;
   }
 
