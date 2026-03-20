@@ -11,7 +11,23 @@
   const lessonSession = $derived(getActiveLessonSession(viewState));
   let composer = $state('');
   let chatElement = $state<HTMLDivElement | null>(null);
+  let expandedConcepts = $state(new Set<string>());
   const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
+
+  function toggleConcept(key: string): void {
+    const next = new Set(expandedConcepts);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    expandedConcepts = next;
+  }
+
+  function askAboutConcept(name: string): void {
+    composer = `Can you explain more about ${name}?`;
+    appState.updateComposerDraft(composer);
+  }
 
   const visibleStages = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete');
 
@@ -121,6 +137,34 @@
         {#each lessonSession.messages as message}
           {#if message.type === 'stage_start'}
             <div class="stage-badge">{message.content}</div>
+          {:else if message.type === 'concept_cards'}
+            <div class="concept-cards-panel">
+              <p class="concept-cards-label">{message.content}</p>
+              {#each message.conceptItems ?? [] as concept, i}
+                {@const key = `${message.id}-${i}`}
+                <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
+                  <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
+                    <div class="concept-card-title">
+                      <span class="concept-name">{concept.name}</span>
+                      <span class="concept-summary">{concept.summary}</span>
+                    </div>
+                    <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
+                  </button>
+                  {#if expandedConcepts.has(key)}
+                    <div class="concept-card-body">
+                      <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
+                      <div class="concept-example">
+                        <span class="concept-example-label">Example</span>
+                        <div>{@html renderSimpleMarkdown(concept.example)}</div>
+                      </div>
+                      <button type="button" class="concept-ask-link" onclick={() => askAboutConcept(concept.name)}>
+                        Ask Doceo about this →
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
           {:else}
             <article class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}>
               {#if message.type === 'question'}
@@ -549,6 +593,139 @@
     display: grid;
     gap: 1rem;
     justify-items: start;
+  }
+
+  /* Concept cards */
+  .concept-cards-panel {
+    display: grid;
+    gap: 0.55rem;
+    animation: bubble-in-assistant 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .concept-cards-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin: 0;
+    padding: 0 0.1rem;
+  }
+
+  .concept-card {
+    border: 1px solid var(--chat-assistant-border);
+    border-radius: 1rem;
+    background: var(--chat-assistant-bg);
+    overflow: hidden;
+    transition: border-color 140ms ease;
+  }
+
+  .concept-card.expanded {
+    border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  }
+
+  .concept-card-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.82rem 1rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+  }
+
+  .concept-card-header:hover {
+    background: color-mix(in srgb, var(--accent) 4%, transparent);
+  }
+
+  .concept-card-title {
+    flex: 1;
+    display: grid;
+    gap: 0.18rem;
+  }
+
+  .concept-name {
+    font-weight: 650;
+    font-size: 0.93rem;
+  }
+
+  .concept-summary {
+    font-size: 0.82rem;
+    color: var(--text-soft);
+  }
+
+  .concept-chevron {
+    font-size: 0.65rem;
+    opacity: 0.55;
+    flex-shrink: 0;
+  }
+
+  .concept-card-body {
+    padding: 0 1rem 1rem;
+    display: grid;
+    gap: 0.75rem;
+    animation: content-fade 200ms ease;
+  }
+
+  .concept-detail {
+    font-size: 0.9rem;
+    line-height: 1.62;
+    color: var(--text);
+  }
+
+  .concept-detail :global(p) {
+    margin: 0;
+  }
+
+  .concept-detail :global(strong) {
+    font-weight: 650;
+  }
+
+  .concept-example {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 0.72rem;
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    font-size: 0.88rem;
+    line-height: 1.55;
+  }
+
+  .concept-example :global(p) {
+    margin: 0;
+  }
+
+  .concept-example-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--accent);
+    opacity: 0.85;
+  }
+
+  .concept-ask-link {
+    display: inline-flex;
+    align-self: start;
+    background: transparent;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+    opacity: 0.9;
+  }
+
+  .concept-ask-link:hover {
+    opacity: 1;
+    text-decoration: underline;
   }
 
   @media (max-width: 780px) {

@@ -304,8 +304,8 @@
                       <span class="busy-indicator">
                         <span></span>
                         <span></span>
+                        <span></span>
                       </span>
-                      <span class="hint-chip-loading-label">Loading</span>
                     </span>
                   {:else}
                     <span class="hint-chip-action" aria-hidden="true">></span>
@@ -755,15 +755,8 @@
   .hint-chip-loading {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
     justify-self: end;
     color: var(--text);
-  }
-
-  .hint-chip-loading-label {
-    font-size: 0.82rem;
-    font-weight: 500;
-    line-height: 1;
   }
 
   .busy-indicator {
@@ -782,6 +775,10 @@
   }
 
   .busy-indicator span:last-child {
+    animation-delay: 0.36s;
+  }
+
+  .busy-indicator span:nth-child(2) {
     animation-delay: 0.18s;
   }
 

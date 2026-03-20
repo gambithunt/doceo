@@ -35,7 +35,8 @@ export type LessonMessageType =
   | 'question'
   | 'side_thread'
   | 'feedback'
-  | 'stage_start';
+  | 'stage_start'
+  | 'concept_cards';
 export type LessonSessionStatus = 'active' | 'complete' | 'archived';
 export type ConfidenceLevel = 'low' | 'medium' | 'high';
 export type ReteachStyle = 'analogy' | 'example' | 'step_by_step' | 'visual';
@@ -126,6 +127,13 @@ export interface LessonSection {
   body: string;
 }
 
+export interface ConceptItem {
+  name: string;
+  summary: string;
+  detail: string;
+  example: string;
+}
+
 export interface Lesson {
   id: string;
   topicId: string;
@@ -142,6 +150,7 @@ export interface Lesson {
   commonMistakes: LessonSection;
   transferChallenge: LessonSection;
   summary: LessonSection;
+  keyConcepts?: ConceptItem[];
   practiceQuestionIds: string[];
   masteryQuestionIds: string[];
 }
@@ -332,6 +341,7 @@ export interface LessonMessage {
   stage: LessonStage;
   timestamp: string;
   metadata?: DoceoMeta | null;
+  conceptItems?: ConceptItem[];
 }
 
 export interface LessonSession {

@@ -1,4 +1,5 @@
 import type {
+  ConceptItem,
   DoceoMeta,
   LearnerProfile,
   LearnerProfileUpdate,
@@ -322,7 +323,7 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
         ? 'Try answering in your own words. What stands out to you first?'
         : 'Does this make sense? Tell me what feels clear or where you want to slow down.';
 
-  return [
+  const messages: LessonMessage[] = [
     buildStageStartMessage(stage),
     {
       id: `msg-${crypto.randomUUID()}`,
@@ -341,6 +342,21 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
       }
     }
   ];
+
+  if (stage === 'concepts' && lesson.keyConcepts && lesson.keyConcepts.length > 0) {
+    messages.push({
+      id: `msg-${crypto.randomUUID()}`,
+      role: 'system',
+      type: 'concept_cards',
+      content: 'Key concepts — tap to explore each one in depth',
+      stage,
+      timestamp: isoNow(),
+      metadata: null,
+      conceptItems: lesson.keyConcepts
+    });
+  }
+
+  return messages;
 }
 
 export function buildLessonSessionFromTopic(
@@ -439,9 +455,37 @@ export function buildDynamicLessonFromTopic(input: {
       title: 'Summary',
       body: `**${topicTitle} — key takeaways:**\n\n1. The core ${lens.conceptWord} is what defines this topic.\n2. Apply it by: ${lens.actionWord}.\n3. Evidence of understanding: ${lens.evidenceWord}.\n4. Avoid: ${lens.misconception}.\n\nIf you can explain ${topicTitle} to someone else using one example, you've got it.`
     },
+    keyConcepts: buildDynamicConceptItems(topicTitle, input.subjectName, lens),
     practiceQuestionIds: [`${rootId}-q-1`],
     masteryQuestionIds: [`${rootId}-q-2`]
   };
+}
+
+function buildDynamicConceptItems(
+  topicTitle: string,
+  subjectName: string,
+  lens: ReturnType<typeof getSubjectLens>
+): ConceptItem[] {
+  return [
+    {
+      name: `What ${topicTitle} Is`,
+      summary: `The core definition — what makes ${topicTitle} what it is.`,
+      detail: `Every instance of **${topicTitle}** in ${subjectName} has a **${lens.conceptWord}** at its centre. Before applying any rule, you need to be able to name what ${topicTitle} is and why it matters in this subject. Start here: identify the ${lens.conceptWord}, then describe it in your own words.`,
+      example: `A quick test: can you point to the ${lens.conceptWord} in a problem? If yes, you've found ${topicTitle}. If not, read the problem again looking specifically for it.`
+    },
+    {
+      name: `Why the Rule Works`,
+      summary: `The reasoning behind the rule — not just the what, but the why.`,
+      detail: `Knowing why **${topicTitle}** works prevents the most common mistake: ${lens.misconception}. The rule is grounded in how ${lens.conceptWord}s behave in ${subjectName}. When you understand the reason, you can adapt it to situations you haven't seen before.`,
+      example: lens.example
+    },
+    {
+      name: `When to Apply It`,
+      summary: `Spotting the right moment to use ${topicTitle}.`,
+      detail: `Not every problem calls for **${topicTitle}**, but when it does, ${lens.evidenceWord} gives you the signal. The key habit is to ${lens.actionWord} — do this before writing anything down. Rushing past this step is what leads to ${lens.misconception}.`,
+      example: `If you see a problem that asks you to ${lens.actionWord.split(' and ')[0]}, that is your cue. Name the ${lens.conceptWord} first, then proceed.`
+    }
+  ];
 }
 
 export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: string, topicTitle: string): Question[] {

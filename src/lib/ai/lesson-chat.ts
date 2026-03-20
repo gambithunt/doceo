@@ -130,6 +130,9 @@ Rules:
     `Curriculum Reference: ${request.lessonSession.curriculumReference}`,
     `Lesson Orientation: ${lesson?.orientation?.body ?? ''}`,
     `Lesson Key Concepts: ${lesson?.concepts?.body ?? ''}`,
+    ...(lesson?.keyConcepts?.length
+      ? [`Lesson Key Concept Cards (pre-loaded for student):\n${lesson.keyConcepts.map((c, i) => `  ${i + 1}. ${c.name}: ${c.summary}`).join('\n')}`]
+      : []),
     `Lesson Guided Construction: ${lesson?.guidedConstruction?.body ?? ''}`,
     `Lesson Worked Example: ${lesson?.workedExample?.body ?? ''}`,
     ``,

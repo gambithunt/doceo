@@ -116,6 +116,13 @@ interface LessonSection {
   body: string;
 }
 
+interface ConceptItem {
+  name: string;
+  summary: string;
+  detail: string;
+  example: string;
+}
+
 interface Lesson {
   id: string;
   topicId: string;
@@ -132,6 +139,7 @@ interface Lesson {
   commonMistakes: LessonSection;
   transferChallenge: LessonSection;
   summary: LessonSection;
+  keyConcepts?: ConceptItem[];
   practiceQuestionIds: string[];
   masteryQuestionIds: string[];
 }
@@ -657,9 +665,37 @@ function buildDynamicLessonFromTopic(input: {
       title: 'Summary',
       body: `**${topicTitle} — key takeaways:**\n\n1. The core ${lens.conceptWord} defines this topic.\n2. Apply it by: ${lens.actionWord}.\n3. Evidence: ${lens.evidenceWord}.\n4. Avoid: ${lens.misconception}.`
     },
+    keyConcepts: buildDynamicConceptItems(topicTitle, input.subjectName, lens),
     practiceQuestionIds: [`${rootId}-q-1`],
     masteryQuestionIds: [`${rootId}-q-2`]
   };
+}
+
+function buildDynamicConceptItems(
+  topicTitle: string,
+  subjectName: string,
+  lens: ReturnType<typeof getSubjectLens>
+): ConceptItem[] {
+  return [
+    {
+      name: `What ${topicTitle} Is`,
+      summary: `The core definition — what makes ${topicTitle} what it is.`,
+      detail: `Every instance of **${topicTitle}** in ${subjectName} has a **${lens.conceptWord}** at its centre. Before applying any rule, you need to be able to name what ${topicTitle} is and why it matters in this subject. Start here: identify the ${lens.conceptWord}, then describe it in your own words.`,
+      example: `A quick test: can you point to the ${lens.conceptWord} in a problem? If yes, you've found ${topicTitle}. If not, read the problem again looking specifically for it.`
+    },
+    {
+      name: `Why the Rule Works`,
+      summary: `The reasoning behind the rule — not just the what, but the why.`,
+      detail: `Knowing why **${topicTitle}** works prevents the most common mistake: ${lens.misconception}. The rule is grounded in how ${lens.conceptWord}s behave in ${subjectName}. When you understand the reason, you can adapt it to situations you haven't seen before.`,
+      example: lens.example
+    },
+    {
+      name: `When to Apply It`,
+      summary: `Spotting the right moment to use ${topicTitle}.`,
+      detail: `Not every problem calls for **${topicTitle}**, but when it does, ${lens.evidenceWord} gives you the signal. The key habit is to ${lens.actionWord} — do this before writing anything down. Rushing past this step is what leads to ${lens.misconception}.`,
+      example: `If you see a problem that asks you to ${lens.actionWord.split(' and ')[0]}, that is your cue. Name the ${lens.conceptWord} first, then proceed.`
+    }
+  ];
 }
 
 function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: string, topicTitle: string): Question[] {
@@ -852,6 +888,9 @@ Rules:
     `Curriculum Reference: ${request.lessonSession.curriculumReference}`,
     `Lesson Orientation: ${lesson?.orientation?.body ?? ''}`,
     `Lesson Key Concepts: ${lesson?.concepts?.body ?? ''}`,
+    ...(lesson?.keyConcepts?.length
+      ? [`Lesson Key Concept Cards (pre-loaded for student):\n${lesson.keyConcepts.map((c: ConceptItem, i: number) => `  ${i + 1}. ${c.name}: ${c.summary}`).join('\n')}`]
+      : []),
     `Lesson Guided Construction: ${lesson?.guidedConstruction?.body ?? ''}`,
     `Lesson Worked Example: ${lesson?.workedExample?.body ?? ''}`,
     '',
