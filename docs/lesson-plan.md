@@ -41,6 +41,7 @@ Each stage is opened by the system with a stage-start badge and a teaching messa
 | `teaching` | assistant | Left-aligned bubble (default) |
 | `feedback` | assistant | Accent-tinted bubble (used on advance) |
 | `side_thread` | assistant | Blue-tinted bubble (off-topic question) |
+| `concept_cards` | system | Expandable disclosure panel injected at concepts stage start |
 | `question` | user | Dark right-aligned bubble |
 | `response` | user | Dark right-aligned bubble |
 
@@ -51,16 +52,19 @@ Each stage is opened by the system with a stage-start badge and a teaching messa
 The AI receives a structured system prompt containing:
 - Student profile (name, grade, curriculum, country, term, year)
 - Full lesson plan (orientation, key concepts, guided construction, worked example)
+- Pre-loaded concept card names (so the AI knows what cards the student can see)
 - Current stage and session history (capped at last 20 messages)
 - Learner profile signals (learning style, struggle/excelled topics)
 
-**Advance**: when the student clearly understands the current stage, the AI returns a brief 1–2 sentence acknowledgment with `action: advance`. The system inserts the next stage opening automatically — the AI never repeats stage content.
+**Advance**: when the student clearly understands the current stage, the AI returns a brief 1–2 sentence acknowledgment with `action: advance`. The system inserts the next stage opening automatically — the AI never repeats stage content. Short acknowledgements ("ok", "sure", "continue", "yes") do **not** trigger an advance — the AI asks a specific check question and waits for a substantive response.
 
 **Reteach**: when the student is confused, the AI returns `action: reteach` with a different angle (step-by-step / analogy / example).
 
 **Side thread**: off-topic questions get `action: side_thread`. The AI answers within the topic context and returns to the lesson.
 
-**Voice**: always addressed directly to the student by name using "you/your". Never "students will" or "learners should".
+**Concept clarification**: when the student presses "Ask Doceo to explain this" on a concept card, the message is prefixed with `[CONCEPT: name]`. The AI treats this as an in-lesson clarification — not a side thread — and responds with a plain-language explanation, a concrete example, and a check question. `action` is always `stay`.
+
+**Voice**: always addressed directly to the student by name using "you/your". Never "students will" or "learners should". Doceo is the smartest, warmest friend the student has — plain words, concrete analogies, genuine warmth when understanding clicks.
 
 ---
 
@@ -80,6 +84,23 @@ Lessons are either:
 - **Dynamic** — built at runtime by `buildDynamicLessonFromTopic` when no seed lesson exists for the chosen topic
 
 Dynamic lessons use subject-specific lens templates (concept word, action word, misconception, worked example) to generate second-person lesson content for any topic.
+
+### Key Concepts (`keyConcepts`)
+
+Every lesson carries a `keyConcepts: ConceptItem[]` array. Each `ConceptItem` has:
+
+```ts
+{
+  name: string;      // concept label shown on the card
+  summary: string;   // one sentence shown collapsed
+  detail: string;    // plain-English explanation shown expanded
+  example: string;   // concrete example shown expanded
+}
+```
+
+For seeded lessons these are authored content. For dynamic lessons the AI lesson-plan step generates them at lesson creation time (via `parseLessonPlanResponse` in the edge function). If the AI omits them, `buildDynamicConceptItems` generates template-based fallbacks.
+
+When the lesson enters the concepts stage, `buildInitialLessonMessages` injects a `concept_cards` message carrying the full `ConceptItem[]`. The `LessonWorkspace` component renders this as an expandable panel — collapsed by default, each card expanding on tap.
 
 ---
 
