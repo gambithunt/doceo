@@ -11,6 +11,18 @@
     subjects: 'Subjects',
     review: 'Review'
   };
+  const stepTitles: Record<OnboardingStep, string> = {
+    country: 'Choose where your learning profile begins',
+    academic: 'Set the academic context for this year',
+    subjects: 'Choose the subjects you study',
+    review: 'Review the profile we will use'
+  };
+  const stepDescriptions: Record<OnboardingStep, string> = {
+    country: 'Start with the country so the app can present the right curriculum structure and school context.',
+    academic: 'Your curriculum, grade, school year, and term shape the lessons and recommendations you will see next.',
+    subjects: 'Choose everything relevant this year. If something is missing, add it manually and we will keep it in your profile.',
+    review: 'Check the learning profile before you continue into the dashboard and subject recommendations.'
+  };
 
   const stepIndex = $derived(state.onboarding.stepOrder.indexOf(state.onboarding.currentStep));
   const currentGradeLabel = $derived(
@@ -36,6 +48,43 @@
       (curriculum) => curriculum.id === state.onboarding.selectedCurriculumId
     )?.name ?? 'Not chosen'
   );
+  const selectedCountLabel = $derived(
+    `${selectedCount} subject${selectedCount === 1 ? '' : 's'} selected`
+  );
+  const currentStepTitle = $derived(stepTitles[state.onboarding.currentStep]);
+  const currentStepDescription = $derived(stepDescriptions[state.onboarding.currentStep]);
+  const footerTitle = $derived.by(() => {
+    if (state.onboarding.currentStep === 'country') {
+      return countryName;
+    }
+
+    if (state.onboarding.currentStep === 'academic') {
+      return `${curriculumName} · ${currentGradeLabel}`;
+    }
+
+    if (state.onboarding.currentStep === 'subjects') {
+      return selectedCountLabel;
+    }
+
+    return liveRecommendation.subjectName ?? 'Ready to continue';
+  });
+  const footerDetail = $derived.by(() => {
+    if (state.onboarding.currentStep === 'country') {
+      return 'Choose the country that matches your school context.';
+    }
+
+    if (state.onboarding.currentStep === 'academic') {
+      return 'Confirm the curriculum, grade, year, and term before moving on.';
+    }
+
+    if (state.onboarding.currentStep === 'subjects') {
+      return state.onboarding.selectionMode === 'unsure'
+        ? 'You can continue now and refine the subject list later.'
+        : 'Keep going once you have captured everything you study.';
+    }
+
+    return 'Final check before you enter the dashboard.';
+  });
 
   function goToStep(step: OnboardingStep): void {
     appState.setOnboardingStep(step);
@@ -120,62 +169,51 @@
 </script>
 
 <section class="wizard-shell">
-  <header class="hero">
-    <div class="hero-copy">
-      <p class="eyebrow">Student setup</p>
-      <h1>Build a student profile that keeps the app relevant from the first screen.</h1>
-      <p>
-        This takes four short steps. We use your country, curriculum, grade, term, and subjects to tailor the dashboard and recommend where to begin.
-      </p>
+  <header class="setup-header card">
+    <div class="header-copy">
+      <p class="step-kicker">Step {stepIndex + 1} of {state.onboarding.stepOrder.length}</p>
+      <h1>{currentStepTitle}</h1>
+      <p>{currentStepDescription}</p>
+    </div>
+
+    <div class="header-aside">
+      <div class="selection-pill">
+        <strong>{selectedCount}</strong>
+        <span>{selectedCount === 1 ? 'subject selected' : 'subjects selected'}</span>
+      </div>
+      <p class="header-meta">{countryName} · {curriculumName} · {currentGradeLabel}</p>
     </div>
   </header>
 
   <section class="progress-shell">
-    <div class="progress-header">
-      <span>Step {stepIndex + 1} of {state.onboarding.stepOrder.length}</span>
-      <p>{selectedCount} subject{selectedCount === 1 ? '' : 's'} currently selected</p>
-    </div>
-    <div class="progress-track">
-      <div class="progress-fill" style={`width:${((stepIndex + 1) / state.onboarding.stepOrder.length) * 100}%`}></div>
-    </div>
-    <div class="step-strip">
+    <nav class="step-strip" aria-label="Onboarding steps">
       {#each state.onboarding.stepOrder as step, index}
         <button
           type="button"
           class:active={state.onboarding.currentStep === step}
-          class="step-card"
+          class="step-pill"
           onclick={() => goToStep(step)}
         >
-          <span>{index + 1}</span>
-          <div>
-            <strong>{stepLabels[step]}</strong>
-            <small>
-              {step === 'country'
-                ? 'Top-level school context'
-                : step === 'academic'
-                  ? 'Curriculum, grade, year, term'
-                  : step === 'subjects'
-                    ? 'Everything you actually study'
-                    : 'Final check before entry'}
-            </small>
-          </div>
+          <span class="step-pill-index">{index + 1}</span>
+          <strong>{stepLabels[step]}</strong>
         </button>
       {/each}
-    </div>
-    <div class="summary-strip">
-      <div class="summary-row">
+    </nav>
+
+    <div class="context-strip">
+      <div class="context-pill">
         <span>Country</span>
         <strong>{countryName}</strong>
       </div>
-      <div class="summary-row">
+      <div class="context-pill">
         <span>Curriculum</span>
         <strong>{curriculumName}</strong>
       </div>
-      <div class="summary-row">
+      <div class="context-pill">
         <span>Grade</span>
         <strong>{currentGradeLabel}</strong>
       </div>
-      <div class="summary-row">
+      <div class="context-pill">
         <span>Recommended start</span>
         <strong>{liveRecommendation.subjectName ?? 'Pending'}</strong>
       </div>
@@ -185,12 +223,6 @@
   <div class="content-grid">
     <article class="panel card">
       {#if state.onboarding.currentStep === 'country'}
-        <div class="section-copy">
-          <p class="eyebrow">Step 1</p>
-          <h2>Choose your country</h2>
-          <p>South Africa is supported in v1. The flow stays structured so more countries can be added later without changing the experience.</p>
-        </div>
-
         <div class="selection-grid">
           {#each state.onboarding.options.countries as country}
             <button
@@ -207,12 +239,6 @@
       {/if}
 
       {#if state.onboarding.currentStep === 'academic'}
-        <div class="section-copy">
-          <p class="eyebrow">Step 2</p>
-          <h2>Set your academic context</h2>
-          <p>These choices drive which grades and subjects are shown next.</p>
-        </div>
-
         <div class="selection-grid">
           {#each state.onboarding.options.curriculums as curriculum}
             <button
@@ -267,12 +293,6 @@
       {/if}
 
       {#if state.onboarding.currentStep === 'subjects'}
-        <div class="section-copy">
-          <p class="eyebrow">Step 3</p>
-          <h2>Select the subjects you study</h2>
-          <p>Choose everything relevant this year. If something is missing, add it manually and we’ll keep it in your profile.</p>
-        </div>
-
         <div class="selection-meta">
           <div>
             <strong>{selectedCount}</strong>
@@ -285,17 +305,21 @@
         </div>
 
         <div class="category-block">
-          <h3>Core</h3>
+          <div class="category-head">
+            <h3>Core</h3>
+            <span>{groupedSubjects('core').length}</span>
+          </div>
           {#if groupedSubjects('core').length > 0}
-            <div class="checkbox-grid">
+            <div class="subject-grid">
               {#each groupedSubjects('core') as subject}
                 <button
                   type="button"
                   class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
-                  class="subject-card"
+                  class="subject-tile"
                   onclick={() => appState.toggleOnboardingSubject(subject.id)}
                 >
-                  {subject.name}
+                  <span class="subject-name">{subject.name}</span>
+                  <span class="subject-check" aria-hidden="true">{state.onboarding.selectedSubjectIds.includes(subject.id) ? '✓' : ''}</span>
                 </button>
               {/each}
             </div>
@@ -305,17 +329,21 @@
         </div>
 
         <div class="category-block">
-          <h3>Languages</h3>
+          <div class="category-head">
+            <h3>Languages</h3>
+            <span>{groupedSubjects('language').length}</span>
+          </div>
           {#if groupedSubjects('language').length > 0}
-            <div class="checkbox-grid">
+            <div class="subject-grid">
               {#each groupedSubjects('language') as subject}
                 <button
                   type="button"
                   class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
-                  class="subject-card"
+                  class="subject-tile"
                   onclick={() => appState.toggleOnboardingSubject(subject.id)}
                 >
-                  {subject.name}
+                  <span class="subject-name">{subject.name}</span>
+                  <span class="subject-check" aria-hidden="true">{state.onboarding.selectedSubjectIds.includes(subject.id) ? '✓' : ''}</span>
                 </button>
               {/each}
             </div>
@@ -325,17 +353,21 @@
         </div>
 
         <div class="category-block">
-          <h3>Other subjects</h3>
+          <div class="category-head">
+            <h3>Other subjects</h3>
+            <span>{groupedSubjects('elective').length}</span>
+          </div>
           {#if groupedSubjects('elective').length > 0}
-            <div class="checkbox-grid">
+            <div class="subject-grid">
               {#each groupedSubjects('elective') as subject}
                 <button
                   type="button"
                   class:active={state.onboarding.selectedSubjectIds.includes(subject.id)}
-                  class="subject-card"
+                  class="subject-tile"
                   onclick={() => appState.toggleOnboardingSubject(subject.id)}
                 >
-                  {subject.name}
+                  <span class="subject-name">{subject.name}</span>
+                  <span class="subject-check" aria-hidden="true">{state.onboarding.selectedSubjectIds.includes(subject.id) ? '✓' : ''}</span>
                 </button>
               {/each}
             </div>
@@ -422,12 +454,6 @@
       {/if}
 
       {#if state.onboarding.currentStep === 'review'}
-        <div class="section-copy">
-          <p class="eyebrow">Step 4</p>
-          <h2>Review your learning profile</h2>
-          <p>This is the information used to personalize the dashboard, subject view, and starting recommendation.</p>
-        </div>
-
         <div class="review-grid">
           <div class="review-card">
             <span>Country</span>
@@ -462,15 +488,20 @@
         </div>
       {/if}
 
-      <footer class="actions">
+      <footer class="sticky-footer">
         <button
           type="button"
-          class="secondary"
+          class="secondary footer-back"
           onclick={previousStep}
           disabled={state.onboarding.currentStep === 'country'}
         >
           Back
         </button>
+
+        <div class="footer-status">
+          <strong>{footerTitle}</strong>
+          <span>{footerDetail}</span>
+        </div>
 
         {#if state.onboarding.currentStep === 'review'}
           <button type="button" aria-busy={state.onboarding.isSaving} onclick={complete} disabled={state.onboarding.isSaving}>
@@ -487,205 +518,263 @@
 </section>
 
 <style>
-  .wizard-shell,
+  .wizard-shell {
+    --sans: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    min-height: 100vh;
+    padding: 1.5rem;
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+    font-family: var(--sans);
+  }
+
   .content-grid,
-  .panel,
   .progress-shell,
-  .step-strip,
-  .summary-strip,
   .selection-grid,
-  .checkbox-grid,
-  .review-grid,
-  .hero-copy {
+  .form-grid,
+  .review-grid {
     display: grid;
     gap: 1rem;
   }
 
-  .wizard-shell {
-    min-height: 100vh;
-    padding: 1.5rem;
-    align-content: start;
-  }
-
-  .content-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .card {
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
     border-radius: var(--radius-xl);
-    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
-    padding: 1.35rem;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, transparent), var(--surface));
     box-shadow: var(--shadow-strong);
     backdrop-filter: blur(26px);
   }
 
-  .hero {
+  .setup-header {
     display: grid;
-    gap: 1rem;
-    padding: 1.5rem 1.75rem 1.25rem;
-    border-radius: var(--radius-xl);
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1.4rem;
+    align-items: end;
+    padding: 1.6rem 1.75rem;
     background: linear-gradient(
       135deg,
-      color-mix(in srgb, var(--accent) 10%, var(--surface)),
-      color-mix(in srgb, var(--surface-strong) 88%, white)
+      color-mix(in srgb, var(--accent) 8%, var(--surface)),
+      color-mix(in srgb, var(--surface-strong) 90%, transparent)
     );
-    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
   }
 
-  .hero-copy h1 {
-    font-size: clamp(2rem, 4vw, 3.25rem);
-    line-height: 1.04;
-    letter-spacing: -0.04em;
-    max-width: none;
-    margin-right: 1rem;
-  }
-
-  .hero-copy p:last-child,
-  .section-copy p {
-    color: var(--text-soft);
-    line-height: 1.6;
-  }
-
-  .hero-copy {
-    max-width: 78rem;
-  }
-
-  .progress-shell {
+  .header-copy {
     display: grid;
-    gap: 0.9rem;
+    gap: 0.65rem;
+    max-width: 44rem;
   }
 
-  .progress-header {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
-    align-items: center;
-  }
-
-  .progress-header span,
-  .progress-header p {
+  .header-copy h1 {
     margin: 0;
+    font-size: clamp(2rem, 4vw, 3.35rem);
+    line-height: 0.98;
+    letter-spacing: -0.045em;
+    font-weight: 700;
   }
 
-  .progress-track {
-    height: 12px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-soft) 90%, transparent);
-    overflow: hidden;
+  .header-copy p:last-child,
+  .header-meta,
+  .choice-card span,
+  .empty-state {
+    color: var(--text-soft);
+    line-height: 1.55;
   }
 
-  .progress-fill {
-    height: 100%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, var(--accent), #8be5bd);
+  .step-kicker,
+  .context-pill span,
+  .selection-meta span,
+  .category-head span,
+  .review-card span,
+  .footer-status span,
+  label span {
+    margin: 0;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-family: var(--mono);
   }
 
-  .step-strip,
-  .summary-strip {
+  .header-aside {
+    display: grid;
+    gap: 0.75rem;
+    justify-items: end;
+    text-align: right;
+  }
+
+  .selection-pill {
+    display: inline-grid;
+    gap: 0.15rem;
+    justify-items: end;
+    padding: 0.85rem 1rem;
+    border-radius: 1.2rem;
+    background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 64%, transparent);
+  }
+
+  .selection-pill strong {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .selection-pill span {
+    color: var(--text-soft);
+    font-size: 0.9rem;
+  }
+
+  .step-strip {
+    display: grid;
+    gap: 0.75rem;
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .step-card,
+  .step-pill,
   .choice-card,
-  .subject-card,
   .term-chip,
+  .subject-tile,
   .tag,
-  .secondary,
-  .actions button {
-    border: 1px solid var(--border);
-    border-radius: 1.2rem;
-    background: var(--surface-soft);
+  .secondary {
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
     color: var(--text);
     font: inherit;
     cursor: pointer;
   }
 
-  .step-card {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.85rem;
-    padding: 0.95rem 1rem;
+  .step-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    min-height: 3.4rem;
+    padding: 0.8rem 1rem;
+    border-radius: 1.2rem;
     text-align: left;
-    min-height: 100%;
+    box-shadow: none;
   }
 
-  .step-card span {
+  .step-pill strong {
+    margin: 0;
+    font-size: 0.96rem;
+    font-weight: 600;
+  }
+
+  .step-pill-index {
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 999px;
     display: grid;
     place-items: center;
-    width: 1.95rem;
-    height: 1.95rem;
-    border-radius: 999px;
-    background: var(--surface);
+    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 68%, transparent);
+    font-family: var(--mono);
+    font-size: 0.82rem;
   }
 
-  .step-card div {
-    display: grid;
-    gap: 0.2rem;
-  }
-
-  .step-card small {
-    color: var(--muted);
-  }
-
-  .step-card.active,
+  .step-pill.active,
   .choice-card.active,
-  .subject-card.active,
   .term-chip.active {
-    border-color: color-mix(in srgb, var(--accent) 48%, transparent);
-    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 12%, var(--surface)),
+      color-mix(in srgb, var(--accent) 6%, var(--surface-soft))
+    );
+    border-color: color-mix(in srgb, var(--accent) 44%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 18%, transparent);
   }
 
-  .summary-row,
-  .section-copy,
-  .category-block,
-  .review-card,
-  .recommendation-card {
+  .context-strip {
     display: grid;
-    gap: 0.65rem;
+    gap: 0.75rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .summary-row {
-    gap: 0.2rem;
+  .context-pill {
+    display: grid;
+    gap: 0.3rem;
     padding: 0.95rem 1rem;
-    border-radius: var(--radius-lg);
-    background: var(--surface-soft);
-    border: 1px solid var(--border);
+    border-radius: 1.2rem;
+    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
   }
 
-  .selection-grid,
-  .checkbox-grid {
+  .context-pill strong {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .panel {
+    display: grid;
+    gap: 1.3rem;
+    padding: 1.45rem;
+  }
+
+  .selection-grid {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
-  .choice-card,
-  .subject-card {
-    padding: 1rem;
-    text-align: left;
+  .choice-card {
     display: grid;
-    gap: 0.45rem;
+    gap: 0.35rem;
+    padding: 1rem 1.05rem;
+    border-radius: 1.2rem;
+    text-align: left;
+  }
+
+  .choice-card strong {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 600;
   }
 
   .form-grid {
-    display: grid;
-    gap: 1rem;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
   .selection-meta {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.9rem;
+    gap: 1rem;
   }
 
   .selection-meta div {
     display: grid;
     gap: 0.2rem;
-    padding: 0.95rem 1rem;
-    border-radius: var(--radius-lg);
-    background: var(--surface-soft);
-    border: 1px solid var(--border);
+    padding: 1rem 1.05rem;
+    border-radius: 1.2rem;
+    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  .selection-meta strong {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  .category-block,
+  .review-card,
+  .recommendation-card {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .category-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .category-head h3 {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 
   label {
@@ -696,30 +785,94 @@
   input,
   select {
     width: 100%;
-    border: 1px solid var(--border-strong);
-    border-radius: 1rem;
-    background: var(--surface-tint);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
+    border-radius: 1.1rem;
+    background: color-mix(in srgb, var(--surface-tint) 92%, transparent);
     color: var(--text);
-    padding: 0.92rem 1rem;
+    padding: 0.96rem 1rem;
     font: inherit;
+    letter-spacing: 0;
   }
 
   .term-row,
-  .actions,
-  .custom-row,
   .tags {
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
   }
 
-  .term-chip,
-  .tag {
-    padding: 0.8rem 1rem;
+  .term-chip {
+    padding: 0.75rem 0.98rem;
+    border-radius: 999px;
+  }
+
+  .subject-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .subject-tile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.9rem;
+    min-height: 4rem;
+    padding: 1rem 1.05rem;
+    border-radius: 1.2rem;
+    text-align: left;
+    box-shadow: none;
+  }
+
+  .subject-name {
+    font-size: 1rem;
+    line-height: 1.35;
+    font-weight: 500;
+  }
+
+  .subject-check {
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
+    background: transparent;
+    color: transparent;
+    font-family: var(--mono);
+    font-size: 0.76rem;
+  }
+
+  .subject-tile:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--surface-strong) 84%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  }
+
+  .subject-tile.active {
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 13%, var(--surface)),
+      color-mix(in srgb, var(--accent) 6%, var(--surface-soft))
+    );
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+  }
+
+  .subject-tile.active .subject-check {
+    background: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    color: var(--accent-contrast);
+  }
+
+  .custom-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.85rem;
+    align-items: end;
   }
 
   .grow {
-    flex: 1;
+    min-width: 0;
   }
 
   .add-subject {
@@ -727,9 +880,11 @@
     align-items: center;
     justify-content: center;
     gap: 0.6rem;
+    min-height: 3.65rem;
     align-self: end;
-    padding: 0.72rem 1rem;
+    padding: 0.92rem 1.15rem;
     white-space: nowrap;
+    border-radius: 1.15rem;
   }
 
   .add-subject.is-checking {
@@ -757,55 +912,11 @@
     animation-delay: 0.18s;
   }
 
-  .unsure {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 1rem;
-    border-radius: var(--radius-lg);
-    background: var(--surface-soft);
-    border: 1px solid var(--border);
-  }
-
-  .unsure input {
-    width: auto;
-    margin: 0;
-  }
-
-  .review-grid {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  }
-
-  .review-card,
-  .recommendation-card {
-    padding: 1rem;
-    border-radius: var(--radius-lg);
-    background: var(--surface-soft);
-    border: 1px solid var(--border);
-  }
-
-  .review-card.wide {
-    grid-column: 1 / -1;
-  }
-
-  .recommendation-card {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface-soft));
-    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
-  }
-
-  .empty-state {
-    padding: 0.95rem 1rem;
-    border-radius: var(--radius-lg);
-    border: 1px dashed var(--border);
-    background: var(--surface-soft);
-    color: var(--text-soft);
-  }
-
   .verify-feedback {
-    padding: 0.85rem 1rem;
-    border-radius: var(--radius-lg);
+    padding: 0.9rem 1rem;
+    border-radius: 1rem;
     border: 1px solid var(--border);
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
@@ -827,6 +938,73 @@
     border-color: color-mix(in srgb, #e74c3c 25%, transparent);
   }
 
+  .tag {
+    padding: 0.55rem 0.82rem;
+    border-radius: 999px;
+  }
+
+  .unsure {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.92rem 1rem;
+    border-radius: 1.15rem;
+    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  .unsure span {
+    font-size: 0.96rem;
+    line-height: 1.45;
+    color: var(--text-soft);
+  }
+
+  .unsure input {
+    width: 1.05rem;
+    height: 1.05rem;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  .review-grid {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  }
+
+  .review-card,
+  .recommendation-card {
+    padding: 1rem 1.05rem;
+    border-radius: 1.15rem;
+    background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  .review-card.wide {
+    grid-column: 1 / -1;
+  }
+
+  .recommendation-card {
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 14%, var(--surface)),
+      color-mix(in srgb, var(--surface-soft) 86%, transparent)
+    );
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  }
+
+  .review-card strong,
+  .recommendation-card h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .empty-state {
+    padding: 0.95rem 1rem;
+    border-radius: 1.15rem;
+    border: 1px dashed color-mix(in srgb, var(--border-strong) 78%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
+  }
+
   .link-btn {
     background: none;
     border: none;
@@ -835,60 +1013,113 @@
     font: inherit;
     cursor: pointer;
     text-decoration: underline;
-    font-size: 0.85rem;
+    font-size: 0.88rem;
   }
 
-  .actions {
-    justify-content: space-between;
-    margin-top: 0.5rem;
+  .sticky-footer {
+    position: sticky;
+    bottom: 0.75rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    margin-top: 0.35rem;
+    padding: 0.95rem 1rem;
+    border-radius: 1.35rem;
+    background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
+    box-shadow: 0 18px 40px color-mix(in srgb, var(--shadow) 42%, transparent);
+    backdrop-filter: blur(22px);
   }
 
-  .actions button {
-    min-width: 150px;
-    padding: 0.95rem 1.15rem;
+  .footer-status {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
   }
 
-  .actions button:last-child {
+  .footer-status strong {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .footer-back,
+  .sticky-footer > button:last-child {
+    min-width: 8rem;
+    padding: 0.9rem 1.15rem;
+    border-radius: 999px;
+    font-family: var(--sans);
+  }
+
+  .sticky-footer > button:last-child {
     border: 0;
     background: var(--accent);
     color: var(--accent-contrast);
+    min-width: 11rem;
   }
 
   .secondary {
-    background: var(--surface-soft);
+    background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
     color: var(--text);
   }
 
-  .eyebrow,
-  h1,
-  h2,
-  h3,
-  p,
-  strong,
-  span {
-    margin: 0;
-  }
-
-  .eyebrow,
-  label span,
-  .summary-row span,
-  .review-card span,
-  .selection-meta span {
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.72rem;
-  }
-
-  @media (max-width: 980px) {
-    .progress-header,
+  @media (max-width: 1180px) {
     .step-strip,
-    .summary-strip {
+    .context-strip,
+    .subject-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 900px) {
+    .setup-header,
+    .selection-meta,
+    .custom-row {
       grid-template-columns: 1fr;
     }
 
-    .hero {
-      padding: 1.25rem;
+    .header-aside {
+      justify-items: start;
+      text-align: left;
+    }
+
+    .step-strip,
+    .context-strip {
+      grid-template-columns: 1fr;
+    }
+
+    .sticky-footer {
+      position: static;
+      grid-template-columns: 1fr;
+      align-items: stretch;
+    }
+
+    .footer-back,
+    .sticky-footer > button:last-child {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .wizard-shell,
+    .panel,
+    .setup-header {
+      padding-inline: 1rem;
+    }
+
+    .subject-grid,
+    .selection-grid,
+    .form-grid,
+    .review-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .header-copy h1 {
+      font-size: clamp(1.9rem, 9vw, 2.5rem);
     }
   }
 

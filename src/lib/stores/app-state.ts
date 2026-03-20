@@ -287,9 +287,15 @@ function createAppStore() {
       const response = await fetch('/api/state/bootstrap', { headers });
       const payload = (await response.json()) as BootstrapResponse;
       const remoteState = normalizeAppState(payload.state);
+      // Preserve client-only UI prefs (theme) that aren't round-tripped through the server
+      const localTheme = readState().ui.theme;
       set(
         persistAndSync({
           ...remoteState,
+          ui: {
+            ...remoteState.ui,
+            theme: localTheme
+          },
           backend: {
             ...remoteState.backend,
             isConfigured: payload.isConfigured
