@@ -50,7 +50,15 @@ export async function GET({ request }) {
   const refreshedLearnerProfile =
     signals.length > 0 ? applySignalProfileUpdate(state.learnerProfile, signalUpdate) : state.learnerProfile;
 
-  const stateWithProfile = { ...state, learnerProfile: refreshedLearnerProfile };
+  const fullName = (user.user_metadata?.full_name as string | undefined) ?? '';
+  const stateWithProfile = {
+    ...state,
+    learnerProfile: refreshedLearnerProfile,
+    profile: {
+      ...state.profile,
+      fullName: fullName || state.profile.fullName
+    }
+  };
 
   const onboardingOptions = onboardingProgress ? await loadOnboardingOptions(onboardingProgress) : null;
 
