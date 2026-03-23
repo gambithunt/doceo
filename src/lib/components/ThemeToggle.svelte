@@ -15,41 +15,57 @@
     class:active={theme === 'light'}
     onclick={() => setTheme('light')}
   >
-    Light
+    ☀️ Light
   </button>
   <button
     type="button"
     class:active={theme === 'dark'}
     onclick={() => setTheme('dark')}
   >
-    Dark
+    🌙 Dark
   </button>
 </div>
 
 <style>
   .toggle {
     display: inline-flex;
-    gap: 0.35rem;
-    padding: 0.35rem;
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    background: linear-gradient(180deg, var(--surface-tint), var(--surface-soft));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    gap: 0.18rem;
+    padding: 0.18rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--surface-soft);
+    width: 100%;
   }
 
   button {
-    border: 0;
+    flex: 1;
+    border: 1px solid transparent;
     background: transparent;
-    color: var(--muted);
-    padding: 0.55rem 0.95rem;
-    border-radius: 999px;
+    color: var(--text-soft);
+    padding: 0.42rem 0.6rem;
+    border-radius: var(--radius-pill);
     cursor: pointer;
     font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition:
+      background 150ms ease,
+      color 150ms ease,
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  button:hover:not(.active) {
+    color: var(--text);
+    background: var(--surface-tint);
+    transform: none;
+    box-shadow: none;
   }
 
   .active {
-    background: var(--accent);
-    color: var(--accent-contrast);
-    box-shadow: 0 10px 25px color-mix(in srgb, var(--accent) 24%, transparent);
+    background: var(--surface-strong);
+    color: var(--text);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow);
   }
 </style>

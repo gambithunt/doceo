@@ -14,258 +14,193 @@
 
   const { state }: { state: AppState } = $props();
 
-  const profileSubjects = $derived([
-    ...state.onboarding.selectedSubjectNames,
-    ...state.onboarding.customSubjects
-  ]);
-  const visibleProfileSubjects = $derived(profileSubjects.slice(0, 3));
-  const hiddenProfileSubjectCount = $derived(Math.max(profileSubjects.length - visibleProfileSubjects.length, 0));
-
   const links = $derived([
-    { id: 'dashboard', label: 'Dashboard', caption: 'Home, start new, resume active lesson', path: dashboardPath() },
-    { id: 'subject', label: 'Subjects', caption: 'Curriculum roadmap and topic browser', path: subjectPath(state.ui.selectedSubjectId) },
-    { id: 'revision', label: 'Revision', caption: 'Exam practice and spaced repetition', path: revisionPath() },
-    { id: 'progress', label: 'Progress', caption: 'Mastery, sessions, and learning style', path: progressPath() },
-    { id: 'settings', label: 'Settings', caption: 'Academic profile and preferences', path: settingsPath() }
+    { id: 'dashboard', label: 'Dashboard', icon: '🏠', path: dashboardPath() },
+    { id: 'subject', label: 'Subjects', icon: '📚', path: subjectPath(state.ui.selectedSubjectId) },
+    { id: 'revision', label: 'Revision', icon: '🔁', path: revisionPath() },
+    { id: 'progress', label: 'Progress', icon: '📈', path: progressPath() },
+    { id: 'settings', label: 'Settings', icon: '⚙️', path: settingsPath() }
   ]);
 
   function isActive(linkId: string): boolean {
     const pathname = $page.url.pathname;
-
-    if (linkId === 'subject') {
-      return pathname.startsWith('/subjects');
-    }
-
+    if (linkId === 'subject') return pathname.startsWith('/subjects');
     return pathname === links.find((link) => link.id === linkId)?.path;
   }
 </script>
 
 <aside class="sidebar">
-  <header class="brand card">
-    <div class="brand-top">
-      <p class="eyebrow">Doceo</p>
+
+  <div class="brand">
+    <div class="brand-mark">D</div>
+    <div class="brand-copy">
+      <h1>Doceo</h1>
+      <p>{state.profile.grade} · {state.profile.curriculum}</p>
+    </div>
+    <div class="brand-theme">
       <ThemeToggle theme={state.ui.theme} />
     </div>
-    <div class="brand-copy">
-      <h1>{state.profile.fullName}</h1>
-      <p>{state.profile.grade} · {state.profile.curriculum} · {state.profile.country}</p>
-    </div>
-  </header>
+  </div>
 
-  <nav class="nav card" aria-label="Primary">
+  <nav aria-label="Primary">
     {#each links as link}
       <button
         type="button"
+        class="nav-item"
         class:active={isActive(link.id)}
         aria-current={isActive(link.id) ? 'page' : undefined}
         onclick={() => goto(link.id === 'subject' ? subjectPath(state.ui.selectedSubjectId) : link.path)}
       >
-        <strong>{link.label}</strong>
-        <span>{link.caption}</span>
+        <span class="nav-icon" aria-hidden="true">{link.icon}</span>
+        <span class="nav-label">{link.label}</span>
       </button>
     {/each}
   </nav>
 
-  <section class="card info-card">
-    <p class="eyebrow">Learning profile</p>
-    <div class="stat-row">
-      <span>School context</span>
-      <strong>{state.profile.schoolYear} · {state.profile.term}</strong>
-    </div>
-    <div class="stat-row">
-      <span>Recommended start</span>
-      <strong>{state.profile.recommendedStartSubjectName ?? 'Not set yet'}</strong>
-    </div>
-    <div class="stat-row">
-      <span>Subjects</span>
-      <strong>{profileSubjects.length}</strong>
-    </div>
-    <div class="subjects">
-      {#each visibleProfileSubjects as subject}
-        <span class="pill">{subject}</span>
-      {/each}
-      {#if hiddenProfileSubjectCount > 0}
-        <span class="pill soft">+{hiddenProfileSubjectCount} more</span>
-      {/if}
-    </div>
-  </section>
+  <div class="sidebar-footer">
+    <button type="button" class="btn btn-secondary signout" onclick={() => appState.signOut()}>
+      Sign out
+    </button>
+  </div>
 
-  <button type="button" class="btn btn-secondary signout" onclick={() => appState.signOut()}>Sign out</button>
 </aside>
 
 <style>
-  .sidebar,
-  .brand,
-  .brand-copy,
-  .nav,
-  .info-card {
-    display: grid;
-    gap: 0.85rem;
-  }
-
   .sidebar {
-    --sans: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
-    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --sidebar-card-surface: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-strong) 96%, transparent),
-      color-mix(in srgb, var(--surface) 100%, transparent)
-    );
-    --sidebar-card-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
-    --sidebar-card-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
-    --sidebar-soft-surface: color-mix(in srgb, var(--surface-soft) 82%, transparent);
-    --sidebar-overlay-blur: blur(12px);
-    align-content: start;
-    min-height: 0;
-    overflow-y: auto;
-    padding-right: 0.15rem;
-    font-family: var(--sans);
-  }
-
-  :global(:root[data-theme='dark']) .sidebar {
-    --sidebar-card-surface: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-strong) 98%, transparent),
-      color-mix(in srgb, var(--surface) 100%, transparent)
-    );
-    --sidebar-card-border: color-mix(in srgb, var(--border-strong) 92%, transparent);
-    --sidebar-card-shadow: var(--shadow-strong);
-    --sidebar-soft-surface: color-mix(in srgb, var(--surface-soft) 88%, transparent);
-    --sidebar-overlay-blur: blur(20px);
-  }
-
-  .card {
-    border: 1px solid var(--sidebar-card-border);
-    border-radius: var(--radius-xl);
-    background: var(--sidebar-card-surface);
-    padding: 1rem;
-    box-shadow: var(--sidebar-card-shadow);
-    backdrop-filter: var(--sidebar-overlay-blur);
-  }
-
-  .brand-top,
-  .stat-row {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
     gap: 0.75rem;
-    align-items: center;
+    min-height: 0;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
+  /* ── Brand ── */
   .brand {
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 8%, var(--surface)),
-      color-mix(in srgb, var(--surface-strong) 96%, transparent)
-    );
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 0.75rem;
+    row-gap: 0.6rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 0.9rem 1rem;
+    box-shadow: var(--shadow);
+  }
+
+  .brand-mark {
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: var(--radius-md);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-size: 1.1rem;
+    font-weight: 800;
+    display: grid;
+    place-items: center;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .brand-copy {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    align-self: center;
   }
 
   .brand-copy h1 {
-    font-size: 1.34rem;
-    line-height: 1;
-    letter-spacing: -0.03em;
-  }
-
-  .brand-copy p,
-  .stat-row span {
-    color: var(--muted);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.02em;
   }
 
   .brand-copy p {
-    font-size: 0.96rem;
-    line-height: 1.4;
+    font-size: 0.75rem;
+    color: var(--text-soft);
+    margin-top: 0.1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .nav button {
+  .brand-theme {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  /* ── Nav ── */
+  nav {
     display: grid;
-    gap: 0.24rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
-    border-radius: 1.05rem;
-    background: var(--sidebar-soft-surface);
-    color: var(--text);
-    padding: 0.72rem 0.82rem;
+    gap: 0.35rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 0.6rem;
+    box-shadow: var(--shadow);
+    align-content: start;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius-lg) - 0.4rem);
+    background: transparent;
+    color: var(--text-soft);
+    padding: 0.7rem 0.85rem;
     text-align: left;
     font: inherit;
+    font-size: 0.92rem;
+    font-weight: 500;
     cursor: pointer;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      color var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
+  }
+
+  .nav-item:hover {
+    background: var(--surface-soft);
+    color: var(--text);
+    transform: none;
     box-shadow: none;
   }
 
-  .nav button strong {
-    font-size: 0.98rem;
+  .nav-item.active {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--text);
     font-weight: 600;
   }
 
-  .nav button span {
-    font-size: 0.82rem;
-    letter-spacing: 0;
-    text-transform: none;
-    color: var(--text-soft);
-    line-height: 1.4;
+  .nav-icon {
+    font-size: 1.05rem;
+    line-height: 1;
+    flex-shrink: 0;
   }
 
-  .nav button.active {
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 10%, var(--surface)),
-      color-mix(in srgb, var(--accent) 5%, var(--surface-soft))
-    );
-    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 18%, transparent);
+  .nav-label {
+    flex: 1;
   }
 
-  .subjects {
-    display: flex;
-    gap: 0.45rem;
-    flex-wrap: wrap;
-  }
-
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-start;
-    text-align: left;
-    min-height: 1.95rem;
-    padding: 0.45rem 0.72rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-tint) 94%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
-    line-height: 1.1;
-    max-width: min(100%, 14rem);
-    font-size: 0.92rem;
-    font-weight: 500;
-  }
-
-  .pill.soft {
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-tint));
-    border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  /* ── Footer ── */
+  .sidebar-footer {
+    display: grid;
+    gap: 0.6rem;
   }
 
   .signout {
     width: 100%;
     font: inherit;
+    font-size: 0.88rem;
   }
 
-  .eyebrow,
-  h1,
-  p,
-  span,
-  strong {
+  h1, p, span {
     margin: 0;
-  }
-
-  .eyebrow {
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.72rem;
-    font-family: var(--mono);
-  }
-
-  .stat-row span {
-    font-size: 0.92rem;
-  }
-
-  .stat-row strong {
-    font-size: 0.96rem;
-    font-weight: 600;
   }
 </style>

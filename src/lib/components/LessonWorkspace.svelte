@@ -1,7 +1,7 @@
 <script lang="ts">
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { getActiveLessonSession } from '$lib/data/platform';
-  import { getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
+  import { getNextStage, getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
   import { appState } from '$lib/stores/app-state';
   import type { AppState, ConceptItem, LessonMessage, LessonStage } from '$lib/types';
@@ -30,7 +30,25 @@
     appState.updateComposerDraft(message);
   }
 
+  function parseQuestionCard(content: string): { concept: string | null; prompt: string } {
+    const match = content.match(/^\[CONCEPT:\s*(.+?)\]\s*([\s\S]*)$/);
+    if (!match) {
+      return { concept: null, prompt: content.trim() };
+    }
+
+    return {
+      concept: match[1].trim(),
+      prompt: match[2].trim()
+    };
+  }
+
   const visibleStages = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete');
+  const currentStageNumber = $derived(lessonSession ? getStageNumber(lessonSession.currentStage) : 1);
+  const currentStageLabel = $derived(lessonSession ? getStageLabel(lessonSession.currentStage) : 'Orientation');
+  const nextStage = $derived(lessonSession ? getNextStage(lessonSession.currentStage) : null);
+  const lessonProgressPercent = $derived(
+    lessonSession ? Math.max(8, Math.round((lessonSession.stagesCompleted.length / visibleStages.length) * 100)) : 0
+  );
 
   $effect(() => {
     composer = viewState.ui.composerDraft;
@@ -101,6 +119,55 @@
   function bubbleAnimationClass(message: LessonMessage): string {
     return message.role === 'user' ? 'enter-user' : 'enter-assistant';
   }
+
+  function isCompactUserReply(message: LessonMessage): boolean {
+    if (message.role !== 'user' || message.type === 'question') {
+      return false;
+    }
+
+    const content = message.content.trim();
+    return content.length > 0 && content.length <= 28 && !content.includes('\n');
+  }
+
+  function stageEmoji(stage: LessonStage): string {
+    if (stage === 'orientation') return '🧭';
+    if (stage === 'concepts') return '💡';
+    if (stage === 'construction') return '🧩';
+    if (stage === 'examples') return '✨';
+    if (stage === 'practice') return '🎯';
+    if (stage === 'check') return '🧠';
+    return '⭐';
+  }
+
+  function stagePrompt(stage: LessonStage): string {
+    if (stage === 'orientation') return 'Get the big picture before you dive into the details.';
+    if (stage === 'concepts') return 'Unpack the core ideas one by one and connect them.';
+    if (stage === 'construction') return 'Build the logic together so the pattern sticks.';
+    if (stage === 'examples') return 'See the idea working in real situations.';
+    if (stage === 'practice') return 'Try it yourself and check the moves you choose.';
+    if (stage === 'check') return 'Show what has landed and spot anything that still feels shaky.';
+    return 'Keep going and build on what you already know.';
+  }
+
+  function helperPrompt(stage: LessonStage): string {
+    if (stage === 'orientation') return 'Give me a real-world example for this topic.';
+    if (stage === 'concepts') return 'Compare two of these concepts for me.';
+    if (stage === 'construction') return 'Walk me through this step by step.';
+    if (stage === 'examples') return 'Show me a simpler example first.';
+    if (stage === 'practice') return 'Give me a hint instead of the answer.';
+    return 'Quiz me on this before we move on.';
+  }
+
+  function conceptEmoji(concept: ConceptItem, index: number): string {
+    const name = concept.name.toLowerCase();
+    if (name.includes('competition')) return '🍎';
+    if (name.includes('oligopoly')) return '📱';
+    if (name.includes('monopoly')) return '👑';
+    if (name.includes('feedback')) return '🔁';
+    if (name.includes('control')) return '🎛️';
+    const fallback = ['💡', '🧩', '✨', '📘', '🎯'];
+    return fallback[index % fallback.length];
+  }
 </script>
 
 {#if lessonSession}
@@ -123,6 +190,17 @@
         </div>
       </div>
 
+      <div class="lesson-summary">
+        <div class="summary-head">
+          <span class="summary-stage">{stageEmoji(lessonSession.currentStage)} Stage {currentStageNumber} of {visibleStages.length}</span>
+          <span class="summary-stage-name">{currentStageLabel}</span>
+        </div>
+        <div class="summary-progress" aria-hidden="true">
+          <span style={`width: ${lessonProgressPercent}%;`}></span>
+        </div>
+        <p>{stagePrompt(lessonSession.currentStage)}</p>
+      </div>
+
       <nav class="progress-rail" aria-label="Lesson stages">
         {#each visibleStages as stage}
           <div class:completed={statusForStage(stage) === 'completed'} class:active={statusForStage(stage) === 'active'} class="stage">
@@ -137,7 +215,13 @@
       <div class="chat-area" bind:this={chatElement}>
         {#each lessonSession.messages as message}
           {#if message.type === 'stage_start'}
-            <div class="stage-badge">{message.content}</div>
+            <section class="chapter-marker">
+              <div class="chapter-kicker">
+                <span class="chapter-number">{String(getStageNumber(message.stage)).padStart(2, '0')}</span>
+                <span>{stageEmoji(message.stage)} {getStageLabel(message.stage)}</span>
+              </div>
+              <p>{stagePrompt(message.stage)}</p>
+            </section>
           {:else if message.type === 'concept_cards'}
             <div class="concept-cards-panel">
               <p class="concept-cards-label">Pick a concept to go deeper 🔍</p>
@@ -145,6 +229,7 @@
                 {@const key = `${message.id}-${i}`}
                 <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
                   <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
+                    <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, i)}</span>
                     <div class="concept-card-title">
                       <span class="concept-name">{concept.name}</span>
                       <span class="concept-summary">{concept.summary}</span>
@@ -170,14 +255,28 @@
               {/each}
             </div>
           {:else}
-            <article class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}>
+            <article
+              class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
+              class:compact-reply={isCompactUserReply(message)}
+            >
               {#if message.type === 'question'}
-                <small>❓ Question</small>
+                {@const questionCard = parseQuestionCard(message.content)}
+                <div class="question-kicker">
+                  <span class="question-icon" aria-hidden="true">?</span>
+                  <small>Question</small>
+                </div>
+                {#if questionCard.concept}
+                  <span class="question-chip">{questionCard.concept}</span>
+                {/if}
+                <div class="bubble-body question-body">
+                  <p>{questionCard.prompt}</p>
+                </div>
+              {:else}
+                {#if message.type === 'side_thread'}
+                  <small>↳ Side Thread</small>
+                {/if}
+                <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
               {/if}
-              {#if message.type === 'side_thread'}
-                <small>↳ Side Thread</small>
-              {/if}
-              <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
             </article>
           {/if}
         {/each}
@@ -192,6 +291,44 @@
           </article>
         {/if}
       </div>
+
+      <aside class="lesson-rail" aria-label="Lesson companion">
+        <section class="rail-card mission-card">
+          <p class="rail-kicker">Lesson mission</p>
+          <h3>{stageEmoji(lessonSession.currentStage)} {currentStageLabel}</h3>
+          <p>{stagePrompt(lessonSession.currentStage)}</p>
+          <div class="rail-progress" aria-hidden="true">
+            <span style={`width: ${lessonProgressPercent}%;`}></span>
+          </div>
+          <small>{lessonProgressPercent}% of this lesson complete</small>
+        </section>
+
+        <section class="rail-card helper-card">
+          <p class="rail-kicker">Need another angle?</p>
+          <h3>Ask Doceo for backup</h3>
+          <p>Try a guided prompt when you want a clearer example or a slower walkthrough.</p>
+          <div class="rail-actions">
+            <button type="button" class="btn btn-secondary rail-action" onclick={() => sendQuickReply(helperPrompt(lessonSession.currentStage))}>
+              {stageEmoji(lessonSession.currentStage)} Help me with this
+            </button>
+            <button type="button" class="btn btn-secondary rail-action" onclick={() => sendQuickReply('Quiz me on this idea before we move on.')}>
+              🧠 Quick check
+            </button>
+          </div>
+        </section>
+
+        {#if nextStage}
+          <section class="rail-card next-card">
+            <p class="rail-kicker">Next up</p>
+            <h3>{stageEmoji(nextStage)} {getStageLabel(nextStage)}</h3>
+            <p>{stagePrompt(nextStage)}</p>
+            <button type="button" class="btn btn-primary next-stage-button" onclick={() => sendQuickReply("I'm ready for the next step.")}>
+              <span>Let’s keep going</span>
+              <span class="next-stage-arrow" aria-hidden="true">→</span>
+            </button>
+          </section>
+        {/if}
+      </aside>
 
       <div class="input-area">
         <p>What do you want to try next? Reply, ask a question, or tap a shortcut.</p>
@@ -208,7 +345,10 @@
             placeholder="Type your response or ask a question..."
             oninput={onInput}
           ></textarea>
-          <button type="button" class="btn btn-primary send" onclick={submit}>↑</button>
+          <button type="button" class="btn btn-primary send" onclick={submit} aria-label="Send response">
+            <span class="send-label">Send</span>
+            <span class="send-icon" aria-hidden="true">↑</span>
+          </button>
         </div>
       </div>
     </section>
@@ -265,6 +405,22 @@
     --chat-stage-border: color-mix(in srgb, var(--border-strong) 78%, rgba(217, 207, 191, 0.22));
     --chat-user-bg: color-mix(in srgb, #111827 92%, black 8%);
     --chat-user-text: #f8fafc;
+    --chat-question-bg: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 16%, var(--surface-strong)),
+      color-mix(in srgb, var(--surface-soft) 94%, transparent)
+    );
+    --chat-question-border: color-mix(in srgb, var(--accent) 26%, var(--border));
+    --chat-question-icon: color-mix(in srgb, var(--accent) 82%, #0f766e 18%);
+    --chat-question-chip-bg: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+    --chat-question-chip-border: color-mix(in srgb, var(--accent) 22%, transparent);
+    --chat-question-kicker: color-mix(in srgb, var(--accent) 56%, var(--text-soft) 44%);
+    --concept-example-surface: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 8%, var(--surface-soft)),
+      color-mix(in srgb, #f8fffb 88%, var(--surface-strong) 12%)
+    );
+    --concept-example-border: color-mix(in srgb, var(--accent) 20%, var(--border));
     display: grid;
     gap: 0.9rem;
     height: 100%;
@@ -304,6 +460,22 @@
     --chat-stage-border: color-mix(in srgb, var(--border-strong) 92%, rgba(205, 193, 173, 0.2));
     --chat-user-bg: linear-gradient(180deg, rgba(24, 26, 30, 0.98), rgba(15, 17, 20, 0.98));
     --chat-user-text: #f8fafc;
+    --chat-question-bg: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 12%, rgba(10, 28, 31, 0.96)),
+      color-mix(in srgb, var(--surface-strong) 98%, rgba(14, 22, 33, 0.98))
+    );
+    --chat-question-border: color-mix(in srgb, var(--accent) 24%, var(--border));
+    --chat-question-icon: color-mix(in srgb, var(--accent) 86%, #d8fff1 14%);
+    --chat-question-chip-bg: color-mix(in srgb, var(--accent) 12%, rgba(14, 22, 33, 0.98));
+    --chat-question-chip-border: color-mix(in srgb, var(--accent) 24%, transparent);
+    --chat-question-kicker: color-mix(in srgb, var(--accent) 58%, var(--text-soft) 42%);
+    --concept-example-surface: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 10%, rgba(18, 34, 38, 0.92)),
+      color-mix(in srgb, var(--surface-soft) 94%, rgba(18, 24, 33, 0.94))
+    );
+    --concept-example-border: color-mix(in srgb, var(--accent) 18%, rgba(180, 228, 210, 0.18));
   }
 
   .lesson-header,
@@ -333,6 +505,66 @@
     display: grid;
     gap: 0.9rem;
     padding: 0.95rem 1.05rem;
+  }
+
+  .lesson-summary {
+    display: grid;
+    gap: 0.42rem;
+    max-width: 36rem;
+  }
+
+  .summary-head {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+  }
+
+  .summary-stage {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.34rem 0.62rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--accent) 76%, var(--text) 24%);
+  }
+
+  .summary-stage-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .summary-progress,
+  .rail-progress {
+    width: 100%;
+    height: 0.42rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
+    overflow: hidden;
+  }
+
+  .summary-progress span,
+  .rail-progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 82%, white 18%),
+      color-mix(in srgb, var(--accent) 62%, #8ff7dc 38%)
+    );
+  }
+
+  .lesson-summary p {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text-soft);
+    line-height: 1.45;
   }
 
   .top-bar {
@@ -379,8 +611,8 @@
     gap: 0.45rem;
     padding: 0.45rem 0.78rem 0.45rem 0.5rem;
     border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-    color: color-mix(in srgb, var(--muted) 80%, var(--text) 20%);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+    color: color-mix(in srgb, var(--muted) 84%, var(--text) 16%);
     white-space: nowrap;
     background: var(--lesson-stage-surface);
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
@@ -411,7 +643,7 @@
     display: grid;
     place-items: center;
     background: color-mix(in srgb, var(--surface) 88%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 62%, transparent);
     font-size: 0.73rem;
     font-weight: 700;
     color: var(--text-soft);
@@ -430,12 +662,35 @@
     color: var(--accent-contrast);
   }
 
+  :global(:root[data-theme='dark']) .stage {
+    border-color: color-mix(in srgb, var(--border-strong) 42%, transparent);
+    color: color-mix(in srgb, var(--muted) 90%, var(--text) 10%);
+    background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+  }
+
+  :global(:root[data-theme='dark']) .stage .icon {
+    border-color: color-mix(in srgb, var(--border-strong) 48%, transparent);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    color: color-mix(in srgb, var(--muted) 84%, var(--text) 16%);
+  }
+
+  :global(:root[data-theme='dark']) .stage.active {
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+  }
+
+  :global(:root[data-theme='dark']) .stage.completed {
+    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
+  }
+
   .stage-text {
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
   }
 
   .lesson-body {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) 18rem;
     grid-template-rows: minmax(0, 1fr) auto;
     gap: 0;
     min-height: 0;
@@ -454,22 +709,151 @@
     overscroll-behavior: contain;
   }
 
-  .stage-badge {
-    justify-self: center;
+  .lesson-rail {
+    display: grid;
+    align-content: start;
+    gap: 0.8rem;
+    padding: 1.3rem 1.1rem 1rem 0;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .input-area {
+    grid-column: 1 / -1;
+  }
+
+  .rail-card {
+    display: grid;
+    gap: 0.55rem;
+    padding: 1rem;
+    border-radius: 1.1rem;
+    border: 1px solid color-mix(in srgb, var(--lesson-shell-border) 88%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  }
+
+  .rail-kicker {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  .rail-card h3,
+  .rail-card p,
+  .rail-card small {
+    margin: 0;
+  }
+
+  .rail-card h3 {
+    font-size: 1.02rem;
+    line-height: 1.2;
+    font-weight: 650;
+  }
+
+  .rail-card p {
+    color: var(--text-soft);
+    font-size: 0.9rem;
+    line-height: 1.48;
+  }
+
+  .rail-card small {
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+
+  .rail-actions {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .rail-action {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .next-card {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 8%, var(--surface-strong)),
+      color-mix(in srgb, var(--surface-soft) 88%, transparent)
+    );
+    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .next-stage-button {
+    justify-self: start;
+    width: auto;
+    min-height: 2.6rem;
+    padding-inline: 1rem;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.45rem;
-    padding: 0.45rem 0.9rem;
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
+    letter-spacing: -0.01em;
+  }
+
+  .next-stage-button:hover {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
+      0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .next-stage-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.92rem;
+    line-height: 1;
+    opacity: 0.9;
+  }
+
+  .chapter-marker {
+    display: grid;
+    gap: 0.42rem;
+    justify-self: start;
+    max-width: 40rem;
+    padding: 0.2rem 0 0.05rem;
+    animation: badge-arrive 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .chapter-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    justify-self: start;
+    padding: 0.42rem 0.78rem 0.42rem 0.48rem;
     border-radius: 999px;
     background: var(--chat-stage-bg);
     color: var(--chat-stage-text);
     border: 1px solid var(--chat-stage-border);
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-    animation: badge-arrive 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1;
+  }
+
+  .chapter-number {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 74%, transparent);
+    color: var(--text-soft);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .chapter-marker p {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.92rem;
+    line-height: 1.45;
   }
 
   .bubble {
@@ -519,18 +903,55 @@
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.16);
   }
 
+  .bubble.user.compact-reply {
+    width: fit-content;
+    max-width: min(100%, 24rem);
+    min-height: 0;
+    padding: 0.78rem 1rem;
+    border-radius: 1rem 1rem 0.32rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 12%, var(--surface-strong)),
+      color-mix(in srgb, var(--surface-soft) 96%, transparent)
+    );
+    color: var(--text);
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 8%, rgba(15, 23, 42, 0.08));
+  }
+
+  .bubble.user.compact-reply .bubble-body {
+    display: block;
+    width: fit-content;
+  }
+
+  .bubble.user.compact-reply .bubble-body :global(p) {
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+
+  :global(:root[data-theme='dark']) .bubble.user.compact-reply {
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 14%, rgba(12, 24, 28, 0.96)),
+      color-mix(in srgb, var(--surface-strong) 98%, rgba(17, 24, 39, 0.98))
+    );
+    border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+    color: #f2fbf8;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 10%, rgba(0, 0, 0, 0.24));
+  }
+
   .bubble.user.question {
     justify-self: start;
     max-width: 26rem;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 76%, white 24%),
-      color-mix(in srgb, var(--accent) 58%, #d9fff0 42%)
-    );
-    border-color: color-mix(in srgb, var(--accent) 26%, transparent);
-    color: var(--accent-contrast);
-    box-shadow: 0 14px 28px color-mix(in srgb, var(--accent) 18%, transparent);
+    background: var(--chat-question-bg);
+    border-color: var(--chat-question-border);
+    color: var(--text);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent),
+      0 14px 30px color-mix(in srgb, var(--accent) 10%, rgba(0, 0, 0, 0.18));
     transform-origin: left bottom;
+    gap: 0.52rem;
+    padding: 0.95rem 1.08rem 1rem;
   }
 
   .bubble small {
@@ -540,6 +961,55 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  .question-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+  }
+
+  .question-kicker small {
+    color: var(--chat-question-kicker);
+    opacity: 1;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
+
+  .question-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 1rem;
+    height: 1rem;
+    color: var(--chat-question-icon);
+    font-size: 0.92rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .question-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    padding: 0.32rem 0.58rem;
+    border-radius: 999px;
+    border: 1px solid var(--chat-question-chip-border);
+    background: var(--chat-question-chip-bg);
+    color: color-mix(in srgb, var(--text-soft) 82%, var(--accent) 18%);
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .question-body {
+    gap: 0.4rem;
+  }
+
+  .question-body :global(p) {
+    font-size: 1.04rem;
+    line-height: 1.5;
+    font-weight: 500;
+    color: var(--text);
   }
 
   .bubble-body :global(p),
@@ -637,6 +1107,10 @@
     line-height: 1.6;
   }
 
+  .composer {
+    align-items: end;
+  }
+
   .close-button,
   .debug,
   .send {
@@ -658,6 +1132,40 @@
   .quick:hover {
     background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
     border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  }
+
+  .send {
+    align-self: end;
+    min-width: 6.2rem;
+    min-height: 3rem;
+    padding: 0.8rem 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .send:hover {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
+      0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .send-label {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 0.94rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  .send-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.92rem;
+    line-height: 1;
+    opacity: 0.9;
   }
 
   .enter-assistant {
@@ -769,6 +1277,18 @@
     line-height: 1.4;
   }
 
+  .concept-marker {
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 0.72rem;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
   .concept-card-header:hover {
     background: color-mix(in srgb, var(--accent) 6%, transparent);
   }
@@ -832,12 +1352,8 @@
     gap: 0.35rem;
     padding: 0.72rem 0.9rem;
     border-radius: 0.72rem;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 8%, var(--surface-soft)),
-      color-mix(in srgb, #f8fffb 88%, var(--surface-strong) 12%)
-    );
-    border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+    background: var(--concept-example-surface);
+    border: 1px solid var(--concept-example-border);
     font-size: 0.88rem;
     line-height: 1.58;
   }
@@ -892,6 +1408,16 @@
       align-items: stretch;
     }
 
+    .lesson-body {
+      grid-template-columns: 1fr;
+    }
+
+    .lesson-rail {
+      order: 2;
+      padding: 0 1rem 1rem;
+      grid-auto-flow: row;
+    }
+
     .top-actions {
       justify-content: space-between;
       flex-wrap: wrap;
@@ -899,6 +1425,12 @@
 
     .composer {
       flex-direction: column;
+    }
+
+    .send {
+      width: auto;
+      min-height: 3rem;
+      align-self: stretch;
     }
 
     .quick-actions {
@@ -1004,9 +1536,10 @@
   @media (prefers-reduced-motion: reduce) {
     .top-bar,
     .progress-rail,
+    .lesson-summary,
     .input-area,
     .confirm-card,
-    .stage-badge,
+    .chapter-marker,
     .bubble,
     .bubble-body,
     .typing-dots span {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
+  import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
   import AnimatedStatNumber from '$lib/components/AnimatedStatNumber.svelte';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
   import { resolveSubjectHints } from '$lib/ai/subject-hints';
@@ -12,7 +13,7 @@
   const { state: viewState }: { state: AppState } = $props();
   let topicInputFocused = $state(false);
   let promptSuggestionsText = $state('');
-  let hintChipsLoading = $state(false);
+  let hintChipsLoading = $state(true);
   let hintChipsRefreshing = $state(false);
   let hintRefreshError = $state('');
   let pendingChipId = $state<string | null>(null);
@@ -21,21 +22,13 @@
 
   const summary = $derived(getCompletionSummary(viewState));
   const availableSubjects = $derived(viewState.curriculum.subjects);
-  const activeLessons = $derived(
-    viewState.lessonSessions
-      .filter((session) => session.status === 'active')
-      .sort((left, right) => Date.parse(right.lastActiveAt) - Date.parse(left.lastActiveAt))
-  );
-  const currentSession = $derived(activeLessons[0] ?? null);
-  const recentLessons = $derived(
-    viewState.lessonSessions
-      .filter((session) => session.status !== 'archived')
-      .sort((left, right) => Date.parse(right.lastActiveAt) - Date.parse(left.lastActiveAt))
-      .filter((session) => session.id !== currentSession?.id)
-      .slice(0, 4)
-  );
+  const dashboardLessonLists = $derived(deriveDashboardLessonLists(viewState.lessonSessions));
+  const currentSession = $derived(dashboardLessonLists.currentSession);
+  const recentLessons = $derived(dashboardLessonLists.recentLessons);
+  const firstName = $derived(viewState.profile.fullName.split(' ')[0] || viewState.profile.fullName);
+
   const selectedSubject = $derived(
-    availableSubjects.find((subject) => subject.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
+    availableSubjects.find((s) => s.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
   );
   const promptSuggestionChips = $derived(
     extractHintChipLabels(promptSuggestionsText).map((label, index) => ({
@@ -43,28 +36,12 @@
       label
     }))
   );
-  const assistantStatus = $derived.by(() => {
-    switch (viewState.topicDiscovery.status) {
-      case 'loading':
-        return 'Finding curriculum matches...';
-      case 'ready':
-        return viewState.topicDiscovery.shortlist ? 'Pick your topic to begin' : 'Ready to map your idea';
-      case 'error':
-        return 'Unable to match right now';
-      default:
-        return currentSession ? 'Teaching in progress' : 'Ready to map your idea';
-    }
-  });
 
   async function loadSubjectHints(forceRefresh = false): Promise<void> {
-    if (!selectedSubject) {
-      return;
-    }
+    if (!selectedSubject) return;
 
     const hintSeed = `${viewState.profile.curriculumId}:${viewState.profile.gradeId}:${viewState.profile.term}:${selectedSubject.id}`;
-    if (!forceRefresh && hintSeed === lastHintSeed) {
-      return;
-    }
+    if (!forceRefresh && hintSeed === lastHintSeed) return;
 
     lastHintSeed = hintSeed;
     hintRefreshError = '';
@@ -91,34 +68,22 @@
         headers: await getAuthenticatedHeaders()
       });
 
-      if (requestId !== latestHintRequest) {
-        return;
-      }
-
+      if (requestId !== latestHintRequest) return;
       promptSuggestionsText = result.hints.join('\n');
-      hintChipsLoading = false;
-      hintChipsRefreshing = false;
     } catch {
-      if (requestId !== latestHintRequest) {
-        return;
+      if (requestId !== latestHintRequest) return;
+      if (forceRefresh) hintRefreshError = "Couldn't refresh suggestions right now.";
+      else promptSuggestionsText = '';
+    } finally {
+      if (requestId === latestHintRequest) {
+        hintChipsLoading = false;
+        hintChipsRefreshing = false;
       }
-
-      if (!forceRefresh) {
-        promptSuggestionsText = '';
-      } else {
-        hintRefreshError = "Couldn't refresh suggestions right now.";
-      }
-
-      hintChipsLoading = false;
-      hintChipsRefreshing = false;
     }
   }
 
   $effect(() => {
-    if (!selectedSubject) {
-      return;
-    }
-
+    if (!selectedSubject) return;
     void loadSubjectHints();
   });
 
@@ -126,13 +91,8 @@
     appState.setTopicDiscoveryInput((event.currentTarget as HTMLTextAreaElement).value);
   }
 
-  function onTopicFocus(): void {
-    topicInputFocused = true;
-  }
-
-  function onTopicBlur(): void {
-    topicInputFocused = false;
-  }
+  function onTopicFocus(): void { topicInputFocused = true; }
+  function onTopicBlur(): void { topicInputFocused = false; }
 
   function onSubjectChange(event: Event): void {
     lastHintSeed = '';
@@ -152,18 +112,12 @@
   }
 
   function refreshSubjectHints(): void {
-    if (!selectedSubject || hintChipsLoading || hintChipsRefreshing) {
-      return;
-    }
-
+    if (!selectedSubject || hintChipsLoading || hintChipsRefreshing) return;
     void loadSubjectHints(true);
   }
 
   function runShortlist(): void {
-    if (!selectedSubject || viewState.topicDiscovery.input.trim().length === 0) {
-      return;
-    }
-
+    if (!selectedSubject || viewState.topicDiscovery.input.trim().length === 0) return;
     void appState.shortlistTopics(selectedSubject.id, viewState.topicDiscovery.input.trim());
   }
 
@@ -172,13 +126,9 @@
   }
 
   function startFromSuggestion(chipId: string, hint: string): void {
-    if (!selectedSubject || pendingChipId) {
-      return;
-    }
-
+    if (!selectedSubject || pendingChipId) return;
     pendingChipId = chipId;
     appState.setTopicDiscoveryInput(hint);
-
     void (async () => {
       try {
         await appState.startLessonFromSelection(selectedSubject.id, hint);
@@ -195,186 +145,225 @@
   function stageProgressLabel(session: LessonSession): string {
     return `Stage ${Math.min(session.stagesCompleted.length + 1, 6)} of 6 · ${getStageLabel(session.currentStage)}`;
   }
+
+  function missionProgressPercent(session: LessonSession): number {
+    return Math.max(6, Math.round((session.stagesCompleted.length / 6) * 100));
+  }
+
+  function subjectEmoji(name: string): string {
+    const n = (name ?? '').toLowerCase();
+    if (n.includes('math')) return '📐';
+    if (n.includes('physics')) return '⚡';
+    if (n.includes('chemistry')) return '🧪';
+    if (n.includes('biology') || n.includes('life science')) return '🧬';
+    if (n.includes('english')) return '📖';
+    if (n.includes('history') || n.includes('social')) return '🏛️';
+    if (n.includes('accounting')) return '📊';
+    if (n.includes('economics')) return '📈';
+    if (n.includes('afrikaans')) return '🌍';
+    if (n.includes('art')) return '🎨';
+    if (n.includes('business')) return '💼';
+    if (n.includes('geography')) return '🗺️';
+    return '📚';
+  }
+
+  function greeting(): string {
+    const hour = new Date().getHours();
+    if (hour < 12) return `Good morning, ${firstName}!`;
+    if (hour < 17) return `Hey ${firstName}!`;
+    return `Evening, ${firstName}!`;
+  }
+
+  function greetingLine(): string {
+    if (currentSession) return `You're in the middle of something. Pick up where you left off.`;
+    if (summary.completedLessons > 0) return `${summary.completedLessons} ${summary.completedLessons === 1 ? 'lesson' : 'lessons'} completed. Keep the momentum going.`;
+    return `Your learning journey starts here. Pick a topic and let's go.`;
+  }
 </script>
 
 <section class="view">
-  <header class="dashboard-head">
-    <div class="dashboard-top">
-      <div class="dashboard-title">
-        <h2>Choose what to learn</h2>
-        <p>Describe a topic to find the closest section.</p>
-      </div>
 
-      <dl class="dashboard-summary" aria-label="Learning summary">
-        <div class="summary-item">
-          <dt>Completed</dt>
-          <dd><AnimatedStatNumber value={summary.completedLessons} />/{summary.totalLessons}</dd>
-        </div>
-        <div class="summary-item">
-          <dt>Mastery</dt>
-          <dd><AnimatedStatNumber value={summary.averageMastery} suffix="%" /></dd>
-        </div>
-        <div class="summary-item">
-          <dt>Active</dt>
-          <dd><AnimatedStatNumber value={activeLessons.length} /></dd>
-        </div>
-      </dl>
+  <!-- ── HERO ── -->
+  <div class="hero">
+
+    <!-- Greeting -->
+    <div class="hero-greeting">
+      <h2>{greeting()} <span class="greeting-wave">👋</span></h2>
+      <p>{greetingLine()}</p>
     </div>
 
-    {#if currentSession}
-      <div class="resume-strip">
-        <div class="resume-copy">
-          <p class="eyebrow">Resume lesson</p>
-          <strong>{currentSession.subject} - {currentSession.topicTitle}</strong>
-          <p>{stageProgressLabel(currentSession)}</p>
-          <small>Last opened {new Date(currentSession.lastActiveAt).toLocaleString()}</small>
-        </div>
-        <button type="button" class="btn btn-secondary btn-compact compact" onclick={() => startFromBanner(currentSession)}>
-          Resume
-        </button>
-      </div>
-    {/if}
-  </header>
+    <!-- Mission card + stats row -->
+    <div class="hero-body">
 
-  <section class="card starter">
-    <div class="starter-copy">
-      <div>
-        <p class="eyebrow">Topic matcher</p>
-        <h3>{viewState.topicDiscovery.shortlist ? 'Pick your topic to begin' : 'Find the right section'}</h3>
-      </div>
-    </div>
-
-    <div class="starter-form">
-      <label>
-        <span>Subject</span>
-        <select
-          value={selectedSubject?.id}
-          onchange={onSubjectChange}
-        >
-          {#each availableSubjects as subject}
-            <option value={subject.id}>{subject.name}</option>
-          {/each}
-        </select>
-      </label>
-
-      {#if hintChipsLoading || promptSuggestionChips.length > 0}
-        <div class="hint-panel" aria-live="polite">
-          <div class="hint-panel-copy">
-            <div class="hint-panel-head">
-              <span class="hint-panel-title">Quick starts</span>
-              <button
-                type="button"
-                class="btn btn-secondary btn-compact refresh-hints"
-                aria-busy={hintChipsRefreshing}
-                disabled={hintChipsLoading || hintChipsRefreshing}
-                onclick={refreshSubjectHints}
-              >
-                {hintChipsRefreshing ? 'Refreshing...' : 'Refresh suggestions'}
-              </button>
+      {#if currentSession}
+        <div class="mission-card">
+          <div class="mission-card-inner">
+            <p class="mission-kicker">Current Mission</p>
+            <h3 class="mission-title">{currentSession.topicTitle}</h3>
+            <p class="mission-meta">{currentSession.subject} · {stageProgressLabel(currentSession)}</p>
+            <div class="mission-progress-bar">
+              <div class="mission-progress-fill" style="width: {missionProgressPercent(currentSession)}%"></div>
             </div>
-            <p>Start with a suggested lesson.</p>
+            <div class="mission-footer">
+              <button type="button" class="btn btn-primary" onclick={() => startFromBanner(currentSession)}>
+                Resume →
+              </button>
+              <span class="mission-timestamp">Last opened {new Date(currentSession.lastActiveAt).toLocaleDateString()}</span>
+            </div>
           </div>
-
-          <div class="hint-chip-list">
-            {#if hintChipsLoading}
-              {#each Array.from({ length: 5 }) as _, index}
-                <span
-                  class="hint-chip hint-chip-skeleton"
-                  aria-hidden="true"
-                  style={`--chip-index: ${index};`}
-                ></span>
-              {/each}
-            {:else}
-              {#each promptSuggestionChips as chip, index (chip.id)}
-                <button
-                  type="button"
-                  id={`quick-start-${chip.id}`}
-                  data-chip-id={chip.id}
-                  aria-busy={pendingChipId === chip.id}
-                  aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
-                  class:selected={pendingChipId === chip.id}
-                  class:loading={pendingChipId === chip.id}
-                  class="hint-chip"
-                  style={`--chip-index: ${index};`}
-                  onclick={() => startFromSuggestion(chip.id, chip.label)}
-                >
-                  <span class="hint-chip-name">{chip.label}</span>
-                  {#if pendingChipId === chip.id}
-                    <span class="hint-chip-loading" aria-hidden="true">
-                      <span class="busy-indicator">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </span>
-                    </span>
-                  {:else}
-                    <span class="hint-chip-action" aria-hidden="true">></span>
-                  {/if}
-                </button>
-              {/each}
-            {/if}
+        </div>
+      {:else}
+        <div class="mission-card mission-card--empty">
+          <div class="mission-card-inner">
+            <p class="mission-kicker">Ready to start?</p>
+            <h3 class="mission-title">Pick a topic below</h3>
+            <p class="mission-meta">Choose a subject and describe what you want to learn. We'll find the perfect lesson.</p>
           </div>
-
-          {#if hintRefreshError}
-            <p class="hint-refresh-error">{hintRefreshError}</p>
-          {/if}
         </div>
       {/if}
 
-      <label class="topic-detail-field">
-        <span>What do you want to work on?</span>
-        <div class="topic-input-wrap">
-          <textarea
-            rows="3"
-            value={viewState.topicDiscovery.input}
-            oninput={onInput}
-            onfocus={onTopicFocus}
-            onblur={onTopicBlur}
-          ></textarea>
+      <!-- Stat strip -->
+      <div class="stat-strip">
+        <div class="stat-pill">
+          <span class="stat-pill-icon">⭐</span>
+          <div class="stat-pill-text">
+            <span class="stat-pill-value" style="color: var(--color-xp);">
+              <AnimatedStatNumber value={summary.averageMastery} suffix="%" />
+            </span>
+            <span class="stat-pill-label">mastery</span>
+          </div>
         </div>
-      </label>
 
-      <div class="starter-actions">
+        <div class="stat-pill">
+          <span class="stat-pill-icon">✅</span>
+          <div class="stat-pill-text">
+            <span class="stat-pill-value">
+              <AnimatedStatNumber value={summary.completedLessons} />
+            </span>
+            <span class="stat-pill-label">{summary.completedLessons === 1 ? 'lesson' : 'lessons'} done</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── YOUR PATH ── -->
+  <section class="section-block">
+    <div class="section-header">
+      <div>
+        <h3 class="section-title">Your Path</h3>
+        <p class="section-desc">
+          {viewState.topicDiscovery.shortlist ? 'Pick a topic to begin your lesson' : `Recommended for ${selectedSubject?.name ?? 'your subjects'}`}
+        </p>
+      </div>
+      <div class="subject-switcher">
+        {#each availableSubjects.slice(0, 4) as subject}
+          <button
+            type="button"
+            class="subject-pill"
+            class:active={subject.id === selectedSubject?.id}
+            onclick={() => appState.selectSubject(subject.id)}
+          >
+            {subjectEmoji(subject.name)} {subject.name}
+          </button>
+        {/each}
+        {#if availableSubjects.length > 4}
+          <select class="subject-overflow" value={selectedSubject?.id} onchange={onSubjectChange}>
+            {#each availableSubjects as subject}
+              <option value={subject.id}>{subject.name}</option>
+            {/each}
+          </select>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Quick start tiles — always rendered, skeleton until loaded -->
+    <div class="path-grid" aria-live="polite">
+      {#if hintChipsLoading}
+        {#each Array.from({ length: 4 }) as _, i}
+          <div class="path-tile path-tile--skeleton" style="--i: {i};"></div>
+        {/each}
+      {:else if promptSuggestionChips.length > 0}
+        {#each promptSuggestionChips as chip, i (chip.id)}
+          <button
+            type="button"
+            class="path-tile"
+            class:selected={pendingChipId === chip.id}
+            aria-busy={pendingChipId === chip.id}
+            aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
+            style="--i: {i};"
+            onclick={() => startFromSuggestion(chip.id, chip.label)}
+          >
+            <span class="path-tile-icon">{subjectEmoji(selectedSubject?.name ?? '')}</span>
+            <span class="path-tile-name">{chip.label}</span>
+            {#if pendingChipId === chip.id}
+              <span class="path-tile-indicator" aria-hidden="true">
+                <span class="busy-dot"></span><span class="busy-dot"></span><span class="busy-dot"></span>
+              </span>
+            {:else}
+              <span class="path-tile-arrow" aria-hidden="true">→</span>
+            {/if}
+          </button>
+        {/each}
+      {/if}
+    </div>
+
+    {#if !hintChipsLoading && promptSuggestionChips.length > 0}
+      <div class="refresh-row">
+        <button type="button" class="btn btn-ghost refresh-btn" disabled={hintChipsRefreshing} onclick={refreshSubjectHints}>
+          {hintChipsRefreshing ? '↻ Refreshing...' : '↻ Different suggestions'}
+        </button>
+        {#if hintRefreshError}<span class="error-note">{hintRefreshError}</span>{/if}
+      </div>
+    {/if}
+
+    <!-- Search -->
+    <div class="search-launcher" class:focused={topicInputFocused}>
+      <textarea
+        rows="2"
+        class="search-input"
+        placeholder="Or describe exactly what you want to learn..."
+        value={viewState.topicDiscovery.input}
+        oninput={onInput}
+        onfocus={onTopicFocus}
+        onblur={onTopicBlur}
+      ></textarea>
+      <div class="search-actions">
         <button
           type="button"
           class="btn btn-primary"
           aria-busy={viewState.topicDiscovery.status === 'loading'}
-          onclick={runShortlist}
           disabled={viewState.topicDiscovery.status === 'loading'}
+          onclick={runShortlist}
         >
-          {viewState.topicDiscovery.status === 'loading' ? 'Finding matches...' : 'Find my section'}
+          {viewState.topicDiscovery.status === 'loading' ? 'Finding matches...' : "Let's go →"}
         </button>
         {#if viewState.topicDiscovery.shortlist}
-          <button type="button" class="btn btn-secondary" onclick={resetTopicDiscovery}>
-            Search for something else
-          </button>
+          <button type="button" class="btn btn-secondary" onclick={resetTopicDiscovery}>Start over</button>
         {/if}
       </div>
     </div>
 
     {#if viewState.topicDiscovery.error}
-      <p class="error">{viewState.topicDiscovery.error}</p>
+      <p class="error-note">{viewState.topicDiscovery.error}</p>
     {/if}
 
     {#if viewState.topicDiscovery.shortlist}
       <div class="shortlist">
         <div class="shortlist-header">
-          <div>
-            <p class="eyebrow">Curriculum matches</p>
-            <h3>Found in: {viewState.topicDiscovery.shortlist.matchedSection}</h3>
-          </div>
-          <p>{viewState.profile.curriculum} · {viewState.profile.grade} · {selectedSubject?.name} · {viewState.profile.term}</p>
+          <h4>Found in: {viewState.topicDiscovery.shortlist.matchedSection}</h4>
+          <p>{viewState.profile.curriculum} · {viewState.profile.grade} · {selectedSubject?.name}</p>
         </div>
-
-        <div class="topic-list">
-          {#each viewState.topicDiscovery.shortlist.subtopics as topic, index}
-            <button type="button" class="topic-card" onclick={() => startTopic(topic)}>
-              <span class="topic-index">{String(index + 1).padStart(2, '0')}</span>
-              <div>
+        <div class="topic-grid">
+          {#each viewState.topicDiscovery.shortlist.subtopics as topic, i}
+            <button type="button" class="topic-tile" onclick={() => startTopic(topic)}>
+              <span class="topic-index">{String(i + 1).padStart(2, '0')}</span>
+              <div class="topic-tile-body">
                 <strong>{topic.title}</strong>
                 <p>{topic.description}</p>
-                <small>{topic.curriculumReference}</small>
               </div>
+              <span class="topic-tile-arrow" aria-hidden="true">→</span>
             </button>
           {/each}
         </div>
@@ -382,30 +371,28 @@
     {/if}
   </section>
 
-  <section class="card recent" class:empty-state={recentLessons.length === 0}>
-    <div class="section-head">
-      <div>
-        <p class="eyebrow">Recent lessons</p>
-        <h3>{recentLessons.length > 0 ? 'Pick up where you left off' : 'Recent lessons'}</h3>
+  <!-- ── RECENTS ── -->
+  {#if recentLessons.length > 0}
+    <section class="section-block">
+      <div class="section-header section-header--simple">
+        <h3 class="section-title">Pick up where you left off</h3>
       </div>
-    </div>
-
-    {#if recentLessons.length > 0}
-      <div class="recent-grid">
+      <div class="recents-grid">
         {#each recentLessons as session}
           <article class="recent-card">
-            <div class="recent-meta">
-              <small class="recent-subject">{session.subject}</small>
-              <small class="recent-date">{new Date(session.lastActiveAt).toLocaleDateString()}</small>
+            <div class="recent-card-top">
+              <span class="subject-chip">{session.subject}</span>
+              <span class="recent-date">{new Date(session.lastActiveAt).toLocaleDateString()}</span>
             </div>
-            <h4>{session.topicTitle}</h4>
+            <h4 class="recent-title">{session.topicTitle}</h4>
             <p class="recent-stage">{stageProgressLabel(session)}</p>
             <div class="recent-actions">
-              <button type="button" class="btn btn-primary btn-compact compact recent-resume" onclick={() => appState.resumeSession(session.id)}>Resume</button>
+              <button type="button" class="btn btn-primary btn-compact" onclick={() => appState.resumeSession(session.id)}>
+                Resume →
+              </button>
               <details class="overflow-menu">
-                <summary class="btn btn-secondary btn-compact compact icon-summary" aria-label="More options">⋯</summary>
+                <summary class="btn btn-secondary btn-compact icon-summary" aria-label="More options">⋯</summary>
                 <div class="overflow-panel">
-                  <button type="button" class="menu-item" onclick={() => appState.resumeSession(session.id)}>View notes</button>
                   <button type="button" class="menu-item" onclick={() => appState.restartLessonSession(session.id)}>Restart</button>
                   <button type="button" class="menu-item danger" onclick={() => appState.archiveSession(session.id)}>Archive</button>
                 </div>
@@ -414,680 +401,654 @@
           </article>
         {/each}
       </div>
-    {:else}
-      <p class="recent-note">Recent lessons will appear here.</p>
-    {/if}
-  </section>
+    </section>
+  {/if}
+
 </section>
 
 <style>
-  .view,
-  .dashboard-head,
-  .dashboard-top,
-  .dashboard-title,
-  .dashboard-summary,
-  .starter,
-  .starter-form,
-  .shortlist,
-  .topic-list,
-  .recent,
-  .recent-grid {
+  /* ── Root ── */
+  .view {
+    display: grid;
+    gap: 2rem;
+    width: 100%;
+    align-content: start;
+    padding-bottom: 2rem;
+  }
+
+  /* ── Hero ── */
+  .hero {
     display: grid;
     gap: 1rem;
   }
 
-  .view {
-    --sans: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
-    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-    --dashboard-card-surface: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-strong) 96%, transparent),
-      color-mix(in srgb, var(--surface) 100%, transparent)
-    );
-    --dashboard-card-border: color-mix(in srgb, var(--border-strong) 82%, transparent);
-    --dashboard-card-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
-    --dashboard-soft-surface: color-mix(in srgb, var(--surface-soft) 82%, transparent);
-    --dashboard-strong-surface: color-mix(in srgb, var(--surface-strong) 96%, transparent);
-    --dashboard-input-surface: color-mix(in srgb, var(--surface-tint) 92%, transparent);
-    --dashboard-overlay-blur: blur(12px);
-    font-family: var(--sans);
-    gap: 0.75rem;
-    width: 100%;
-    align-content: start;
+  .hero-greeting h2 {
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+    color: var(--text);
   }
 
-  :global(:root[data-theme='dark']) .view {
-    --dashboard-card-surface: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-strong) 98%, transparent),
-      color-mix(in srgb, var(--surface) 100%, transparent)
-    );
-    --dashboard-card-border: color-mix(in srgb, var(--border-strong) 92%, transparent);
-    --dashboard-card-shadow: var(--shadow-strong);
-    --dashboard-soft-surface: color-mix(in srgb, var(--surface-soft) 88%, transparent);
-    --dashboard-strong-surface: color-mix(in srgb, var(--surface-strong) 98%, transparent);
-    --dashboard-input-surface: color-mix(in srgb, var(--surface-tint) 96%, transparent);
-    --dashboard-overlay-blur: blur(20px);
+  .greeting-wave {
+    display: inline-block;
+    animation: wave 2s ease-in-out infinite;
+    transform-origin: 70% 70%;
   }
 
-  .card,
-  .recent-card {
-    border: 1px solid var(--dashboard-card-border);
-    border-radius: var(--radius-xl);
-    background: var(--dashboard-card-surface);
-    padding: 1.2rem;
-    box-shadow: var(--dashboard-card-shadow);
-    backdrop-filter: var(--dashboard-overlay-blur);
+  @keyframes wave {
+    0%, 100% { transform: rotate(0deg); }
+    20% { transform: rotate(14deg); }
+    40% { transform: rotate(-8deg); }
+    60% { transform: rotate(14deg); }
+    80% { transform: rotate(-4deg); }
   }
 
-  .dashboard-head {
-    gap: 0.5rem;
-  }
-
-  .dashboard-top {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: baseline;
-    gap: 0.8rem;
-  }
-
-  .dashboard-title,
-  .resume-strip,
-  .resume-copy,
-  .starter-copy,
-  .shortlist-header,
-  .section-head,
-  .recent-card {
-    display: grid;
-    gap: 0.6rem;
-  }
-
-  .dashboard-title {
-    max-width: 31rem;
-    gap: 0.2rem;
-  }
-
-  .dashboard-title h2 {
-    font-size: clamp(1.42rem, 2.7vw, 2.2rem);
-    line-height: 1;
-    letter-spacing: -0.045em;
-    font-weight: 700;
-  }
-
-  .dashboard-title p:last-child {
-    max-width: 23rem;
+  .hero-greeting p {
     font-size: 0.95rem;
     color: var(--text-soft);
-    line-height: 1.42;
+    margin-top: 0.3rem;
   }
 
-  .dashboard-summary {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: 0.55rem 0.85rem;
-    max-width: none;
-    margin: 0;
-  }
-
-  .summary-item {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.28rem;
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-
-  .summary-item dt,
-  .summary-item dd {
-    margin: 0;
-  }
-
-  .summary-item dt {
-    color: var(--muted);
-    order: 2;
-    font-size: 0.66rem;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    font-family: var(--mono);
-  }
-
-  .summary-item dd {
-    order: 1;
-    font-size: 1rem;
-    font-weight: 700;
-    line-height: 1;
-  }
-
-  .resume-strip {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
+  .hero-body {
+    display: grid;
     gap: 0.85rem;
-    padding: 0.62rem 0.76rem;
-    border-radius: 1rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 74%, transparent);
-    background: var(--dashboard-soft-surface);
-    max-width: 34rem;
   }
 
-  .resume-copy p,
-  .resume-copy small {
-    color: var(--text-soft);
+  /* Mission card */
+  .mission-card {
+    background:
+      linear-gradient(135deg,
+        color-mix(in srgb, var(--accent) 14%, var(--surface-strong)),
+        color-mix(in srgb, var(--accent) 4%, var(--surface-strong))
+      );
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+    overflow: hidden;
   }
 
-  .resume-copy strong {
-    font-size: 0.98rem;
-    font-weight: 600;
+  .mission-card--empty {
+    background: var(--surface-strong);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow);
+    opacity: 0.8;
   }
 
-  .resume-copy p {
-    font-size: 0.95rem;
-  }
-
-  .resume-copy small {
-    font-size: 0.82rem;
-  }
-
-  .starter-copy {
-    gap: 0.35rem;
-  }
-
-  .starter {
-    gap: 0.7rem;
-    padding: 0.92rem 1rem;
-  }
-
-  .starter-form {
-    gap: 0.8rem;
-  }
-
-  .starter-actions,
-  .recent-actions {
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .starter-actions {
-    margin-top: -0.1rem;
-  }
-
-  .hint-panel,
-  .hint-panel-copy,
-  .hint-chip-list {
+  .mission-card-inner {
+    padding: 1.4rem 1.6rem;
     display: grid;
-  }
-
-  .hint-panel {
     gap: 0.55rem;
   }
 
-  .hint-panel-copy {
-    grid-template-columns: 1fr;
-    align-items: start;
-    gap: 0.2rem;
+  .mission-kicker {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
   }
 
-  .hint-panel-head {
+  .mission-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.025em;
+    color: var(--text);
+  }
+
+  .mission-meta {
+    font-size: 0.88rem;
+    color: var(--text-soft);
+  }
+
+  .mission-progress-bar {
+    height: 5px;
+    background: color-mix(in srgb, var(--accent) 16%, var(--border-strong));
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+    margin: 0.2rem 0;
+  }
+
+  .mission-progress-fill {
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(90deg, var(--color-blue), var(--accent));
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .mission-footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.3rem;
+    flex-wrap: wrap;
+  }
+
+  .mission-timestamp {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  /* Stat strip */
+  .stat-strip {
+    display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
   }
 
-  .hint-panel-title {
-    font-size: 0.86rem;
-    font-weight: 600;
-    color: var(--text-soft);
-  }
-
-  .hint-panel-copy p {
-    color: var(--text-soft);
-    font-size: 0.95rem;
-    line-height: 1.45;
-  }
-
-  .refresh-hints {
-    font-size: 0.78rem;
-    min-height: 2rem;
-    padding: 0.5rem 0.82rem;
-  }
-
-  .hint-chip-list {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.75rem;
-    align-items: stretch;
-  }
-
-  .hint-chip {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+  .stat-pill {
+    display: flex;
     align-items: center;
-    gap: 0.9rem;
-    min-height: 4rem;
-    padding: 1rem 1.05rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
-    border-radius: 1.2rem;
-    background: var(--dashboard-soft-surface);
+    gap: 0.65rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 0.8rem 1.1rem;
+    box-shadow: var(--shadow);
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .stat-pill-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .stat-pill-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .stat-pill-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--text);
+  }
+
+  .stat-pill-label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-soft);
+    margin-top: 0.1rem;
+  }
+
+  /* ── Section blocks ── */
+  .section-block {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .section-header--simple {
+    display: block;
+  }
+
+  .section-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--text);
+  }
+
+  .section-desc {
+    font-size: 0.88rem;
+    color: var(--text-soft);
+    margin-top: 0.2rem;
+  }
+
+  /* Subject switcher — pill buttons, not a select */
+  .subject-switcher {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .subject-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    padding: 0.45rem 0.85rem;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-soft);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft),
+      color var(--motion-fast) var(--ease-soft);
+  }
+
+  .subject-pill:hover {
+    background: var(--surface-soft);
+    color: var(--text);
+    transform: none;
+  }
+
+  .subject-pill.active {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .subject-overflow {
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    color: var(--text);
+    padding: 0.45rem 0.85rem;
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+
+  /* ── Path grid ── */
+  .path-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem;
+    min-height: 4.5rem;
+  }
+
+  .path-tile {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 4.5rem;
+    padding: 0.9rem 1rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
     color: var(--text);
     text-align: left;
-    box-shadow: none;
+    font: inherit;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition:
+      transform var(--motion-fast) var(--ease-spring),
+      border-color var(--motion-med) var(--ease-soft),
+      box-shadow var(--motion-med) var(--ease-soft);
   }
 
-  .hint-chip:hover:not(:disabled) {
-    background: var(--dashboard-strong-surface);
-    border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent),
-      0 0 20px color-mix(in srgb, var(--accent) 10%, transparent);
+  .path-tile:hover:not(:disabled):not([aria-disabled='true']) {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+    box-shadow: var(--shadow-strong);
   }
 
-  .hint-chip:active:not(:disabled) {
-    transform: translateY(0) scale(0.99);
+  .path-tile:active:not(:disabled) {
+    transform: translateY(0) scale(0.985);
   }
 
-  .hint-chip:disabled {
-    cursor: default;
+  .path-tile.selected {
+    background: color-mix(in srgb, var(--accent-dim) 80%, var(--surface-strong));
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
   }
 
-  .hint-chip[aria-disabled='true'] {
+  .path-tile[aria-disabled='true'] {
     pointer-events: none;
+    opacity: 0.45;
   }
 
-  .hint-chip.selected {
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 18%, var(--surface)),
-      color-mix(in srgb, var(--accent) 9%, var(--surface-soft))
-    );
-    border-color: color-mix(in srgb, var(--accent) 56%, transparent);
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, white 14%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  .path-tile--skeleton {
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * 0.12s);
   }
 
-  .hint-chip.loading {
-    background: color-mix(in srgb, var(--accent) 8%, var(--dashboard-soft-surface));
-    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  @keyframes skeleton-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
   }
 
-  .hint-chip-name {
-    font-size: 0.95rem;
-    line-height: 1.28;
+  .path-tile-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .path-tile-name {
+    font-size: 0.9rem;
     font-weight: 500;
+    line-height: 1.3;
     text-wrap: pretty;
   }
 
-  .hint-chip-action {
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 999px;
+  .path-tile-arrow {
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 50%;
     display: grid;
     place-items: center;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
-    background: transparent;
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 0.82rem;
-    line-height: 1;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface-strong) 26%, transparent);
+    background: var(--surface-tint);
+    border: 1px solid var(--border-strong);
+    font-size: 0.9rem;
+    color: var(--text-soft);
+    flex-shrink: 0;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      color var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
   }
 
-  .hint-chip:hover:not(:disabled) .hint-chip-action {
-    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-    color: var(--text);
-    box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--surface-strong) 20%, transparent),
-      0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-
-  .hint-chip.selected .hint-chip-action,
-  .hint-chip.loading .hint-chip-action {
+  .path-tile:hover:not(:disabled) .path-tile-arrow {
     background: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
     color: var(--accent-contrast);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color: transparent;
   }
 
-  .hint-chip-loading {
-    display: inline-flex;
+  .path-tile-indicator {
+    display: flex;
+    gap: 0.22rem;
     align-items: center;
-    justify-self: end;
+  }
+
+  .busy-dot {
+    width: 0.32rem;
+    height: 0.32rem;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.4;
+    animation: busy-pulse 1.1s ease-in-out infinite;
+  }
+
+  .busy-dot:nth-child(2) { animation-delay: 0.18s; }
+  .busy-dot:nth-child(3) { animation-delay: 0.36s; }
+
+  @keyframes busy-pulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+
+  .refresh-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: -0.25rem;
+  }
+
+  .refresh-btn {
+    font-size: 0.82rem;
+    padding: 0.35rem 0.6rem;
+    min-height: unset;
+  }
+
+  /* ── Search ── */
+  .search-launcher {
+    display: grid;
+    gap: 0.75rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.1rem;
+    box-shadow: var(--shadow);
+    transition: border-color var(--motion-med) var(--ease-soft), box-shadow var(--motion-med) var(--ease-soft);
+  }
+
+  .search-launcher.focused {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border-strong));
+    box-shadow: var(--shadow), 0 0 0 3px var(--accent-glow);
+  }
+
+  .search-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.95rem;
+    resize: none;
+    min-height: 3rem;
+    line-height: 1.5;
+  }
+
+  .search-input::placeholder {
+    color: var(--muted);
+  }
+
+  .search-actions {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+  }
+
+  /* ── Shortlist ── */
+  .shortlist {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .shortlist-header {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .shortlist-header h4 {
+    font-size: 1rem;
+    font-weight: 700;
     color: var(--text);
   }
 
-  .busy-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.26rem;
-  }
-
-  .busy-indicator span {
-    width: 0.38rem;
-    height: 0.38rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 72%, white 28%);
-    opacity: 0.34;
-    animation: verify-dot-breathe 1.15s ease-in-out infinite;
-  }
-
-  .busy-indicator span:last-child {
-    animation-delay: 0.36s;
-  }
-
-  .busy-indicator span:nth-child(2) {
-    animation-delay: 0.18s;
-  }
-
-  .hint-chip-skeleton {
-    min-height: 4rem;
-    border-style: dashed;
-    background: color-mix(in srgb, var(--dashboard-soft-surface) 84%, transparent);
-  }
-
-  .hint-refresh-error {
-    color: #b91c1c;
+  .shortlist-header p {
     font-size: 0.84rem;
+    color: var(--text-soft);
   }
 
-  .topic-list {
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.7rem;
-  }
-
-  .topic-card {
+  .topic-grid {
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 1rem;
-    align-items: start;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
-    border-radius: 1.2rem;
-    background: var(--dashboard-soft-surface);
-    padding: 0.92rem 0.95rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.65rem;
+  }
+
+  .topic-tile {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.9rem;
+    align-items: center;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 0.9rem 1rem;
     text-align: left;
     font: inherit;
     cursor: pointer;
-    box-shadow: none;
+    box-shadow: var(--shadow);
+    transition:
+      transform var(--motion-fast) var(--ease-spring),
+      border-color var(--motion-med) var(--ease-soft);
   }
 
-  .topic-card:hover {
+  .topic-tile:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
-    background: var(--dashboard-strong-surface);
-  }
-
-  .topic-card:active {
-    transform: translateY(0) scale(0.99);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border-strong));
   }
 
   .topic-index {
+    font-size: 0.75rem;
+    font-weight: 700;
     color: var(--muted);
+    letter-spacing: 0.04em;
+    min-width: 1.5rem;
+  }
+
+  .topic-tile-body strong {
+    font-size: 0.94rem;
+    font-weight: 600;
+    color: var(--text);
+    display: block;
+    line-height: 1.3;
+  }
+
+  .topic-tile-body p {
     font-size: 0.82rem;
-    letter-spacing: 0.08em;
-    font-family: var(--mono);
-  }
-
-  .topic-card p,
-  .topic-card small,
-  .starter-copy p,
-  .dashboard-title p,
-  .recent-card p {
     color: var(--text-soft);
+    margin-top: 0.2rem;
+    line-height: 1.4;
   }
 
-  .recent-grid {
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.7rem;
+  .topic-tile-arrow {
+    color: var(--muted);
+    transition: color var(--motion-fast) var(--ease-soft);
   }
 
-  .recent-meta {
+  .topic-tile:hover .topic-tile-arrow {
+    color: var(--accent);
+  }
+
+  /* ── Recents ── */
+  .recents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.85rem;
+  }
+
+  .recent-card {
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+    display: grid;
+    gap: 0.5rem;
+    transition:
+      transform var(--motion-fast) var(--ease-spring),
+      box-shadow var(--motion-med) var(--ease-soft);
+  }
+
+  .recent-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-strong);
+  }
+
+  .recent-card-top {
     display: flex;
     justify-content: space-between;
-    gap: 0.75rem;
     align-items: center;
+    gap: 0.5rem;
   }
 
-  .recent-subject {
-    font-size: 0.84rem;
-    font-weight: 500;
-    color: var(--text-soft);
+  .subject-chip {
+    display: inline-flex;
+    align-items: center;
+    background: var(--accent-dim);
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-radius: var(--radius-pill);
+    padding: 0.18rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--accent);
+    white-space: nowrap;
   }
 
   .recent-date {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: var(--muted);
+    flex-shrink: 0;
   }
 
-  button,
-  select,
-  textarea {
-    font: inherit;
-  }
-
-  button {
-    cursor: pointer;
-  }
-
-  .compact {
-    padding: 0.66rem 0.9rem;
-  }
-
-  .icon-summary {
-    min-width: 2.45rem;
-    padding-inline: 0.72rem;
-    justify-content: center;
+  .recent-title {
     font-size: 1rem;
-    line-height: 1;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+
+  .recent-stage {
+    font-size: 0.83rem;
+    color: var(--text-soft);
+  }
+
+  .recent-actions {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+    margin-top: 0.1rem;
+  }
+
+  /* ── Overflow menu ── */
+  .icon-summary {
+    min-width: 2.4rem;
+    padding-inline: 0.7rem;
   }
 
   .overflow-menu {
     position: relative;
   }
 
-  .overflow-menu summary {
-    list-style: none;
-  }
-
-  .overflow-menu summary::-webkit-details-marker {
-    display: none;
-  }
+  .overflow-menu summary { list-style: none; }
+  .overflow-menu summary::-webkit-details-marker { display: none; }
 
   .overflow-panel {
     position: absolute;
-    right: 0;
-    top: calc(100% + 0.45rem);
-    min-width: 180px;
+    left: 0;
+    top: calc(100% + 0.4rem);
+    min-width: 140px;
     display: grid;
-    gap: 0.35rem;
-    padding: 0.45rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
-    border-radius: 1rem;
-    background: var(--dashboard-card-surface);
-    box-shadow: 0 18px 40px color-mix(in srgb, var(--shadow) 42%, transparent);
-    backdrop-filter: var(--dashboard-overlay-blur);
-    z-index: 5;
+    gap: 0.25rem;
+    padding: 0.35rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-strong);
+    z-index: 10;
   }
 
   .menu-item {
     border: 1px solid transparent;
-    border-radius: 0.95rem;
-    background: var(--dashboard-soft-surface);
+    border-radius: calc(var(--radius-md) - 0.2rem);
+    background: transparent;
     color: var(--text);
     text-align: left;
-    padding: 0.75rem 0.85rem;
+    padding: 0.6rem 0.75rem;
+    font: inherit;
+    font-size: 0.86rem;
+    cursor: pointer;
   }
 
   .menu-item:hover {
-    transform: translateY(-1px);
-    background: var(--dashboard-strong-surface);
-    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    background: var(--surface-soft);
+    transform: none;
+    box-shadow: none;
   }
 
-  .menu-item.danger {
-    color: #991b1b;
+  .menu-item.danger { color: var(--color-error); }
+
+  /* ── Utilities ── */
+  .error-note {
+    font-size: 0.84rem;
+    color: var(--color-error);
   }
 
-  select,
-  textarea {
-    width: 100%;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 88%, transparent);
-    border-radius: 1.1rem;
-    background: var(--dashboard-input-surface);
-    color: var(--text);
-    padding: 0.96rem 1rem;
-  }
-
-  .topic-input-wrap {
-    position: relative;
-  }
-
-  .topic-detail-field {
-    display: grid;
-    gap: 0.42rem;
-  }
-
-  .topic-detail-field > span {
-    font-size: 0.83rem;
-    font-weight: 500;
-    color: var(--text-soft);
-  }
-
-  .topic-input-wrap textarea {
-    min-height: 3.35rem;
-    resize: vertical;
-  }
-
-  .eyebrow,
-  h2,
-  h3,
-  h4,
-  p,
-  small,
-  strong,
-  span {
-    margin: 0;
-  }
-
-  .eyebrow {
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.72rem;
-    font-family: var(--mono);
-  }
-
-  .dashboard-title h2,
-  .section-head h3,
-  .starter-copy h3 {
-    letter-spacing: -0.02em;
-  }
-
-  .section-head h3,
-  .recent-card h4 {
-    font-size: 0.98rem;
-    font-weight: 600;
-  }
-
-  .starter-copy h3 {
-    font-size: 1.12rem;
-    font-weight: 650;
-  }
-
-  .section-head h3 {
-    font-size: 1.02rem;
-    font-weight: 650;
-  }
-
-  .starter-actions .btn-primary {
-    box-shadow: 0 8px 16px color-mix(in srgb, var(--accent) 18%, transparent);
-  }
-
-  .recent {
-    padding: 0.92rem 1rem;
-    gap: 0.55rem;
-  }
-
-  .recent.empty-state {
-    padding-bottom: 0.85rem;
-  }
-
-  .error {
-    color: #b91c1c;
-  }
-
-  .recent-card {
-    background: var(--dashboard-soft-surface);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
-  }
-
-  .recent-card h4 {
-    font-size: 1.02rem;
-    line-height: 1.26;
-  }
-
-  .recent-stage {
-    font-size: 0.9rem;
-    color: var(--text-soft);
-  }
-
-  .recent-card:hover {
-    transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
-    background: var(--dashboard-strong-surface);
-  }
-
-  .recent-resume {
-    box-shadow: 0 8px 16px color-mix(in srgb, var(--accent) 14%, transparent);
-  }
-
-  .recent-note {
-    color: var(--text-soft);
-    font-size: 0.93rem;
-    padding: 0.15rem 0 0;
-  }
-
-  @media (max-width: 900px) {
-    .dashboard-top,
-    .dashboard-summary,
-    .resume-strip {
-      grid-template-columns: 1fr;
+  @media (max-width: 700px) {
+    .section-header {
+      flex-direction: column;
+      align-items: flex-start;
     }
 
-    .dashboard-summary {
-      justify-content: flex-start;
-    }
-
-    .hint-panel-copy {
-      grid-template-columns: 1fr;
-    }
-
-    .hint-chip-list {
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    .stat-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     }
   }
-
-  @keyframes verify-dot-breathe {
-    0%,
-    100% {
-      opacity: 0.34;
-      transform: scale(0.9);
-    }
-
-    50% {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .busy-indicator span {
-      animation: none;
-      opacity: 0.72;
-      transform: none;
-    }
-  }
-
 </style>

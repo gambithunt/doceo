@@ -258,14 +258,17 @@
   }
 
   .remove-button {
-    background: rgba(255, 255, 255, 0.78);
-    color: var(--text-soft);
+    background: var(--color-red-dim);
+    color: var(--color-error);
+    border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
     padding: 0.45rem 0.7rem;
     font-size: 0.78rem;
+    border-radius: 999px;
   }
 
-  .remove-button.ghost {
-    border-radius: 999px;
+  .remove-button:hover {
+    background: color-mix(in srgb, var(--color-error) 20%, transparent);
+    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
   }
 
   .subject-actions {
