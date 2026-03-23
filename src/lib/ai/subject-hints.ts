@@ -162,68 +162,6 @@ export function getReferenceHintTopics(context: ReferenceHintContext): string[] 
   return [];
 }
 
-function buildSubjectVocabulary(subject: Subject): Set<string> {
-  const vocabulary = new Set<string>();
-  const sections = [
-    subject.name,
-    ...subject.topics.map((topic) => topic.name),
-    ...subject.topics.flatMap((topic) => topic.subtopics.map((subtopic) => subtopic.name))
-  ];
-
-  for (const section of sections) {
-    const normalized = normalizeText(section);
-    if (normalized.length > 0) {
-      vocabulary.add(normalized);
-    }
-
-    for (const token of tokenize(section)) {
-      vocabulary.add(token);
-    }
-  }
-
-  return vocabulary;
-}
-
-function buildVocabularyFromSections(sections: string[]): Set<string> {
-  const vocabulary = new Set<string>();
-
-  for (const section of sections) {
-    const normalized = normalizeText(section);
-    if (normalized.length > 0) {
-      vocabulary.add(normalized);
-    }
-
-    for (const token of tokenize(section)) {
-      vocabulary.add(token);
-    }
-  }
-
-  return vocabulary;
-}
-
-function hasSpecificSubjectSections(subject: Subject): boolean {
-  const sections = subject.topics.flatMap((topic) =>
-    topic.subtopics.length > 0 ? [topic.name, ...topic.subtopics.map((subtopic) => subtopic.name)] : [topic.name]
-  );
-
-  return sections.some((section) => {
-    const normalized = normalizeText(section);
-    return normalized.length > 0 && !GENERIC_SECTION_NAMES.has(normalized);
-  });
-}
-
-function isHintRelevantToSubject(hint: string, vocabulary: Set<string>): boolean {
-  const normalized = normalizeText(hint);
-  if (normalized.length === 0) {
-    return false;
-  }
-
-  if ([...vocabulary].some((entry) => entry.includes(' ') && normalized.includes(entry))) {
-    return true;
-  }
-
-  return tokenize(hint).some((token) => vocabulary.has(token));
-}
 
 function getTermIndex(term: SchoolTerm): number {
   switch (term) {
@@ -300,15 +238,10 @@ export function buildDeterministicSubjectHints(subject: Subject | null | undefin
   ).slice(0, MAX_HINTS);
 }
 
-export function validateSubjectHints(hints: string[], subject: Subject, referenceTopics: string[] = []): string[] {
-  const subjectVocabulary = buildSubjectVocabulary(subject);
-  const referenceVocabulary = buildVocabularyFromSections(referenceTopics);
-  const vocabulary = new Set([...subjectVocabulary, ...referenceVocabulary]);
-  const requireCurriculumOverlap = hasSpecificSubjectSections(subject) || referenceTopics.length > 0;
-
+export function validateSubjectHints(hints: string[], _subject: Subject, _referenceTopics: string[] = []): string[] {
   const validated = Array.from(new Set(hints.map((hint) => hint.trim()).filter((hint) => hint.length > 0)))
     .filter((hint) => !GENERIC_SECTION_NAMES.has(normalizeText(hint)) && !looksLikeSentenceHint(hint) && !looksGeneric(hint))
-    .filter((hint) => (requireCurriculumOverlap ? isHintRelevantToSubject(hint, vocabulary) : tokenize(hint).length > 0))
+    .filter((hint) => tokenize(hint).length > 0)
     .slice(0, MAX_HINTS);
 
   return validated.length >= MIN_HINTS ? validated : [];

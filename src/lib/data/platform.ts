@@ -11,7 +11,6 @@ import {
 } from '$lib/data/onboarding';
 import { buildLearningProgram } from '$lib/data/learning-content';
 import {
-  buildLessonSessionFromTopic,
   buildRevisionTopicFromLesson,
   createDefaultLearnerProfile
 } from '$lib/lesson-system';
@@ -223,36 +222,23 @@ export function createInitialState(): AppState {
   const selectedLesson = program.lessons[0];
   const selectedTopic = program.curriculum.subjects[0].topics[0];
   const selectedSubtopic = selectedTopic.subtopics[0];
-  const learnerProfile = createDefaultLearnerProfile('student-demo');
-  const demoProfile = {
-    id: 'student-demo',
-    fullName: 'Demo Student',
-    email: 'student@example.com',
+  const learnerProfile = createDefaultLearnerProfile('');
+  const emptyProfile = {
+    id: '',
+    fullName: '',
+    email: '',
     role: 'student' as const,
     schoolYear: defaultSchoolYear,
     term: defaultTerm,
-    grade: 'Grade 6',
-    gradeId: selectedGradeId,
-    country: 'South Africa',
-    countryId: selectedCountryId,
-    curriculum: 'CAPS',
-    curriculumId: selectedCurriculumId,
+    grade: '',
+    gradeId: '',
+    country: '',
+    countryId: '',
+    curriculum: '',
+    curriculumId: '',
     recommendedStartSubjectId: recommendation.subjectId,
     recommendedStartSubjectName: recommendation.subjectName
   };
-  const seedTopic = buildSeedShortlistedTopic(selectedLesson);
-  const lessonSession = buildLessonSessionFromTopic(
-    demoProfile,
-    program.curriculum.subjects[0],
-    selectedTopic,
-    selectedSubtopic,
-    selectedLesson,
-    {
-      topicDescription: seedTopic.description,
-      curriculumReference: seedTopic.curriculumReference,
-      matchedSection: seedTopic.title
-    }
-  );
 
   const baseState: AppState = {
     auth: {
@@ -295,39 +281,21 @@ export function createInitialState(): AppState {
         subjects: availableSubjects
       }
     },
-    profile: demoProfile,
+    profile: emptyProfile,
     learnerProfile,
     curriculum: program.curriculum,
     lessons: program.lessons,
     questions: program.questions,
     progress: {},
-    lessonSessions: [lessonSession],
+    lessonSessions: [],
     revisionTopics: [],
-    analytics: [
-      createEvent('session_started', 'Initial demo session created'),
-      createEvent('lesson_viewed', selectedLesson.title)
-    ],
+    analytics: [],
     revisionPlan: buildRevisionPlan(program.curriculum.subjects[0].id, program.curriculum.subjects[0].name, [
       selectedTopic.name
     ]),
     askQuestion: createAskQuestionState({
       curriculum: program.curriculum,
-      profile: {
-        id: 'student-demo',
-        fullName: 'Demo Student',
-        email: 'student@example.com',
-        role: 'student',
-        schoolYear: defaultSchoolYear,
-        term: defaultTerm,
-        grade: 'Grade 6',
-        gradeId: selectedGradeId,
-        country: 'South Africa',
-        countryId: selectedCountryId,
-        curriculum: 'CAPS',
-        curriculumId: selectedCurriculumId,
-        recommendedStartSubjectId: recommendation.subjectId,
-        recommendedStartSubjectName: recommendation.subjectName
-      }
+      profile: emptyProfile
     }),
     topicDiscovery: {
       selectedSubjectId: program.curriculum.subjects[0].id,
@@ -347,12 +315,12 @@ export function createInitialState(): AppState {
       theme: 'light',
       learningMode: 'learn',
       currentScreen: 'landing',
-      selectedSubjectId: program.curriculum.subjects[0].id,
+      selectedSubjectId: program.curriculum.subjects[0]?.id ?? '',
       selectedTopicId: selectedTopic.id,
       selectedSubtopicId: selectedSubtopic.id,
       selectedLessonId: selectedLesson.id,
-      practiceQuestionId: selectedLesson.practiceQuestionIds[0],
-      activeLessonSessionId: lessonSession.id,
+      practiceQuestionId: selectedLesson.practiceQuestionIds[0] ?? null,
+      activeLessonSessionId: null,
       pendingAssistantSessionId: null,
       composerDraft: '',
       showTopicDiscoveryComposer: false,

@@ -56,6 +56,12 @@
   --shadow-strong: 0 4px 16px rgba(15, 23, 42, 0.12), 0 16px 40px rgba(15, 23, 42, 0.08);
   --shadow-glow: 0 0 0 3px var(--accent-glow);
 
+  /* Glass */
+  --glass-bg:     rgba(255, 255, 255, 0.52);
+  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-blur:   blur(18px) saturate(1.6);
+  --glass-inset:  inset 0 1px 0 rgba(255, 255, 255, 0.88);
+
   /* Shape */
   --radius-xl: 1.8rem;
   --radius-lg: 1.4rem;
@@ -76,8 +82,9 @@
   --btn-pad-x: 1.2rem;
 
   background:
-    radial-gradient(ellipse at top left, rgba(37, 99, 235, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom right, rgba(124, 58, 237, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 60% at top left,    rgba(37, 99, 235, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at bottom right, rgba(124, 58, 237, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 70% 20%,      rgba(22, 163, 74, 0.08) 0%, transparent 50%),
     var(--bg);
   color: var(--text);
 }
@@ -136,10 +143,16 @@
   --shadow-strong: 0 8px 32px rgba(2, 6, 23, 0.6), 0 2px 8px rgba(2, 6, 23, 0.4);
   --shadow-glow: 0 0 0 3px var(--accent-glow);
 
+  /* Glass — dark mode */
+  --glass-bg:     rgba(15, 18, 41, 0.42);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-blur:   blur(20px) saturate(1.5);
+  --glass-inset:  inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
   background:
-    radial-gradient(ellipse at top left, rgba(74, 222, 128, 0.08) 0%, transparent 45%),
-    radial-gradient(ellipse at top right, rgba(96, 165, 250, 0.08) 0%, transparent 40%),
-    radial-gradient(ellipse at bottom center, rgba(167, 139, 250, 0.06) 0%, transparent 40%),
+    radial-gradient(ellipse 80% 55% at top left,     rgba(74, 222, 128, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at top right,    rgba(96, 165, 250, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 45% at bottom center, rgba(167, 139, 250, 0.10) 0%, transparent 50%),
     var(--bg);
 }
 

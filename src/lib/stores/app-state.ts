@@ -326,6 +326,11 @@ function createAppStore() {
         }
       }
       const response = await fetch('/api/state/bootstrap', { headers });
+      if (response.status === 401) {
+        // Not signed in — stay on landing screen with clean state
+        hasInitializedRemoteState = true;
+        return;
+      }
       const payload = (await response.json()) as BootstrapResponse;
       const remoteState = normalizeAppState(payload.state);
       // Preserve client-only UI prefs (theme) that aren't round-tripped through the server
@@ -339,7 +344,7 @@ function createAppStore() {
           },
           backend: {
             ...remoteState.backend,
-            isConfigured: payload.isConfigured
+            isConfigured: true
           }
         })
       );
@@ -1316,38 +1321,29 @@ function createAppStore() {
     signUp: async (fullName: string, email: string, password: string) => {
       update((state) => ({ ...state, auth: { status: 'loading', error: null } }));
 
-      if (browser && supabase) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName } }
-        });
-
-        if (error) {
-          update((state) => ({ ...state, auth: { status: 'signed_out', error: error.message } }));
-          return;
-        }
-
-        const userId = data.user?.id ?? `demo-${crypto.randomUUID()}`;
-        update((state) =>
-          persistAndSync({
-            ...state,
-            auth: { status: 'signed_in', error: null },
-            profile: { ...state.profile, id: userId, fullName, email },
-            learnerProfile: { ...state.learnerProfile, studentId: userId },
-            ui: { ...state.ui, currentScreen: 'onboarding' }
-          })
-        );
-        navigate(onboardingPath());
+      if (!browser || !supabase) {
+        update((state) => ({ ...state, auth: { status: 'signed_out', error: 'Authentication is not configured.' } }));
         return;
       }
 
-      // Local demo mode — no Supabase configured
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName } }
+      });
+
+      if (error) {
+        update((state) => ({ ...state, auth: { status: 'signed_out', error: error.message } }));
+        return;
+      }
+
+      const userId = data.user?.id ?? '';
       update((state) =>
         persistAndSync({
           ...state,
           auth: { status: 'signed_in', error: null },
-          profile: { ...state.profile, fullName, email },
+          profile: { ...state.profile, id: userId, fullName, email },
+          learnerProfile: { ...state.learnerProfile, studentId: userId },
           ui: { ...state.ui, currentScreen: 'onboarding' }
         })
       );
@@ -1356,37 +1352,28 @@ function createAppStore() {
     signIn: async (email: string, password: string) => {
       update((state) => ({ ...state, auth: { status: 'loading', error: null } }));
 
-      if (browser && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-        if (error) {
-          update((state) => ({ ...state, auth: { status: 'signed_out', error: error.message } }));
-          return;
-        }
-
-        const userId = data.user?.id ?? readState().profile.id;
-        hasInitializedRemoteState = false;
-        await initializeRemoteState();
-        update((current) =>
-          persistAndSync({
-            ...current,
-            auth: { status: 'signed_in', error: null },
-            profile: { ...current.profile, id: userId, email },
-            learnerProfile: { ...current.learnerProfile, studentId: userId },
-            ui: { ...current.ui, currentScreen: current.onboarding.completed ? 'dashboard' : 'onboarding' }
-          })
-        );
-        navigate(readState().onboarding.completed ? dashboardPath() : onboardingPath());
+      if (!browser || !supabase) {
+        update((state) => ({ ...state, auth: { status: 'signed_out', error: 'Authentication is not configured.' } }));
         return;
       }
 
-      // Local demo mode
-      update((state) =>
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        update((state) => ({ ...state, auth: { status: 'signed_out', error: error.message } }));
+        return;
+      }
+
+      const userId = data.user?.id;
+      hasInitializedRemoteState = false;
+      await initializeRemoteState();
+      update((current) =>
         persistAndSync({
-          ...state,
+          ...current,
           auth: { status: 'signed_in', error: null },
-          profile: { ...state.profile, email },
-          ui: { ...state.ui, currentScreen: state.onboarding.completed ? 'dashboard' : 'onboarding' }
+          profile: { ...current.profile, id: userId ?? current.profile.id, email },
+          learnerProfile: { ...current.learnerProfile, studentId: userId ?? current.learnerProfile.studentId },
+          ui: { ...current.ui, currentScreen: current.onboarding.completed ? 'dashboard' : 'onboarding' }
         })
       );
       navigate(readState().onboarding.completed ? dashboardPath() : onboardingPath());

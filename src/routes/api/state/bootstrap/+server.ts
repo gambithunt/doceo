@@ -7,10 +7,8 @@ import {
   fetchSubjects,
   loadOnboardingProgress
 } from '$lib/server/onboarding-repository';
-import { createServerSupabaseFromRequest, isSupabaseConfigured } from '$lib/server/supabase';
+import { createServerSupabaseFromRequest } from '$lib/server/supabase';
 import { applySignalProfileUpdate, buildLearnerProfileFromSignals } from '$lib/ai/adaptive-signals';
-
-const DEMO_PROFILE_ID = 'student-demo';
 
 async function loadOnboardingOptions(onboardingProgress: NonNullable<Awaited<ReturnType<typeof loadOnboardingProgress>>>) {
   const [countries, curriculums, grades, subjects] = await Promise.all([
@@ -31,17 +29,16 @@ async function loadOnboardingOptions(onboardingProgress: NonNullable<Awaited<Ret
 }
 
 export async function GET({ request }) {
-  // T2.1d: resolve profile ID from the authenticated user, fall back to demo
-  let profileId = DEMO_PROFILE_ID;
-  let isAuthenticatedRequest = false;
   const userClient = createServerSupabaseFromRequest(request);
-  if (userClient) {
-    const { data: { user } } = await userClient.auth.getUser();
-    if (user?.id) {
-      profileId = user.id;
-      isAuthenticatedRequest = true;
-    }
+  const { data: { user } } = userClient
+    ? await userClient.auth.getUser()
+    : { data: { user: null } };
+
+  if (!user?.id) {
+    return json({ state: null, isConfigured: true }, { status: 401 });
   }
+
+  const profileId = user.id;
 
   const [state, signals, onboardingProgress] = await Promise.all([
     loadAppState(profileId),
@@ -105,23 +102,18 @@ export async function GET({ request }) {
         : 'onboarding'
       : hydratedState.ui.currentScreen;
 
-  const authenticatedState = isAuthenticatedRequest
-    ? {
-        ...hydratedState,
-        auth: {
-          ...hydratedState.auth,
-          status: 'signed_in',
-          error: null
-        },
-        ui: {
-          ...hydratedState.ui,
-          currentScreen: resolvedScreen
-        }
-      }
-    : hydratedState;
+  const authenticatedState = {
+    ...hydratedState,
+    auth: {
+      ...hydratedState.auth,
+      status: 'signed_in',
+      error: null
+    },
+    ui: {
+      ...hydratedState.ui,
+      currentScreen: resolvedScreen
+    }
+  };
 
-  return json({
-    state: authenticatedState,
-    isConfigured: isSupabaseConfigured()
-  });
+  return json({ state: authenticatedState, isConfigured: true });
 }
