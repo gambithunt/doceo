@@ -540,17 +540,13 @@ function buildQuestionReply(session: LessonSession, lesson: Lesson, message: str
 
     if (concept) {
       const reply = [
-        `Let me break down **${concept.name}** for you.`,
+        `Let me put **${concept.name}** another way.`,
         '',
         concept.detail,
         '',
-        `**Example:**`,
-        '',
-        concept.example,
-        '',
         '---',
         '',
-        `Once this clicks, we can pick up where we left off. What part of this is clearest to you so far?`
+        `Does that help? What part is still fuzzy?`
       ].join('\n');
 
       return {

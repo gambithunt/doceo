@@ -6,31 +6,29 @@ export async function getAuthenticatedEdgeContext(request: Request): Promise<{
   anonKey: string;
   functionsUrl: string;
 } | null> {
-  const authHeader = request.headers.get('Authorization');
   const functionsUrl = getSupabaseFunctionsUrl();
   const anonKey = getSupabaseAnonKey();
 
-  if (!authHeader || !functionsUrl || !anonKey) {
+  if (!functionsUrl || !anonKey) {
     return null;
   }
 
-  const client = createServerSupabaseFromRequest(request);
-
-  if (!client) {
-    return null;
+  // Try to get a real user session first
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader) {
+    const client = createServerSupabaseFromRequest(request);
+    if (client) {
+      const { data: { user } } = await client.auth.getUser();
+      if (user) {
+        return { authHeader, anonKey, functionsUrl };
+      }
+    }
   }
 
-  const {
-    data: { user },
-    error
-  } = await client.auth.getUser();
-
-  if (error || !user) {
-    return null;
-  }
-
+  // Fall back to anon key for demo / unauthenticated sessions.
+  // The edge function validates via GitHub Models token — Supabase user auth is not required.
   return {
-    authHeader,
+    authHeader: `Bearer ${anonKey}`,
     anonKey,
     functionsUrl
   };

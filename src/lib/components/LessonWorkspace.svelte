@@ -25,9 +25,13 @@
   }
 
   function askAboutConcept(concept: ConceptItem): void {
-    const message = `[CONCEPT: ${concept.name}]\nCan you explain this in more detail?`;
-    composer = message;
-    appState.updateComposerDraft(message);
+    const parts = [`[CONCEPT: ${concept.name}]`];
+    const knownContent = [concept.summary, concept.detail].filter(Boolean).join(' ');
+    if (knownContent) {
+      parts.push(`[STUDENT_HAS_READ: ${knownContent}]`);
+    }
+    parts.push(`Can you explain this differently?`);
+    void appState.sendLessonMessage(parts.join('\n'));
   }
 
   function parseQuestionCard(content: string): { concept: string | null; prompt: string } {
@@ -36,9 +40,12 @@
       return { concept: null, prompt: content.trim() };
     }
 
+    // Strip [STUDENT_HAS_READ: ...] line — it's context for the AI, not for display
+    const prompt = match[2].replace(/^\[STUDENT_HAS_READ:[^\]]*\]\s*/m, '').trim();
+
     return {
       concept: match[1].trim(),
-      prompt: match[2].trim()
+      prompt
     };
   }
 
