@@ -691,8 +691,10 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
+    justify-self: stretch;
     gap: 0.7rem;
-    min-height: 4rem;
+    width: 100%;
+    min-height: 7rem;
     padding: 0.85rem 0.95rem;
     background: var(--surface-strong);
     border: 1px solid var(--border-strong);
@@ -737,6 +739,8 @@
 
   /* Skeleton: single animation, no stagger overhead */
   .path-tile--skeleton {
+    width: 100%;
+    min-height: 7rem;
     background: var(--surface-soft);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -754,6 +758,7 @@
   }
 
   .path-tile-name {
+    min-width: 0;
     font-size: 0.88rem;
     font-weight: 500;
     line-height: 1.3;
