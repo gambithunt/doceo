@@ -10,7 +10,7 @@
     settingsPath,
     subjectPath
   } from '$lib/routing';
-  import type { AppState } from '$lib/types';
+  import type { AppScreen, AppState } from '$lib/types';
 
   const { state }: { state: AppState } = $props();
 
@@ -26,6 +26,11 @@
     const pathname = $page.url.pathname;
     if (linkId === 'subject') return pathname.startsWith('/subjects');
     return pathname === links.find((link) => link.id === linkId)?.path;
+  }
+
+  function navigateToLink(linkId: string, linkPath: string): void {
+    appState.setScreen(linkId as AppScreen);
+    void goto(linkPath);
   }
 </script>
 
@@ -49,7 +54,7 @@
         class="nav-item"
         class:active={isActive(link.id)}
         aria-current={isActive(link.id) ? 'page' : undefined}
-        onclick={() => goto(link.id === 'subject' ? subjectPath(state.ui.selectedSubjectId) : link.path)}
+        onclick={() => navigateToLink(link.id, link.id === 'subject' ? subjectPath(state.ui.selectedSubjectId) : link.path)}
       >
         <span class="nav-icon" aria-hidden="true">{link.icon}</span>
         <span class="nav-label">{link.label}</span>

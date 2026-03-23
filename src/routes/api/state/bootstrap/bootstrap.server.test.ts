@@ -51,6 +51,17 @@ describe('state bootstrap route', () => {
   });
 
   it('hydrates onboarding options for the saved curriculum and grade', async () => {
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123'
+            }
+          }
+        })
+      }
+    });
     loadOnboardingProgress.mockResolvedValue({
       completed: false,
       completedAt: null,
@@ -94,7 +105,11 @@ describe('state bootstrap route', () => {
 
     const { GET } = await import('./+server');
     const response = await GET({
-      request: new Request('http://localhost/api/state/bootstrap')
+      request: new Request('http://localhost/api/state/bootstrap', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
     } as never);
     const payload = await response.json();
 

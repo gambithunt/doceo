@@ -1,5 +1,16 @@
 import type { AppScreen, AppState } from '$lib/types';
 
+export function screenForPath(pathname: string): AppScreen {
+  if (pathname === '/dashboard') return 'dashboard';
+  if (pathname === '/onboarding') return 'onboarding';
+  if (pathname === '/progress') return 'progress';
+  if (pathname === '/settings') return 'settings';
+  if (pathname === '/revision') return 'revision';
+  if (pathname === '/lesson' || pathname.startsWith('/lesson/')) return 'lesson';
+  if (pathname.startsWith('/subjects/')) return 'subject';
+  return 'landing';
+}
+
 export function dashboardPath(): string {
   return '/dashboard';
 }

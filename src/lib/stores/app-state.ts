@@ -32,6 +32,7 @@ import {
   dashboardPath,
   lessonPath,
   onboardingPath,
+  screenForPath,
   revisionPath
 } from '$lib/routing';
 import { supabase } from '$lib/supabase';
@@ -335,12 +336,14 @@ function createAppStore() {
       const remoteState = normalizeAppState(payload.state);
       // Preserve client-only UI prefs (theme) that aren't round-tripped through the server
       const localTheme = readState().ui.theme;
+      const routeScreen = screenForPath(window.location.pathname);
       set(
         persistAndSync({
           ...remoteState,
           ui: {
             ...remoteState.ui,
-            theme: localTheme
+            theme: localTheme,
+            currentScreen: routeScreen === 'landing' ? remoteState.ui.currentScreen : routeScreen
           },
           backend: {
             ...remoteState.backend,
