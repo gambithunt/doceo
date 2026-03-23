@@ -47,8 +47,8 @@ declare module '$env/static/private' {
 	export const GITHUB_MODELS_FAST: string;
 	export const GITHUB_MODELS_DEFAULT: string;
 	export const GITHUB_MODELS_THINKING: string;
-	export const STARSHIP_SHELL: string;
 	export const MANPATH: string;
+	export const STARSHIP_SHELL: string;
 	export const GHOSTTY_RESOURCES_DIR: string;
 	export const TERM_PROGRAM: string;
 	export const NODE: string;
@@ -84,8 +84,8 @@ declare module '$env/static/private' {
 	export const npm_config_node_gyp: string;
 	export const npm_package_version: string;
 	export const XPC_SERVICE_NAME: string;
-	export const HOME: string;
 	export const SHLVL: string;
+	export const HOME: string;
 	export const TERMINFO: string;
 	export const npm_config_cache: string;
 	export const LOGNAME: string;
@@ -196,8 +196,8 @@ declare module '$env/dynamic/private' {
 		GITHUB_MODELS_FAST: string;
 		GITHUB_MODELS_DEFAULT: string;
 		GITHUB_MODELS_THINKING: string;
-		STARSHIP_SHELL: string;
 		MANPATH: string;
+		STARSHIP_SHELL: string;
 		GHOSTTY_RESOURCES_DIR: string;
 		TERM_PROGRAM: string;
 		NODE: string;
@@ -233,8 +233,8 @@ declare module '$env/dynamic/private' {
 		npm_config_node_gyp: string;
 		npm_package_version: string;
 		XPC_SERVICE_NAME: string;
-		HOME: string;
 		SHLVL: string;
+		HOME: string;
 		TERMINFO: string;
 		npm_config_cache: string;
 		LOGNAME: string;
