@@ -1,7 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { appState } from '$lib/stores/app-state';
   import {
     dashboardPath,
@@ -15,11 +14,11 @@
   const { state }: { state: AppState } = $props();
 
   const links = $derived([
-    { id: 'dashboard', label: 'Dashboard', icon: '🏠', path: dashboardPath() },
-    { id: 'subject', label: 'Subjects', icon: '📚', path: subjectPath(state.ui.selectedSubjectId) },
-    { id: 'revision', label: 'Revision', icon: '🔁', path: revisionPath() },
-    { id: 'progress', label: 'Progress', icon: '📈', path: progressPath() },
-    { id: 'settings', label: 'Settings', icon: '⚙️', path: settingsPath() }
+    { id: 'dashboard',  label: 'Dashboard',   icon: '◈',  path: dashboardPath() },
+    { id: 'subject',    label: 'Curriculum',   icon: '◎',  path: subjectPath(state.ui.selectedSubjectId) },
+    { id: 'revision',   label: 'Revision',     icon: '↺',  path: revisionPath() },
+    { id: 'progress',   label: 'Progress',     icon: '↗',  path: progressPath() },
+    { id: 'settings',   label: 'Settings',     icon: '◐',  path: settingsPath() }
   ]);
 
   function isActive(linkId: string): boolean {
@@ -32,6 +31,10 @@
     appState.setScreen(linkId as AppScreen);
     void goto(linkPath);
   }
+
+  function toggleTheme(): void {
+    appState.setTheme(state.ui.theme === 'dark' ? 'light' : 'dark');
+  }
 </script>
 
 <aside class="sidebar">
@@ -41,9 +44,6 @@
     <div class="brand-copy">
       <h1>Doceo</h1>
       <p>{state.profile.grade} · {state.profile.curriculum}</p>
-    </div>
-    <div class="brand-theme">
-      <ThemeToggle theme={state.ui.theme} />
     </div>
   </div>
 
@@ -63,9 +63,20 @@
   </nav>
 
   <div class="sidebar-footer">
-    <button type="button" class="btn btn-secondary signout" onclick={() => appState.signOut()}>
-      Sign out
-    </button>
+    <div class="footer-row">
+      <button type="button" class="btn btn-secondary signout" onclick={() => appState.signOut()}>
+        Sign out
+      </button>
+      <button
+        type="button"
+        class="theme-btn"
+        onclick={toggleTheme}
+        aria-label={state.ui.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        title={state.ui.theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      >
+        {state.ui.theme === 'dark' ? '☀︎' : '☽'}
+      </button>
+    </div>
   </div>
 
 </aside>
@@ -83,11 +94,9 @@
 
   /* ── Brand ── */
   .brand {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    grid-template-rows: auto auto;
-    column-gap: 0.75rem;
-    row-gap: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
     background: var(--surface-strong);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
@@ -105,15 +114,11 @@
     font-weight: 800;
     display: grid;
     place-items: center;
-    grid-row: 1;
-    align-self: center;
+    flex-shrink: 0;
   }
 
   .brand-copy {
-    grid-column: 2;
-    grid-row: 1;
     min-width: 0;
-    align-self: center;
   }
 
   .brand-copy h1 {
@@ -130,11 +135,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .brand-theme {
-    grid-column: 1 / -1;
-    grid-row: 2;
   }
 
   /* ── Nav ── */
@@ -180,13 +180,14 @@
     background: var(--accent-dim);
     border-color: color-mix(in srgb, var(--accent) 30%, transparent);
     color: var(--text);
-    font-weight: 600;
+    font-weight: 700;
   }
 
   .nav-icon {
-    font-size: 1.05rem;
+    font-size: 1rem;
     line-height: 1;
     flex-shrink: 0;
+    font-style: normal;
   }
 
   .nav-label {
@@ -199,10 +200,38 @@
     gap: 0.6rem;
   }
 
+  .footer-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
   .signout {
-    width: 100%;
+    flex: 1;
     font: inherit;
     font-size: 0.88rem;
+  }
+
+  .theme-btn {
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-strong);
+    color: var(--text-soft);
+    font-size: 1rem;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color var(--motion-fast) var(--ease-soft), background var(--motion-fast) var(--ease-soft);
+  }
+
+  .theme-btn:hover {
+    color: var(--text);
+    background: var(--surface-soft);
+    transform: none;
+    box-shadow: none;
   }
 
   h1, p, span {

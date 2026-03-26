@@ -18,7 +18,7 @@
   let pendingChipId = $state<string | null>(null);
   let latestHintRequest = 0;
   let lastHintSeed = $state('');
-  // Cache auth headers so we don't re-call supabase.auth.getSession() on every hint load
+  let showAllTiles = $state(false);
   let cachedHeaders = $state<Record<string, string> | null>(null);
 
   const summary = $derived(getCompletionSummary(viewState));
@@ -40,7 +40,22 @@
 
   const groupedHintChips = $derived(groupHintChips(promptSuggestionChips, selectedSubject));
 
-  // Pre-derive values that were plain function calls in the template
+  const totalChips = $derived(groupedHintChips.reduce((sum, g) => sum + g.chips.length, 0));
+  const hasMoreTiles = $derived(!showAllTiles && totalChips > 6);
+
+  const displayedHintChips = $derived.by(() => {
+    if (showAllTiles) return groupedHintChips;
+    let count = 0;
+    return groupedHintChips
+      .map((group) => ({ ...group, chips: group.chips.filter(() => count++ < 6) }))
+      .filter((group) => group.chips.length > 0);
+  });
+
+  // Only show overflow dropdown when active subject is not visible in the pill row
+  const visiblePillSubjects = $derived(availableSubjects.slice(0, 4));
+  const activeSubjectInPills = $derived(visiblePillSubjects.some((s) => s.id === selectedSubject?.id));
+  const showOverflowDropdown = $derived(availableSubjects.length > 4 && !activeSubjectInPills);
+
   const greeting = $derived.by(() => {
     const hour = new Date().getHours();
     if (hour < 12) return `Good morning, ${firstName}!`;
@@ -48,16 +63,19 @@
     return `Evening, ${firstName}!`;
   });
 
-  const greetingLine = $derived(
-    currentSession
-      ? `You're in the middle of something. Pick up where you left off.`
-      : summary.completedLessons > 0
-        ? `${summary.completedLessons} ${summary.completedLessons === 1 ? 'lesson' : 'lessons'} completed. Keep the momentum going.`
-        : `Your learning journey starts here. Pick a topic and let's go.`
-  );
+  const greetingLine = $derived.by(() => {
+    if (currentSession) {
+      const stage = Math.min(currentSession.stagesCompleted.length + 1, 6);
+      return `You're ${stage} stage${stage === 1 ? '' : 's'} into ${toSentenceCase(currentSession.topicTitle)}. Let's keep going.`;
+    }
+    if (summary.completedLessons > 0) {
+      return `${summary.completedLessons} ${summary.completedLessons === 1 ? 'lesson' : 'lessons'} completed. Keep the momentum going.`;
+    }
+    return `Your learning journey starts here. Pick a topic and let's go.`;
+  });
 
   const currentSessionProgress = $derived(
-    currentSession ? Math.max(6, Math.round((currentSession.stagesCompleted.length / 6) * 100)) : 0
+    currentSession ? Math.min(100, Math.max(6, Math.round((currentSession.stagesCompleted.length / 6) * 100))) : 0
   );
   const currentSessionStageLabel = $derived(
     currentSession
@@ -65,14 +83,36 @@
       : ''
   );
   const currentSessionDate = $derived(
-    currentSession ? new Date(currentSession.lastActiveAt).toLocaleDateString() : ''
+    currentSession ? relativeTime(currentSession.lastActiveAt) : ''
   );
 
-  // Pre-compute emoji map — avoid repeated string comparisons per tile render
+  // Pre-compute emoji + color maps — avoid repeated string comparisons per tile render
   const subjectEmojiMap = $derived(
     Object.fromEntries(availableSubjects.map((s) => [s.id, subjectEmoji(s.name)]))
   );
+  const subjectColorMap = $derived(
+    Object.fromEntries(availableSubjects.map((s) => [s.id, subjectColorClass(s.name)]))
+  );
   const selectedSubjectEmoji = $derived(subjectEmojiMap[selectedSubject?.id ?? ''] ?? '📚');
+  const selectedSubjectColor = $derived(subjectColorMap[selectedSubject?.id ?? ''] ?? 'blue');
+
+  function toSentenceCase(str: string): string {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  }
+
+  function relativeTime(dateStr: string): string {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'today';
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks === 1) return 'last week';
+    return `${diffWeeks} weeks ago`;
+  }
 
   function subjectEmoji(name: string): string {
     const n = (name ?? '').toLowerCase();
@@ -89,6 +129,23 @@
     if (n.includes('business')) return '💼';
     if (n.includes('geography')) return '🗺️';
     return '📚';
+  }
+
+  function subjectColorClass(name: string): string {
+    const n = (name ?? '').toLowerCase();
+    if (n.includes('math')) return 'blue';
+    if (n.includes('physics')) return 'yellow';
+    if (n.includes('chemistry')) return 'orange';
+    if (n.includes('biology') || n.includes('life')) return 'green';
+    if (n.includes('english')) return 'purple';
+    if (n.includes('history') || n.includes('social')) return 'orange';
+    if (n.includes('accounting')) return 'blue';
+    if (n.includes('economics')) return 'green';
+    if (n.includes('afrikaans')) return 'red';
+    if (n.includes('art')) return 'purple';
+    if (n.includes('business')) return 'orange';
+    if (n.includes('geography')) return 'green';
+    return 'blue';
   }
 
   async function getHeaders(): Promise<Record<string, string>> {
@@ -156,14 +213,19 @@
   function onTopicFocus(): void { topicInputFocused = true; }
   function onTopicBlur(): void { topicInputFocused = false; }
 
-  function onSubjectChange(event: Event): void {
+  function selectSubject(subjectId: string): void {
     lastHintSeed = '';
     promptSuggestionsText = '';
     hintRefreshError = '';
     hintChipsRefreshing = false;
     pendingChipId = null;
+    showAllTiles = false;
     appState.setTopicDiscoveryInput('');
-    appState.selectSubject((event.currentTarget as HTMLSelectElement).value);
+    appState.selectSubject(subjectId);
+  }
+
+  function onSubjectChange(event: Event): void {
+    selectSubject((event.currentTarget as HTMLSelectElement).value);
   }
 
   function resetTopicDiscovery(): void {
@@ -204,10 +266,6 @@
     appState.resumeSession(session.id);
   }
 
-  function recentDate(session: LessonSession): string {
-    return new Date(session.lastActiveAt).toLocaleDateString();
-  }
-
   function recentStageLabel(session: LessonSession): string {
     return `Stage ${Math.min(session.stagesCompleted.length + 1, 6)} of 6 · ${getStageLabel(session.currentStage)}`;
   }
@@ -227,14 +285,14 @@
         <div class="mission-card">
           <div class="mission-card-inner">
             <p class="mission-kicker">Current Mission</p>
-            <h3 class="mission-title">{currentSession.topicTitle}</h3>
+            <h3 class="mission-title">{toSentenceCase(currentSession.topicTitle)}</h3>
             <p class="mission-meta">{currentSession.subject} · {currentSessionStageLabel}</p>
             <div class="mission-progress-bar">
-              <div class="mission-progress-fill" style="transform: scaleX({currentSessionProgress / 100});"></div>
+              <div class="mission-progress-fill" style="--progress: {currentSessionProgress / 100};"></div>
             </div>
             <div class="mission-footer">
-              <button type="button" class="btn btn-primary" onclick={() => startFromBanner(currentSession)}>
-                Resume →
+              <button type="button" class="btn btn-primary resume-btn" onclick={() => startFromBanner(currentSession)}>
+                Resume <span class="resume-arrow">→</span>
               </button>
               <span class="mission-timestamp">Last opened {currentSessionDate}</span>
             </div>
@@ -249,23 +307,6 @@
           </div>
         </div>
       {/if}
-
-      <div class="stat-strip">
-        <div class="stat-pill">
-          <span class="stat-pill-icon" aria-hidden="true">⭐</span>
-          <div class="stat-pill-text">
-            <span class="stat-pill-value" style="color: var(--color-xp);">{summary.averageMastery}%</span>
-            <span class="stat-pill-label">mastery</span>
-          </div>
-        </div>
-        <div class="stat-pill">
-          <span class="stat-pill-icon" aria-hidden="true">✅</span>
-          <div class="stat-pill-text">
-            <span class="stat-pill-value">{summary.completedLessons}</span>
-            <span class="stat-pill-label">{summary.completedLessons === 1 ? 'lesson' : 'lessons'} done</span>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -278,61 +319,75 @@
           {viewState.topicDiscovery.shortlist ? 'Pick a topic to begin your lesson' : `Recommended for ${selectedSubject?.name ?? 'your subjects'}`}
         </p>
       </div>
-      <div class="subject-switcher">
-        {#each availableSubjects.slice(0, 4) as subject (subject.id)}
-          <button
-            type="button"
-            class="subject-pill"
-            class:active={subject.id === selectedSubject?.id}
-            onclick={() => appState.selectSubject(subject.id)}
-          >
-            {subjectEmojiMap[subject.id] ?? '📚'} {subject.name}
-          </button>
-        {/each}
-        {#if availableSubjects.length > 4}
-          <select class="subject-overflow" value={selectedSubject?.id} onchange={onSubjectChange}>
-            {#each availableSubjects as subject (subject.id)}
-              <option value={subject.id}>{subject.name}</option>
-            {/each}
-          </select>
-        {/if}
+      <div class="subject-switcher-wrap">
+        <div class="subject-switcher">
+          {#each visiblePillSubjects as subject (subject.id)}
+            <button
+              type="button"
+              class="subject-pill"
+              class:active={subject.id === selectedSubject?.id}
+              onclick={() => selectSubject(subject.id)}
+            >
+              {subjectEmojiMap[subject.id] ?? '📚'} {subject.name}
+            </button>
+          {/each}
+          {#if showOverflowDropdown}
+            <select class="subject-overflow" value={selectedSubject?.id} onchange={onSubjectChange}>
+              {#each availableSubjects as subject (subject.id)}
+                <option value={subject.id}>{subject.name}</option>
+              {/each}
+            </select>
+          {/if}
+        </div>
       </div>
     </div>
 
-    <div class="path-grid" aria-live="polite">
-      {#if hintChipsLoading}
-        {#each Array.from({ length: 6 }) as _, i}
-          <div class="path-tile path-tile--skeleton" style="--i: {i};"></div>
-        {/each}
-      {:else if groupedHintChips.length > 0}
-        {#each groupedHintChips as group, gi}
-          {#if groupedHintChips.length > 1 && group.groupLabel}
-            <p class="chip-group-label">{group.groupLabel}</p>
-          {/if}
-          {#each group.chips as chip, i (chip.id)}
-            <button
-              type="button"
-              class="path-tile"
-              class:selected={pendingChipId === chip.id}
-              aria-busy={pendingChipId === chip.id}
-              aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
-              style="--i: {gi * 10 + i};"
-              onclick={() => startFromSuggestion(chip.id, chip.label)}
-            >
-              <span class="path-tile-icon" aria-hidden="true">{selectedSubjectEmoji}</span>
-              <span class="path-tile-name">{chip.label}</span>
-              {#if pendingChipId === chip.id}
-                <span class="path-tile-indicator" aria-hidden="true">
-                  <span class="busy-dot"></span><span class="busy-dot"></span><span class="busy-dot"></span>
-                </span>
-              {:else}
-                <span class="path-tile-arrow" aria-hidden="true">→</span>
-              {/if}
-            </button>
+    {#key selectedSubject?.id}
+      <div class="path-grid" aria-live="polite">
+        {#if hintChipsLoading}
+          {#each Array.from({ length: 6 }) as _, i}
+            <div class="path-tile path-tile--skeleton" style="--i: {i};"></div>
           {/each}
-        {/each}
-      {/if}
-    </div>
+        {:else if displayedHintChips.length > 0}
+          {#each displayedHintChips as group, gi}
+            {#if displayedHintChips.length > 1 && group.groupLabel}
+              <p class="chip-group-label">{group.groupLabel}</p>
+            {/if}
+            {#each group.chips as chip, i (chip.id)}
+              {@const isFirst = gi === 0 && i === 0}
+              <button
+                type="button"
+                class="path-tile"
+                class:selected={pendingChipId === chip.id}
+                class:path-tile--recommended={isFirst}
+                aria-busy={pendingChipId === chip.id}
+                aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
+                style="--i: {gi * 10 + i};"
+                onclick={() => startFromSuggestion(chip.id, chip.label)}
+              >
+                <div class="path-tile-icon icon-block icon-block--{selectedSubjectColor}" aria-hidden="true">
+                  {selectedSubjectEmoji}
+                </div>
+                <span class="path-tile-name">{chip.label}</span>
+                {#if pendingChipId === chip.id}
+                  <span class="path-tile-indicator" aria-hidden="true">
+                    <span class="busy-dot"></span><span class="busy-dot"></span><span class="busy-dot"></span>
+                  </span>
+                {:else}
+                  <span class="path-tile-arrow" aria-hidden="true">→</span>
+                {/if}
+              </button>
+            {/each}
+          {/each}
+        {/if}
+      </div>
+    {/key}
+
+    {#if hasMoreTiles}
+      <button type="button" class="btn btn-ghost see-all-btn" onclick={() => (showAllTiles = true)}>
+        See {totalChips - 6} more topics ↓
+      </button>
+    {/if}
 
     {#if !hintChipsLoading && groupedHintChips.length > 0}
       <div class="refresh-row">
@@ -384,7 +439,7 @@
             <button type="button" class="topic-tile" onclick={() => startTopic(topic)}>
               <span class="topic-index">{String(i + 1).padStart(2, '0')}</span>
               <div class="topic-tile-body">
-                <strong>{topic.title}</strong>
+                <strong>{toSentenceCase(topic.title)}</strong>
                 <p>{topic.description}</p>
               </div>
               <span class="topic-tile-arrow" aria-hidden="true">→</span>
@@ -395,37 +450,58 @@
     {/if}
   </section>
 
-  <!-- ── RECENTS ── -->
+  <!-- ── OTHER SESSIONS ── -->
   {#if recentLessons.length > 0}
     <section class="section-block">
       <div class="section-header section-header--simple">
-        <h3 class="section-title">Pick up where you left off</h3>
+        <h3 class="section-title">Other sessions</h3>
       </div>
       <div class="recents-grid">
         {#each recentLessons as session (session.id)}
           <article class="recent-card">
             <div class="recent-card-top">
               <span class="subject-chip">{session.subject}</span>
-              <span class="recent-date">{recentDate(session)}</span>
+              <span class="recent-date">{relativeTime(session.lastActiveAt)}</span>
             </div>
-            <h4 class="recent-title">{session.topicTitle}</h4>
+            <h4 class="recent-title">{toSentenceCase(session.topicTitle)}</h4>
             <p class="recent-stage">{recentStageLabel(session)}</p>
             <div class="recent-actions">
               <button type="button" class="btn btn-primary btn-compact" onclick={() => appState.resumeSession(session.id)}>
                 Resume →
               </button>
-              <details class="overflow-menu">
-                <summary class="btn btn-secondary btn-compact icon-summary" aria-label="More options">⋯</summary>
-                <div class="overflow-panel">
-                  <button type="button" class="menu-item" onclick={() => appState.restartLessonSession(session.id)}>Restart</button>
-                  <button type="button" class="menu-item danger" onclick={() => appState.archiveSession(session.id)}>Archive</button>
-                </div>
-              </details>
+              <button type="button" class="btn btn-ghost btn-compact" onclick={() => appState.restartLessonSession(session.id)}>
+                Restart
+              </button>
+              <button type="button" class="btn btn-ghost btn-compact danger-ghost" onclick={() => appState.archiveSession(session.id)}>
+                Archive
+              </button>
             </div>
           </article>
         {/each}
       </div>
     </section>
+  {/if}
+
+  <!-- ── STATS FOOTER ── -->
+  {#if summary.completedLessons > 0 || summary.averageMastery > 0}
+    <div class="stats-footer">
+      <div class="stat-pill">
+        <span class="stat-pill-icon" aria-hidden="true">⭐</span>
+        <div class="stat-pill-text">
+          <span class="stat-pill-value" style="color: var(--color-xp);">{summary.averageMastery}%</span>
+          <span class="stat-pill-label">mastery · {selectedSubject?.name ?? 'overall'}</span>
+        </div>
+      </div>
+      {#if summary.completedLessons > 0}
+        <div class="stat-pill">
+          <span class="stat-pill-icon" aria-hidden="true">✅</span>
+          <div class="stat-pill-text">
+            <span class="stat-pill-value">{summary.completedLessons}</span>
+            <span class="stat-pill-label">{summary.completedLessons === 1 ? 'lesson' : 'lessons'} done</span>
+          </div>
+        </div>
+      {/if}
+    </div>
   {/if}
 
 </section>
@@ -437,13 +513,19 @@
     gap: 1.75rem;
     width: 100%;
     align-content: start;
-    padding-bottom: 2rem;
+    padding-bottom: 2.5rem;
   }
 
   /* ── Hero ── */
   .hero {
     display: grid;
     gap: 0.85rem;
+    animation: section-enter 0.35s var(--ease-soft) both;
+  }
+
+  @keyframes section-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
   .hero-greeting h2 {
@@ -454,7 +536,6 @@
     color: var(--text);
   }
 
-  /* Wave plays once on load, not forever */
   .greeting-wave {
     display: inline-block;
     animation: wave 1s ease-in-out 1;
@@ -480,13 +561,28 @@
 
   /* Mission card — glass surface */
   .mission-card {
+    position: relative;
     background: var(--glass-bg);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--glass-border));
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow), var(--glass-inset);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.13);
     overflow: hidden;
+  }
+
+  /* Lensing: soft radial light glint, hero card only */
+  .mission-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      ellipse 80% 60% at 30% 20%,
+      rgba(255, 255, 255, 0.05) 0%,
+      transparent 70%
+    );
+    pointer-events: none;
   }
 
   .mission-card--empty {
@@ -495,9 +591,9 @@
   }
 
   .mission-card-inner {
-    padding: 1.2rem 1.4rem;
+    padding: 1.6rem 1.8rem;
     display: grid;
-    gap: 0.5rem;
+    gap: 0.55rem;
   }
 
   .mission-kicker {
@@ -508,10 +604,10 @@
   }
 
   .mission-title {
-    font-size: 1.3rem;
+    font-size: 1.55rem;
     font-weight: 700;
-    line-height: 1.2;
-    letter-spacing: -0.02em;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
     color: var(--text);
   }
 
@@ -520,13 +616,13 @@
     color: var(--text-soft);
   }
 
-  /* Progress bar: transform:scaleX avoids layout reflow */
+  /* Progress bar: animate fill on load */
   .mission-progress-bar {
     height: 5px;
     background: var(--border-strong);
     border-radius: var(--radius-pill);
     overflow: hidden;
-    margin: 0.2rem 0;
+    margin: 0.35rem 0;
   }
 
   .mission-progress-fill {
@@ -535,14 +631,19 @@
     border-radius: var(--radius-pill);
     background: linear-gradient(90deg, var(--color-blue), var(--accent));
     transform-origin: left;
-    transition: transform 0.5s var(--ease-soft);
+    transform: scaleX(0);
+    animation: progress-fill 0.7s 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes progress-fill {
+    to { transform: scaleX(var(--progress, 1)); }
   }
 
   .mission-footer {
     display: flex;
     align-items: center;
     gap: 1rem;
-    margin-top: 0.25rem;
+    margin-top: 0.4rem;
     flex-wrap: wrap;
   }
 
@@ -551,58 +652,22 @@
     color: var(--muted);
   }
 
-  /* Stat strip */
-  .stat-strip {
-    display: flex;
-    gap: 0.65rem;
-    flex-wrap: wrap;
+  /* Resume button arrow nudge on hover */
+  .resume-btn .resume-arrow {
+    display: inline-block;
+    transition: transform var(--motion-fast) var(--ease-spring);
   }
 
-  .stat-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    box-shadow: var(--glass-inset);
-    border-radius: var(--radius-lg);
-    padding: 0.7rem 1rem;
-    flex: 1;
-    min-width: 110px;
-  }
-
-  .stat-pill-icon {
-    font-size: 1.3rem;
-    line-height: 1;
-    flex-shrink: 0;
-  }
-
-  .stat-pill-text {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .stat-pill-value {
-    font-size: 1.4rem;
-    font-weight: 800;
-    line-height: 1;
-    letter-spacing: -0.04em;
-    color: var(--text);
-  }
-
-  .stat-pill-label {
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--text-soft);
-    margin-top: 0.1rem;
+  .resume-btn:hover .resume-arrow {
+    transform: translateX(3px);
   }
 
   /* ── Section blocks ── */
   .section-block {
     display: grid;
     gap: 0.85rem;
+    animation: section-enter 0.35s var(--ease-soft) both;
+    animation-delay: 0.08s;
   }
 
   .section-header {
@@ -630,46 +695,67 @@
     margin-top: 0.15rem;
   }
 
-  /* Subject switcher */
+  /* Subject switcher — horizontal scroll, no wrap */
+  .subject-switcher-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+
+  .subject-switcher-wrap::-webkit-scrollbar {
+    display: none;
+  }
+
   .subject-switcher {
     display: flex;
     gap: 0.4rem;
-    flex-wrap: wrap;
     align-items: center;
+    white-space: nowrap;
+    padding-bottom: 2px;
   }
 
   .subject-pill {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    background: var(--surface-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
     border: 1px solid var(--border-strong);
+    box-shadow: var(--glass-inset-tile);
     border-radius: var(--radius-pill);
-    padding: 0.4rem 0.8rem;
+    padding: 0.4rem 0.85rem;
     font: inherit;
     font-size: 0.82rem;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-soft);
     cursor: pointer;
     white-space: nowrap;
-    transition: background var(--motion-fast) var(--ease-soft), color var(--motion-fast) var(--ease-soft);
+    flex-shrink: 0;
+    transition: border-color var(--motion-fast) var(--ease-soft), color var(--motion-fast) var(--ease-soft);
   }
 
   .subject-pill:hover {
-    background: var(--surface-soft);
     color: var(--text);
+    border-color: var(--border-strong);
     transform: none;
   }
 
   .subject-pill.active {
     background: var(--accent-dim);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border-color: var(--accent);
     color: var(--accent);
-    font-weight: 600;
+    font-weight: 700;
+    box-shadow: none;
   }
 
   .subject-overflow {
-    background: var(--surface-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-pill);
     color: var(--text);
@@ -677,6 +763,7 @@
     font: inherit;
     font-size: 0.82rem;
     cursor: pointer;
+    flex-shrink: 0;
   }
 
   /* ── Path grid ── */
@@ -685,6 +772,7 @@
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 0.65rem;
     min-height: 4rem;
+    animation: section-enter 0.3s var(--ease-soft) both;
   }
 
   .path-tile {
@@ -696,16 +784,37 @@
     width: 100%;
     min-height: 7rem;
     padding: 0.85rem 0.95rem;
-    background: var(--surface-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     color: var(--text);
     text-align: left;
     font: inherit;
     cursor: pointer;
-    /* Single shadow, no compound layers */
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+    box-shadow: var(--glass-inset-tile);
     transition: transform var(--motion-fast) var(--ease-spring), border-color var(--motion-fast) var(--ease-soft);
+  }
+
+  .path-tile--recommended {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-strong));
+  }
+
+  .path-tile--recommended::after {
+    content: 'Next up';
+    position: absolute;
+    top: 0.55rem;
+    right: 0.7rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+  }
+
+  /* need position: relative for ::after */
+  .path-tile--recommended {
+    position: relative;
   }
 
   @keyframes chip-enter {
@@ -729,7 +838,10 @@
 
   .path-tile.selected {
     background: var(--accent-dim);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     border-color: var(--accent);
+    box-shadow: none;
   }
 
   .path-tile[aria-disabled='true'] {
@@ -737,7 +849,7 @@
     opacity: 0.45;
   }
 
-  /* Skeleton: single animation, no stagger overhead */
+  /* Skeleton */
   .path-tile--skeleton {
     width: 100%;
     min-height: 7rem;
@@ -752,26 +864,44 @@
     50% { opacity: 0.9; }
   }
 
+  /* Icon block inside tile — per design system */
   .path-tile-icon {
-    font-size: 1.4rem;
-    line-height: 1;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
   }
+
+  .icon-block--blue   { background: var(--color-blue-dim); }
+  .icon-block--green  { background: var(--color-green-dim); }
+  .icon-block--purple { background: var(--color-purple-dim); }
+  .icon-block--orange { background: var(--color-orange-dim); }
+  .icon-block--red    { background: var(--color-red-dim); }
+  .icon-block--yellow { background: var(--color-yellow-dim); }
 
   .path-tile-name {
     min-width: 0;
     font-size: 0.88rem;
-    font-weight: 500;
+    font-weight: 600;
     line-height: 1.3;
   }
 
+  /* Arrow — visible only on hover */
   .path-tile-arrow {
     font-size: 0.9rem;
-    color: var(--text-soft);
-    transition: color var(--motion-fast) var(--ease-soft);
+    color: var(--accent);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity var(--motion-fast) var(--ease-soft), transform var(--motion-fast) var(--ease-soft);
   }
 
   .path-tile:hover:not(:disabled) .path-tile-arrow {
-    color: var(--accent);
+    opacity: 1;
+    transform: translateX(0);
   }
 
   .path-tile-indicator {
@@ -811,6 +941,13 @@
     padding-top: 0;
   }
 
+  .see-all-btn {
+    justify-self: start;
+    font-size: 0.84rem;
+    color: var(--text-soft);
+    padding-inline: 0.5rem;
+  }
+
   .refresh-row {
     display: flex;
     align-items: center;
@@ -839,7 +976,7 @@
 
   .search-launcher.focused {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: 0 0 0 3px var(--accent-glow), var(--glass-inset);
   }
 
   .search-input {
@@ -897,14 +1034,16 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 0.85rem;
     align-items: center;
-    background: var(--surface-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     padding: 0.85rem 0.95rem;
     text-align: left;
     font: inherit;
     cursor: pointer;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+    box-shadow: var(--glass-inset-tile);
     transition: transform var(--motion-fast) var(--ease-spring), border-color var(--motion-fast) var(--ease-soft);
   }
 
@@ -938,14 +1077,18 @@
 
   .topic-tile-arrow {
     color: var(--muted);
-    transition: color var(--motion-fast) var(--ease-soft);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity var(--motion-fast) var(--ease-soft), transform var(--motion-fast) var(--ease-soft), color var(--motion-fast) var(--ease-soft);
   }
 
   .topic-tile:hover .topic-tile-arrow {
+    opacity: 1;
+    transform: translateX(0);
     color: var(--accent);
   }
 
-  /* ── Recents ── */
+  /* ── Other sessions ── */
   .recents-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -953,11 +1096,13 @@
   }
 
   .recent-card {
-    background: var(--surface-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     padding: 1rem 1.1rem;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+    box-shadow: var(--glass-inset-tile);
     display: grid;
     gap: 0.45rem;
     transition: transform var(--motion-fast) var(--ease-spring), border-color var(--motion-fast) var(--ease-soft);
@@ -1017,55 +1162,66 @@
     gap: 0.5rem;
     align-items: center;
     margin-top: 0.1rem;
+    flex-wrap: wrap;
   }
 
-  /* ── Overflow menu ── */
-  .icon-summary {
-    min-width: 2.4rem;
-    padding-inline: 0.7rem;
+  .danger-ghost {
+    color: var(--color-error) !important;
   }
 
-  .overflow-menu {
-    position: relative;
+  /* ── Stats footer ── */
+  .stats-footer {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--border);
+    animation: section-enter 0.35s var(--ease-soft) both;
+    animation-delay: 0.16s;
   }
 
-  .overflow-menu summary { list-style: none; }
-  .overflow-menu summary::-webkit-details-marker { display: none; }
-
-  .overflow-panel {
-    position: absolute;
-    left: 0;
-    top: calc(100% + 0.4rem);
-    min-width: 140px;
-    display: grid;
-    gap: 0.25rem;
-    padding: 0.35rem;
-    background: var(--surface-strong);
+  .stat-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
     border: 1px solid var(--border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-strong);
-    z-index: 10;
+    box-shadow: var(--glass-inset-tile);
+    border-radius: var(--radius-lg);
+    padding: 0.6rem 0.9rem;
+    flex: 1;
+    min-width: 110px;
   }
 
-  .menu-item {
-    border: 1px solid transparent;
-    border-radius: calc(var(--radius-md) - 0.2rem);
-    background: transparent;
+  .stat-pill-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .stat-pill-text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stat-pill-value {
+    font-size: 1.2rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.04em;
     color: var(--text);
-    text-align: left;
-    padding: 0.55rem 0.7rem;
-    font: inherit;
-    font-size: 0.86rem;
-    cursor: pointer;
   }
 
-  .menu-item:hover {
-    background: var(--surface-soft);
-    transform: none;
-    box-shadow: none;
+  .stat-pill-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-soft);
+    margin-top: 0.1rem;
   }
 
-  .menu-item.danger { color: var(--color-error); }
+  /* ── Overflow menu (removed, replaced with inline actions) ── */
 
   /* ── Utilities ── */
   .error-note {

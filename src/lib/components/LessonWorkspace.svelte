@@ -1,5 +1,4 @@
 <script lang="ts">
-  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { getActiveLessonSession } from '$lib/data/platform';
   import { getNextStage, getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
@@ -12,7 +11,17 @@
   let composer = $state('');
   let chatElement = $state<HTMLDivElement | null>(null);
   let expandedConcepts = $state(new Set<string>());
+  let composerFocused = $state(false);
+  let showScrollDown = $state(false);
+  let celebratingStage = $state<LessonStage | null>(null);
+  let prevCompleted: LessonStage[] = [];
   const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
+
+  function toSentenceCase(str: string): string {
+    if (!str) return str;
+    const lower = str.toLowerCase();
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
 
   function toggleConcept(key: string): void {
     const next = new Set(expandedConcepts);
@@ -40,7 +49,7 @@
       return { concept: null, prompt: content.trim() };
     }
 
-    // Strip [STUDENT_HAS_READ: ...] line — it's context for the AI, not for display
+    // Strip [STUDENT_HAS_READ: ...] line — context for the AI, not for display
     const prompt = match[2].replace(/^\[STUDENT_HAS_READ:[^\]]*\]\s*/m, '').trim();
 
     return {
@@ -51,10 +60,18 @@
 
   const visibleStages = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete');
   const currentStageNumber = $derived(lessonSession ? getStageNumber(lessonSession.currentStage) : 1);
-  const currentStageLabel = $derived(lessonSession ? getStageLabel(lessonSession.currentStage) : 'Orientation');
   const nextStage = $derived(lessonSession ? getNextStage(lessonSession.currentStage) : null);
   const lessonProgressPercent = $derived(
     lessonSession ? Math.max(8, Math.round((lessonSession.stagesCompleted.length / visibleStages.length) * 100)) : 0
+  );
+  const arcProgress = $derived(Math.max(4, Math.min(100, lessonProgressPercent)));
+  const hasInput = $derived(composer.trim().length > 0);
+
+  const lastAssistantMessage = $derived(
+    lessonSession?.messages.filter((m) => m.role === 'assistant').at(-1) ?? null
+  );
+  const composerPlaceholder = $derived(
+    lastAssistantMessage?.content.trim().endsWith('?') ? 'Type your answer...' : 'Reply or ask anything...'
   );
 
   $effect(() => {
@@ -63,13 +80,33 @@
 
   $effect(() => {
     lessonSession?.messages.length;
-    if (chatElement) {
-      chatElement.scrollTo({
-        top: chatElement.scrollHeight,
-        behavior: 'smooth'
-      });
+    if (chatElement && !showScrollDown) {
+      chatElement.scrollTo({ top: chatElement.scrollHeight, behavior: 'smooth' });
     }
   });
+
+  $effect(() => {
+    const completed = lessonSession?.stagesCompleted ?? [];
+    const newlyCompleted = completed.find((s) => !prevCompleted.includes(s));
+    if (newlyCompleted) {
+      celebratingStage = newlyCompleted;
+      setTimeout(() => {
+        celebratingStage = null;
+      }, 700);
+    }
+    prevCompleted = [...completed];
+  });
+
+  function onChatScroll(e: Event): void {
+    const el = e.currentTarget as HTMLDivElement;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    showScrollDown = distanceFromBottom > 120;
+  }
+
+  function scrollToBottom(): void {
+    chatElement?.scrollTo({ top: chatElement.scrollHeight, behavior: 'smooth' });
+    showScrollDown = false;
+  }
 
   function statusForStage(stage: LessonStage): 'completed' | 'active' | 'upcoming' {
     if (!lessonSession) {
@@ -90,6 +127,7 @@
 
     void appState.sendLessonMessage(composer.trim());
     composer = '';
+    composerFocused = false;
   }
 
   function onInput(event: Event): void {
@@ -180,16 +218,17 @@
 {#if lessonSession}
   <section class="lesson-shell">
     <header class="lesson-header">
+      <!-- Top bar -->
       <div class="top-bar">
-        <button type="button" class="btn btn-secondary close-button" onclick={() => appState.setLessonCloseConfirm(true)}>
-          Back to dashboard
+        <button type="button" class="back-btn" onclick={() => appState.setLessonCloseConfirm(true)}>
+          <span class="back-arrow" aria-hidden="true">←</span>
+          <span>Dashboard</span>
         </button>
         <div class="title-block">
-          <p>{lessonSession.subject}</p>
-          <h2>{lessonSession.topicTitle}</h2>
+          <p class="subject-kicker">{lessonSession.subject}</p>
+          <h2>{toSentenceCase(lessonSession.topicTitle)}</h2>
         </div>
         <div class="top-actions">
-          <ThemeToggle theme={viewState.ui.theme} />
           {#if showDebug}
             <button type="button" class="btn btn-secondary btn-compact debug">Profile</button>
             <button type="button" class="btn btn-secondary btn-compact debug">Prompt</button>
@@ -197,164 +236,243 @@
         </div>
       </div>
 
-      <div class="lesson-summary">
-        <div class="summary-head">
-          <span class="summary-stage">{stageEmoji(lessonSession.currentStage)} Stage {currentStageNumber} of {visibleStages.length}</span>
-          <span class="summary-stage-name">{currentStageLabel}</span>
-        </div>
-        <div class="summary-progress" aria-hidden="true">
-          <span style={`width: ${lessonProgressPercent}%;`}></span>
-        </div>
-        <p>{stagePrompt(lessonSession.currentStage)}</p>
-      </div>
-
+      <!-- Timeline breadcrumb -->
       <nav class="progress-rail" aria-label="Lesson stages">
-        {#each visibleStages as stage}
-          <div class:completed={statusForStage(stage) === 'completed'} class:active={statusForStage(stage) === 'active'} class="stage">
-            <span class="icon">{statusForStage(stage) === 'completed' ? '✓' : getStageNumber(stage)}</span>
-            <span class="stage-text">{getStageLabel(stage)}</span>
+        {#each visibleStages as stage, i}
+          {#if i > 0}
+            <div
+              class="stage-connector"
+              class:filled={statusForStage(visibleStages[i - 1]) === 'completed'}
+            ></div>
+          {/if}
+          <div
+            class="stage-node"
+            class:completed={statusForStage(stage) === 'completed'}
+            class:active={statusForStage(stage) === 'active'}
+            class:celebrating={celebratingStage === stage}
+          >
+            <div class="node-dot">
+              {#if statusForStage(stage) === 'completed'}
+                <span aria-hidden="true">✓</span>
+              {:else if statusForStage(stage) === 'active'}
+                <span aria-hidden="true">{getStageNumber(stage)}</span>
+              {/if}
+            </div>
+            {#if statusForStage(stage) === 'active'}
+              <span class="node-label">{toSentenceCase(getStageLabel(stage))}</span>
+            {/if}
           </div>
         {/each}
       </nav>
     </header>
 
     <section class="lesson-body">
-      <div class="chat-area" bind:this={chatElement}>
-        {#each lessonSession.messages as message}
-          {#if message.type === 'stage_start'}
-            <section class="chapter-marker">
-              <div class="chapter-kicker">
-                <span class="chapter-number">{String(getStageNumber(message.stage)).padStart(2, '0')}</span>
-                <span>{stageEmoji(message.stage)} {getStageLabel(message.stage)}</span>
+      <!-- Chat area -->
+      <div class="chat-wrap">
+        <div class="chat-area" bind:this={chatElement} onscroll={onChatScroll}>
+          {#each lessonSession.messages as message}
+            {#if message.type === 'stage_start'}
+              <div class="stage-transition" aria-hidden="true">
+                <span class="stage-transition-pill">
+                  {stageEmoji(message.stage)} {toSentenceCase(getStageLabel(message.stage))}
+                </span>
               </div>
-              <p>{stagePrompt(message.stage)}</p>
-            </section>
-          {:else if message.type === 'concept_cards'}
-            <div class="concept-cards-panel">
-              <p class="concept-cards-label">Pick a concept to go deeper 🔍</p>
-              {#each message.conceptItems ?? [] as concept, i}
-                {@const key = `${message.id}-${i}`}
-                <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
-                  <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
-                    <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, i)}</span>
-                    <div class="concept-card-title">
-                      <span class="concept-name">{concept.name}</span>
-                      <span class="concept-summary">{concept.summary}</span>
-                    </div>
-                    <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
-                  </button>
-                  {#if expandedConcepts.has(key)}
-                    <div class="concept-card-body">
-                      <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
-                      <div class="concept-example">
-                        <span class="concept-example-label">Example</span>
-                        <div>{@html renderSimpleMarkdown(concept.example)}</div>
+            {:else if message.type === 'concept_cards'}
+              <div class="concept-cards-panel">
+                <p class="concept-cards-label">Pick a concept to go deeper 🔍</p>
+                {#each message.conceptItems ?? [] as concept, i}
+                  {@const key = `${message.id}-${i}`}
+                  <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
+                    <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
+                      <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, i)}</span>
+                      <div class="concept-card-title">
+                        <span class="concept-name">{concept.name}</span>
+                        <span class="concept-summary">{concept.summary}</span>
                       </div>
-                      <div class="concept-actions">
-                        <button type="button" class="concept-ask-link" onclick={() => askAboutConcept(concept)}>
-                          <span>Ask Doceo to explain this</span>
-                          <span aria-hidden="true">→</span>
-                        </button>
+                      <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
+                    </button>
+                    {#if expandedConcepts.has(key)}
+                      <div class="concept-card-body">
+                        <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
+                        <div class="concept-example">
+                          <span class="concept-example-label">Example</span>
+                          <div>{@html renderSimpleMarkdown(concept.example)}</div>
+                        </div>
+                        <div class="concept-actions">
+                          <button type="button" class="concept-ask-link" onclick={() => askAboutConcept(concept)}>
+                            <span>Ask Doceo to explain this</span>
+                            <span aria-hidden="true">→</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <article
+                class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
+                class:compact-reply={isCompactUserReply(message)}
+              >
+                {#if message.type === 'question'}
+                  {@const questionCard = parseQuestionCard(message.content)}
+                  <div class="question-kicker">
+                    <span class="question-icon" aria-hidden="true">?</span>
+                    <small>Question</small>
+                  </div>
+                  {#if questionCard.concept}
+                    <span class="question-chip">{questionCard.concept}</span>
                   {/if}
-                </div>
-              {/each}
-            </div>
-          {:else}
-            <article
-              class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
-              class:compact-reply={isCompactUserReply(message)}
-            >
-              {#if message.type === 'question'}
-                {@const questionCard = parseQuestionCard(message.content)}
-                <div class="question-kicker">
-                  <span class="question-icon" aria-hidden="true">?</span>
-                  <small>Question</small>
-                </div>
-                {#if questionCard.concept}
-                  <span class="question-chip">{questionCard.concept}</span>
+                  <div class="bubble-body question-body">
+                    <p>{questionCard.prompt}</p>
+                  </div>
+                {:else}
+                  {#if message.type === 'side_thread'}
+                    <small>↳ Side thread</small>
+                  {/if}
+                  <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
                 {/if}
-                <div class="bubble-body question-body">
-                  <p>{questionCard.prompt}</p>
-                </div>
-              {:else}
-                {#if message.type === 'side_thread'}
-                  <small>↳ Side Thread</small>
-                {/if}
-                <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
-              {/if}
+              </article>
+            {/if}
+          {/each}
+
+          {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
+            <article class="bubble assistant pending enter-assistant">
+              <div class="typing-dots" aria-label="Doceo is thinking" role="status">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             </article>
           {/if}
-        {/each}
+        </div>
 
-        {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
-          <article class="bubble assistant pending enter-assistant">
-            <div class="typing-dots" aria-label="Assistant is typing" role="status">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-          </article>
+        {#if showScrollDown}
+          <button type="button" class="scroll-down-pill" onclick={scrollToBottom}>
+            ↓ New message
+          </button>
         {/if}
       </div>
 
+      <!-- Right rail: 2 cards max -->
       <aside class="lesson-rail" aria-label="Lesson companion">
-        <section class="rail-card mission-card">
-          <p class="rail-kicker">Lesson mission</p>
-          <h3>{stageEmoji(lessonSession.currentStage)} {currentStageLabel}</h3>
-          <p>{stagePrompt(lessonSession.currentStage)}</p>
-          <div class="rail-progress" aria-hidden="true">
-            <span style={`width: ${lessonProgressPercent}%;`}></span>
-          </div>
-          <small>{lessonProgressPercent}% of this lesson complete</small>
-        </section>
-
-        <section class="rail-card helper-card">
-          <p class="rail-kicker">Need another angle?</p>
-          <h3>Ask Doceo for backup</h3>
-          <p>Try a guided prompt when you want a clearer example or a slower walkthrough.</p>
-          <div class="rail-actions">
-            <button type="button" class="btn btn-secondary rail-action" onclick={() => sendQuickReply(helperPrompt(lessonSession.currentStage))}>
-              {stageEmoji(lessonSession.currentStage)} Help me with this
-            </button>
-            <button type="button" class="btn btn-secondary rail-action" onclick={() => sendQuickReply('Quiz me on this idea before we move on.')}>
-              🧠 Quick check
-            </button>
-          </div>
-        </section>
-
         {#if nextStage}
           <section class="rail-card next-card">
-            <p class="rail-kicker">Next up</p>
-            <h3>{stageEmoji(nextStage)} {getStageLabel(nextStage)}</h3>
+            <p class="rail-kicker">Up next</p>
+            <h3>{stageEmoji(nextStage)} {toSentenceCase(getStageLabel(nextStage))}</h3>
             <p>{stagePrompt(nextStage)}</p>
-            <button type="button" class="btn btn-primary next-stage-button" onclick={() => sendQuickReply("I'm ready for the next step.")}>
-              <span>Let’s keep going</span>
+            <button
+              type="button"
+              class="btn btn-primary next-stage-button"
+              onclick={() => sendQuickReply("I'm ready for the next step.")}
+            >
+              <span>Let's keep going</span>
               <span class="next-stage-arrow" aria-hidden="true">→</span>
             </button>
+            <div class="rail-divider"></div>
+            <div class="rail-secondary-actions">
+              <button
+                type="button"
+                class="btn btn-secondary rail-action"
+                onclick={() => sendQuickReply(helperPrompt(lessonSession.currentStage))}
+              >
+                Explain differently
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary rail-action"
+                onclick={() => sendQuickReply('Walk me through this step by step.')}
+              >
+                Walk me through it
+              </button>
+            </div>
+          </section>
+        {:else}
+          <section class="rail-card helper-card">
+            <p class="rail-kicker">Need a different take?</p>
+            <h3>Ask for help</h3>
+            <p>Try a guided prompt for a clearer example or a slower walkthrough.</p>
+            <div class="rail-actions">
+              <button
+                type="button"
+                class="btn btn-secondary rail-action"
+                onclick={() => sendQuickReply(helperPrompt(lessonSession.currentStage))}
+              >
+                Explain differently
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary rail-action"
+                onclick={() => sendQuickReply('Quiz me on this idea before we move on.')}
+              >
+                Walk me through it
+              </button>
+            </div>
           </section>
         {/if}
+
+        <section class="rail-card mission-card">
+          <p class="rail-kicker">Your mission</p>
+          <div class="mission-content">
+            <div class="mission-text">
+              <h3>{stageEmoji(lessonSession.currentStage)} {toSentenceCase(getStageLabel(lessonSession.currentStage))}</h3>
+              <p>{stagePrompt(lessonSession.currentStage)}</p>
+              <span class="stage-count">Stage {currentStageNumber} of {visibleStages.length}</span>
+            </div>
+            <div class="arc-wrapper" aria-hidden="true">
+              <svg viewBox="0 0 36 36" class="circular-arc">
+                <circle class="arc-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8" />
+                <circle
+                  class="arc-fill"
+                  cx="18"
+                  cy="18"
+                  r="15.9"
+                  fill="none"
+                  stroke-width="2.8"
+                  stroke-dasharray="100"
+                  style="stroke-dashoffset: {100 - arcProgress};"
+                />
+              </svg>
+              <span class="arc-label">{lessonProgressPercent}%</span>
+            </div>
+          </div>
+        </section>
       </aside>
 
+      <!-- Composer -->
       <div class="input-area">
-        <p>What do you want to try next? Reply, ask a question, or tap a shortcut.</p>
         <div class="quick-actions">
           <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into smaller steps.')}>Slow down 🐢</button>
           <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me a different example for this part.')}>Different example ✨</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you check me?')}>Check me ✅</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I have a question about this.')}>I have a question 🙋</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you test me?')}>Test me 🎯</button>
+          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I want to go deeper on this idea.')}>Go deeper 🔍</button>
         </div>
         <div class="composer">
           <textarea
-            rows="3"
+            rows={composerFocused || composer.length > 0 ? 2 : 1}
             bind:value={composer}
-            placeholder="Type your response or ask a question..."
+            placeholder={composerPlaceholder}
             oninput={onInput}
+            onfocus={() => (composerFocused = true)}
+            onblur={() => {
+              if (!composer) composerFocused = false;
+            }}
+            onkeydown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submit();
+              }
+            }}
           ></textarea>
-          <button type="button" class="btn btn-primary send" onclick={submit} aria-label="Send response">
+          <button
+            type="button"
+            class="btn btn-primary send"
+            class:ready={hasInput}
+            onclick={submit}
+            aria-label="Send response"
+          >
             <span class="send-label">Send</span>
-            <span class="send-icon" aria-hidden="true">↑</span>
+            <span class="send-icon" aria-hidden="true">→</span>
           </button>
         </div>
       </div>
@@ -400,8 +518,8 @@
       color-mix(in srgb, var(--accent) 12%, var(--surface-strong)),
       color-mix(in srgb, var(--accent) 6%, var(--surface))
     );
-    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 96%, transparent);
-    --chat-assistant-border: color-mix(in srgb, var(--border-strong) 88%, transparent);
+    --chat-assistant-bg: var(--glass-bg-tile);
+    --chat-assistant-border: var(--border-strong);
     --chat-assistant-text: var(--text);
     --chat-check-bg: color-mix(in srgb, var(--accent) 8%, var(--surface-strong));
     --chat-check-border: color-mix(in srgb, var(--accent) 24%, var(--border));
@@ -455,8 +573,8 @@
       color-mix(in srgb, var(--accent) 14%, var(--surface-strong)),
       color-mix(in srgb, var(--accent) 8%, var(--surface))
     );
-    --chat-assistant-bg: color-mix(in srgb, var(--surface-strong) 94%, transparent);
-    --chat-assistant-border: color-mix(in srgb, var(--border-strong) 96%, transparent);
+    --chat-assistant-bg: var(--glass-bg-tile);
+    --chat-assistant-border: var(--border-strong);
     --chat-assistant-text: #eef5ff;
     --chat-check-bg: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
     --chat-check-border: color-mix(in srgb, var(--accent) 32%, var(--border));
@@ -485,23 +603,12 @@
     --concept-example-border: color-mix(in srgb, var(--accent) 18%, rgba(180, 228, 210, 0.18));
   }
 
-  .lesson-header,
-  .top-bar,
-  .progress-rail,
-  .lesson-body,
-  .input-area,
-  .confirm-actions,
-  .composer,
-  .quick-actions {
-    display: flex;
-    gap: 0.9rem;
-  }
-
+  /* ── Shell layout ── */
   .lesson-header,
   .lesson-body,
   .confirm-card {
     border: 1px solid var(--lesson-shell-border);
-    border-radius: 1.4rem;
+    border-radius: var(--radius-lg);
     background: var(--lesson-shell-surface);
     padding: 1rem 1.1rem;
     box-shadow: var(--lesson-shell-shadow);
@@ -510,191 +617,177 @@
 
   .lesson-header {
     display: grid;
-    gap: 0.9rem;
-    padding: 0.95rem 1.05rem;
+    gap: 0.8rem;
+    padding: 0.85rem 1.05rem;
   }
 
-  .lesson-summary {
-    display: grid;
-    gap: 0.42rem;
-    max-width: 36rem;
-  }
-
-  .summary-head {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    flex-wrap: wrap;
-  }
-
-  .summary-stage {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.34rem 0.62rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
-    border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: color-mix(in srgb, var(--accent) 76%, var(--text) 24%);
-  }
-
-  .summary-stage-name {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .summary-progress,
-  .rail-progress {
-    width: 100%;
-    height: 0.42rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
-    overflow: hidden;
-  }
-
-  .summary-progress span,
-  .rail-progress span {
-    display: block;
-    height: 100%;
-    border-radius: inherit;
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--accent) 82%, white 18%),
-      color-mix(in srgb, var(--accent) 62%, #8ff7dc 38%)
-    );
-  }
-
-  .lesson-summary p {
-    margin: 0;
-    font-size: 0.92rem;
-    color: var(--text-soft);
-    line-height: 1.45;
-  }
-
+  /* ── Top bar ── */
   .top-bar {
+    display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
   }
 
-  .title-block {
-    display: grid;
-    gap: 0.32rem;
-    justify-items: end;
-    text-align: right;
-  }
-
-  .title-block p {
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-size: 0.7rem;
-    font-weight: 600;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  }
-
-  .title-block h2 {
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-    font-size: clamp(1.45rem, 2vw, 1.95rem);
-    line-height: 1.05;
-    letter-spacing: -0.03em;
-    font-weight: 650;
-    color: color-mix(in srgb, var(--text) 92%, #1d4ed8 8%);
-  }
-
-  .progress-rail {
-    align-items: center;
-    overflow-x: auto;
-    gap: 0.5rem;
-    padding-top: 0.1rem;
-  }
-
-  .stage {
+  .back-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.45rem 0.78rem 0.45rem 0.5rem;
+    gap: 0.42rem;
+    padding: 0.5rem 0.78rem 0.5rem 0.6rem;
     border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
-    color: color-mix(in srgb, var(--muted) 84%, var(--text) 16%);
-    white-space: nowrap;
-    background: var(--lesson-stage-surface);
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-    font-size: 0.82rem;
-    font-weight: 600;
-    letter-spacing: 0;
-  }
-
-  .stage.active {
-    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-    color: var(--text);
-    background: var(--lesson-stage-active-surface);
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, white 14%, transparent),
-      0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
-  }
-
-  .stage.completed {
-    background: color-mix(in srgb, var(--accent) 16%, var(--surface-strong));
-    color: var(--text);
-    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-  }
-
-  .stage .icon {
-    width: 1.4rem;
-    height: 1.4rem;
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 62%, transparent);
-    font-size: 0.73rem;
-    font-weight: 700;
+    border: 1px solid var(--border-strong);
+    background: transparent;
     color: var(--text-soft);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      color var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
+    white-space: nowrap;
     flex-shrink: 0;
   }
 
-  .stage.active .icon {
-    background: color-mix(in srgb, var(--accent) 18%, var(--surface));
-    border-color: color-mix(in srgb, var(--accent) 32%, transparent);
-    color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+  .back-btn:hover {
+    background: var(--surface-soft);
+    color: var(--text);
+    border-color: var(--border-strong);
+    transform: none;
+    box-shadow: none;
   }
 
-  .stage.completed .icon {
+  .back-arrow {
+    font-size: 1rem;
+    line-height: 1;
+    transition: transform var(--motion-fast) var(--ease-soft);
+  }
+
+  .back-btn:hover .back-arrow {
+    transform: translateX(-2px);
+  }
+
+  .title-block {
+    display: grid;
+    gap: 0.2rem;
+    justify-items: center;
+    text-align: center;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .subject-kicker {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  .title-block h2 {
+    margin: 0;
+    font-size: clamp(1.1rem, 2vw, 1.55rem);
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .top-actions {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    flex-shrink: 0;
+    min-width: 0;
+  }
+
+  /* ── Timeline breadcrumb ── */
+  .progress-rail {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0.1rem 0.05rem;
+  }
+
+  .progress-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .stage-connector {
+    flex: 1;
+    height: 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border-strong) 60%, transparent);
+    min-width: 1rem;
+    transition: background 400ms var(--ease-soft);
+  }
+
+  .stage-connector.filled {
+    background: color-mix(in srgb, var(--accent) 72%, transparent);
+  }
+
+  .stage-node {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .node-dot {
+    width: 1.55rem;
+    height: 1.55rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    border: 2px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+    background: var(--lesson-stage-surface);
+    color: var(--text-soft);
+    font-size: 0.7rem;
+    font-weight: 700;
+    transition:
+      background 300ms var(--ease-soft),
+      border-color 300ms var(--ease-soft),
+      color 300ms var(--ease-soft),
+      transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .stage-node.active .node-dot {
+    background: var(--lesson-stage-active-surface);
+    border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+    color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .stage-node.completed .node-dot {
     background: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 44%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
     color: var(--accent-contrast);
   }
 
-  :global(:root[data-theme='dark']) .stage {
-    border-color: color-mix(in srgb, var(--border-strong) 42%, transparent);
-    color: color-mix(in srgb, var(--muted) 90%, var(--text) 10%);
-    background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+  .stage-node.celebrating .node-dot {
+    animation: dot-celebrate 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  :global(:root[data-theme='dark']) .stage .icon {
-    border-color: color-mix(in srgb, var(--border-strong) 48%, transparent);
-    background: color-mix(in srgb, var(--surface) 82%, transparent);
-    color: color-mix(in srgb, var(--muted) 84%, var(--text) 16%);
-  }
-
-  :global(:root[data-theme='dark']) .stage.active {
-    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  .node-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    padding: 0.28rem 0.72rem 0.28rem 0.5rem;
+    border-radius: 999px;
     background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+    color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+    animation: label-arrive 250ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  :global(:root[data-theme='dark']) .stage.completed {
-    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface-strong));
-  }
-
-  .stage-text {
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  }
-
+  /* ── Body layout ── */
   .lesson-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 18rem;
@@ -703,6 +796,15 @@
     min-height: 0;
     overflow: hidden;
     padding: 0;
+  }
+
+  /* ── Chat area ── */
+  .chat-wrap {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .chat-area {
@@ -714,175 +816,83 @@
     padding: 1.3rem 1.3rem 1rem;
     scroll-behavior: smooth;
     overscroll-behavior: contain;
+    flex: 1;
   }
 
-  .lesson-rail {
-    display: grid;
-    align-content: start;
-    gap: 0.8rem;
-    padding: 1.3rem 1.1rem 1rem 0;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  .input-area {
-    grid-column: 1 / -1;
-  }
-
-  .rail-card {
-    display: grid;
-    gap: 0.55rem;
-    padding: 1rem;
-    border-radius: 1.1rem;
-    border: 1px solid color-mix(in srgb, var(--lesson-shell-border) 88%, transparent);
-    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
-  }
-
-  .rail-kicker {
-    margin: 0;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
-  }
-
-  .rail-card h3,
-  .rail-card p,
-  .rail-card small {
-    margin: 0;
-  }
-
-  .rail-card h3 {
-    font-size: 1.02rem;
-    line-height: 1.2;
-    font-weight: 650;
-  }
-
-  .rail-card p {
-    color: var(--text-soft);
-    font-size: 0.9rem;
-    line-height: 1.48;
-  }
-
-  .rail-card small {
-    color: var(--muted);
-    font-size: 0.82rem;
-  }
-
-  .rail-actions {
-    display: grid;
-    gap: 0.55rem;
-  }
-
-  .rail-action {
-    justify-content: flex-start;
-    text-align: left;
-  }
-
-  .next-card {
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--accent) 8%, var(--surface-strong)),
-      color-mix(in srgb, var(--surface-soft) 88%, transparent)
-    );
-    border-color: color-mix(in srgb, var(--accent) 22%, transparent);
-  }
-
-  .next-stage-button {
-    justify-self: start;
-    width: auto;
-    min-height: 2.6rem;
-    padding-inline: 1rem;
+  .scroll-down-pill {
+    position: absolute;
+    bottom: 0.9rem;
+    left: 50%;
+    transform: translateX(-50%);
     display: inline-flex;
     align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14);
+    font: inherit;
+    font-size: 0.83rem;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    animation: fade-up 180ms ease;
+    z-index: 10;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      box-shadow var(--motion-fast) var(--ease-soft);
+  }
+
+  .scroll-down-pill:hover {
+    background: var(--surface-soft);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+    transform: translateX(-50%) translateY(-1px);
+  }
+
+  /* ── Stage transition marker ── */
+  .stage-transition {
+    display: flex;
     justify-content: center;
-    gap: 0.45rem;
-    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
-    letter-spacing: -0.01em;
-  }
-
-  .next-stage-button:hover {
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
-      0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
-  }
-
-  .next-stage-arrow {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.92rem;
-    line-height: 1;
-    opacity: 0.9;
-  }
-
-  .chapter-marker {
-    display: grid;
-    gap: 0.42rem;
-    justify-self: start;
-    max-width: 40rem;
-    padding: 0.2rem 0 0.05rem;
+    padding: 0.2rem 0;
     animation: badge-arrive 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .chapter-kicker {
+  .stage-transition-pill {
     display: inline-flex;
     align-items: center;
-    gap: 0.55rem;
-    justify-self: start;
-    padding: 0.42rem 0.78rem 0.42rem 0.48rem;
+    gap: 0.4rem;
+    padding: 0.32rem 0.72rem;
     border-radius: 999px;
     background: var(--chat-stage-bg);
     color: var(--chat-stage-text);
     border: 1px solid var(--chat-stage-border);
-    font-size: 0.82rem;
-    font-weight: 650;
+    font-size: 0.78rem;
+    font-weight: 600;
     line-height: 1;
   }
 
-  .chapter-number {
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 999px;
-    display: grid;
-    place-items: center;
-    background: color-mix(in srgb, var(--surface) 86%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 74%, transparent);
-    color: var(--text-soft);
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .chapter-marker p {
-    margin: 0;
-    color: var(--text-soft);
-    font-size: 0.92rem;
-    line-height: 1.45;
-  }
-
+  /* ── Bubbles ── */
   .bubble {
     max-width: 68%;
     padding: 1.05rem 1.22rem;
-    border-radius: 1.22rem;
+    border-radius: var(--radius-lg);
     border: 1px solid var(--chat-assistant-border);
     background: var(--chat-assistant-bg);
+    backdrop-filter: var(--glass-blur-tile);
+    box-shadow: var(--glass-inset-tile);
     color: var(--chat-assistant-text);
     display: grid;
     gap: 0.6rem;
     line-height: 1.76;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 0.99rem;
     transform-origin: left bottom;
-    will-change: transform, opacity, filter;
-    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+    will-change: transform, opacity;
   }
 
   .bubble.assistant {
     justify-self: start;
-    border-radius: 1.18rem 1.18rem 1.18rem 0.42rem;
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) 0.42rem;
   }
 
   .bubble.assistant.check {
@@ -905,9 +915,10 @@
     background: var(--chat-user-bg);
     color: var(--chat-user-text);
     border-color: transparent;
-    border-radius: 1.18rem 1.18rem 0.42rem 1.18rem;
+    border-radius: var(--radius-lg) var(--radius-lg) 0.42rem var(--radius-lg);
     transform-origin: right bottom;
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.16);
+    backdrop-filter: none;
   }
 
   .bubble.user.compact-reply {
@@ -924,6 +935,7 @@
     );
     color: var(--text);
     box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 8%, rgba(15, 23, 42, 0.08));
+    backdrop-filter: none;
   }
 
   .bubble.user.compact-reply .bubble-body {
@@ -959,15 +971,15 @@
     transform-origin: left bottom;
     gap: 0.52rem;
     padding: 0.95rem 1.08rem 1rem;
+    backdrop-filter: none;
   }
 
   .bubble small {
     font-weight: 700;
     opacity: 0.8;
     font-size: 0.74rem;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    letter-spacing: 0.03em;
+    text-transform: lowercase;
   }
 
   .question-kicker {
@@ -980,7 +992,9 @@
     color: var(--chat-question-kicker);
     opacity: 1;
     font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    font-weight: 600;
   }
 
   .question-icon {
@@ -1025,8 +1039,7 @@
   .bubble-body :global(hr),
   .confirm-card p,
   .title-block h2,
-  .confirm-card h3,
-  .input-area p {
+  .confirm-card h3 {
     margin: 0;
   }
 
@@ -1036,11 +1049,14 @@
     animation: content-fade 260ms ease;
   }
 
+  /* Tutor closing prompt (last paragraph) gets softer treatment */
   .bubble.assistant:not(.side-thread):not(.check) .bubble-body :global(p:last-child) {
     margin-top: 0.15rem;
     padding-top: 0.75rem;
-    border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
     color: var(--text-soft);
+    font-style: italic;
+    font-size: 0.95rem;
   }
 
   .bubble-body :global(ul),
@@ -1084,84 +1100,298 @@
     opacity: 0.2;
   }
 
-  .input-area {
+  /* ── Rail ── */
+  .lesson-rail {
     display: grid;
-    align-self: end;
-    position: relative;
-    z-index: 1;
+    align-content: start;
     gap: 0.8rem;
-    padding: 0.95rem 1.15rem 1.1rem;
-    border-top: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-    background: var(--lesson-input-surface);
+    padding: 1.3rem 1.1rem 1rem 0;
+    overflow-y: auto;
+    min-height: 0;
   }
 
-  .input-area p {
+  .rail-card {
+    display: grid;
+    gap: 0.6rem;
+    padding: 1rem 1.05rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    box-shadow: var(--glass-inset-tile);
+  }
+
+  .rail-kicker {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    text-transform: none;
     color: var(--muted);
+  }
+
+  .rail-card h3,
+  .rail-card p {
+    margin: 0;
+  }
+
+  .rail-card h3 {
+    font-size: 1rem;
+    line-height: 1.2;
+    font-weight: 650;
+  }
+
+  .rail-card p {
+    color: var(--text-soft);
     font-size: 0.88rem;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    line-height: 1.48;
   }
 
-  .composer textarea {
-    flex: 1;
-    min-height: 72px;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--surface-tint) 92%, transparent);
-    color: var(--text);
-    padding: 0.9rem 1rem;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-    font-size: 0.95rem;
-    line-height: 1.6;
+  .rail-actions {
+    display: grid;
+    gap: 0.5rem;
   }
 
-  .composer {
-    align-items: end;
+  .rail-action {
+    justify-content: flex-start;
+    text-align: left;
+    font-size: 0.86rem;
   }
 
-  .close-button,
-  .debug,
-  .send {
-    font: inherit;
+  /* Next Up card */
+  .next-card {
+    background: linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--accent) 9%, var(--surface-strong)),
+      color-mix(in srgb, var(--surface-soft) 88%, transparent)
+    );
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border-strong));
+    animation: slide-from-right 360ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .top-actions {
-    display: flex;
-    gap: 0.65rem;
-    align-items: center;
-  }
-
-  .quick {
-    padding: 0.65rem 0.9rem;
-    background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));
-    border-color: color-mix(in srgb, var(--accent) 14%, var(--border));
-  }
-
-  .quick:hover {
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-  }
-
-  .send {
-    align-self: end;
-    min-width: 6.2rem;
-    min-height: 3rem;
-    padding: 0.8rem 0.95rem;
+  .next-stage-button {
+    justify-self: start;
+    width: auto;
+    min-height: 2.5rem;
+    padding-inline: 1rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
+    letter-spacing: -0.01em;
+    font-size: 0.9rem;
   }
 
-  .send:hover {
+  .next-stage-button:hover {
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
       0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
   }
 
+  .next-stage-arrow {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.92rem;
+    line-height: 1;
+    transition: transform var(--motion-fast) var(--ease-soft);
+  }
+
+  .next-stage-button:hover .next-stage-arrow {
+    transform: translateX(3px);
+  }
+
+  .rail-divider {
+    height: 1px;
+    background: color-mix(in srgb, var(--border-strong) 60%, transparent);
+    margin: 0.1rem 0;
+  }
+
+  .rail-secondary-actions {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  /* Mission card */
+  .mission-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
+  }
+
+  .mission-text {
+    display: grid;
+    gap: 0.45rem;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .stage-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.26rem 0.6rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+    font-size: 0.77rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+    width: fit-content;
+  }
+
+  /* Circular SVG arc */
+  .arc-wrapper {
+    position: relative;
+    width: 3.4rem;
+    height: 3.4rem;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .circular-arc {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .arc-bg {
+    stroke: color-mix(in srgb, var(--border-strong) 80%, transparent);
+  }
+
+  .arc-fill {
+    stroke: var(--accent);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 600ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .arc-label {
+    position: absolute;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%);
+    line-height: 1;
+  }
+
+  /* ── Input area ── */
+  .input-area {
+    grid-column: 1 / -1;
+    display: grid;
+    align-self: end;
+    position: relative;
+    z-index: 1;
+    gap: 0.7rem;
+    padding: 0.9rem 1.15rem 1rem;
+    border-top: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    background: var(--lesson-input-surface);
+  }
+
+  .quick-actions {
+    display: flex;
+    gap: 0.55rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 0.05rem;
+  }
+
+  .quick-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .quick {
+    padding: 0.6rem 0.88rem;
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 14%, var(--border));
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 0.86rem;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft),
+      transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow var(--motion-fast) var(--ease-soft);
+  }
+
+  .quick:hover {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+    transform: scale(1.03);
+    box-shadow: none;
+  }
+
+  .quick:active {
+    transform: scale(0.95);
+  }
+
+  .composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.9rem;
+  }
+
+  .composer textarea {
+    flex: 1;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--surface-tint) 92%, transparent);
+    color: var(--text);
+    padding: 0.8rem 1rem;
+    font: inherit;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    resize: none;
+    transition:
+      border-color 200ms var(--ease-soft),
+      box-shadow 200ms var(--ease-soft),
+      min-height 200ms var(--ease-soft);
+    outline: none;
+  }
+
+  .composer textarea:focus {
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--border-strong));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent),
+      0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  .send {
+    align-self: end;
+    min-width: 6rem;
+    min-height: 2.8rem;
+    padding: 0.75rem 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    font: inherit;
+    transition:
+      transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow var(--motion-fast) var(--ease-soft),
+      opacity var(--motion-fast) var(--ease-soft);
+    transform: scale(0.92);
+    opacity: 0.7;
+    box-shadow: none;
+  }
+
+  .send.ready {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .send.ready:hover {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
+      0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
+    transform: scale(1.02);
+  }
+
+  .send.ready:active {
+    animation: send-pulse 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   .send-label {
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-    font-size: 0.94rem;
+    font-size: 0.92rem;
     font-weight: 650;
     letter-spacing: -0.01em;
   }
@@ -1169,23 +1399,27 @@
   .send-icon {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
     font-size: 0.92rem;
     line-height: 1;
-    opacity: 0.9;
+    transition: transform var(--motion-fast) var(--ease-soft);
   }
 
+  .send.ready:hover .send-icon {
+    transform: translateX(2px);
+  }
+
+  /* ── Animations ── */
   .enter-assistant {
-    animation: bubble-in-assistant 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: bubble-in-assistant 350ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .enter-user {
-    animation: bubble-in-user 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: bubble-in-user 250ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .pending {
     min-width: 88px;
-    min-height: 56px;
+    min-height: 52px;
     align-items: center;
   }
 
@@ -1212,6 +1446,7 @@
     animation-delay: 0.24s;
   }
 
+  /* ── Overlay ── */
   .overlay {
     position: fixed;
     inset: 0;
@@ -1219,6 +1454,7 @@
     display: grid;
     place-items: center;
     padding: 1.5rem;
+    backdrop-filter: blur(4px);
   }
 
   .confirm-card {
@@ -1227,19 +1463,23 @@
     gap: 1rem;
   }
 
+  .confirm-actions {
+    display: flex;
+    gap: 0.9rem;
+  }
+
   .empty-state {
     display: grid;
     gap: 1rem;
     justify-items: start;
   }
 
-  /* Concept cards */
+  /* ── Concept cards ── */
   .concept-cards-panel {
     display: grid;
     gap: 0.48rem;
     max-width: 68%;
-    animation: bubble-in-assistant 260ms cubic-bezier(0.22, 1, 0.36, 1);
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    animation: bubble-in-assistant 350ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .concept-cards-label {
@@ -1248,7 +1488,6 @@
     font-weight: 600;
     margin: 0 0 0.1rem;
     padding: 0 0.15rem;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     letter-spacing: 0;
   }
 
@@ -1256,6 +1495,7 @@
     border: 1px solid var(--chat-assistant-border);
     border-radius: 1rem;
     background: var(--chat-assistant-bg);
+    backdrop-filter: var(--glass-blur-tile);
     overflow: hidden;
     transition: border-color 140ms ease, box-shadow 140ms ease;
   }
@@ -1278,7 +1518,7 @@
     border: none;
     cursor: pointer;
     color: var(--text);
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font: inherit;
     font-size: 0.93rem;
     text-align: left;
     line-height: 1.4;
@@ -1375,7 +1615,6 @@
     text-transform: uppercase;
     letter-spacing: 0.09em;
     color: color-mix(in srgb, var(--accent) 72%, var(--text-soft) 28%);
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
   }
 
   .concept-actions {
@@ -1395,24 +1634,35 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
     border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font: inherit;
     font-size: 0.86rem;
     font-weight: 600;
     color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%);
     cursor: pointer;
-    letter-spacing: 0.01em;
   }
 
   .concept-ask-link:hover {
     background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft));
     border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
+    transform: none;
   }
 
+  /* ── Debug ── */
+  .debug {
+    font: inherit;
+  }
+
+  /* ── Responsive ── */
   @media (max-width: 780px) {
     .top-bar {
       flex-direction: column;
       align-items: stretch;
+    }
+
+    .title-block {
+      justify-items: start;
+      text-align: left;
     }
 
     .lesson-body {
@@ -1435,21 +1685,12 @@
     }
 
     .send {
-      width: auto;
-      min-height: 3rem;
       align-self: stretch;
-    }
-
-    .quick-actions {
-      flex-wrap: wrap;
-    }
-
-    .title-block {
-      justify-items: start;
-      text-align: left;
+      min-height: 2.8rem;
     }
   }
 
+  /* ── Keyframes ── */
   @keyframes fade-up {
     from {
       opacity: 0;
@@ -1462,16 +1703,58 @@
     }
   }
 
+  @keyframes label-arrive {
+    from {
+      opacity: 0;
+      transform: translateX(-6px) scaleX(0.9);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0) scaleX(1);
+    }
+  }
+
+  @keyframes dot-celebrate {
+    0% {
+      transform: scale(1);
+    }
+
+    30% {
+      transform: scale(1.45);
+    }
+
+    60% {
+      transform: scale(0.9);
+    }
+
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slide-from-right {
+    from {
+      opacity: 0;
+      transform: translateX(12px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
   @keyframes bubble-in-assistant {
     0% {
       opacity: 0;
-      transform: translateY(14px) scaleX(0.97) scaleY(0.94);
-      filter: blur(6px);
+      transform: translateY(12px) scaleX(0.97) scaleY(0.94);
+      filter: blur(4px);
     }
 
     60% {
       opacity: 1;
-      transform: translateY(0) scaleX(1.01) scaleY(1);
+      transform: translateY(0) scaleX(1.005) scaleY(1);
       filter: blur(0);
     }
 
@@ -1491,7 +1774,7 @@
 
     65% {
       opacity: 1;
-      transform: translateY(0) scaleX(1.015) scaleY(1);
+      transform: translateY(0) scaleX(1.01) scaleY(1);
       filter: blur(0);
     }
 
@@ -1517,12 +1800,26 @@
   @keyframes badge-arrive {
     from {
       opacity: 0;
-      transform: translateY(8px) scale(0.98);
+      transform: translateY(6px) scale(0.97);
     }
 
     to {
       opacity: 1;
       transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes send-pulse {
+    0% {
+      transform: scale(1);
+    }
+
+    40% {
+      transform: scale(1.08);
+    }
+
+    100% {
+      transform: scale(1);
     }
   }
 
@@ -1543,13 +1840,18 @@
   @media (prefers-reduced-motion: reduce) {
     .top-bar,
     .progress-rail,
-    .lesson-summary,
     .input-area,
     .confirm-card,
-    .chapter-marker,
+    .stage-transition,
     .bubble,
     .bubble-body,
-    .typing-dots span {
+    .typing-dots span,
+    .node-dot,
+    .node-label,
+    .scroll-down-pill,
+    .arc-fill,
+    .quick,
+    .send {
       animation: none !important;
       transition: none !important;
       filter: none !important;
