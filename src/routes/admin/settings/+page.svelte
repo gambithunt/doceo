@@ -274,12 +274,23 @@
 
 <style>
   .page { min-height: 100vh; }
-  .page-body { padding: 1.25rem 1.75rem 2rem; display: flex; flex-direction: column; gap: 1.5rem; }
+  .page-body {
+    padding: 1.75rem 2rem 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    animation: page-in 280ms var(--ease-spring) both;
+  }
 
-.settings-form { max-width: 680px; display: flex; flex-direction: column; gap: 1.5rem; }
-  .settings-section { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 1rem; padding: 1.25rem; }
-  .section-title { font-size: 0.875rem; font-weight: 700; color: var(--text); margin: 0 0 0.25rem; }
-  .section-desc { font-size: 0.8rem; color: var(--text-soft); margin: 0 0 1.25rem; line-height: 1.5; }
+  @keyframes page-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+.settings-form { max-width: 720px; display: flex; flex-direction: column; gap: 1.5rem; }
+  .settings-section { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 1rem; padding: 1.5rem; box-shadow: var(--shadow); }
+  .section-title { font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 0 0 0.3rem; letter-spacing: -0.01em; }
+  .section-desc { font-size: 0.875rem; color: var(--text-soft); margin: 0 0 1.35rem; line-height: 1.55; }
 
   .field-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
   .field-row:last-child { margin-bottom: 0; }
