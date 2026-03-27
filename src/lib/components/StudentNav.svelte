@@ -237,4 +237,11 @@
   h1, p, span {
     margin: 0;
   }
+
+  /* Hidden on mobile — MobileNav takes over */
+  @media (max-width: 767px) {
+    .sidebar {
+      display: none;
+    }
+  }
 </style>

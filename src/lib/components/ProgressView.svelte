@@ -155,9 +155,38 @@
     color: var(--text-soft);
   }
 
+  /* ── Tablet ── */
   @media (max-width: 820px) {
     .summary-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* ── Phone ── */
+  @media (max-width: 600px) {
+    .view {
+      gap: 0.85rem;
+    }
+
+    .summary-grid {
       grid-template-columns: 1fr;
+    }
+
+    .card {
+      padding: 1rem;
+      border-radius: 1.1rem;
+    }
+
+    .session-row {
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .session-meta {
+      justify-items: start;
+      flex-direction: row;
+      display: flex;
+      gap: 0.75rem;
     }
   }
 </style>

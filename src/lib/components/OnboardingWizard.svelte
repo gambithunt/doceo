@@ -1247,6 +1247,39 @@
     }
   }
 
+  /* ── Phone (540px) ── */
+  @media (max-width: 540px) {
+    .wizard-shell,
+    .panel {
+      padding-inline: 0.75rem;
+    }
+
+    .header-copy h1 {
+      font-size: clamp(1.6rem, 8vw, 2.2rem);
+    }
+
+    /* Step strip: compact dots only on small phones */
+    .step-strip {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    /* Buttons: full touch target */
+    .footer-back,
+    .sticky-footer > button:last-child {
+      min-height: var(--touch-target);
+    }
+
+    select,
+    input {
+      font-size: 16px;
+    }
+
+    /* Safe area for sticky footer */
+    .sticky-footer {
+      padding-bottom: var(--safe-bottom);
+    }
+  }
+
   @keyframes verify-dot-breathe {
     0%,
     100% {

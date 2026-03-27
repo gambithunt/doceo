@@ -15,6 +15,9 @@
   let showScrollDown = $state(false);
   let celebratingStage = $state<LessonStage | null>(null);
   let prevCompleted: LessonStage[] = [];
+  let railExpanded = $state(false);
+  let railOpen = $state<'next' | 'mission' | null>(null);
+  let railPulse = $state(true);
   const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
 
   function toSentenceCase(str: string): string {
@@ -86,6 +89,11 @@
   });
 
   $effect(() => {
+    const timer = setTimeout(() => { railPulse = false; }, 2500);
+    return () => clearTimeout(timer);
+  });
+
+  $effect(() => {
     const completed = lessonSession?.stagesCompleted ?? [];
     const newlyCompleted = completed.find((s) => !prevCompleted.includes(s));
     if (newlyCompleted) {
@@ -120,6 +128,15 @@
     return lessonSession.currentStage === stage ? 'active' : 'upcoming';
   }
 
+  function toggleRail(): void {
+    railExpanded = !railExpanded;
+    if (!railExpanded) railOpen = null;
+  }
+
+  function toggleRailCard(card: 'next' | 'mission'): void {
+    railOpen = railOpen === card ? null : card;
+  }
+
   function submit(): void {
     if (composer.trim().length === 0) {
       return;
@@ -128,6 +145,8 @@
     void appState.sendLessonMessage(composer.trim());
     composer = '';
     composerFocused = false;
+    railOpen = null;
+    railExpanded = false;
   }
 
   function onInput(event: Event): void {
@@ -347,6 +366,94 @@
           {/if}
         </div>
 
+        <!-- Mobile FAB popup cards — positioned relative to chat-wrap, not the button -->
+        {#if railOpen === 'next' && nextStage}
+          <div class="fab-popup">
+            <p class="fab-popup-kicker">Up next</p>
+            <h3>{stageEmoji(nextStage)} {toSentenceCase(getStageLabel(nextStage))}</h3>
+            <p>{stagePrompt(nextStage)}</p>
+            <button
+              type="button"
+              class="btn btn-primary next-stage-button"
+              onclick={() => sendQuickReply("I'm ready for the next step.")}
+            >
+              <span>Let's keep going</span>
+              <span class="next-stage-arrow" aria-hidden="true">→</span>
+            </button>
+          </div>
+        {/if}
+
+        {#if railOpen === 'mission'}
+          <div class="fab-popup">
+            <p class="fab-popup-kicker">Your mission</p>
+            <div class="mission-content">
+              <div class="mission-text">
+                <h3>{stageEmoji(lessonSession.currentStage)} {toSentenceCase(getStageLabel(lessonSession.currentStage))}</h3>
+                <p>{stagePrompt(lessonSession.currentStage)}</p>
+                <span class="stage-count">Stage {currentStageNumber} of {visibleStages.length}</span>
+              </div>
+              <div class="arc-wrapper" aria-hidden="true">
+                <svg viewBox="0 0 36 36" class="circular-arc">
+                  <circle class="arc-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8" />
+                  <circle
+                    class="arc-fill"
+                    cx="18"
+                    cy="18"
+                    r="15.9"
+                    fill="none"
+                    stroke-width="2.8"
+                    stroke-dasharray="100"
+                    style="stroke-dashoffset: {100 - arcProgress};"
+                  />
+                </svg>
+                <span class="arc-label">{lessonProgressPercent}%</span>
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        <!-- Mobile floating rail FABs (hidden on desktop via CSS) -->
+        <div class="rail-fab-group">
+          {#if nextStage}
+            <div class="fab-dial-item" class:fab-visible={railExpanded} style="transition-delay: 60ms">
+              <button
+                type="button"
+                class="fab-dial-btn"
+                class:fab-active={railOpen === 'next'}
+                onclick={() => toggleRailCard('next')}
+                aria-label="Up next"
+              >
+                <span class="fab-dial-icon" aria-hidden="true">▶</span>
+                <span class="fab-dial-label">Next</span>
+              </button>
+            </div>
+          {/if}
+
+          <div class="fab-dial-item" class:fab-visible={railExpanded} style="transition-delay: 0ms">
+            <button
+              type="button"
+              class="fab-dial-btn"
+              class:fab-active={railOpen === 'mission'}
+              onclick={() => toggleRailCard('mission')}
+              aria-label="Your mission"
+            >
+              <span class="fab-dial-icon" aria-hidden="true">◎</span>
+              <span class="fab-dial-label">Mission</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            class="fab-trigger"
+            class:fab-trigger-pulse={railPulse && !railExpanded}
+            class:fab-trigger-open={railExpanded}
+            onclick={toggleRail}
+            aria-label={railExpanded ? 'Close panel' : 'Open lesson panel'}
+          >
+            <span class="fab-trigger-icon" aria-hidden="true">{railExpanded ? '✕' : '⋯'}</span>
+          </button>
+        </div>
+
         {#if showScrollDown}
           <button type="button" class="scroll-down-pill" onclick={scrollToBottom}>
             ↓ New message
@@ -552,6 +659,8 @@
     min-height: 0;
     grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
+    /* Use dynamic viewport height so virtual keyboard doesn't overlap composer */
+    max-height: 100%;
   }
 
   :global(:root[data-theme='dark']) .lesson-shell {
@@ -1273,6 +1382,165 @@
     line-height: 1;
   }
 
+  /* ── Mobile FAB rail ── */
+  .rail-fab-group {
+    /* Hidden on desktop — shown via media query */
+    display: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.55rem;
+    position: absolute;
+    bottom: 1rem;
+    right: 0.75rem;
+    z-index: 20;
+  }
+
+  .fab-dial-item {
+    opacity: 0;
+    transform: translateY(14px) scale(0.88);
+    pointer-events: none;
+    transition:
+      opacity 200ms var(--ease-spring),
+      transform 220ms var(--ease-spring);
+  }
+
+  .fab-dial-item.fab-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  .fab-dial-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    padding: 0.52rem 0.88rem 0.52rem 0.72rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14), var(--glass-inset-tile);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-soft);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background 150ms var(--ease-soft),
+      border-color 150ms var(--ease-soft),
+      color 150ms var(--ease-soft),
+      transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 150ms var(--ease-soft);
+  }
+
+  .fab-dial-btn:hover {
+    background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border-strong));
+    color: var(--text);
+    transform: translateX(-2px);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16), var(--glass-inset-tile);
+  }
+
+  .fab-dial-btn.fab-active {
+    background: color-mix(in srgb, var(--accent) 14%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
+    color: color-mix(in srgb, var(--accent) 85%, var(--text) 15%);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 16%, rgba(15, 23, 42, 0.1));
+  }
+
+  .fab-dial-icon {
+    font-size: 0.88rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .fab-dial-label {
+    font-size: 0.8rem;
+  }
+
+  /* Popup is hidden on desktop, shown in mobile media query */
+  .fab-popup {
+    display: none;
+  }
+
+  .fab-popup-kicker {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.01em;
+  }
+
+  .fab-popup h3,
+  .fab-popup p {
+    margin: 0;
+  }
+
+  .fab-popup h3 {
+    font-size: 0.98rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+
+  .fab-popup p {
+    font-size: 0.86rem;
+    color: var(--text-soft);
+    line-height: 1.48;
+  }
+
+  .fab-trigger {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14), var(--glass-inset-tile);
+    display: grid;
+    place-items: center;
+    font: inherit;
+    color: var(--text-soft);
+    cursor: pointer;
+    flex-shrink: 0;
+    align-self: flex-end;
+    transition:
+      background 150ms var(--ease-soft),
+      border-color 150ms var(--ease-soft),
+      color 150ms var(--ease-soft),
+      transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 200ms var(--ease-soft);
+  }
+
+  .fab-trigger:hover {
+    transform: scale(1.1);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 6%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border-strong));
+  }
+
+  .fab-trigger.fab-trigger-open {
+    background: color-mix(in srgb, var(--accent) 14%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
+    color: color-mix(in srgb, var(--accent) 85%, var(--text) 15%);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 16%, rgba(15, 23, 42, 0.1));
+  }
+
+  .fab-trigger.fab-trigger-pulse {
+    animation: fab-pulse 1.4s cubic-bezier(0.22, 1, 0.36, 1) 900ms 2;
+  }
+
+  .fab-trigger-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+    transition: transform 200ms var(--ease-spring);
+  }
+
+  .fab-trigger.fab-trigger-open .fab-trigger-icon {
+    transform: rotate(90deg) scale(0.9);
+  }
+
   /* ── Input area ── */
   .input-area {
     grid-column: 1 / -1;
@@ -1654,39 +1922,162 @@
   }
 
   /* ── Responsive ── */
+
+  /* ── Tablet (780px): switch to flex so all 3 zones stack cleanly ── */
   @media (max-width: 780px) {
-    .top-bar {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .title-block {
-      justify-items: start;
-      text-align: left;
-    }
-
     .lesson-body {
-      grid-template-columns: 1fr;
+      /* Flex column avoids the 2-row grid clipping the rail as a 3rd implicit row */
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-wrap {
+      flex: 1;
+      min-height: 0;
     }
 
     .lesson-rail {
-      order: 2;
-      padding: 0 1rem 1rem;
-      grid-auto-flow: row;
+      display: none;
+    }
+
+    .rail-fab-group {
+      display: flex;
+    }
+
+    /* Popup: anchored to chat-wrap (position: relative), vertically centered */
+    .fab-popup {
+      display: grid;
+      position: absolute;
+      /* Sit to the left of the FAB group, with comfortable clearance */
+      right: 4rem;
+      /* Vertically centered in the chat area */
+      top: 50%;
+      transform: translateY(-50%);
+      width: min(260px, calc(100vw - 5.5rem));
+      gap: 0.65rem;
+      background: var(--glass-bg-tile);
+      backdrop-filter: var(--glass-blur-tile);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-strong), var(--glass-inset-tile);
+      padding: 1rem;
+      z-index: 15;
+      animation: fab-card-in 230ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .input-area {
+      flex: none;
+      /* Reset grid-column span (only needed in 2-col grid) */
+      grid-column: unset;
     }
 
     .top-actions {
       justify-content: space-between;
       flex-wrap: wrap;
     }
+  }
 
-    .composer {
-      flex-direction: column;
+  /* ── Phone (540px) ── */
+  @media (max-width: 540px) {
+    .lesson-header {
+      padding: 0.6rem 0.7rem;
+      gap: 0.55rem;
+      border-radius: var(--radius-md);
     }
 
+    .top-bar {
+      gap: 0.55rem;
+    }
+
+    /* Arrow-only back button — no "Dashboard" label */
+    .back-btn span:last-child {
+      display: none;
+    }
+
+    .back-btn {
+      padding: 0.45rem 0.55rem;
+    }
+
+    .title-block {
+      justify-items: center;
+    }
+
+    .title-block h2 {
+      font-size: clamp(0.95rem, 4vw, 1.2rem);
+    }
+
+    .node-dot {
+      width: 1.3rem;
+      height: 1.3rem;
+      font-size: 0.62rem;
+    }
+
+    .node-label {
+      font-size: 0.75rem;
+      padding: 0.22rem 0.55rem 0.22rem 0.42rem;
+    }
+
+    .lesson-body {
+      border-radius: var(--radius-md);
+    }
+
+    .chat-area {
+      padding: 0.85rem 0.8rem 0.6rem;
+      gap: 0.8rem;
+    }
+
+    .bubble {
+      max-width: 92%;
+      padding: 0.8rem 0.95rem;
+      font-size: 0.93rem;
+    }
+
+    .concept-cards-panel {
+      max-width: 100%;
+    }
+
+    /* Composer: inline layout (textarea + icon button), standard mobile chat pattern */
+    .input-area {
+      padding: 0.6rem 0.7rem 0.7rem;
+      gap: 0.5rem;
+    }
+
+    .quick {
+      padding: 0.48rem 0.7rem;
+      font-size: 0.79rem;
+    }
+
+    /* Keep composer side-by-side on phone but shrink send button */
+    .composer {
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+
+    .composer textarea {
+      font-size: 16px; /* prevent iOS zoom */
+      padding: 0.65rem 0.85rem;
+      border-radius: var(--radius-md);
+    }
+
+    /* Send button: compact square on mobile, no label */
     .send {
-      align-self: stretch;
-      min-height: 2.8rem;
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+      width: 2.75rem;
+      height: 2.75rem;
+      padding: 0;
+      border-radius: 50%;
+      flex-shrink: 0;
+      align-self: flex-end;
+    }
+
+    .send-label {
+      display: none;
+    }
+
+    .send-icon {
+      font-size: 1.05rem;
     }
   }
 
@@ -1837,6 +2228,33 @@
     }
   }
 
+  @keyframes fab-card-in {
+    from {
+      opacity: 0;
+      transform: translateY(-50%) translateX(10px) scale(0.96);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(-50%) translateX(0) scale(1);
+    }
+  }
+
+  @keyframes fab-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+    }
+
+    50% {
+      transform: scale(1.14);
+      box-shadow:
+        0 6px 18px rgba(15, 23, 42, 0.14),
+        0 0 0 6px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .top-bar,
     .progress-rail,
@@ -1851,7 +2269,12 @@
     .scroll-down-pill,
     .arc-fill,
     .quick,
-    .send {
+    .send,
+    .lesson-rail,
+    .fab-dial-item,
+    .fab-dial-btn,
+    .fab-trigger,
+    .fab-popup {
       animation: none !important;
       transition: none !important;
       filter: none !important;

@@ -208,4 +208,54 @@
       grid-template-columns: 1fr;
     }
   }
+
+  /* ── Phone (540px) ── */
+  @media (max-width: 540px) {
+    .workspace {
+      gap: 0.85rem;
+    }
+
+    .section-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .section-header h2 {
+      font-size: 1.25rem;
+    }
+
+    /* Topic queue: compact horizontal scroll row instead of full column */
+    .topic-panel {
+      grid-auto-flow: column;
+      grid-template-columns: unset;
+      grid-auto-columns: min(14rem, 72vw);
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 1rem;
+    }
+
+    .topic-panel::-webkit-scrollbar {
+      display: none;
+    }
+
+    .topic-panel h3 {
+      /* Pin heading outside the scroll by using display:contents won't work —
+         instead just keep it in the flow, it wraps the column naturally */
+      grid-column: 1 / -1;
+    }
+
+    .panel,
+    .feedback-card {
+      padding: 1rem;
+      border-radius: 1.1rem;
+    }
+
+    textarea {
+      font-size: 16px; /* prevent iOS zoom */
+    }
+
+    button {
+      min-height: var(--touch-target);
+    }
+  }
 </style>

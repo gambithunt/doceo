@@ -62,7 +62,17 @@ function toTopicLabel(value: string): string {
   return trimmed.replace(/\s+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function getSubjectLens(subjectName: string): {
+export type GradeBand = 'foundation' | 'intermediate' | 'senior';
+
+export function getGradeBand(grade: string): GradeBand {
+  const match = grade.match(/\d+/);
+  const num = match ? parseInt(match[0], 10) : 8;
+  if (num <= 6) return 'foundation';
+  if (num <= 9) return 'intermediate';
+  return 'senior';
+}
+
+export function getSubjectLens(subjectName: string, grade?: string): {
   conceptWord: string;
   actionWord: string;
   evidenceWord: string;
@@ -70,43 +80,163 @@ function getSubjectLens(subjectName: string): {
   misconception: string;
 } {
   const lower = subjectName.toLowerCase();
+  const band: GradeBand = grade ? getGradeBand(grade) : 'intermediate';
 
+  // ── Mathematics / Mathematical Literacy ──────────────────────────────────
   if (lower.includes('math')) {
+    if (band === 'foundation') {
+      return {
+        conceptWord: 'rule or number relationship',
+        actionWord: 'work through it step by step using whole numbers',
+        evidenceWord: 'worked steps using concrete numbers',
+        example: 'Use a short sequence of whole numbers, name the rule (e.g. "add 4 each time"), then apply it.',
+        misconception: 'writing only the answer without showing the steps or naming the rule'
+      };
+    }
+    if (band === 'intermediate') {
+      return {
+        conceptWord: 'rule or algebraic relationship',
+        actionWord: 'set up the equation or expression and solve step by step',
+        evidenceWord: 'worked solution with each step labelled',
+        example: 'Use a simple equation, identify what operation to undo, apply it to both sides, and check by substitution.',
+        misconception: 'jumping to the answer without showing inverse operations or checking the solution'
+      };
+    }
+    // senior
     return {
-      conceptWord: 'rule or relationship',
-      actionWord: 'state the pattern and apply it step by step',
-      evidenceWord: 'worked steps',
-      example: 'Use one short sequence or equation and explain the rule before giving the answer.',
-      misconception: 'jumping to the final answer without naming the rule first'
+      conceptWord: 'theorem, function, or formal relationship',
+      actionWord: 'state the definition, apply it formally, and verify with justification',
+      evidenceWord: 'full worked solution with each step justified',
+      example: 'State the theorem or formula first, substitute values clearly, simplify step by step, and confirm the answer satisfies the original equation or domain.',
+      misconception: 'substituting values without understanding which theorem or function applies, or skipping the verification step'
     };
   }
 
-  if (lower.includes('language') || lower.includes('english') || lower.includes('afrikaans')) {
+  // ── Languages (English, Afrikaans, isiZulu, etc.) ────────────────────────
+  if (lower.includes('language') || lower.includes('english') || lower.includes('afrikaans') || lower.includes('isizulu') || lower.includes('isixhosa') || lower.includes('sesotho')) {
+    if (band === 'foundation') {
+      return {
+        conceptWord: 'language feature',
+        actionWord: 'find it in the sentence and explain in simple terms what it does',
+        evidenceWord: 'a short sentence from everyday writing',
+        example: 'Point to the exact word or phrase, name the feature, and say what it tells the reader.',
+        misconception: 'naming the term without showing where it appears in the sentence or what it does'
+      };
+    }
+    if (band === 'intermediate') {
+      return {
+        conceptWord: 'language or literary device',
+        actionWord: 'identify it in the text, name it, and explain the effect it creates',
+        evidenceWord: 'a short passage or direct quote from a text',
+        example: 'Quote the relevant words, name the device, and explain in one sentence how it affects the reader or meaning.',
+        misconception: 'identifying the device without explaining why the author used it or what effect it creates'
+      };
+    }
+    // senior
     return {
-      conceptWord: 'language feature',
-      actionWord: 'identify it in context and explain how it works in the sentence or passage',
-      evidenceWord: 'a clear sentence example',
-      example: 'Use a short sentence and point directly to the word or phrase that shows the idea.',
-      misconception: 'naming the term without showing where it appears or what it does'
+      conceptWord: 'rhetorical or literary technique',
+      actionWord: 'analyse how it is used deliberately to achieve a purpose in context',
+      evidenceWord: 'a specific passage and its effect on meaning, tone, or audience',
+      example: 'Quote the technique, identify the author\'s purpose, and analyse how word choice or structure creates that effect for the specific audience.',
+      misconception: 'describing what the technique is without analysing why it achieves that particular effect in this specific context'
     };
   }
 
-  if (lower.includes('science')) {
+  // ── Life Sciences / Biology ──────────────────────────────────────────────
+  if (lower.includes('life science') || lower.includes('biology')) {
     return {
-      conceptWord: 'scientific idea',
-      actionWord: 'name the concept, describe the process, and connect it to an observation',
-      evidenceWord: 'a simple experiment or real-world observation',
-      example: 'Use one familiar investigation or everyday example and explain what it shows.',
-      misconception: 'remembering the word but not the process or cause-and-effect'
+      conceptWord: 'biological process or structure',
+      actionWord: 'name the structure, describe the process, and connect it to a function in the organism',
+      evidenceWord: 'a diagram reference, organism example, or experimental observation',
+      example: 'Name the structure, describe what it does at a cellular or organ level, and connect it to how the whole organism benefits.',
+      misconception: 'naming the structure without explaining what it does or why the organism needs it'
     };
   }
 
+  // ── Physical Sciences (Physics + Chemistry) ──────────────────────────────
+  if (lower.includes('physical science') || lower.includes('physics') || lower.includes('chemistry')) {
+    return {
+      conceptWord: 'law, formula, or physical principle',
+      actionWord: 'state the law, identify the variables with units, and apply the formula step by step',
+      evidenceWord: 'a worked calculation with SI units clearly shown at every step',
+      example: 'Write the formula, substitute values with units, simplify, and state the final answer with its unit.',
+      misconception: 'substituting numbers into a formula without understanding what each variable represents or omitting units'
+    };
+  }
+
+  // ── History ──────────────────────────────────────────────────────────────
+  if (lower.includes('history')) {
+    return {
+      conceptWord: 'historical cause, event, or consequence',
+      actionWord: 'identify the event, explain why it happened, and connect it to its consequence',
+      evidenceWord: 'a primary source, dated event, or historian\'s argument',
+      example: 'State the event with its date, explain the cause (political, economic, or social), and trace one direct consequence.',
+      misconception: 'describing what happened without explaining why, or listing facts without connecting cause to effect'
+    };
+  }
+
+  // ── Geography ────────────────────────────────────────────────────────────
+  if (lower.includes('geography')) {
+    return {
+      conceptWord: 'spatial pattern or physical/human process',
+      actionWord: 'name the process, describe where it occurs, and explain what causes it',
+      evidenceWord: 'a map reference, data set, or field observation',
+      example: 'Identify the location, describe the pattern using directional or spatial language, and link it to a physical or human process.',
+      misconception: 'describing a location without explaining the process that created the pattern or why it occurs there'
+    };
+  }
+
+  // ── Accounting / Business Studies / Economics / EMS ──────────────────────
+  if (lower.includes('account') || lower.includes('business') || lower.includes('economics') || lower.includes('ems') || lower.includes('economic and management')) {
+    return {
+      conceptWord: 'financial concept or economic principle',
+      actionWord: 'define the concept, apply it to a transaction or scenario, and show the calculation or effect',
+      evidenceWord: 'a transaction record, financial statement, or worked example with figures',
+      example: 'Name the concept, show a real transaction or calculation with actual figures, and explain what the result tells the decision-maker.',
+      misconception: 'using the term correctly in a definition but failing to apply it to a real calculation or scenario'
+    };
+  }
+
+  // ── Technology / CAT / IT ────────────────────────────────────────────────
+  if (lower.includes('technology') || lower.includes('computer') || lower.includes('information technology') || lower.includes('cat')) {
+    return {
+      conceptWord: 'system component or algorithm step',
+      actionWord: 'name the component, describe its function, and trace the data or information flow through the system',
+      evidenceWord: 'an input-process-output diagram, data trace, or annotated code example',
+      example: 'Draw or describe the system boundary, label each component, and follow one piece of data from input through processing to output.',
+      misconception: 'describing hardware or software in isolation without showing how it connects to and depends on other parts of the system'
+    };
+  }
+
+  // ── Creative Arts / Visual Arts / Music ──────────────────────────────────
+  if (lower.includes('creative') || lower.includes('visual art') || lower.includes('music') || lower.includes('drama') || lower.includes('dance')) {
+    return {
+      conceptWord: 'design element or compositional technique',
+      actionWord: 'identify the element, describe how the artist used it, and explain the effect it creates',
+      evidenceWord: 'a specific artwork, composition, or performance example with direct reference',
+      example: 'Name the element (e.g. line, rhythm, contrast), show exactly where it appears in the work, and explain what mood or meaning it creates for the audience.',
+      misconception: 'naming the design element without explaining how the artist used it intentionally to create a specific effect'
+    };
+  }
+
+  // ── Social Sciences / Life Orientation / Geography (broad) ───────────────
+  if (lower.includes('social') || lower.includes('life orientation') || lower.includes('lo')) {
+    return {
+      conceptWord: 'social concept or personal development principle',
+      actionWord: 'define the concept, connect it to a real-life example, and explain why it matters',
+      evidenceWord: 'a current event, case study, or relatable personal scenario',
+      example: 'Define the concept, give one real-world or personal scenario where it applies, and explain the consequence of ignoring it.',
+      misconception: 'listing facts or definitions without connecting them to real causes, consequences, or personal relevance'
+    };
+  }
+
+  // ── Generic fallback ─────────────────────────────────────────────────────
   return {
     conceptWord: 'core idea',
-    actionWord: 'identify the idea, explain it clearly, and apply it to one example',
-    evidenceWord: 'one concrete example',
-    example: 'Use a familiar example from the subject and explain why it fits.',
-    misconception: 'repeating a keyword without explaining the reasoning'
+    actionWord: 'identify the idea, explain it clearly, and apply it to one concrete example',
+    evidenceWord: 'one concrete, worked example',
+    example: 'Use a familiar example from the subject, apply the idea step by step, and explain why each step is correct.',
+    misconception: 'repeating a keyword or definition without demonstrating understanding through an example or explanation'
   };
 }
 
@@ -286,44 +416,102 @@ export function buildStageStartMessage(stage: LessonStage): LessonMessage {
   };
 }
 
-function getLessonSectionForStage(lesson: Lesson, stage: LessonStage): string {
-  if (stage === 'orientation') {
-    return lesson.orientation.body;
-  }
-
-  if (stage === 'concepts') {
-    return lesson.concepts.body;
-  }
-
-  if (stage === 'construction') {
-    return lesson.guidedConstruction.body;
-  }
-
-  if (stage === 'examples') {
-    return lesson.workedExample.body;
-  }
-
-  if (stage === 'practice') {
-    return lesson.practicePrompt.body;
-  }
-
-  if (stage === 'complete') {
-    return lesson.summary.body;
-  }
-
-  return `Let's check how well this has landed before we move on.`;
+// Exported so it can be tested and used by lesson-chat.ts for AI context
+export function getLessonSectionForStage(lesson: Lesson, stage: LessonStage): string {
+  if (stage === 'orientation') return lesson.orientation.body;
+  if (stage === 'concepts') return lesson.concepts.body;
+  if (stage === 'construction') return lesson.guidedConstruction.body;
+  if (stage === 'examples') return lesson.workedExample.body;
+  if (stage === 'practice') return lesson.practicePrompt.body;
+  // check: expose commonMistakes as the AI context anchor for this stage
+  if (stage === 'check') return lesson.commonMistakes.body;
+  if (stage === 'complete') return lesson.summary.body;
+  return lesson.concepts.body;
 }
 
 export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): LessonMessage[] {
+  const defaultMeta = {
+    action: 'stay' as const,
+    next_stage: null,
+    reteach_style: null,
+    reteach_count: 0,
+    confidence_assessment: 0.5,
+    profile_update: {}
+  };
+
+  // ── Concepts stage: prepend mentalModel as framing before key concepts ────
+  if (stage === 'concepts') {
+    const messages: LessonMessage[] = [
+      buildStageStartMessage(stage),
+      {
+        id: `msg-${crypto.randomUUID()}`,
+        role: 'assistant',
+        type: 'teaching',
+        content: lesson.mentalModel.body,
+        stage,
+        timestamp: isoNow(),
+        metadata: defaultMeta
+      },
+      {
+        id: `msg-${crypto.randomUUID()}`,
+        role: 'assistant',
+        type: 'teaching',
+        content: `${lesson.concepts.body}\n\nWhat feels clear so far? Tell me where you want to slow down.`,
+        stage,
+        timestamp: isoNow(),
+        metadata: defaultMeta
+      }
+    ];
+
+    if (lesson.keyConcepts && lesson.keyConcepts.length > 0) {
+      messages.push({
+        id: `msg-${crypto.randomUUID()}`,
+        role: 'system',
+        type: 'concept_cards',
+        content: 'Tap any concept to explore it in depth',
+        stage,
+        timestamp: isoNow(),
+        metadata: null,
+        conceptItems: lesson.keyConcepts
+      });
+    }
+
+    return messages;
+  }
+
+  // ── Check stage: use practicePrompt as challenge, then surface commonMistakes ─
+  if (stage === 'check') {
+    return [
+      buildStageStartMessage(stage),
+      {
+        id: `msg-${crypto.randomUUID()}`,
+        role: 'assistant',
+        type: 'teaching',
+        content: `${lesson.practicePrompt.body}\n\nPut it in your own words. What would you say is the main idea here?`,
+        stage,
+        timestamp: isoNow(),
+        metadata: defaultMeta
+      },
+      {
+        id: `msg-${crypto.randomUUID()}`,
+        role: 'system',
+        type: 'feedback',
+        content: lesson.commonMistakes.body,
+        stage,
+        timestamp: isoNow(),
+        metadata: null
+      }
+    ];
+  }
+
+  // ── Default: orientation / construction / examples / practice / complete ──
   const intro = getLessonSectionForStage(lesson, stage);
   const closingPrompt =
     stage === 'orientation'
       ? 'Does this connect for you? Ask me anything — or tell me what stands out.'
-      : stage === 'check'
-        ? 'Put it in your own words. What would you say is the main idea here?'
-        : 'What feels clear so far? Tell me where you want to slow down.';
+      : 'What feels clear so far? Tell me where you want to slow down.';
 
-  const messages: LessonMessage[] = [
+  return [
     buildStageStartMessage(stage),
     {
       id: `msg-${crypto.randomUUID()}`,
@@ -332,31 +520,9 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
       content: `${intro}\n\n${closingPrompt}`,
       stage,
       timestamp: isoNow(),
-      metadata: {
-        action: 'stay',
-        next_stage: null,
-        reteach_style: null,
-        reteach_count: 0,
-        confidence_assessment: 0.5,
-        profile_update: {}
-      }
+      metadata: defaultMeta
     }
   ];
-
-  if (stage === 'concepts' && lesson.keyConcepts && lesson.keyConcepts.length > 0) {
-    messages.push({
-      id: `msg-${crypto.randomUUID()}`,
-      role: 'system',
-      type: 'concept_cards',
-      content: 'Tap any concept to explore it in depth',
-      stage,
-      timestamp: isoNow(),
-      metadata: null,
-      conceptItems: lesson.keyConcepts
-    });
-  }
-
-  return messages;
 }
 
 export function buildLessonSessionFromTopic(
@@ -407,7 +573,8 @@ export function buildDynamicLessonFromTopic(input: {
   curriculumReference: string;
 }): Lesson {
   const topicTitle = toTopicLabel(input.topicTitle);
-  const lens = getSubjectLens(input.subjectName);
+  // Pass grade so lens vocabulary and examples are calibrated to the student's level
+  const lens = getSubjectLens(input.subjectName, input.grade);
   const rootId = `generated-${input.subjectId}-${slugify(topicTitle)}`;
   const topicId = `${rootId}-topic`;
   const subtopicId = `${rootId}-subtopic`;
@@ -453,7 +620,15 @@ export function buildDynamicLessonFromTopic(input: {
     },
     summary: {
       title: 'Summary',
-      body: `**${topicTitle} — key takeaways:**\n\n1. The core ${lens.conceptWord} is what defines this topic.\n2. Apply it by: ${lens.actionWord}.\n3. Evidence of understanding: ${lens.evidenceWord}.\n4. Avoid: ${lens.misconception}.\n\nIf you can explain ${topicTitle} to someone else using one example, you've got it.`
+      body: [
+        `**${topicTitle} — key takeaways:**`,
+        ``,
+        `**Core rule:** The central ${lens.conceptWord} is what defines this topic. Apply it by: ${lens.actionWord}.`,
+        ``,
+        `**Watch out for:** ${lens.misconception}. Always confirm your answer with ${lens.evidenceWord}.`,
+        ``,
+        `**Transfer:** If you can ${lens.actionWord.split(' and ')[0]} on a problem you haven't seen before, you're ready for exam questions on ${topicTitle}.`
+      ].join('\n')
     },
     keyConcepts: buildDynamicConceptItems(topicTitle, input.subjectName, lens),
     practiceQuestionIds: [`${rootId}-q-1`],
@@ -606,7 +781,17 @@ function buildResponseReply(session: LessonSession, lesson: Lesson, message: str
 
   if (session.currentStage === 'check' && !indicatesConfusion) {
     return {
-      displayContent: `Nice. You explained the idea clearly enough to finish this lesson.\n\n**Summary:** ${lesson.orientation.body}\n\nYou can move this topic into revision next.`,
+      displayContent: [
+        `Nice. You've shown enough understanding to finish this lesson.`,
+        ``,
+        `**Summary:**`,
+        lesson.summary.body,
+        ``,
+        `---`,
+        ``,
+        `**One more challenge before you go:**`,
+        lesson.transferChallenge.body
+      ].join('\n'),
       provider: 'local-fallback',
       metadata: {
         action: 'complete',

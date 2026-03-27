@@ -10,13 +10,45 @@ import {
   calculateNextRevisionInterval,
   classifyLessonMessage,
   createDefaultLearnerProfile,
+  getLessonSectionForStage,
   getNextStage,
   getStageNumber,
+  getSubjectLens,
   parseDoceoMeta,
   stripDoceoMeta,
   updateLearnerProfile
 } from '$lib/lesson-system';
 import { createInitialState, normalizeAppState } from '$lib/data/platform';
+import type { Lesson, LessonSession } from '$lib/types';
+
+function makeMockSession(lesson: Lesson, overrides: Partial<LessonSession> = {}): LessonSession {
+  return {
+    id: 'session-test',
+    studentId: 'student-1',
+    subjectId: 'subject-1',
+    subject: 'Mathematics',
+    topicId: 'topic-1',
+    topicTitle: 'Test Topic',
+    topicDescription: 'A test topic',
+    curriculumReference: 'CAPS · Grade 8 · Mathematics',
+    matchedSection: '',
+    lessonId: lesson.id,
+    currentStage: 'orientation',
+    stagesCompleted: [],
+    messages: [],
+    questionCount: 0,
+    reteachCount: 0,
+    confidenceScore: 0,
+    needsTeacherReview: false,
+    stuckConcept: null,
+    startedAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    completedAt: null,
+    status: 'active',
+    profileUpdates: [],
+    ...overrides
+  };
+}
 
 describe('lesson-system', () => {
   it('classifies question-like messages', () => {
@@ -60,7 +92,7 @@ describe('lesson-system', () => {
 
   it('applies assistant responses to advance a lesson session', () => {
     const state = createInitialState();
-    const lessonSession = state.lessonSessions[0];
+    const lessonSession = makeMockSession(state.lessons[0]);
     const updated = applyLessonAssistantResponse(lessonSession, {
       id: 'assistant-1',
       role: 'assistant',
@@ -100,7 +132,9 @@ describe('lesson-system', () => {
       ui: initial.ui
     });
 
-    expect(normalized.lessonSessions.length).toBeGreaterThan(0);
+    // lessonSessions default to empty (no auto-creation without a topic choice)
+    expect(Array.isArray(normalized.lessonSessions)).toBe(true);
+    // learnerProfile is always initialized with the profile's student id
     expect(normalized.learnerProfile.studentId).toBe(initial.profile.id);
   });
 
@@ -209,7 +243,7 @@ describe('lesson-system', () => {
   // Backward-compatibility: old stage names must not crash
   it('old session with currentStage overview does not crash applyLessonAssistantResponse', () => {
     const state = createInitialState();
-    const oldSession = { ...state.lessonSessions[0], currentStage: 'overview' as never };
+    const oldSession = { ...makeMockSession(state.lessons[0]), currentStage: 'overview' as never };
     expect(() => applyLessonAssistantResponse(oldSession, {
       id: 'msg-1',
       role: 'assistant',
@@ -230,7 +264,7 @@ describe('lesson-system', () => {
 
   it('old session with currentStage detail does not crash applyLessonAssistantResponse', () => {
     const state = createInitialState();
-    const oldSession = { ...state.lessonSessions[0], currentStage: 'detail' as never };
+    const oldSession = { ...makeMockSession(state.lessons[0]), currentStage: 'detail' as never };
     expect(() => applyLessonAssistantResponse(oldSession, {
       id: 'msg-1',
       role: 'assistant',
@@ -252,7 +286,7 @@ describe('lesson-system', () => {
   it('normalizeAppState migrates old overview/detail stages to new names', () => {
     const initial = createInitialState();
     const oldSession = {
-      ...initial.lessonSessions[0],
+      ...makeMockSession(initial.lessons[0]),
       currentStage: 'overview',
       stagesCompleted: ['detail']
     };
@@ -268,8 +302,8 @@ describe('lesson-system', () => {
   // T1.3: fallback question reply must not echo student message
   it('fallback question reply does not echo the student message text', () => {
     const state = createInitialState();
-    const lessonSession = state.lessonSessions[0];
-    const lesson = state.lessons.find((l) => l.id === lessonSession.lessonId) ?? state.lessons[0];
+    const lesson = state.lessons[0];
+    const lessonSession = makeMockSession(lesson);
     const studentMessage = 'What is the difference between a numerator and a denominator?';
 
     const result = buildLocalLessonChatResponse(
@@ -344,7 +378,7 @@ describe('lesson-system', () => {
     const state = createInitialState();
     // Simulate 10 sessions for the same lesson
     const sessions = Array.from({ length: 10 }, (_, i) => ({
-      ...state.lessonSessions[0],
+      ...makeMockSession(state.lessons[0]),
       id: `session-${i}`
     }));
     const testState = { ...state, lessonSessions: sessions };
@@ -352,5 +386,205 @@ describe('lesson-system', () => {
     // "lessonPlan" must not appear as a key inside any session object
     // (it may still be in state.lessons but not embedded per-session)
     expect(serialized).not.toContain('"lessonPlan"');
+  });
+
+  // ─── Phase 1: Surface dead sections ────────────────────────────────────────
+
+  it('P1: buildInitialLessonMessages for concepts stage prepends mentalModel as framing message', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const messages = buildInitialLessonMessages(lesson, 'concepts');
+
+    // stage_start + mentalModel framing + concepts content (at minimum)
+    expect(messages.length).toBeGreaterThanOrEqual(3);
+    const mentalModelMsg = messages.find(
+      (m) => m.role === 'assistant' && m.type === 'teaching' && m.content.includes(lesson.mentalModel.body)
+    );
+    expect(mentalModelMsg).toBeDefined();
+  });
+
+  it('P1: mentalModel message in concepts stage has correct shape', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const messages = buildInitialLessonMessages(lesson, 'concepts');
+    // The mentalModel message should appear before the concepts content message
+    const stageStart = messages[0];
+    const mentalModelMsg = messages[1];
+    expect(stageStart.type).toBe('stage_start');
+    expect(mentalModelMsg.role).toBe('assistant');
+    expect(mentalModelMsg.type).toBe('teaching');
+    expect(mentalModelMsg.content).toContain(lesson.mentalModel.body);
+  });
+
+  it('P1: buildInitialLessonMessages for check stage includes commonMistakes as feedback message', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const messages = buildInitialLessonMessages(lesson, 'check');
+
+    const feedbackMsg = messages.find((m) => m.type === 'feedback' && m.content.includes(lesson.commonMistakes.body));
+    expect(feedbackMsg).toBeDefined();
+  });
+
+  it('P1: check stage feedback message has system role', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const messages = buildInitialLessonMessages(lesson, 'check');
+
+    const feedbackMsg = messages.find((m) => m.type === 'feedback');
+    expect(feedbackMsg?.role).toBe('system');
+  });
+
+  it('P1: getLessonSectionForStage returns commonMistakes body for check stage', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const content = getLessonSectionForStage(lesson, 'check');
+    expect(content).toBe(lesson.commonMistakes.body);
+  });
+
+  it('P1: getLessonSectionForStage returns summary body for complete stage', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const content = getLessonSectionForStage(lesson, 'complete');
+    expect(content).toBe(lesson.summary.body);
+  });
+
+  it('P1: complete action in local fallback includes transferChallenge body', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const checkSession = makeMockSession(lesson, { currentStage: 'check' });
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lesson,
+        lessonSession: checkSession,
+        message: 'I understand — the rule is add the common difference to find the next term.',
+        messageType: 'response'
+      },
+      lesson
+    );
+    expect(result.metadata?.action).toBe('complete');
+    expect(result.displayContent).toContain(lesson.transferChallenge.body);
+  });
+
+  // ─── Phase 2: Subject lenses ────────────────────────────────────────────────
+
+  it('P2: getSubjectLens returns unique lens for Life Sciences', () => {
+    const lens = getSubjectLens('Life Sciences');
+    expect(lens.conceptWord).not.toBe('core idea');
+    expect(lens.conceptWord.toLowerCase()).toContain('biolog');
+  });
+
+  it('P2: getSubjectLens returns unique lens for Physical Sciences', () => {
+    const lens = getSubjectLens('Physical Sciences');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/law|formula|principle/);
+  });
+
+  it('P2: getSubjectLens returns unique lens for History', () => {
+    const lens = getSubjectLens('History');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/histor|cause|consequence/);
+  });
+
+  it('P2: getSubjectLens returns unique lens for Geography', () => {
+    const lens = getSubjectLens('Geography');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/spatial|pattern|process/);
+  });
+
+  it('P2: getSubjectLens returns unique lens for Accounting', () => {
+    const lens = getSubjectLens('Accounting');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/financ|account|econom/);
+  });
+
+  it('P2: getSubjectLens returns unique lens for Business Studies', () => {
+    const lens = getSubjectLens('Business Studies');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/financ|business|econom/);
+  });
+
+  it('P2: getSubjectLens returns unique lens for Computer Applications Technology', () => {
+    const lens = getSubjectLens('Computer Applications Technology');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/system|algorithm|component/);
+  });
+
+  it('P2: getSubjectLens returns unique lens for Information Technology', () => {
+    const lens = getSubjectLens('Information Technology');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/system|algorithm|component/);
+  });
+
+  it('P2: getSubjectLens returns unique lens for Creative Arts', () => {
+    const lens = getSubjectLens('Creative Arts');
+    expect(lens.conceptWord.toLowerCase()).toMatch(/design|element|technique/);
+  });
+
+  it('P2: getSubjectLens accepts grade and returns grade-calibrated example for Math foundation', () => {
+    const lensF = getSubjectLens('Mathematics', 'Grade 5');
+    const lensS = getSubjectLens('Mathematics', 'Grade 12');
+    expect(lensF.example).not.toBe(lensS.example);
+  });
+
+  it('P2: getSubjectLens Mathematics Grade 5 uses concrete language', () => {
+    const lens = getSubjectLens('Mathematics', 'Grade 5');
+    const combined = lens.example.toLowerCase() + lens.actionWord.toLowerCase();
+    expect(combined).toMatch(/whole number|count|concrete|step/);
+  });
+
+  it('P2: getSubjectLens Mathematics Grade 12 uses abstract language', () => {
+    const lens = getSubjectLens('Mathematics', 'Grade 12');
+    const combined = lens.example.toLowerCase() + lens.evidenceWord.toLowerCase();
+    expect(combined).toMatch(/function|proof|justif|formal|equat|theorem/i);
+  });
+
+  it('P2: buildDynamicLessonFromTopic Grade 12 guidedConstruction differs from Grade 5', () => {
+    const lessonGr5 = buildDynamicLessonFromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 5',
+      topicTitle: 'Fractions',
+      topicDescription: 'Equal parts.',
+      curriculumReference: 'CAPS · Grade 5 · Mathematics'
+    });
+    const lessonGr12 = buildDynamicLessonFromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 12',
+      topicTitle: 'Fractions',
+      topicDescription: 'Algebraic fractions.',
+      curriculumReference: 'CAPS · Grade 12 · Mathematics'
+    });
+    expect(lessonGr5.guidedConstruction.body).not.toBe(lessonGr12.guidedConstruction.body);
+  });
+
+  // ─── Phase 3: Summary rewrite ────────────────────────────────────────────────
+
+  it('P3: dynamic lesson summary contains core rule reference', () => {
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 8',
+      topicTitle: 'Linear Equations',
+      topicDescription: 'Solving one-variable equations.',
+      curriculumReference: 'CAPS · Grade 8 · Mathematics'
+    });
+    const summaryLower = lesson.summary.body.toLowerCase();
+    // Must contain all three parts: rule, mistake warning, transfer hook
+    expect(summaryLower).toMatch(/core|rule|key/);
+    expect(summaryLower).toMatch(/watch out|mistake|avoid|common error/);
+    expect(summaryLower).toMatch(/transfer|ready|if you can/i);
+  });
+
+  it('P3: dynamic lesson summary references the lesson misconception', () => {
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-science',
+      subjectName: 'Physical Sciences',
+      grade: 'Grade 10',
+      topicTitle: 'Newton\'s Laws',
+      topicDescription: 'Forces and motion.',
+      curriculumReference: 'CAPS · Grade 10 · Physical Sciences'
+    });
+    // Extract the actual misconception text — it follows " is " in the commonMistakes body
+    const isIdx = lesson.commonMistakes.body.indexOf(' is ');
+    const misconceptionText = (isIdx >= 0 ? lesson.commonMistakes.body.slice(isIdx + 4) : lesson.commonMistakes.body)
+      .toLowerCase().split(' ').slice(0, 5).join(' ');
+    // Summary's "Watch out for" section should share the same misconception wording
+    expect(lesson.summary.body.toLowerCase()).toContain(misconceptionText);
   });
 });

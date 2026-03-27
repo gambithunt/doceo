@@ -350,4 +350,22 @@
       grid-template-columns: 1fr;
     }
   }
+
+  /* ── Phone ── */
+  @media (max-width: 540px) {
+    .hero {
+      padding: 1rem;
+      border-radius: var(--radius-lg);
+      gap: 0.65rem;
+    }
+
+    .hero h2 {
+      font-size: clamp(1.2rem, 6vw, 1.5rem);
+    }
+
+    select,
+    input {
+      font-size: 16px;
+    }
+  }
 </style>

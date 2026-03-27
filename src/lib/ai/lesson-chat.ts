@@ -33,6 +33,8 @@ function getCurrentStageContent(request: LessonChatRequest): string {
   if (stage === 'construction') return lesson.guidedConstruction.body;
   if (stage === 'examples') return lesson.workedExample.body;
   if (stage === 'practice') return lesson.practicePrompt.body;
+  // check: expose commonMistakes as the primary stage context so the AI can probe intelligently
+  if (stage === 'check') return lesson.commonMistakes.body;
   if (stage === 'complete') return lesson.summary.body;
 
   return 'Ask the learner to explain the idea in their own words and apply it to a small example.';
@@ -75,6 +77,7 @@ function buildLearnerInstructions(profile: LessonChatRequest['learnerProfile']):
   return instructions.join('\n');
 }
 
+// buildSystemPrompt is exported for testing
 export function buildSystemPrompt(request: LessonChatRequest): string {
   const lesson = request.lesson;
 
@@ -146,6 +149,10 @@ Rules:
     `--- SESSION ---`,
     `Current Stage: ${request.lessonSession.currentStage}`,
     `Current Stage Content: ${getCurrentStageContent(request)}`,
+    ...(request.lessonSession.currentStage === 'check' ? [
+      `Common Mistakes to probe (use these to design check questions — ask the learner to avoid them): ${lesson?.commonMistakes?.body ?? ''}`,
+      `Transfer Challenge (use this if the learner demonstrates mastery — push them to apply the idea in a new context): ${lesson?.transferChallenge?.body ?? ''}`
+    ] : []),
     `Stages Completed: ${request.lessonSession.stagesCompleted.join(', ') || 'none'}`,
     `Questions Asked This Session: ${request.lessonSession.questionCount}`,
     `Reteach Attempts on Current Concept: ${request.lessonSession.reteachCount}`,

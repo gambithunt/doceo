@@ -155,4 +155,26 @@
       justify-content: flex-start;
     }
   }
+
+  /* ── Phone ── */
+  @media (max-width: 540px) {
+    .card {
+      padding: 1rem;
+      border-radius: var(--radius-lg);
+    }
+
+    .hero-actions {
+      flex-direction: column;
+    }
+
+    .hero-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    select,
+    input {
+      font-size: 16px;
+    }
+  }
 </style>

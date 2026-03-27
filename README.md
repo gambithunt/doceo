@@ -6,7 +6,7 @@ Doceo is a SvelteKit-based AI-assisted learning platform for structured school l
 - Exam revision
 - Ask question
 
-The current implementation includes a real onboarding flow, typed curriculum and onboarding models, seeded lesson and question content, mastery tracking, local and Supabase-backed persistence, revision planning, ask-question guidance, analytics events, Playwright smoke tests, and a light/dark IBM Plex Mono UI aligned to the project spec in [docs/prompt.md](/Users/delon/Documents/code/projects/doceo/docs/prompt.md).
+The current implementation includes a real onboarding flow, typed curriculum and onboarding models, seeded lesson and question content, mastery tracking, local and Supabase-backed persistence, revision planning, ask-question guidance, analytics events, Playwright smoke tests, and a UI guided primarily by [docs/desgin-langauge.md](/Users/delon/Documents/code/projects/doceo/docs/desgin-langauge.md) and the brief in [docs/prompt.md](/Users/delon/Documents/code/projects/doceo/docs/prompt.md).
 
 ## Lesson Experience
 
@@ -160,7 +160,8 @@ This repo uses a separate local Supabase port range to avoid collisions:
 - [src/lib/data/platform.ts](/Users/delon/Documents/code/projects/doceo/src/lib/data/platform.ts): seeded curriculum, lessons, questions, and platform helpers
 - [src/lib/stores/app-state.ts](/Users/delon/Documents/code/projects/doceo/src/lib/stores/app-state.ts): app state, persistence, sessions, analytics, and user interactions
 - [src/lib/components](/Users/delon/Documents/code/projects/doceo/src/lib/components): learning mode and dashboard UI components
-- [docs/prompt.md](/Users/delon/Documents/code/projects/doceo/docs/prompt.md): source product specification and completion checklist
+- [docs/README.md](/Users/delon/Documents/code/projects/doceo/docs/README.md): docs index and canonical source guide
+- [docs/prompt.md](/Users/delon/Documents/code/projects/doceo/docs/prompt.md): short product brief and platform constraints
 
 ## Current Behavior
 

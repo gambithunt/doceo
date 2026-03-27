@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createLessonChatBody } from '$lib/ai/lesson-chat';
+import { buildSystemPrompt, createLessonChatBody } from '$lib/ai/lesson-chat';
 import { createInitialState } from '$lib/data/platform';
-import type { LessonMessage } from '$lib/types';
+import type { LessonMessage, LessonSession } from '$lib/types';
 
 function makeMessage(i: number): LessonMessage {
   return {
@@ -15,18 +15,44 @@ function makeMessage(i: number): LessonMessage {
   };
 }
 
+function makeMockSession(lesson: { id: string }, overrides: Partial<LessonSession> = {}): LessonSession {
+  return {
+    id: 'session-test',
+    studentId: 'student-1',
+    subjectId: 'subject-1',
+    subject: 'Mathematics',
+    topicId: 'topic-1',
+    topicTitle: 'Test Topic',
+    topicDescription: 'A test topic',
+    curriculumReference: 'CAPS · Grade 8 · Mathematics',
+    matchedSection: '',
+    lessonId: lesson.id,
+    currentStage: 'orientation',
+    stagesCompleted: [],
+    messages: [],
+    questionCount: 0,
+    reteachCount: 0,
+    confidenceScore: 0,
+    needsTeacherReview: false,
+    stuckConcept: null,
+    startedAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    completedAt: null,
+    status: 'active',
+    profileUpdates: [],
+    ...overrides
+  };
+}
+
 describe('lesson-chat', () => {
   // T3.5: AI message history is capped at 20
   it('caps message history sent to AI at 20 messages', () => {
     const state = createInitialState();
-    const session = state.lessonSessions[0];
-    // Create a session with 50 messages
-    const longSession = {
-      ...session,
+    const lesson = state.lessons[0];
+    const longSession = makeMockSession(lesson, {
       messages: Array.from({ length: 50 }, (_, i) => makeMessage(i))
-    };
+    });
 
-    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
     const body = createLessonChatBody(
       {
         student: state.profile,
@@ -43,5 +69,53 @@ describe('lesson-chat', () => {
     const historyMessages = body.messages.filter((m) => m.role !== 'system');
     // The last message is always the current one, history before it is capped at 20
     expect(historyMessages.length).toBeLessThanOrEqual(21);
+  });
+
+  // ─── Phase 5: check stage system prompt ────────────────────────────────────
+
+  it('P5: buildSystemPrompt includes commonMistakes body when stage is check', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const checkSession = makeMockSession(lesson, { currentStage: 'check' });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: checkSession,
+      message: 'test',
+      messageType: 'response'
+    });
+    expect(prompt).toContain(lesson.commonMistakes.body);
+  });
+
+  it('P5: buildSystemPrompt includes transferChallenge body when stage is check', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const checkSession = makeMockSession(lesson, { currentStage: 'check' });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: checkSession,
+      message: 'test',
+      messageType: 'response'
+    });
+    expect(prompt).toContain(lesson.transferChallenge.body);
+  });
+
+  it('P5: buildSystemPrompt does NOT include transferChallenge body for orientation stage', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const orientationSession = makeMockSession(lesson, { currentStage: 'orientation' });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: orientationSession,
+      message: 'test',
+      messageType: 'response'
+    });
+    // transferChallenge is only injected during check stage
+    expect(prompt).not.toContain(lesson.transferChallenge.body);
   });
 });

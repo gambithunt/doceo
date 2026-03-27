@@ -1235,4 +1235,75 @@
       align-items: flex-start;
     }
   }
+
+  /* ── Tablet (768px) ── */
+  @media (max-width: 768px) {
+    .view {
+      gap: 1.25rem;
+      padding-bottom: 1.75rem;
+    }
+  }
+
+  /* ── Phone (540px) ── */
+  @media (max-width: 540px) {
+    .view {
+      gap: 1rem;
+      padding-bottom: 1.25rem;
+    }
+
+    .hero {
+      gap: 0.65rem;
+    }
+
+    .hero-greeting h2 {
+      font-size: clamp(1.3rem, 7vw, 1.65rem);
+    }
+
+    .mission-card-inner {
+      padding: 1.1rem 1.2rem;
+    }
+
+    .mission-title {
+      font-size: 1.25rem;
+    }
+
+    .section-block {
+      padding: 1rem 1.05rem;
+      border-radius: var(--radius-lg);
+    }
+
+    .section-header h3 {
+      font-size: 1rem;
+    }
+
+    /* Subject pills: smaller text to fit more on screen */
+    .subject-pill {
+      font-size: 0.8rem;
+      padding: 0.45rem 0.8rem;
+    }
+
+    /* Tiles: single column, tighter */
+    .path-grid {
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+
+    /* Recent card actions: stack on very small screens */
+    .recent-actions {
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .recent-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    /* Stats footer: single column */
+    .stats-footer {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+  }
 </style>

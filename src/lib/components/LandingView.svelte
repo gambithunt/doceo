@@ -272,6 +272,7 @@
     color: #ef4444;
   }
 
+  /* ── Tablet ── */
   @media (max-width: 960px) {
     .landing-shell,
     .bullet-grid {
@@ -285,6 +286,45 @@
     .topbar {
       flex-direction: column;
       align-items: start;
+    }
+  }
+
+  /* ── Phone ── */
+  @media (max-width: 540px) {
+    .landing-shell {
+      padding: 0.75rem;
+      gap: 0.85rem;
+      /* Remove the minmax floor so auth card fits on small phones */
+      grid-template-columns: 1fr;
+    }
+
+    .card {
+      padding: 1.2rem;
+      border-radius: var(--radius-lg);
+    }
+
+    .intro-copy h1 {
+      font-size: clamp(1.8rem, 9vw, 2.8rem);
+    }
+
+    .bullet-grid {
+      grid-template-columns: 1fr;
+      gap: 0.65rem;
+    }
+
+    .tabs button,
+    button {
+      padding: 0.75rem 0.9rem;
+      min-height: var(--touch-target);
+    }
+
+    input {
+      font-size: 16px; /* prevent iOS zoom */
+      padding: 0.8rem 0.9rem;
+    }
+
+    .name-grid {
+      gap: 0.65rem;
     }
   }
 </style>

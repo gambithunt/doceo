@@ -2,12 +2,42 @@ import { describe, expect, it } from 'vitest';
 import { createInitialState } from '$lib/data/platform';
 import { buildSystemPrompt } from '$lib/ai/lesson-chat';
 import { buildFallbackTopicShortlist } from '$lib/ai/topic-shortlist';
+import type { LessonSession } from '$lib/types';
+
+function makeMockSession(lesson: { id: string }, overrides: Partial<LessonSession> = {}): LessonSession {
+  return {
+    id: 'session-test',
+    studentId: 'student-1',
+    subjectId: 'subject-1',
+    subject: 'Mathematics',
+    topicId: 'topic-1',
+    topicTitle: 'Test Topic',
+    topicDescription: 'A test topic',
+    curriculumReference: 'CAPS · Grade 8 · Mathematics',
+    matchedSection: '',
+    lessonId: lesson.id,
+    currentStage: 'orientation',
+    stagesCompleted: [],
+    messages: [],
+    questionCount: 0,
+    reteachCount: 0,
+    confidenceScore: 0,
+    needsTeacherReview: false,
+    stuckConcept: null,
+    startedAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
+    completedAt: null,
+    status: 'active',
+    profileUpdates: [],
+    ...overrides
+  };
+}
 
 describe('adaptive flow helpers', () => {
   it('builds a lesson system prompt with student, lesson, and learner profile context', () => {
     const state = createInitialState();
-    const session = state.lessonSessions[0];
-    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson);
     const prompt = buildSystemPrompt({
       student: state.profile,
       learnerProfile: state.learnerProfile,
@@ -26,8 +56,8 @@ describe('adaptive flow helpers', () => {
   // T1.5: system prompt must include DOCEO_META schema with all required fields
   it('system prompt includes DOCEO_META JSON schema with all required fields', () => {
     const state = createInitialState();
-    const session = state.lessonSessions[0];
-    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson);
     const prompt = buildSystemPrompt({
       student: state.profile,
       learnerProfile: state.learnerProfile,
@@ -54,8 +84,8 @@ describe('adaptive flow helpers', () => {
   // T4.2: system prompt uses human-readable teaching instructions, not raw JSON dump
   it('system prompt uses readable teaching instructions for strong learner signals', () => {
     const state = createInitialState();
-    const session = state.lessonSessions[0];
-    const lesson = state.lessons.find((l) => l.id === session.lessonId) ?? state.lessons[0];
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson);
     // Give the learner a strong step-by-step preference
     const learnerProfile = {
       ...state.learnerProfile,
