@@ -2,6 +2,7 @@ import { createInitialState, normalizeAppState } from '$lib/data/platform';
 import type { AnalyticsEvent, AppState, DoceoMeta, LessonSession } from '$lib/types';
 import type { LessonSignalRow } from '$lib/ai/adaptive-signals';
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
+import { parseAiCost } from '$lib/server/admin/cost-calculator';
 
 interface SnapshotRow {
   state_json: AppState;
@@ -12,7 +13,6 @@ interface ProfileRow {
   id: string;
   full_name: string;
   email: string;
-  role: 'student' | 'parent' | 'teacher' | 'admin';
   school_year: string;
   term: string;
   grade: string;
@@ -108,7 +108,8 @@ export async function saveAppState(state: AppState): Promise<SaveStateResult> {
     id: normalizedState.profile.id,
     full_name: normalizedState.profile.fullName,
     email: normalizedState.profile.email,
-    role: normalizedState.profile.role,
+    // role is intentionally excluded — it is managed server-side only and must
+    // never be overwritten by a client-side state sync.
     school_year: normalizedState.profile.schoolYear,
     term: normalizedState.profile.term,
     grade: normalizedState.profile.grade,
@@ -249,10 +250,18 @@ export async function logAiInteraction(
     }
   };
 
+  const modelOrTier = meta?.model ?? meta?.modelTier ?? 'default';
+  const { tokensUsed, costUsd } = parseAiCost(response, modelOrTier);
+
   await supabase.from('ai_interactions').insert({
     id: crypto.randomUUID(),
     profile_id: profileId,
     provider,
+    mode: meta?.mode ?? null,
+    model_tier: meta?.modelTier ?? null,
+    model: meta?.model ?? null,
+    tokens_used: tokensUsed,
+    cost_usd: costUsd,
     request_payload: wrapPayload(requestPayload),
     response_payload: wrapPayload(response),
     created_at: new Date().toISOString()

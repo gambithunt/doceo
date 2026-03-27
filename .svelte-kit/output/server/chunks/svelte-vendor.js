@@ -1,6 +1,6 @@
 import { clsx as clsx$1 } from "clsx";
 import * as devalue from "devalue";
-const browser = false;
+const DEV = false;
 var is_array = Array.isArray;
 var index_of = Array.prototype.indexOf;
 var includes = Array.prototype.includes;
@@ -2201,7 +2201,7 @@ function update_effect(effect) {
     effect.teardown = typeof teardown === "function" ? teardown : null;
     effect.wv = write_version;
     var dep;
-    if (browser && tracing_mode_flag && (effect.f & DIRTY) !== 0 && effect.deps !== null) ;
+    if (DEV && tracing_mode_flag && (effect.f & DIRTY) !== 0 && effect.deps !== null) ;
   } finally {
     is_updating_effect = was_updating_effect;
     active_effect = previous_effect;
@@ -2865,6 +2865,21 @@ class Svelte4Component {
     this.#instance.$destroy();
   }
 }
+function subscribe_to_store(store, run, invalidate) {
+  if (store == null) {
+    run(void 0);
+    if (invalidate) invalidate(void 0);
+    return noop;
+  }
+  const unsub = untrack(
+    () => store.subscribe(
+      run,
+      // @ts-expect-error
+      invalidate
+    )
+  );
+  return unsub.unsubscribe ? () => unsub.unsubscribe() : unsub;
+}
 const subscriber_queue = [];
 function readable(value, start) {
   return {
@@ -2917,6 +2932,54 @@ function writable(value, start = noop) {
     };
   }
   return { set: set2, update, subscribe };
+}
+function derived$1(stores, fn, initial_value) {
+  const single = !Array.isArray(stores);
+  const stores_array = single ? [stores] : stores;
+  if (!stores_array.every(Boolean)) {
+    throw new Error("derived() expects stores as input, got a falsy value");
+  }
+  const auto = fn.length < 2;
+  return readable(initial_value, (set2, update) => {
+    let started = false;
+    const values = [];
+    let pending = 0;
+    let cleanup = noop;
+    const sync = () => {
+      if (pending) {
+        return;
+      }
+      cleanup();
+      const result = fn(single ? values[0] : values, set2, update);
+      if (auto) {
+        set2(result);
+      } else {
+        cleanup = typeof result === "function" ? result : noop;
+      }
+    };
+    const unsubscribers = stores_array.map(
+      (store, i) => subscribe_to_store(
+        store,
+        (value) => {
+          values[i] = value;
+          pending &= ~(1 << i);
+          if (started) {
+            sync();
+          }
+        },
+        () => {
+          pending |= 1 << i;
+        }
+      )
+    );
+    started = true;
+    sync();
+    return function stop() {
+      run_all(unsubscribers);
+      cleanup();
+      started = false;
+    };
+  });
 }
 const BLOCK_OPEN = `<!--${HYDRATION_START}-->`;
 const BLOCK_CLOSE = `<!--${HYDRATION_END}-->`;
@@ -3760,6 +3823,11 @@ class SSRState {
     }
   }
 }
+function html(value) {
+  var html2 = String(value ?? "");
+  var open = "<!---->";
+  return open + html2 + "<!---->";
+}
 const INVALID_ATTR_NAME_CHAR_REGEX = /[\s'">/=\u{FDD0}-\u{FDEF}\u{FFFE}\u{FFFF}\u{1FFFE}\u{1FFFF}\u{2FFFE}\u{2FFFF}\u{3FFFE}\u{3FFFF}\u{4FFFE}\u{4FFFF}\u{5FFFE}\u{5FFFF}\u{6FFFE}\u{6FFFF}\u{7FFFE}\u{7FFFF}\u{8FFFE}\u{8FFFF}\u{9FFFE}\u{9FFFF}\u{AFFFE}\u{AFFFF}\u{BFFFE}\u{BFFFF}\u{CFFFE}\u{CFFFF}\u{DFFFE}\u{DFFFF}\u{EFFFE}\u{EFFFF}\u{FFFFE}\u{FFFFF}\u{10FFFE}\u{10FFFF}]/u;
 function render(component, options = {}) {
   if (options.csp?.hash && options.csp.nonce) {
@@ -3811,6 +3879,9 @@ function attributes(attrs, css_hash, classes, styles, flags2 = 0) {
   }
   return attr_str;
 }
+function stringify(value) {
+  return typeof value === "string" ? value : value == null ? "" : value + "";
+}
 function attr_class(value, hash, directives) {
   var result = to_class(value, hash, directives);
   return result ? ` class="${escape_html(result, true)}"` : "";
@@ -3819,13 +3890,23 @@ function attr_style(value, directives) {
   var result = to_style(value, directives);
   return result ? ` style="${escape_html(result, true)}"` : "";
 }
-function slot(renderer, $$props, name, slot_props, fallback_fn) {
-  var slot_fn = $$props.$$slots?.[name];
-  if (slot_fn === true) {
-    slot_fn = $$props["children"];
+function store_get(store_values, store_name, store) {
+  if (store_name in store_values && store_values[store_name][0] === store) {
+    return store_values[store_name][2];
   }
-  if (slot_fn !== void 0) {
-    slot_fn(renderer, slot_props);
+  store_values[store_name]?.[1]();
+  store_values[store_name] = [store, null, void 0];
+  const unsub = subscribe_to_store(
+    store,
+    /** @param {any} v */
+    (v) => store_values[store_name][2] = v
+  );
+  store_values[store_name][1] = unsub;
+  return store_values[store_name][2];
+}
+function unsubscribe_stores(store_values) {
+  for (const store_name of Object.keys(store_values)) {
+    store_values[store_name][1]();
   }
 }
 function bind_props(props_parent, props_now) {
@@ -3910,21 +3991,30 @@ function asClassComponent(component) {
   component_constructor.render = _render;
   return component_constructor;
 }
+function onDestroy(fn) {
+  /** @type {SSRContext} */
+  ssr_context.r.on_destroy(fn);
+}
 export {
-  attr as a,
-  browser as b,
-  bind_props as c,
-  ensure_array_like as d,
+  DEV as D,
+  ensure_array_like as a,
+  attr_class as b,
+  attr as c,
+  derived as d,
   escape_html as e,
-  derived as f,
+  bind_props as f,
   getContext as g,
-  attr_class as h,
+  head as h,
   attr_style as i,
-  head as j,
-  setContext as k,
-  asClassComponent as l,
-  noop as n,
+  stringify as j,
+  html as k,
+  setContext as l,
+  asClassComponent as m,
+  derived$1 as n,
+  onDestroy as o,
+  noop as p,
   readable as r,
-  slot as s,
+  store_get as s,
+  unsubscribe_stores as u,
   writable as w
 };

@@ -51,11 +51,6 @@
       .filter((group) => group.chips.length > 0);
   });
 
-  // Only show overflow dropdown when active subject is not visible in the pill row
-  const visiblePillSubjects = $derived(availableSubjects.slice(0, 4));
-  const activeSubjectInPills = $derived(visiblePillSubjects.some((s) => s.id === selectedSubject?.id));
-  const showOverflowDropdown = $derived(availableSubjects.length > 4 && !activeSubjectInPills);
-
   const greeting = $derived.by(() => {
     const hour = new Date().getHours();
     if (hour < 12) return `Good morning, ${firstName}!`;
@@ -224,10 +219,6 @@
     appState.selectSubject(subjectId);
   }
 
-  function onSubjectChange(event: Event): void {
-    selectSubject((event.currentTarget as HTMLSelectElement).value);
-  }
-
   function resetTopicDiscovery(): void {
     lastHintSeed = '';
     pendingChipId = null;
@@ -268,6 +259,15 @@
 
   function recentStageLabel(session: LessonSession): string {
     return `Stage ${Math.min(session.stagesCompleted.length + 1, 6)} of 6 · ${getStageLabel(session.currentStage)}`;
+  }
+
+  let pathSectionEl = $state<HTMLElement | null>(null);
+
+  function jumpToSubject(subjectId: string): void {
+    selectSubject(subjectId);
+    setTimeout(() => {
+      pathSectionEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
   }
 </script>
 
@@ -310,36 +310,40 @@
     </div>
   </div>
 
+  <!-- ── YOUR SUBJECTS ── -->
+  {#if availableSubjects.length > 0}
+    <section class="section-block subjects-section">
+      <div class="section-header section-header--simple">
+        <h3 class="section-title">Your Subjects <span class="subject-count">{availableSubjects.length}</span></h3>
+      </div>
+      <div class="subjects-row" role="list">
+        {#each availableSubjects as subject, i (subject.id)}
+          <button
+            type="button"
+            class="subject-card"
+            class:active={subject.id === selectedSubject?.id}
+            style="--i: {i};"
+            onclick={() => jumpToSubject(subject.id)}
+            aria-pressed={subject.id === selectedSubject?.id}
+          >
+            <div class="subject-card-icon icon-block icon-block--{subjectColorMap[subject.id] ?? 'blue'}" aria-hidden="true">
+              {subjectEmojiMap[subject.id] ?? '📚'}
+            </div>
+            <span class="subject-card-name">{subject.name}</span>
+            <span class="subject-card-arrow" aria-hidden="true">→</span>
+          </button>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
   <!-- ── YOUR PATH ── -->
-  <section class="section-block">
-    <div class="section-header">
-      <div>
-        <h3 class="section-title">Your Path</h3>
-        <p class="section-desc">
-          {viewState.topicDiscovery.shortlist ? 'Pick a topic to begin your lesson' : `Recommended for ${selectedSubject?.name ?? 'your subjects'}`}
-        </p>
-      </div>
-      <div class="subject-switcher-wrap">
-        <div class="subject-switcher">
-          {#each visiblePillSubjects as subject (subject.id)}
-            <button
-              type="button"
-              class="subject-pill"
-              class:active={subject.id === selectedSubject?.id}
-              onclick={() => selectSubject(subject.id)}
-            >
-              {subjectEmojiMap[subject.id] ?? '📚'} {subject.name}
-            </button>
-          {/each}
-          {#if showOverflowDropdown}
-            <select class="subject-overflow" value={selectedSubject?.id} onchange={onSubjectChange}>
-              {#each availableSubjects as subject (subject.id)}
-                <option value={subject.id}>{subject.name}</option>
-              {/each}
-            </select>
-          {/if}
-        </div>
-      </div>
+  <section class="section-block" bind:this={pathSectionEl}>
+    <div class="section-header section-header--simple">
+      <h3 class="section-title">Your Path</h3>
+      <p class="section-desc">
+        {viewState.topicDiscovery.shortlist ? 'Pick a topic to begin your lesson' : `Recommended for ${selectedSubject?.name ?? 'your subjects'}`}
+      </p>
     </div>
 
     {#key selectedSubject?.id}
@@ -764,6 +768,110 @@
     font-size: 0.82rem;
     cursor: pointer;
     flex-shrink: 0;
+  }
+
+  /* ── Your Subjects strip ── */
+  .subjects-section {
+    animation-delay: 0.04s;
+  }
+
+  .subject-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4rem;
+    height: 1.4rem;
+    padding: 0 0.35rem;
+    background: var(--accent-dim);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius: var(--radius-pill);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--accent);
+    vertical-align: middle;
+    margin-left: 0.4rem;
+  }
+
+  .subjects-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .subject-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    flex-shrink: 0;
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--glass-inset-tile);
+    border-radius: var(--radius-lg);
+    padding: 0.65rem 0.9rem 0.65rem 0.75rem;
+    font: inherit;
+    cursor: pointer;
+    color: var(--text);
+    text-align: left;
+    animation: chip-enter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: calc(var(--i, 0) * 0.05s);
+    transition:
+      transform var(--motion-fast) var(--ease-spring),
+      border-color var(--motion-fast) var(--ease-soft),
+      background var(--motion-fast) var(--ease-soft);
+  }
+
+  .subject-card.active {
+    background: var(--accent-dim);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+
+  .subject-card:hover:not(.active) {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+  }
+
+  .subject-card:active {
+    transform: translateY(0) scale(0.97);
+    transition-duration: 80ms;
+  }
+
+  .subject-card-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+
+  .subject-card-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    color: var(--text);
+  }
+
+  .subject-card-arrow {
+    font-size: 0.85rem;
+    color: var(--accent);
+    opacity: 0;
+    transform: translateX(-5px);
+    transition: opacity var(--motion-fast) var(--ease-soft), transform var(--motion-fast) var(--ease-soft);
+    margin-left: 0.1rem;
+  }
+
+  .subject-card:hover .subject-card-arrow,
+  .subject-card.active .subject-card-arrow {
+    opacity: 1;
+    transform: translateX(0);
   }
 
   /* ── Path grid ── */

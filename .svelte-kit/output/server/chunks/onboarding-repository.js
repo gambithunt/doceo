@@ -1,8 +1,6 @@
 import { g as getRecommendedSubject, a as getSelectionMode, o as onboardingCountries, b as getCurriculumsByCountry, c as getGradesByCurriculum, d as getSubjectsByCurriculumAndGrade } from "./onboarding.js";
 import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
-function deduplicateSubjects(subjects) {
-  return Array.from(new Set(subjects.map((subject) => subject.trim()).filter((subject) => subject.length > 0)));
-}
+import { d as deduplicateSubjects } from "./strings.js";
 function mapCurriculum(row) {
   return {
     id: row.id,
@@ -181,12 +179,34 @@ async function completeOnboarding(input) {
     subjects
   };
 }
+async function resetOnboarding(profileId) {
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase || !isSupabaseConfigured()) {
+    return;
+  }
+  await supabase.from("student_selected_subjects").delete().eq("profile_id", profileId);
+  await supabase.from("student_custom_subjects").delete().eq("profile_id", profileId);
+  await supabase.from("student_onboarding").delete().eq("profile_id", profileId);
+  await supabase.from("profiles").update({
+    school_year: "",
+    term: "Term 1",
+    grade: "",
+    grade_id: "",
+    country: "",
+    country_id: "",
+    curriculum: "",
+    curriculum_id: "",
+    recommended_start_subject_id: null,
+    recommended_start_subject_name: null
+  }).eq("id", profileId);
+}
 export {
-  fetchCurriculums as a,
-  fetchGrades as b,
+  fetchCountries as a,
+  fetchCurriculums as b,
   completeOnboarding as c,
-  fetchSubjects as d,
-  fetchCountries as f,
+  fetchGrades as d,
+  fetchSubjects as f,
   loadOnboardingProgress as l,
+  resetOnboarding as r,
   saveOnboardingProgress as s
 };

@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { f as fetchCountries, a as fetchCurriculums, b as fetchGrades, d as fetchSubjects } from "../../../../../chunks/onboarding-repository.js";
+import { a as fetchCountries, b as fetchCurriculums, d as fetchGrades, f as fetchSubjects } from "../../../../../chunks/onboarding-repository.js";
 async function GET({ url }) {
   const type = url.searchParams.get("type");
   const countryId = url.searchParams.get("countryId") ?? "";

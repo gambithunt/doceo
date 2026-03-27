@@ -46,7 +46,8 @@ export async function invokeAuthenticatedAiEdge<TResponse>(
   fetcher: typeof fetch,
   mode: AiMode,
   requestPayload: unknown,
-  modelTier?: ModelTier
+  modelTier?: ModelTier,
+  modelOverride?: string
 ): Promise<AiEdgeInvocationResult<TResponse>> {
   const edgeContext = await getAuthenticatedEdgeContext(request);
 
@@ -68,7 +69,8 @@ export async function invokeAuthenticatedAiEdge<TResponse>(
     body: JSON.stringify({
       request: requestPayload,
       mode,
-      ...(modelTier ? { modelTier } : {})
+      ...(modelTier ? { modelTier } : {}),
+      ...(modelOverride ? { model: modelOverride } : {})
     })
   });
 

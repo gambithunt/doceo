@@ -33,8 +33,6 @@
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
           void appState.initializeRemoteState();
-        } else if (event === 'SIGNED_OUT') {
-          void appState.signOut();
         }
       });
 

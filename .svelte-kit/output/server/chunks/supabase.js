@@ -7,10 +7,7 @@ function readEnv(name) {
 const serverEnv = {
   supabaseUrl: readEnv("PUBLIC_SUPABASE_URL") || readEnv("VITE_SUPABASE_URL"),
   supabaseAnonKey: readEnv("PUBLIC_SUPABASE_ANON_KEY") || readEnv("VITE_SUPABASE_ANON_KEY"),
-  supabaseServiceRoleKey: readEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  githubModelsToken: readEnv("GITHUB_MODELS_TOKEN"),
-  githubModelsEndpoint: readEnv("GITHUB_MODELS_ENDPOINT") || "https://models.github.ai/inference/chat/completions",
-  githubModelsModel: readEnv("GITHUB_MODELS_MODEL") || "openai/gpt-4.1-mini"
+  supabaseServiceRoleKey: readEnv("SUPABASE_SERVICE_ROLE_KEY")
 };
 function hasConfiguredPublicSupabase() {
   return serverEnv.supabaseUrl.length > 0 && serverEnv.supabaseAnonKey.length > 0 && !serverEnv.supabaseUrl.includes("your-project-ref") && !serverEnv.supabaseAnonKey.includes("your-supabase-anon-key");
@@ -32,6 +29,21 @@ function createServerSupabaseAdmin() {
     }
   );
 }
+function createServerSupabaseFromRequest(request) {
+  if (!hasConfiguredPublicSupabase()) {
+    return null;
+  }
+  const authHeader = request.headers.get("Authorization");
+  return createClient(serverEnv.supabaseUrl, serverEnv.supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    },
+    global: {
+      headers: authHeader ? { Authorization: authHeader } : {}
+    }
+  });
+}
 function getSupabaseFunctionsUrl() {
   if (!hasConfiguredPublicSupabase()) {
     return null;
@@ -48,9 +60,9 @@ function getSupabaseAnonKey() {
   return serverEnv.supabaseAnonKey;
 }
 export {
-  getSupabaseAnonKey as a,
+  createServerSupabaseFromRequest as a,
+  getSupabaseAnonKey as b,
   createServerSupabaseAdmin as c,
   getSupabaseFunctionsUrl as g,
-  isSupabaseConfigured as i,
-  serverEnv as s
+  isSupabaseConfigured as i
 };

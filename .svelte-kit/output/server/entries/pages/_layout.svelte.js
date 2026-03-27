@@ -1,8 +1,23 @@
-import { s as slot } from "../../chunks/svelte-vendor.js";
+import "clsx";
+import { o as onDestroy } from "../../chunks/svelte-vendor.js";
+import { d as createInitialState } from "../../chunks/platform.js";
+import { a as appState } from "../../chunks/app-state.js";
 function _layout($$renderer, $$props) {
-  $$renderer.push(`<!--[-->`);
-  slot($$renderer, $$props, "default", {});
-  $$renderer.push(`<!--]-->`);
+  $$renderer.component(($$renderer2) => {
+    let { children } = $$props;
+    createInitialState();
+    const unsubscribe = appState.subscribe((value) => {
+    });
+    onDestroy(() => {
+      unsubscribe();
+    });
+    {
+      $$renderer2.push("<!--[0-->");
+      children($$renderer2);
+      $$renderer2.push(`<!---->`);
+    }
+    $$renderer2.push(`<!--]-->`);
+  });
 }
 export {
   _layout as default

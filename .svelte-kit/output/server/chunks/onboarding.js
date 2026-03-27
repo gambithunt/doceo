@@ -26,20 +26,21 @@ const onboardingCurriculums = [
     description: "Independent Examinations Board"
   }
 ];
-const onboardingGrades = Array.from({ length: 12 }, (_, index) => ({
-  id: `grade-${index + 1}`,
+const supportedGrades = Array.from({ length: 8 }, (_, index) => index + 5);
+const onboardingGrades = supportedGrades.map((grade) => ({
+  id: `grade-${grade}`,
   curriculumId: "caps",
-  label: `Grade ${index + 1}`,
-  order: index + 1
+  label: `Grade ${grade}`,
+  order: grade
 })).concat(
-  Array.from({ length: 12 }, (_, index) => ({
-    id: `ieb-grade-${index + 1}`,
+  supportedGrades.map((grade) => ({
+    id: `ieb-grade-${grade}`,
     curriculumId: "ieb",
-    label: `Grade ${index + 1}`,
-    order: index + 1
+    label: `Grade ${grade}`,
+    order: grade
   }))
 );
-const capsGrade6Subjects = [
+const capsIntermediateSubjects = [
   "Mathematics",
   "English Home Language",
   "Afrikaans First Additional Language",
@@ -47,7 +48,7 @@ const capsGrade6Subjects = [
   "Social Sciences",
   "Life Skills"
 ];
-const capsGrade7Subjects = [
+const capsSeniorSubjects = [
   "Mathematics",
   "English Home Language",
   "Afrikaans First Additional Language",
@@ -58,7 +59,31 @@ const capsGrade7Subjects = [
   "Life Orientation",
   "Creative Arts"
 ];
-const iebGrade7Subjects = [
+const capsFetSubjects = [
+  "Mathematics",
+  "Mathematical Literacy",
+  "English Home Language",
+  "Afrikaans First Additional Language",
+  "Life Orientation",
+  "Physical Sciences",
+  "Life Sciences",
+  "Geography",
+  "History",
+  "Accounting",
+  "Business Studies",
+  "Economics",
+  "Computer Applications Technology",
+  "Information Technology"
+];
+const iebIntermediateSubjects = [
+  "Mathematics",
+  "English Home Language",
+  "Afrikaans Additional Language",
+  "Natural Sciences and Technology",
+  "Social Sciences",
+  "Life Skills"
+];
+const iebSeniorSubjects = [
   "Mathematics",
   "English Home Language",
   "Afrikaans Additional Language",
@@ -68,6 +93,23 @@ const iebGrade7Subjects = [
   "Economic and Management Sciences",
   "Life Orientation",
   "Creative Arts"
+];
+const iebFetSubjects = [
+  "Mathematics",
+  "Mathematical Literacy",
+  "English Home Language",
+  "Afrikaans Additional Language",
+  "Life Orientation",
+  "Physical Sciences",
+  "Life Sciences",
+  "Geography",
+  "History",
+  "Accounting",
+  "Business Studies",
+  "Economics",
+  "Computer Applications Technology",
+  "Information Technology",
+  "Visual Arts"
 ];
 function makeSubject(name, curriculumId, gradeId, category) {
   return {
@@ -79,31 +121,44 @@ function makeSubject(name, curriculumId, gradeId, category) {
   };
 }
 const onboardingSubjects = [
-  ...capsGrade6Subjects.map(
-    (name) => makeSubject(
-      name,
-      "caps",
-      "grade-6",
-      name.includes("Language") ? "language" : name === "Mathematics" ? "core" : "elective"
+  ...supportedGrades.flatMap(
+    (grade) => getSubjectsForGrade("caps", grade).map(
+      (name) => makeSubject(name, "caps", `grade-${grade}`, categorizeSubject(name))
     )
   ),
-  ...capsGrade7Subjects.map(
-    (name) => makeSubject(
-      name,
-      "caps",
-      "grade-7",
-      name.includes("Language") ? "language" : name === "Mathematics" ? "core" : "elective"
-    )
-  ),
-  ...iebGrade7Subjects.map(
-    (name) => makeSubject(
-      name,
-      "ieb",
-      "ieb-grade-7",
-      name.includes("Language") ? "language" : name === "Mathematics" ? "core" : "elective"
+  ...supportedGrades.flatMap(
+    (grade) => getSubjectsForGrade("ieb", grade).map(
+      (name) => makeSubject(name, "ieb", `ieb-grade-${grade}`, categorizeSubject(name))
     )
   )
 ];
+function categorizeSubject(name) {
+  if (name.includes("Language") || name === "Afrikaans Additional Language" || name === "Afrikaans First Additional Language") {
+    return "language";
+  }
+  if (name === "Mathematics" || name === "Mathematical Literacy") {
+    return "core";
+  }
+  return "elective";
+}
+function getSubjectsForGrade(curriculumId, grade) {
+  if (curriculumId === "caps") {
+    if (grade <= 6) {
+      return capsIntermediateSubjects;
+    }
+    if (grade <= 9) {
+      return capsSeniorSubjects;
+    }
+    return capsFetSubjects;
+  }
+  if (grade <= 6) {
+    return iebIntermediateSubjects;
+  }
+  if (grade <= 9) {
+    return iebSeniorSubjects;
+  }
+  return iebFetSubjects;
+}
 function getCurriculumsByCountry(countryId) {
   return onboardingCurriculums.filter((curriculum) => curriculum.countryId === countryId);
 }

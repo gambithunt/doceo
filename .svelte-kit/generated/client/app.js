@@ -12,21 +12,44 @@ export const nodes = [
 	() => import('./nodes/8'),
 	() => import('./nodes/9'),
 	() => import('./nodes/10'),
-	() => import('./nodes/11')
+	() => import('./nodes/11'),
+	() => import('./nodes/12'),
+	() => import('./nodes/13'),
+	() => import('./nodes/14'),
+	() => import('./nodes/15'),
+	() => import('./nodes/16'),
+	() => import('./nodes/17'),
+	() => import('./nodes/18'),
+	() => import('./nodes/19'),
+	() => import('./nodes/20'),
+	() => import('./nodes/21'),
+	() => import('./nodes/22'),
+	() => import('./nodes/23')
 ];
 
-export const server_loads = [];
+export const server_loads = [3];
 
 export const dictionary = {
-		"/": [3],
-		"/(app)/dashboard": [4,[2]],
-		"/(app)/lesson": [5,[2]],
-		"/(app)/lesson/[id]": [6,[2]],
-		"/onboarding": [11],
-		"/(app)/progress": [7,[2]],
-		"/(app)/revision": [8,[2]],
-		"/(app)/settings": [9,[2]],
-		"/(app)/subjects/[id]": [10,[2]]
+		"/": [4],
+		"/admin": [~12,[3]],
+		"/admin/ai": [~13,[3]],
+		"/admin/content": [~14,[3]],
+		"/admin/learning": [~15,[3]],
+		"/admin/messages": [~16,[3]],
+		"/admin/messages/[session_id]": [~17,[3]],
+		"/admin/revenue": [~18,[3]],
+		"/admin/settings": [~19,[3]],
+		"/admin/system": [~20,[3]],
+		"/admin/users": [~21,[3]],
+		"/admin/users/[id]": [~22,[3]],
+		"/(app)/dashboard": [5,[2]],
+		"/(app)/lesson": [6,[2]],
+		"/(app)/lesson/[id]": [7,[2]],
+		"/onboarding": [23],
+		"/(app)/progress": [8,[2]],
+		"/(app)/revision": [9,[2]],
+		"/(app)/settings": [10,[2]],
+		"/(app)/subjects/[id]": [11,[2]]
 	};
 
 export const hooks = {

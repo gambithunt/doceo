@@ -1,151 +1,28 @@
 import { json } from "@sveltejs/kit";
-import { b as buildAskQuestionResponse } from "../../../../../chunks/platform.js";
-import { g as getSupabaseFunctionsUrl, a as getSupabaseAnonKey, s as serverEnv } from "../../../../../chunks/supabase.js";
 import { l as logAiInteraction } from "../../../../../chunks/state-repository.js";
-function createTutorSystemPrompt() {
-  return [
-    "You are a structured school teacher inside an AI learning platform.",
-    "Never behave like a free-form chatbot.",
-    "Guide the student one step at a time.",
-    "Do not dump the answer unless guidance has already been attempted or the student explicitly requests the full worked answer.",
-    "Keep explanations age-appropriate and concise.",
-    "Return JSON only with exactly these keys: problemType, studentGoal, diagnosis, responseStage, teacherResponse, checkForUnderstanding."
-  ].join(" ");
-}
-function createTutorUserPrompt(request) {
-  return JSON.stringify({
-    mode: "ask-question",
-    request,
-    required_output: {
-      problemType: "concept | procedural | word_problem | proof | revision",
-      studentGoal: "string",
-      diagnosis: "string",
-      responseStage: "clarify | hint | guided_step | worked_example | final_explanation",
-      teacherResponse: "string",
-      checkForUnderstanding: "string"
-    }
-  });
-}
-function createGithubModelsBody(request, model) {
-  return {
-    model,
-    temperature: 0.3,
-    messages: [
-      {
-        role: "system",
-        content: createTutorSystemPrompt()
-      },
-      {
-        role: "user",
-        content: createTutorUserPrompt(request)
-      }
-    ]
-  };
-}
-function parseGithubModelsResponse(payload) {
-  const content = payload.choices[0]?.message.content;
-  if (!content) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed.problemType && parsed.studentGoal && parsed.diagnosis && parsed.responseStage && parsed.teacherResponse && parsed.checkForUnderstanding) {
-      return parsed;
-    }
-    if (parsed.solution) {
-      return {
-        problemType: "procedural",
-        studentGoal: "Help the student understand the next solving step.",
-        diagnosis: "The model returned a worked structure instead of the requested tutoring contract.",
-        responseStage: "worked_example",
-        teacherResponse: [
-          parsed.solution.step_1,
-          parsed.solution.calculation,
-          parsed.solution.result
-        ].filter((item) => Boolean(item)).join(". "),
-        checkForUnderstanding: "Can you explain why dividing both sides keeps the equation balanced?"
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-function buildFallbackTutorResponse(request) {
-  return buildAskQuestionResponse(request);
-}
-function hasGithubModelsConfig() {
-  return serverEnv.githubModelsToken.length > 0 && serverEnv.githubModelsEndpoint.length > 0 && serverEnv.githubModelsModel.length > 0 && !serverEnv.githubModelsToken.includes("your-github-models-token");
-}
+import { i as invokeAuthenticatedAiEdge } from "../../../../../chunks/ai-edge.js";
 async function POST({ request, fetch }) {
   const payload = await request.json();
-  const functionsUrl = getSupabaseFunctionsUrl();
-  const anonKey = getSupabaseAnonKey();
-  if (functionsUrl && anonKey) {
-    const functionResponse = await fetch(`${functionsUrl}/github-models-tutor`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${anonKey}`
-      },
-      body: JSON.stringify({
-        request: payload.request,
-        profileId: payload.profileId
-      })
-    });
-    if (functionResponse.ok) {
-      const functionPayload = await functionResponse.json();
-      if (functionPayload.provider === "github-models") {
-        return json(functionPayload);
-      }
-    }
+  const edge = await invokeAuthenticatedAiEdge(request, fetch, "tutor", payload.request);
+  if (!edge.ok || !edge.payload) {
+    return json({ error: edge.error }, { status: edge.status });
   }
-  if (!hasGithubModelsConfig()) {
-    const fallback = buildFallbackTutorResponse(payload.request);
-    return json({
-      response: fallback,
-      provider: "local-fallback"
-    });
+  const functionPayload = edge.payload;
+  if (functionPayload.provider !== "github-models") {
+    return json({ error: "AI edge function returned invalid tutor data." }, { status: 502 });
   }
-  const body = createGithubModelsBody(
-    payload.request,
-    serverEnv.githubModelsModel
-  );
-  const response = await fetch(serverEnv.githubModelsEndpoint, {
-    method: "POST",
-    headers: {
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${serverEnv.githubModelsToken}`,
-      "X-GitHub-Api-Version": "2022-11-28"
-    },
-    body: JSON.stringify(body)
-  });
-  if (!response.ok) {
-    const fallback = buildFallbackTutorResponse(payload.request);
-    return json(
-      {
-        response: fallback,
-        provider: "local-fallback",
-        error: `GitHub Models request failed with ${response.status}`
-      },
-      {
-        status: 200
-      }
-    );
-  }
-  const responsePayload = await response.json();
-  const parsed = parseGithubModelsResponse(responsePayload) ?? buildFallbackTutorResponse(payload.request);
   await logAiInteraction(
     payload.profileId,
     JSON.stringify(payload.request),
-    JSON.stringify(parsed),
-    "github-models"
+    JSON.stringify(functionPayload.response),
+    functionPayload.provider,
+    {
+      mode: "tutor",
+      modelTier: functionPayload.modelTier,
+      model: functionPayload.model
+    }
   );
-  return json({
-    response: parsed,
-    provider: "github-models"
-  });
+  return json(functionPayload);
 }
 export {
   POST

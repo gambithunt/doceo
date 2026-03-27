@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
+import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 
 const TopicShortlistBodySchema = z.object({
   request: z.object({
@@ -34,12 +35,14 @@ export async function POST({ request, fetch }) {
     );
   }
   const payload = parsed.data;
+  const aiConfig = await getAiConfig();
+  const { model } = resolveAiRoute(aiConfig, 'topic-shortlist');
   const edge = await invokeAuthenticatedAiEdge<{
     response?: import('$lib/types').TopicShortlistResponse;
     provider?: string;
     modelTier?: import('$lib/ai/model-tiers').ModelTier;
     model?: string;
-  }>(request, fetch, 'topic-shortlist', payload.request);
+  }>(request, fetch, 'topic-shortlist', payload.request, undefined, model);
 
   if (!edge.ok || !edge.payload) {
     return json({ error: edge.error }, { status: edge.status });

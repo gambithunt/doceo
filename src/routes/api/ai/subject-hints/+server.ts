@@ -6,6 +6,7 @@ import {
 } from '$lib/ai/subject-hints';
 import type { Subject } from '$lib/types';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
+import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 
 const SubjectHintsBodySchema = z.object({
   request: z.object({
@@ -69,6 +70,8 @@ export async function POST({ request, fetch }) {
     term: parsed.data.request.term,
     subjectName: parsed.data.request.subject.name
   });
+  const aiConfig = await getAiConfig();
+  const { model: resolvedModel } = resolveAiRoute(aiConfig, 'subject-hints');
   const edge = await invokeAuthenticatedAiEdge<{
     response?: { hints?: string[] };
     provider?: string;
@@ -82,7 +85,7 @@ export async function POST({ request, fetch }) {
     term: parsed.data.request.term,
     subject: parsed.data.request.subject,
     referenceTopics
-  });
+  }, undefined, resolvedModel);
 
   if (!edge.ok || !edge.payload) {
     return json({ error: edge.error }, { status: edge.status });

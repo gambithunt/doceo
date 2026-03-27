@@ -3,6 +3,51 @@
 	"/": [
 		"src/routes/+page.ts"
 	],
+	"/admin": [
+		"src/routes/admin/+page.server.ts",
+		"src/routes/admin/+layout.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/ai": [
+		"src/routes/admin/ai/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/content": [
+		"src/routes/admin/content/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/learning": [
+		"src/routes/admin/learning/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/messages": [
+		"src/routes/admin/messages/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/messages/[session_id]": [
+		"src/routes/admin/messages/[session_id]/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/revenue": [
+		"src/routes/admin/revenue/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/settings": [
+		"src/routes/admin/settings/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/system": [
+		"src/routes/admin/system/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/users": [
+		"src/routes/admin/users/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/users/[id]": [
+		"src/routes/admin/users/[id]/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
 	"/api/ai/lesson-chat": [
 		"src/routes/api/ai/lesson-chat/+server.ts"
 	],

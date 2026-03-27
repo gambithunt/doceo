@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { buildFallbackLessonPlan } from '$lib/ai/lesson-plan';
 import { logAiInteraction } from '$lib/server/state-repository';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
+import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 const LessonPlanBodySchema = z.object({
@@ -34,11 +35,16 @@ export async function POST({ request, fetch }) {
 
   const lessonRequest = parsed.data.request as unknown as LessonPlanRequest;
 
+  const aiConfig = await getAiConfig();
+  const { model } = resolveAiRoute(aiConfig, 'lesson-plan');
+
   const edge = await invokeAuthenticatedAiEdge<LessonPlanResponse>(
     request,
     fetch,
     'lesson-plan',
-    lessonRequest
+    lessonRequest,
+    undefined,
+    model
   );
 
   // Propagate auth/permission errors — do not silently fall back

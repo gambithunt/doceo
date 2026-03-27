@@ -1,4 +1,4 @@
-import { c as createInitialState, n as normalizeAppState } from "./platform.js";
+import { d as createInitialState, n as normalizeAppState } from "./platform.js";
 import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
 function createSnapshotId(profileId) {
   return `snapshot-${profileId}`;
@@ -13,6 +13,24 @@ async function loadAppState(profileId) {
   const supabase = createServerSupabaseAdmin();
   if (!supabase || !isSupabaseConfigured()) {
     return createInitialState();
+  }
+  const [sessionsResult, learnerProfileResult, revisionResult] = await Promise.all([
+    supabase.from("lesson_sessions").select("session_json").eq("profile_id", profileId).order("last_active_at", { ascending: false }).limit(50),
+    supabase.from("learner_profiles").select("profile_json").eq("student_id", profileId).maybeSingle(),
+    supabase.from("revision_topics").select("topic_json").eq("profile_id", profileId)
+  ]);
+  const sessionRows = sessionsResult.data ?? [];
+  if (sessionRows.length > 0) {
+    const base = createInitialState();
+    return normalizeAppState({
+      ...base,
+      profile: { ...base.profile, id: profileId },
+      learnerProfile: learnerProfileResult.data?.profile_json ?? base.learnerProfile,
+      lessonSessions: sessionRows.map((row) => row.session_json),
+      revisionTopics: (revisionResult.data ?? []).map(
+        (row) => row.topic_json
+      )
+    });
   }
   const { data } = await supabase.from("app_state_snapshots").select("state_json, updated_at").eq("id", createSnapshotId(profileId)).maybeSingle();
   return coerceState(data ?? null);
@@ -49,60 +67,144 @@ async function saveAppState(state) {
     state_json: normalizedState,
     updated_at: (/* @__PURE__ */ new Date()).toISOString()
   });
-  await supabase.from("student_progress").upsert(
-    Object.values(normalizedState.progress).map((progress) => ({
-      id: `${normalizedState.profile.id}-${progress.lessonId}`,
-      profile_id: normalizedState.profile.id,
-      lesson_id: progress.lessonId,
-      completed: progress.completed,
-      mastery_level: progress.masteryLevel,
-      weak_areas: progress.weakAreas,
-      answers_json: progress.answers,
-      time_spent_minutes: progress.timeSpentMinutes,
-      last_stage: progress.lastStage,
+  try {
+    await supabase.from("learner_profiles").upsert({
+      student_id: normalizedState.profile.id,
+      profile_json: normalizedState.learnerProfile,
       updated_at: (/* @__PURE__ */ new Date()).toISOString()
-    }))
-  );
-  await supabase.from("study_sessions").upsert(
-    normalizedState.sessions.map((session) => ({
-      id: session.id,
-      profile_id: normalizedState.profile.id,
-      mode: session.mode,
-      lesson_id: session.lessonId ?? null,
-      started_at: session.startedAt,
-      updated_at: session.updatedAt,
-      resume_label: session.resumeLabel
-    }))
-  );
-  await supabase.from("analytics_events").insert(
+    });
+  } catch {
+  }
+  try {
+    await supabase.from("lesson_sessions").upsert(
+      normalizedState.lessonSessions.map((session) => ({
+        id: session.id,
+        profile_id: normalizedState.profile.id,
+        lesson_id: session.lessonId,
+        status: session.status,
+        current_stage: session.currentStage,
+        confidence_score: session.confidenceScore,
+        started_at: session.startedAt,
+        last_active_at: session.lastActiveAt,
+        completed_at: session.completedAt,
+        session_json: session,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      }))
+    );
+    const allMessages = normalizedState.lessonSessions.flatMap(
+      (session) => session.messages.filter((msg) => msg.role === "user" || msg.role === "assistant").map((msg) => ({
+        id: msg.id,
+        session_id: session.id,
+        profile_id: normalizedState.profile.id,
+        role: msg.role,
+        type: msg.type,
+        content: msg.content,
+        stage: msg.stage,
+        timestamp: msg.timestamp,
+        metadata_json: msg.metadata ?? null,
+        created_at: msg.timestamp
+      }))
+    );
+    if (allMessages.length > 0) {
+      await supabase.from("lesson_messages").upsert(allMessages, { onConflict: "id", ignoreDuplicates: true });
+    }
+  } catch {
+  }
+  try {
+    await supabase.from("revision_topics").upsert(
+      normalizedState.revisionTopics.map((topic) => ({
+        id: topic.lessonSessionId,
+        profile_id: normalizedState.profile.id,
+        topic_json: topic,
+        next_revision_at: topic.nextRevisionAt,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      }))
+    );
+  } catch {
+  }
+  await supabase.from("analytics_events").upsert(
     normalizedState.analytics.slice(0, 10).map((event) => ({
       id: event.id,
       profile_id: normalizedState.profile.id,
       event_type: event.type,
       created_at: event.createdAt,
       detail: event.detail
-    }))
+    })),
+    { onConflict: "id", ignoreDuplicates: true }
   );
   return {
     persisted: true
   };
 }
-async function logAiInteraction(profileId, requestPayload, response, provider) {
+async function logAiInteraction(profileId, requestPayload, response, provider, meta) {
   const supabase = createServerSupabaseAdmin();
   if (!supabase || !isSupabaseConfigured()) {
     return;
   }
+  const wrapPayload = (payload) => {
+    if (!meta || !meta.mode && !meta.modelTier && !meta.model) {
+      return payload;
+    }
+    try {
+      return JSON.stringify({
+        payload: JSON.parse(payload),
+        meta
+      });
+    } catch {
+      return JSON.stringify({
+        payload,
+        meta
+      });
+    }
+  };
   await supabase.from("ai_interactions").insert({
     id: crypto.randomUUID(),
     profile_id: profileId,
     provider,
-    request_payload: requestPayload,
-    response_payload: response,
+    request_payload: wrapPayload(requestPayload),
+    response_payload: wrapPayload(response),
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   });
 }
+async function logLessonSignal(profileId, session, meta) {
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase || !isSupabaseConfigured()) {
+    return;
+  }
+  await supabase.from("lesson_signals").insert({
+    profile_id: profileId,
+    lesson_session_id: session.id,
+    subject: session.subject,
+    topic_title: session.topicTitle,
+    confidence_assessment: meta.confidence_assessment,
+    action: meta.action,
+    reteach_style: meta.reteach_style ?? null,
+    struggled_with: meta.profile_update?.struggled_with ?? [],
+    excelled_at: meta.profile_update?.excelled_at ?? [],
+    step_by_step: meta.profile_update?.step_by_step ?? null,
+    analogies_preference: meta.profile_update?.analogies_preference ?? null,
+    visual_learner: meta.profile_update?.visual_learner ?? null,
+    real_world_examples: meta.profile_update?.real_world_examples ?? null,
+    abstract_thinking: meta.profile_update?.abstract_thinking ?? null,
+    needs_repetition: meta.profile_update?.needs_repetition ?? null,
+    quiz_performance: meta.profile_update?.quiz_performance ?? null,
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  });
+}
+async function loadSignalsForProfile(profileId) {
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase || !isSupabaseConfigured()) {
+    return [];
+  }
+  const { data } = await supabase.from("lesson_signals").select(
+    "confidence_assessment, action, reteach_style, struggled_with, excelled_at, step_by_step, analogies_preference, visual_learner, real_world_examples, abstract_thinking, needs_repetition, quiz_performance, created_at"
+  ).eq("profile_id", profileId).order("created_at", { ascending: false }).limit(100);
+  return data ?? [];
+}
 export {
-  loadAppState as a,
+  logLessonSignal as a,
+  loadAppState as b,
+  loadSignalsForProfile as c,
   logAiInteraction as l,
   saveAppState as s
 };
