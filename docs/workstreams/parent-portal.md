@@ -23,7 +23,7 @@ The Parent Portal is not a "second student" view. It is an **observer lens** des
 - **Cultural Sensitivity:** Home hints must be appropriate for diverse South African socioeconomic contexts—low-cost, accessible activities that don't assume resources
 
 ### Success Definition
-Parents log in 2+ times per week not out of anxiety, but because the portal gives them confidence and actionable ways to support their child. Students feel supported, not surveilled.
+Parents check the portal when they want a picture of their child's progress — not out of anxiety, but because it gives them confidence and meaningful ways to support their child at home. The cadence is theirs: weekly, fortnightly, whenever. Students feel supported, not surveilled.
 
 ---
 
@@ -85,11 +85,12 @@ CREATE INDEX idx_parent_links_student ON student_parent_links(student_id);
 
 ### Data Synchronization & Privacy Architecture
 
-**Cloud Mandate for Students:**
-For parents to see live data, student sessions must sync to Supabase. This creates a UX consideration:
-- Students using the app offline will have stale data visible to parents
-- The parent dashboard should show a "Last Synced" timestamp prominently
-- Consider a gentle reminder to students: "Sync your progress so [Parent Name] can see how you're doing!"
+**Periodic Sync Model:**
+The parent portal is a **periodic progress view**, not a live monitor. Parents check in when they want — weekly, fortnightly, whenever is natural for them. This means:
+- Data freshness is not a critical UX concern. A dashboard showing data from 2 days ago is perfectly fine.
+- Students sync to Supabase whenever they're online (the existing 2500ms debounced sync). No changes needed to student sync behaviour.
+- The parent dashboard should show a low-key "Last updated [date]" label for context — not an alarming freshness indicator.
+- No real-time subscriptions needed anywhere in the parent portal.
 
 **Data Access Matrix:**
 
@@ -206,9 +207,9 @@ USING (
 - UI: Horizontal scrollable cards showing each linked student
   - Student avatar (initials or photo if available)
   - Student name
-  - Current status indicator (online/offline/learning)
+  - Last active: relative date derived from `max(lastActiveAt)` across sessions (e.g. "Active yesterday")
   - Quick stats: "3 lessons this week"
-- Behavior: 
+- Behavior:
   - Click to switch active student
   - URL updates to `/parent/[student_id]`
   - State persists on refresh
@@ -282,22 +283,22 @@ USING (
 - Trend indicators: ↑ Improving, ↓ Declining, → Stable (compare to last week)
 
 **Activity Timeline:**
-- List of recent `lessonSessions` (last 10-20)
+- List of recent `lessonSessions` (last 10-20 completed or in-progress)
 - Each item shows:
   - Subject icon (colored per design system)
   - Topic title
   - Completion status (emoji + text)
   - Confidence score (if complete)
-  - Time spent
-  - Timestamp (relative: "2 hours ago", "Yesterday")
-- Group by date: "Today", "Yesterday", "This Week", "Earlier"
-- Empty state: "No activity yet. Sarah hasn't completed any lessons this week."
+  - Time spent (derived from `completedAt - startedAt` or `lastActiveAt - startedAt`)
+  - Date (not relative urgency — just "Mon 24 Mar" or "This week")
+- Group by period: "This Week", "Last Week", "This Month", "Earlier"
+- Empty state: "No lessons recorded yet. Activity will appear here once Sarah starts learning."
 
-**Last Sync Indicator:**
-- Prominent badge showing data freshness
-- "Last updated 5 minutes ago" (green)
-- "Last updated 2 hours ago" (yellow)
-- "Last updated 1 day ago" (red) + "Student may be using app offline"
+**Last Updated Label:**
+- Small, low-key label showing when data was last synced
+- Format: "Updated Mon 24 Mar" or "Updated today" — plain text, no colour-coded urgency states
+- Derived from `max(lastActiveAt)` across the student's sessions
+- No warning states — stale data is expected and fine for a periodic view
 
 ---
 
@@ -370,9 +371,10 @@ HOME HINT CULTURAL CONSIDERATIONS:
 ```
 
 **Caching Strategy:**
-- Cache summaries for 6 hours (parent dashboard loads are frequent)
-- Store in new table `parent_summaries` with TTL
-- Invalidate cache when student completes a new lesson
+- Cache summaries for 24 hours — parents check in periodically, not constantly
+- Store in `parent_summaries` table with `expires_at`
+- Invalidate when student completes a new lesson (trigger or API hook)
+- On-demand "Refresh" button rate-limited to once per hour (not 10 minutes)
 
 **Insight Cards UI:**
 - Full-width card at top of dashboard
@@ -457,17 +459,17 @@ CREATE INDEX idx_pulse_events_parent ON pulse_events(parent_id, is_read, created
 
 1. **In-App Notification Bell:**
    - Location: Parent dashboard header
-   - Badge: Red dot with unread count
-   - Dropdown: List of recent pulses with timestamps
+   - Badge: Dot with unread count — visible on next login, no real-time push
+   - Dropdown: List of recent pulses with dates
    - "Mark all as read" action
 
-2. **Email Notifications (Future):**
-   - Weekly digest of pulses
-   - Immediate notification for major milestones (configurable)
-   - Unsubscribe options per pulse type
+2. **Email Digest (Future):**
+   - Weekly summary of milestones
+   - Opt-in, configurable frequency
+   - Unsubscribe per pulse type
 
 3. **Push Notifications (Future Mobile App):**
-   - Real-time when student achieves milestone
+   - Delivered on next app open or as a daily digest — not real-time
 
 **Pulse UI Cards:**
 ```
@@ -521,24 +523,23 @@ interface ParentState {
 
 **Data Loading Pattern:**
 1. On parent dashboard load: Fetch linked students list
-2. On student selection: 
-   - Fetch summary (cached or generate new)
+2. On student selection:
+   - Fetch summary (from cache or generate new)
    - Fetch mastery heatmap
    - Fetch activity timeline
-   - Fetch pulse events
-3. Real-time updates (optional): Subscribe to Supabase realtime for new pulses
+   - Fetch unread pulse events
+3. No real-time subscriptions — all data is fetched on load and on manual refresh
 
-**Sync Indicator Implementation:**
+**Last Updated Label:**
 ```typescript
-// Show last sync time from student's app state
-function getDataFreshness(studentId: string): DataFreshness {
-  const lastSync = getStudentLastSync(studentId); // from lesson_sessions metadata
-  const minutesAgo = Date.now() - new Date(lastSync).getTime() / 60000;
-  
-  if (minutesAgo < 15) return { status: 'fresh', text: 'Updated moments ago' };
-  if (minutesAgo < 60) return { status: 'recent', text: `Updated ${Math.floor(minutesAgo)} mins ago` };
-  if (minutesAgo < 1440) return { status: 'stale', text: `Updated ${Math.floor(minutesAgo / 60)} hours ago` };
-  return { status: 'old', text: `Updated ${Math.floor(minutesAgo / 1440)} days ago` };
+function getLastUpdatedLabel(studentId: string): string {
+  const lastSync = getStudentLastSync(studentId); // max(lastActiveAt) from lesson_sessions
+  const date = new Date(lastSync);
+  const diffDays = Math.floor((Date.now() - date.getTime()) / 86400000);
+
+  if (diffDays === 0) return 'Updated today';
+  if (diffDays === 1) return 'Updated yesterday';
+  return `Updated ${date.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}`;
 }
 ```
 
@@ -741,23 +742,6 @@ Place at: `src/lib/server/parent/parent-guard.ts`
 
 ---
 
-### Bug: `getDataFreshness` Math Error
-
-Section 4 contains a bug in the sync indicator implementation:
-
-```typescript
-// WRONG — operator precedence divides getTime() first, then subtracts
-const minutesAgo = Date.now() - new Date(lastSync).getTime() / 60000;
-```
-
-Fix:
-```typescript
-// CORRECT
-const minutesAgo = (Date.now() - new Date(lastSync).getTime()) / 60000;
-```
-
----
-
 ### Security: Remove `parentId` from `ParentSummaryRequest`
 
 `ParentSummaryRequest` (Phase 3) includes `parentId` as a request body field. This is a security flaw — a caller could pass any `parentId` to probe cached summaries for parents they aren't. The parent identity must always be derived server-side from `auth.uid()`.
@@ -801,11 +785,9 @@ Recommend shipping without trend arrows in Phase 2 and adding a snapshot table p
 
 ---
 
-### Student "Online/Offline" Status Requires Supabase Realtime Presence
+### Student Selector: Use "Last Active" Date, Not Real-Time Status
 
-The student selector card spec includes a "current status indicator (online/offline/learning)". No realtime presence system exists in the codebase. Implementing this requires Supabase Realtime presence channels.
-
-**Recommendation:** Defer to post-MVP. For Phase 2 MVP, replace with a simpler "last active" relative timestamp (e.g. "Active 5 mins ago") derived from `max(lastActiveAt)` across the student's sessions — no realtime subscription needed.
+The student selector shows "last active" context. This should be derived from `max(lastActiveAt)` across the student's `lesson_sessions` — a simple database query, no real-time subscription needed. Display as a plain date label ("Active yesterday", "Active Mon 24 Mar"), not an online/offline indicator.
 
 ---
 
@@ -975,7 +957,7 @@ The Parent Portal follows the same design system (`docs/desgin-langauge.md`) wit
 | Metric | Target | Measurement |
 |--------|--------|-------------|
 | Connection Rate | 40% of students linked | `% of students with ≥1 parent link` |
-| Parent Retention | 2+ logins/week | `weekly_active_parents / total_parents` |
+| Parent Retention | 4+ logins/month | `monthly_active_parents / total_parents` |
 | Home Hint Engagement | 30% click feedback | `clicks on home hints / home hints shown` |
 | Student Opt-out | < 5% | `% of students who revoke parent access` |
 
@@ -1009,8 +991,8 @@ The Parent Portal follows the same design system (`docs/desgin-langauge.md`) wit
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | Privacy concerns cause low adoption | Medium | High | Clear communication, student controls, transparent data access |
-| AI summaries are inaccurate | Medium | Medium | Human review in beta, fallback templates, feedback loops |
-| Parents become helicopter monitors | Low | High | Design for celebration not surveillance, emphasize patterns not play-by-play |
+| AI summaries are inaccurate or thin | Medium | Medium | Require minimum session count before generating; fallback to template; feedback loops |
+| Parents become helicopter monitors | Low | High | Periodic cadence by design — no live feed, no timestamps that invite constant checking |
 | Technical complexity delays launch | Medium | Medium | Phased rollout, cut features if needed, maintain quality over scope |
 | Students game the system for parent approval | Low | Medium | Emphasize learning over scores, celebrate effort not just achievement |
 | Connection codes are brute-forced | Low | High | Rate limiting, short expiration, hashed storage, audit logs |
@@ -1109,7 +1091,7 @@ $$ LANGUAGE plpgsql;
 
 ---
 
-**Document Version:** 2.0  
-**Last Updated:** 2026-03-27  
-**Status:** Ready for Development  
+**Document Version:** 2.1
+**Last Updated:** 2026-03-30
+**Status:** Ready for Development
 **Owner:** Product & Engineering Team
