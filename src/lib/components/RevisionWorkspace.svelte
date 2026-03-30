@@ -1,5 +1,6 @@
 <script lang="ts">
   import { renderSimpleMarkdown } from '$lib/markdown';
+  import { deriveRevisionProgressModel } from '$lib/revision/progress';
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
   import { appState } from '$lib/stores/app-state';
   import type { AppState, RevisionTopic } from '$lib/types';
@@ -29,6 +30,7 @@
   let plannerManualTopics = '';
 
   $: homeModel = deriveRevisionHomeModel(state);
+  $: progressModel = deriveRevisionProgressModel(state);
   $: availableSubjects = state.curriculum.subjects;
   $: selectedTopic =
     state.revisionTopics.find((topic) => topic.lessonSessionId === state.ui.activeLessonSessionId) ??
@@ -49,6 +51,8 @@
     return dueDate.getTime() <= now.getTime();
   }).length;
   $: weakTopicCount = state.revisionTopics.filter((topic) => topic.confidenceScore < 0.55).length;
+  $: calibrationGapCount = state.revisionTopics.filter((topic) => Math.abs(topic.calibration.confidenceGap) >= 0.22).length;
+  $: fragileTopicCount = state.revisionTopics.filter((topic) => topic.retentionStability <= 0.5 || topic.forgettingVelocity >= 0.58).length;
 
   function seedPlannerFields(): void {
     plannerSubjectId = state.revisionPlan.subjectId || state.ui.selectedSubjectId || state.curriculum.subjects[0]?.id || '';
@@ -188,11 +192,20 @@
       return null;
     }
 
-    const { diagnosis, intervention, sessionDecision, topicUpdate, nextQuestion } = revisionSession.lastTurnResult;
+    const { diagnosis, intervention, sessionDecision, topicUpdate, nextQuestion, scores } = revisionSession.lastTurnResult;
+    const calibrationNote =
+      scores.calibrationGap >= 0.2
+        ? 'You felt more sure than the answer showed. Slow down and test the explanation, not just the feeling.'
+        : scores.calibrationGap <= -0.2
+          ? 'The answer was stronger than your confidence suggested. Trust the structure you do know.'
+          : 'Your confidence and answer quality were fairly well aligned here.';
 
     return [
       `**Diagnosis**`,
       diagnosis.summary,
+      '',
+      `**Calibration**`,
+      calibrationNote,
       '',
       `**Next move**`,
       intervention.content || 'Keep going with the next question.',
@@ -201,6 +214,58 @@
       '',
       `**Next review**\n${new Date(topicUpdate.nextRevisionAt).toLocaleDateString()}`
     ].join('\n');
+  }
+
+  function getCalibrationTone(topic: RevisionTopic): 'overconfident' | 'underconfident' | 'aligned' {
+    if (topic.calibration.confidenceGap >= 0.22 || topic.calibration.overconfidenceCount > topic.calibration.underconfidenceCount) {
+      return 'overconfident';
+    }
+
+    if (topic.calibration.confidenceGap <= -0.22 || topic.calibration.underconfidenceCount > topic.calibration.overconfidenceCount) {
+      return 'underconfident';
+    }
+
+    return 'aligned';
+  }
+
+  function getCalibrationHeading(topic: RevisionTopic): string {
+    const tone = getCalibrationTone(topic);
+
+    if (tone === 'overconfident') {
+      return 'Confidence is running ahead of the answer';
+    }
+
+    if (tone === 'underconfident') {
+      return 'You know more here than you think';
+    }
+
+    return 'Confidence is tracking reasonably well';
+  }
+
+  function getCalibrationSummary(topic: RevisionTopic): string {
+    const tone = getCalibrationTone(topic);
+
+    if (tone === 'overconfident') {
+      return 'Use explanation and error-spotting questions here. This topic needs proof, not just recognition.';
+    }
+
+    if (tone === 'underconfident') {
+      return 'Keep retrieving this topic. The answers are stronger than the self-rating suggests, so build confidence through repetition.';
+    }
+
+    return 'Keep the rhythm steady. This topic is not showing a major calibration mismatch right now.';
+  }
+
+  function getStrongestMisconceptionLabel(topic: RevisionTopic): string | null {
+    const signal = topic.misconceptionSignals
+      .slice()
+      .sort((left, right) => right.count - left.count)[0];
+
+    if (!signal || signal.count < 2) {
+      return null;
+    }
+
+    return signal.tag.replace(/-/g, ' ');
   }
 </script>
 
@@ -309,6 +374,14 @@
             <strong>{weakTopicCount}</strong>
             <span>Weak topics</span>
           </article>
+          <article class="stat-card">
+            <strong>{calibrationGapCount}</strong>
+            <span>Calibration gaps</span>
+          </article>
+          <article class="stat-card">
+            <strong>{fragileTopicCount}</strong>
+            <span>Fragile topics</span>
+          </article>
         </div>
         <div class="hero-actions">
           <button type="button" class="action-btn" onclick={() => review(homeModel.hero!.topic)}>
@@ -329,6 +402,80 @@
         <section class="panel">
           <div class="panel-header">
             <div>
+              <p class="eyebrow">Memory Strength</p>
+              <h3>Consistency is building recall</h3>
+            </div>
+            <small>{progressModel.memoryStrength}%</small>
+          </div>
+          <div class="strength-meter" aria-hidden="true">
+            <div class="strength-fill" style={`width: ${progressModel.memoryStrength}%`}></div>
+          </div>
+          <p>Showing up matters here. This score blends topic confidence with recent revision consistency and coverage.</p>
+          <div class="calibration-grid">
+            <article class="mini-stat">
+              <strong>{progressModel.consistencyDays}</strong>
+              <span>Active days this week</span>
+            </article>
+            <article class="mini-stat">
+              <strong>{progressModel.coveredTopicsCount}</strong>
+              <span>Topics reviewed recently</span>
+            </article>
+          </div>
+        </section>
+
+        {#if progressModel.insights.length > 0}
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Revision Signals</p>
+                <h3>Patterns Doceo is watching</h3>
+              </div>
+              <small>{progressModel.insights.length} signals</small>
+            </div>
+
+            <div class="activity-list">
+              {#each progressModel.insights as item}
+                <article class:recovery={item.tone === 'recovery'} class="activity-item insight-item">
+                  <div class="topic-row">
+                    <strong>{item.title}</strong>
+                    <span class="hero-pill subdued">{item.tone}</span>
+                  </div>
+                  <p>{item.summary}</p>
+                </article>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Weekly Activity</p>
+              <h3>Revision across the last 7 days</h3>
+            </div>
+            <small>{progressModel.consistencyDays} active days</small>
+          </div>
+
+          <div class="weekly-strip" aria-hidden="true">
+            {#each progressModel.weeklyActivity as day}
+              <article class="day-column">
+                <div class="day-bar-wrap">
+                  <div
+                    class:active={day.count > 0}
+                    class="day-bar"
+                    style={`height: ${Math.max(0.35, Math.min(1, day.count / 3)) * 4.2}rem`}
+                  ></div>
+                </div>
+                <strong>{day.count}</strong>
+                <span>{day.label}</span>
+              </article>
+            {/each}
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
               <p class="eyebrow">Revision Plan</p>
               <h3>{state.revisionPlan.examName ?? 'Current plan'}</h3>
             </div>
@@ -344,6 +491,31 @@
             </span>
           </div>
         </section>
+
+        {#if progressModel.recentActivity.length > 0}
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Recent Activity</p>
+                <h3>What changed most recently</h3>
+              </div>
+              <small>{progressModel.recentActivity.length} turns</small>
+            </div>
+
+            <div class="activity-list">
+              {#each progressModel.recentActivity as item}
+                <article class="activity-item">
+                  <div class="topic-row">
+                    <strong>{item.topicTitle}</strong>
+                    <small>{new Date(item.createdAt).toLocaleDateString()}</small>
+                  </div>
+                  <span class="hero-pill subdued">{item.label}</span>
+                  <p>{item.summary}</p>
+                </article>
+              {/each}
+            </div>
+          </section>
+        {/if}
 
         <section class="panel">
           <div class="panel-header">
@@ -476,25 +648,29 @@
               </p>
 
               <div class="starter-actions">
-                <button type="button" class="action-btn" onclick={() => review(selectedTopic, 'deep_revision')}>
-                  Start deep revision
-                </button>
-                <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'quick_fire')}>
-                  Quick-fire
-                </button>
-                <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'shuffle')}>
-                  Shuffle
-                </button>
-                <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'teacher_mode')}>
-                  Teacher mode
-                </button>
                 {#if revisionSession?.status === 'escalated_to_lesson'}
                   <button
                     type="button"
-                    class="secondary action-btn"
-                    onclick={() => appState.resumeSession(selectedTopic.lessonSessionId)}
+                    class="action-btn"
+                    onclick={() => appState.startRevisionLessonHandoff()}
                   >
-                    Go to lesson
+                    Start focused reteach
+                  </button>
+                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'deep_revision')}>
+                    Try revision again
+                  </button>
+                {:else}
+                  <button type="button" class="action-btn" onclick={() => review(selectedTopic, 'deep_revision')}>
+                    Start deep revision
+                  </button>
+                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'quick_fire')}>
+                    Quick-fire
+                  </button>
+                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'shuffle')}>
+                    Shuffle
+                  </button>
+                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'teacher_mode')}>
+                    Teacher mode
                   </button>
                 {/if}
               </div>
@@ -513,6 +689,51 @@
           {#if feedbackMarkdown()}
             <article class="feedback-card">
               {@html renderSimpleMarkdown(feedbackMarkdown()!)}
+            </article>
+          {/if}
+
+          {#if displayTopic}
+            <article class="feedback-card calibration-card">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Calibration</p>
+                  <h3>{getCalibrationHeading(displayTopic)}</h3>
+                </div>
+                <span class="hero-pill subdued">{Math.round(displayTopic.calibration.averageCorrectness * 100)}% accuracy</span>
+              </div>
+              <p>{getCalibrationSummary(displayTopic)}</p>
+              <div class="calibration-grid">
+                <article class="mini-stat">
+                  <strong>{displayTopic.calibration.averageSelfConfidence.toFixed(1)}</strong>
+                  <span>Avg confidence / 5</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{Math.round(displayTopic.calibration.averageCorrectness * 100)}%</strong>
+                  <span>Avg performance</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{displayTopic.calibration.overconfidenceCount}</strong>
+                  <span>Overconfident turns</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{displayTopic.calibration.underconfidenceCount}</strong>
+                  <span>Underconfident turns</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{Math.round(displayTopic.retentionStability * 100)}%</strong>
+                  <span>Retention stability</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{Math.round(displayTopic.forgettingVelocity * 100)}%</strong>
+                  <span>Forgetting velocity</span>
+                </article>
+                {#if getStrongestMisconceptionLabel(displayTopic)}
+                  <article class="mini-stat wide-stat">
+                    <strong>{getStrongestMisconceptionLabel(displayTopic)}</strong>
+                    <span>Strongest repeated gap</span>
+                  </article>
+                {/if}
+              </div>
             </article>
           {/if}
         {:else}
@@ -600,7 +821,10 @@
   .stat-card,
   .planner-panel,
   .starter-card,
-  .mode-list {
+  .mode-list,
+  .calibration-grid,
+  .activity-list,
+  .weekly-strip {
     display: grid;
     gap: 0.8rem;
   }
@@ -684,6 +908,20 @@
     flex-wrap: wrap;
   }
 
+  .strength-meter {
+    overflow: hidden;
+    height: 0.7rem;
+    border-radius: 999px;
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+  }
+
+  .strength-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 62%, white));
+  }
+
   .mode-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -699,6 +937,75 @@
 
   .mode-card p {
     color: var(--text-soft);
+  }
+
+  .calibration-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mini-stat {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.8rem 0.9rem;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+  }
+
+  .mini-stat span {
+    color: var(--text-soft);
+    font-size: 0.8rem;
+  }
+
+  .wide-stat {
+    grid-column: 1 / -1;
+  }
+
+  .activity-item {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+  }
+
+  .insight-item.recovery {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+  }
+
+  .weekly-strip {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .day-column {
+    display: grid;
+    gap: 0.45rem;
+    justify-items: center;
+  }
+
+  .day-bar-wrap {
+    display: flex;
+    align-items: end;
+    justify-content: center;
+    width: 100%;
+    min-height: 4.6rem;
+    padding: 0.35rem 0;
+    border-radius: 1rem;
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+  }
+
+  .day-bar {
+    width: 0.95rem;
+    min-height: 1rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-strong) 75%, var(--surface));
+  }
+
+  .day-bar.active {
+    background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 65%, white));
   }
 
   .field {
@@ -859,6 +1166,19 @@
 
     .mode-list {
       grid-template-columns: 1fr;
+    }
+
+    .calibration-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .wide-stat {
+      grid-column: auto;
+    }
+
+    .weekly-strip {
+      grid-template-columns: repeat(7, minmax(2.25rem, 1fr));
+      overflow-x: auto;
     }
 
     .hero-card,

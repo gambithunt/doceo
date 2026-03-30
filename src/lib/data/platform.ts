@@ -25,6 +25,7 @@ import type {
   Question,
   ResponseStage,
   RevisionPlan,
+  RevisionTopic,
   ShortlistedTopic,
   StudentAnswer,
   Topic
@@ -49,6 +50,30 @@ function createEvent(type: AnalyticsEvent['type'], detail: string): AnalyticsEve
     type,
     detail,
     createdAt: isoNow()
+  };
+}
+
+function createDefaultRevisionCalibration(): RevisionTopic['calibration'] {
+  return {
+    attempts: 0,
+    averageSelfConfidence: 3,
+    averageCorrectness: 0.5,
+    confidenceGap: 0.1,
+    overconfidenceCount: 0,
+    underconfidenceCount: 0
+  };
+}
+
+function normalizeRevisionTopic(topic: RevisionTopic): RevisionTopic {
+  return {
+    ...topic,
+    retentionStability: typeof topic.retentionStability === 'number' ? topic.retentionStability : 0.5,
+    forgettingVelocity: typeof topic.forgettingVelocity === 'number' ? topic.forgettingVelocity : 0.55,
+    misconceptionSignals: Array.isArray(topic.misconceptionSignals) ? topic.misconceptionSignals : [],
+    calibration: {
+      ...createDefaultRevisionCalibration(),
+      ...(topic.calibration ?? {})
+    }
   };
 }
 
@@ -423,7 +448,7 @@ export function normalizeAppState(value: unknown): AppState {
             : []
         }))
       : base.lessonSessions,
-    revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics : base.revisionTopics,
+    revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics.map(normalizeRevisionTopic) : base.revisionTopics,
     revisionAttempts: Array.isArray(input.revisionAttempts) ? input.revisionAttempts : base.revisionAttempts,
     revisionSession: input.revisionSession ?? base.revisionSession,
     analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,
@@ -523,7 +548,9 @@ export function deriveLearningState(state: AppState): AppState {
     : [];
 
   const revisionTopics = Array.isArray(state.revisionTopics)
-    ? state.revisionTopics.filter((topic) => lessonSessions.some((session) => session.id === topic.lessonSessionId))
+    ? state.revisionTopics
+        .filter((topic) => lessonSessions.some((session) => session.id === topic.lessonSessionId))
+        .map(normalizeRevisionTopic)
     : [];
 
   return {

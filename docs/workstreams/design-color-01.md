@@ -463,3 +463,166 @@ Orange streak, gold XP, purple badges carry emotional meaning. Do not soften the
 - Light-mode-only approach — Doceo is dark-first
 - No dark mode story in original doc — addressed above
 - Soft pastel gamification — would deflate streak/XP energy
+
+---
+
+# ✨ Interaction & Motion Delight
+
+These additions layer tactile feel and purposeful motion on top of the color decisions above. Every enhancement here justifies itself — nothing is decoration for its own sake.
+
+---
+
+## Teal Glow System
+
+Teal behaves differently from lime green at the same opacity — it's cooler and doesn't fight the navy. Lean into this by letting the glow spread slightly more than the old green did.
+
+```
+Hover glow:      0 0 16px rgba(20,184,166,0.30)
+Focus ring:      0 0 0 3px rgba(20,184,166,0.25)
+Active pulse:    0 0 24px rgba(20,184,166,0.40)  (brief, fades in 80ms)
+```
+
+In dark mode, the teal glow against navy creates a soft aquatic luminance — more premium than lime. In light mode, the glow is tighter and crisper; it reads as precision rather than radiance.
+
+---
+
+## Primary Button — Tactile Press
+
+The button should feel like pressing a soft, slightly elastic surface. Three states:
+
+**Resting** — no shadow, flat teal fill, pill shape.
+
+**Hover** — lift `translateY(-2px)` + spread glow. Duration: `180ms ease-out`. The lift is small; the glow is what you notice first.
+
+**Press (`:active`)** — compress back to baseline `translateY(0)` + `scale(0.975)`. Shadow collapses. Duration: `80ms`. The snap-back on release uses `cubic-bezier(0.34, 1.56, 0.64, 1)` — a brief elastic overshoot that makes the release feel physical, not just a reversal.
+
+**Loading state** — fill dims to `rgba(20,184,166,0.5)`, label fades, a small spinner appears inline. Scale holds at `0.985` throughout.
+
+**Success state** — fill pulses briefly brighter (`#2DD4BF`), label swaps to a checkmark, `scale(1.02)` for 120ms then settles. The pulse is one beat only — it signals completion without lingering.
+
+```
+Transition: transform 180ms ease-out, box-shadow 180ms ease-out
+Active snap: cubic-bezier(0.34, 1.56, 0.64, 1) at 80ms
+Success pulse: 120ms scale overshoot then ease-out to 1.0
+```
+
+---
+
+## Cards — Float and Sink
+
+Cards feel like physical objects on a surface, not painted rectangles.
+
+**Hover** — `translateY(-3px)` + shadow steps up one level (`shadow-sm → shadow-md`). Duration: `200ms ease-out`. Subtle — just enough to signal interactivity.
+
+**Press** — `translateY(-1px)` + `scale(0.99)`. Shadow drops back toward resting. Duration: `80ms`. Feels like pressing down on a slightly springy surface.
+
+**Release** — springs back with `cubic-bezier(0.22, 1, 0.36, 1)` over `200ms`. The card doesn't just reverse — it returns with a small amount of momentum.
+
+**Semantic pastel cards** — when a card transitions into a semantic state (e.g. neutral → completed/green), the background color change should crossfade over `300ms ease`. Never snap. The student should feel the card "turning green" as confirmation, not just see it.
+
+---
+
+## Pill State Transitions
+
+Pills are status signals. When they change state (pending → done, locked → active), the change should feel earned.
+
+**Neutral → Success:**
+1. Background crossfades `EAEAEA → CFEED6` over `280ms`
+2. Text color crossfades `#4B5563 → #166534` over `280ms`
+3. At the midpoint, a subtle `scale(1.05)` pulse (50ms up, 100ms settle) — a small "pop" that confirms the change
+
+**Success → Neutral (undo/reset):**
+- Reverse crossfade only. No pop. The absence of celebration is intentional.
+
+**Appearing pills (new status, not a transition):**
+- Fade in + `scale(0.85 → 1.0)` over `200ms ease-out`
+
+---
+
+## Focus Ring — Accessible and Beautiful
+
+The default browser focus ring is replaced with the teal glow ring. It must be visible at all times for keyboard navigation but should feel designed, not clinical.
+
+```
+outline: none;
+box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+```
+
+The inner gap (2px in the background color) creates a two-ring effect — the card/surface color punches through between the element edge and the teal ring. This makes focus feel deliberate rather than bolted on.
+
+In dark mode: the navy gap + teal outer ring looks like a soft halo.
+In light mode: the white gap + teal-600 outer ring is crisp and professional.
+
+---
+
+## Input Focus — Border Bloom
+
+When an input receives focus, the border doesn't just change color — it appears to bloom outward slightly.
+
+**Resting** — thin border `rgba(0,0,0,0.10)` (light) or `rgba(255,255,255,0.08)` (dark). No shadow.
+
+**Focus** — border color transitions to `--color-accent` + a teal glow ring appears around the field. The glow starts small and expands slightly over `200ms ease-out`, giving the impression the field "opened up" to receive input.
+
+```
+Transition: border-color 160ms ease, box-shadow 200ms ease-out
+```
+
+Do not animate the border width — it causes layout shift. Only animate color and box-shadow.
+
+---
+
+## Theme Crossfade (Dark ↔ Light)
+
+When the user toggles the theme, surfaces should not snap. All color-bearing properties should transition together.
+
+```css
+*, *::before, *::after {
+  transition: background-color 220ms ease, border-color 220ms ease, color 160ms ease;
+}
+```
+
+Exceptions — do NOT transition:
+- SVG fills (flickers on some browsers)
+- `box-shadow` on the toggle button itself (it has its own transition)
+- Any element currently mid-animation (press state, etc.)
+
+The result: the interface breathes from dark to light rather than cutting. The teal accent — being close in hue between its two values — barely moves during the transition, creating an anchor of continuity while the surfaces shift.
+
+---
+
+## Gamification Moments
+
+These are the highest-emotion interactions in the product. They deserve the most considered delight.
+
+**Streak increment (+1 day):**
+- The streak number counts up digit by digit over `400ms`
+- A brief orange radial pulse emanates from the flame icon (scale 1 → 1.6, opacity 1 → 0, `300ms ease-out`)
+- The flame icon itself does a short `rotate(-10deg → 0)` wiggle — 2 cycles, `150ms` each
+
+**Lesson completion:**
+- The stage progress rail fills its final segment with the teal accent
+- A flash of `rgba(20,184,166,0.15)` washes across the entire lesson card (`opacity 0 → 1 → 0`, `600ms`)
+- The completion pill pops in (scale + crossfade, as described above)
+
+**XP / mastery increase:**
+- The mastery number counts up from old value to new over `600ms` with `ease-out` easing (starts fast, slows near the end — makes the new number feel "settled")
+- Gold radial pulse from the mastery icon, same pattern as streak but in gold
+
+**None of these should loop or repeat.** One beat. Done. Lingering celebration is noise.
+
+---
+
+## Restrained by Design
+
+These elements are intentionally kept static or minimal. Do not add delight here.
+
+| Element | Reason for restraint |
+|---|---|
+| Sidebar nav labels | Text in motion while navigating is disorienting |
+| Chat message stream | Messages appear once; animating the tutor's text mid-render is distracting |
+| Progress bar during lesson | Updates continuously — animating every update creates visual noise |
+| Semantic card backgrounds (non-interactive) | Static context cards should not move; motion implies interactivity |
+| Error states | Errors need immediate clarity, not softened animation |
+| Lesson stage indicators | Students reference these constantly; movement between checks would be confusing |
+
+The contrast between calm static elements and the few expressive interactive ones is what makes the delight land. If everything moves, nothing matters.

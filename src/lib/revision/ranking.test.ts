@@ -14,6 +14,17 @@ function createRevisionTopic(overrides: Partial<RevisionTopic>): RevisionTopic {
     previousIntervalDays: 3,
     nextRevisionAt: '2026-03-31T08:00:00.000Z',
     lastReviewedAt: '2026-03-28T08:00:00.000Z',
+    retentionStability: 0.68,
+    forgettingVelocity: 0.34,
+    misconceptionSignals: [],
+    calibration: {
+      attempts: 2,
+      averageSelfConfidence: 3,
+      averageCorrectness: 0.6,
+      confidenceGap: 0,
+      overconfidenceCount: 0,
+      underconfidenceCount: 0
+    },
     ...overrides
   };
 }
@@ -119,5 +130,89 @@ describe('deriveRevisionHomeModel', () => {
     expect(visibleRecommendations.length).toBeGreaterThan(0);
     expect(visibleRecommendations.every((item) => item.reason.length > 0)).toBe(true);
     expect(visibleRecommendations.some((item) => /due|weak|exam|shaky/i.test(item.reason))).toBe(true);
+  });
+
+  it('surfaces calibration gaps as a meaningful revision weakness', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-overconfident',
+          topicTitle: 'Photosynthesis',
+          subjectId: 'subject-science',
+          subject: 'Natural Sciences',
+          confidenceScore: 0.66,
+          calibration: {
+            attempts: 4,
+            averageSelfConfidence: 4.6,
+            averageCorrectness: 0.42,
+            confidenceGap: 0.5,
+            overconfidenceCount: 3,
+            underconfidenceCount: 0
+          }
+        }),
+        createRevisionTopic({
+          lessonSessionId: 'session-stable',
+          topicTitle: 'Cells',
+          subjectId: 'subject-science',
+          subject: 'Natural Sciences',
+          confidenceScore: 0.64
+        })
+      ]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.focusWeaknesses[0]?.topic.lessonSessionId).toBe('session-overconfident');
+    expect(model.focusWeaknesses[0]?.reason).toMatch(/felt sure|know more than you think/i);
+  });
+
+  it('surfaces fragile topics that improve but still slip quickly', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-fragile',
+          topicTitle: 'Ratio',
+          confidenceScore: 0.72,
+          retentionStability: 0.26,
+          forgettingVelocity: 0.84
+        }),
+        createRevisionTopic({
+          lessonSessionId: 'session-stable',
+          topicTitle: 'Area',
+          confidenceScore: 0.72,
+          retentionStability: 0.82,
+          forgettingVelocity: 0.18
+        })
+      ]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.focusWeaknesses.some((item) => item.topic.lessonSessionId === 'session-fragile')).toBe(true);
+    expect(model.doToday[0]?.topic.lessonSessionId).toBe('session-fragile');
+  });
+
+  it('treats repeated misconception signals as a real weakness cue', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-gap',
+          topicTitle: 'Fractions',
+          confidenceScore: 0.62,
+          misconceptionSignals: [{ tag: 'fractions-core-gap', count: 3, lastSeenAt: '2026-03-30T08:00:00.000Z' }]
+        }),
+        createRevisionTopic({
+          lessonSessionId: 'session-plain',
+          topicTitle: 'Area',
+          confidenceScore: 0.62,
+          misconceptionSignals: []
+        })
+      ]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.focusWeaknesses[0]?.topic.lessonSessionId).toBe('session-gap');
+    expect(model.focusWeaknesses[0]?.reason).toMatch(/misconception|repeated/i);
   });
 });

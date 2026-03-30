@@ -18,6 +18,17 @@ function createTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
     previousIntervalDays: 3,
     nextRevisionAt: '2026-03-31T08:00:00.000Z',
     lastReviewedAt: '2026-03-28T08:00:00.000Z',
+    retentionStability: 0.46,
+    forgettingVelocity: 0.52,
+    misconceptionSignals: [],
+    calibration: {
+      attempts: 1,
+      averageSelfConfidence: 3,
+      averageCorrectness: 0.45,
+      confidenceGap: 0.15,
+      overconfidenceCount: 0,
+      underconfidenceCount: 0
+    },
     ...overrides
   };
 }
@@ -101,6 +112,7 @@ describe('evaluateRevisionAnswer', () => {
 
     expect(result.diagnosis.type).toBe('underconfidence');
     expect(result.scores.correctness).toBeGreaterThan(0.45);
+    expect(result.scores.calibrationGap).toBeLessThan(0);
   });
 
   it('escalates repeated weak answers after mini reteach to lesson revisit', () => {
@@ -116,6 +128,59 @@ describe('evaluateRevisionAnswer', () => {
 
     expect(result.sessionDecision).toBe('lesson_revisit');
     expect(result.intervention.type).toBe('lesson_refer');
+  });
+
+  it('updates topic calibration after each answer', () => {
+    const result = evaluateRevisionAnswer({
+      topic: createTopic(),
+      question: createQuestion(),
+      answer: 'I am sure this is right.',
+      selfConfidence: 5,
+      currentInterventionLevel: 'none',
+      attemptNumber: 2,
+      now: new Date('2026-03-30T10:00:00.000Z')
+    });
+
+    expect(result.topicUpdate.calibration.attempts).toBe(2);
+    expect(result.topicUpdate.calibration.averageSelfConfidence).toBeGreaterThan(3);
+    expect(result.topicUpdate.calibration.overconfidenceCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it('keeps a fragile topic on a shorter interval even after a decent answer', () => {
+    const result = evaluateRevisionAnswer({
+      topic: createTopic({
+        previousIntervalDays: 6,
+        retentionStability: 0.28,
+        forgettingVelocity: 0.82
+      }),
+      question: createQuestion(),
+      answer: 'Fractions compare parts of a whole because the denominator is the total and the numerator is the selected part with one example.',
+      selfConfidence: 4,
+      currentInterventionLevel: 'none',
+      attemptNumber: 2,
+      now: new Date('2026-03-30T10:00:00.000Z')
+    });
+
+    expect(result.topicUpdate.previousIntervalDays).toBeLessThan(6);
+    expect(result.topicUpdate.retentionStability).toBeGreaterThan(0.28);
+    expect(result.topicUpdate.forgettingVelocity).toBeLessThan(0.82);
+  });
+
+  it('captures misconception signals when the same gap keeps recurring', () => {
+    const result = evaluateRevisionAnswer({
+      topic: createTopic({
+        misconceptionSignals: [{ tag: 'fractions-core-gap', count: 1, lastSeenAt: '2026-03-28T08:00:00.000Z' }]
+      }),
+      question: createQuestion({ misconceptionTags: ['fractions-core-gap'] }),
+      answer: 'Not sure.',
+      selfConfidence: 3,
+      currentInterventionLevel: 'none',
+      attemptNumber: 2,
+      now: new Date('2026-03-30T10:00:00.000Z')
+    });
+
+    expect(result.topicUpdate.misconceptionSignals[0]?.tag).toBe('fractions-core-gap');
+    expect(result.topicUpdate.misconceptionSignals[0]?.count).toBe(2);
   });
 });
 

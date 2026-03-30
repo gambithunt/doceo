@@ -143,18 +143,103 @@ function buildScores(answer: string, topic: RevisionTopic, selfConfidence: numbe
   const normalized = normalize(answer);
   const coverage = keywordCoverage(answer, topic);
   const completeness = clamp(answer.trim().length / 120, 0, 1);
+  const selfConfidenceScore = clamp(selfConfidence / 5, 0, 1);
   const reasoning = /(because|therefore|so that|which means|step|rule)/i.test(answer)
     ? clamp(0.45 + completeness * 0.45, 0, 1)
     : clamp(coverage * 0.7 + completeness * 0.15, 0, 1);
   const correctness = clamp(coverage * 0.55 + completeness * 0.35 + (normalized.includes('example') ? 0.1 : 0), 0, 1);
-  const confidenceAlignment = clamp(1 - Math.abs(selfConfidence / 5 - correctness), 0, 1);
+  const calibrationGap = clamp(selfConfidenceScore - correctness, -1, 1);
+  const confidenceAlignment = clamp(1 - Math.abs(calibrationGap), 0, 1);
 
   return {
     correctness,
     reasoning,
     completeness,
-    confidenceAlignment
+    confidenceAlignment,
+    selfConfidenceScore,
+    calibrationGap
   };
+}
+
+function buildCalibrationUpdate(topic: RevisionTopic, scores: ReturnType<typeof buildScores>, selfConfidence: number) {
+  const attempts = topic.calibration.attempts + 1;
+  const averageSelfConfidence =
+    ((topic.calibration.averageSelfConfidence * topic.calibration.attempts) + selfConfidence) / attempts;
+  const averageCorrectness =
+    ((topic.calibration.averageCorrectness * topic.calibration.attempts) + scores.correctness) / attempts;
+  const confidenceGap = clamp(averageSelfConfidence / 5 - averageCorrectness, -1, 1);
+
+  return {
+    attempts,
+    averageSelfConfidence,
+    averageCorrectness,
+    confidenceGap,
+    overconfidenceCount:
+      topic.calibration.overconfidenceCount + (scores.calibrationGap >= 0.2 ? 1 : 0),
+    underconfidenceCount:
+      topic.calibration.underconfidenceCount + (scores.calibrationGap <= -0.2 ? 1 : 0)
+  };
+}
+
+function buildRetentionProfile(topic: RevisionTopic, scores: ReturnType<typeof buildScores>) {
+  const retentionStability = clamp(
+    topic.retentionStability * 0.68 +
+      scores.correctness * 0.24 +
+      scores.reasoning * 0.12 -
+      (scores.calibrationGap > 0.2 ? 0.08 : 0),
+    0.1,
+    0.98
+  );
+  const forgettingVelocity = clamp(
+    topic.forgettingVelocity * 0.72 +
+      (1 - scores.correctness) * 0.2 +
+      (topic.previousIntervalDays >= 5 && scores.correctness < 0.72 ? 0.08 : 0) +
+      (retentionStability < 0.4 ? 0.06 : -0.04),
+    0.05,
+    0.98
+  );
+
+  return {
+    retentionStability,
+    forgettingVelocity
+  };
+}
+
+function buildMisconceptionSignals(
+  topic: RevisionTopic,
+  diagnosisType: RevisionTurnResult['diagnosis']['type'],
+  misconceptionTags: string[],
+  now: Date
+) {
+  if (diagnosisType === 'underconfidence' || misconceptionTags.length === 0) {
+    return topic.misconceptionSignals;
+  }
+
+  const nextSignals = [...topic.misconceptionSignals];
+
+  for (const tag of misconceptionTags) {
+    const existingIndex = nextSignals.findIndex((signal) => signal.tag === tag);
+
+    if (existingIndex === -1) {
+      nextSignals.push({
+        tag,
+        count: 1,
+        lastSeenAt: now.toISOString()
+      });
+      continue;
+    }
+
+    nextSignals[existingIndex] = {
+      ...nextSignals[existingIndex]!,
+      count: nextSignals[existingIndex]!.count + 1,
+      lastSeenAt: now.toISOString()
+    };
+  }
+
+  return nextSignals
+    .slice()
+    .sort((left, right) => right.count - left.count || Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt))
+    .slice(0, 5);
 }
 
 function buildDiagnosisType(
@@ -212,13 +297,27 @@ function nextInterventionLevel(
   return 'lesson_refer';
 }
 
-function buildNextReviewDate(topic: RevisionTopic, scores: ReturnType<typeof buildScores>, now: Date): { nextRevisionAt: string; previousIntervalDays: number } {
-  const nextInterval =
+function buildNextReviewDate(
+  topic: RevisionTopic,
+  scores: ReturnType<typeof buildScores>,
+  retention: ReturnType<typeof buildRetentionProfile>,
+  now: Date
+): { nextRevisionAt: string; previousIntervalDays: number } {
+  const baseInterval =
     scores.correctness >= 0.75
       ? Math.max(4, Math.round(topic.previousIntervalDays * 1.6))
       : scores.correctness >= 0.5
         ? Math.max(2, Math.round(topic.previousIntervalDays * 1.1))
         : 1;
+  const fragilityModifier = clamp(
+    0.72 + retention.retentionStability * 0.45 - retention.forgettingVelocity * 0.52,
+    0.35,
+    1.2
+  );
+  const nextInterval = Math.max(
+    scores.correctness >= 0.75 ? 2 : 1,
+    Math.round(baseInterval * fragilityModifier)
+  );
 
   const due = new Date(now);
   due.setDate(due.getDate() + nextInterval);
@@ -242,7 +341,15 @@ export function evaluateRevisionAnswer(input: {
   const scores = buildScores(input.answer, input.topic, input.selfConfidence);
   const diagnosisType = buildDiagnosisType(input.answer, scores, input.selfConfidence);
   const nextIntervention = nextInterventionLevel(input.currentInterventionLevel, scores, input.attemptNumber);
-  const reviewTiming = buildNextReviewDate(input.topic, scores, now);
+  const retention = buildRetentionProfile(input.topic, scores);
+  const reviewTiming = buildNextReviewDate(input.topic, scores, retention, now);
+  const misconceptionSignals = buildMisconceptionSignals(
+    input.topic,
+    diagnosisType,
+    input.question.misconceptionTags,
+    now
+  );
+  const calibration = buildCalibrationUpdate(input.topic, scores, input.selfConfidence);
   const isStrongEnoughToAdvance =
     scores.correctness >= 0.6 || (scores.reasoning >= 0.6 && scores.completeness >= 0.55);
   const sessionDecision =
@@ -268,7 +375,11 @@ export function evaluateRevisionAnswer(input: {
       confidenceScore: clamp((input.topic.confidenceScore + scores.correctness) / 2, 0, 1),
       nextRevisionAt: reviewTiming.nextRevisionAt,
       previousIntervalDays: reviewTiming.previousIntervalDays,
-      lastReviewedAt: isoNow(now)
+      lastReviewedAt: isoNow(now),
+      retentionStability: retention.retentionStability,
+      forgettingVelocity: retention.forgettingVelocity,
+      misconceptionSignals,
+      calibration
     },
     sessionDecision
   };

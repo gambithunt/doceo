@@ -17,6 +17,17 @@ import type {
   UserProfile
 } from '$lib/types';
 
+function createDefaultRevisionCalibration() {
+  return {
+    attempts: 0,
+    averageSelfConfidence: 3,
+    averageCorrectness: 0.5,
+    confidenceGap: 0.1,
+    overconfidenceCount: 0,
+    underconfidenceCount: 0
+  };
+}
+
 export const LESSON_STAGE_ORDER: LessonStage[] = [
   'orientation',
   'concepts',
@@ -957,7 +968,11 @@ export function buildRevisionTopicFromLesson(lessonSession: LessonSession): Revi
     confidenceScore: lessonSession.confidenceScore,
     previousIntervalDays: 3,
     nextRevisionAt: nextRevision.toISOString(),
-    lastReviewedAt: null
+    lastReviewedAt: null,
+    retentionStability: Math.max(0.35, lessonSession.confidenceScore),
+    forgettingVelocity: 0.55,
+    misconceptionSignals: [],
+    calibration: createDefaultRevisionCalibration()
   };
 }
 

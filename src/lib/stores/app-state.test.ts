@@ -15,6 +15,17 @@ function createRevisionTopic(overrides: Partial<RevisionTopic> = {}): RevisionTo
     previousIntervalDays: 3,
     nextRevisionAt: '2026-03-30T08:00:00.000Z',
     lastReviewedAt: '2026-03-27T08:00:00.000Z',
+    retentionStability: 0.44,
+    forgettingVelocity: 0.58,
+    misconceptionSignals: [],
+    calibration: {
+      attempts: 1,
+      averageSelfConfidence: 3,
+      averageCorrectness: 0.42,
+      confidenceGap: 0.18,
+      overconfidenceCount: 0,
+      underconfidenceCount: 0
+    },
     ...overrides
   };
 }
@@ -166,5 +177,84 @@ describe('revision session loop', () => {
     expect(state.revisionSession?.questions[1]?.revisionTopicId).toBe(secondTopic.lessonSessionId);
     expect(latestAttempt?.revisionTopicId).toBe(secondTopic.lessonSessionId);
     expect(updatedSecondTopic?.lastReviewedAt).not.toBeNull();
+  });
+
+  it('persists calibration changes back onto the revision topic after an answer', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic);
+    store.submitRevisionAnswer('I am completely sure, but I cannot explain it.', 5);
+
+    const state = get(store);
+    const updatedTopic = state.revisionTopics[0];
+
+    expect(updatedTopic?.calibration.attempts).toBe(2);
+    expect(updatedTopic?.calibration.averageSelfConfidence).toBeGreaterThan(3);
+    expect(updatedTopic?.calibration.confidenceGap).toBeGreaterThan(0.18);
+  });
+
+  it('creates a focused mini-lesson handoff when revision escalates', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const originalLessonSession = createLessonSession({
+      id: topic.lessonSessionId,
+      subjectId: topic.subjectId,
+      subject: topic.subject,
+      topicTitle: topic.topicTitle,
+      curriculumReference: topic.curriculumReference
+    });
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [originalLessonSession],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic);
+    store.markRevisionStuck();
+    store.startRevisionLessonHandoff();
+
+    const state = get(store);
+    const handoffSession = state.lessonSessions[0];
+
+    expect(handoffSession?.id).not.toBe(originalLessonSession.id);
+    expect(handoffSession?.status).toBe('active');
+    expect(handoffSession?.currentStage).toBe('concepts');
+    expect(handoffSession?.messages.some((message) => /revision handoff|reteach/i.test(message.content))).toBe(true);
+    expect(state.ui.currentScreen).toBe('lesson');
+    expect(state.ui.activeLessonSessionId).toBe(handoffSession?.id);
+  });
+
+  it('uses repeated misconception signals in the mini-lesson handoff brief', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic({
+      misconceptionSignals: [{ tag: 'fractions-core-gap', count: 2, lastSeenAt: '2026-03-29T08:00:00.000Z' }]
+    });
+    const originalLessonSession = createLessonSession({
+      id: topic.lessonSessionId,
+      subjectId: topic.subjectId,
+      subject: topic.subject,
+      topicTitle: topic.topicTitle,
+      curriculumReference: topic.curriculumReference
+    });
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [originalLessonSession],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic);
+    store.markRevisionStuck();
+    store.startRevisionLessonHandoff();
+
+    const state = get(store);
+    const handoffSession = state.lessonSessions[0];
+
+    expect(handoffSession?.messages.some((message) => /repeated gap|fractions core gap/i.test(message.content))).toBe(true);
   });
 });

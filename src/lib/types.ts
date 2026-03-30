@@ -289,6 +289,23 @@ export interface RevisionTurnScores {
   reasoning: number;
   completeness: number;
   confidenceAlignment: number;
+  selfConfidenceScore: number;
+  calibrationGap: number;
+}
+
+export interface RevisionTopicCalibration {
+  attempts: number;
+  averageSelfConfidence: number;
+  averageCorrectness: number;
+  confidenceGap: number;
+  overconfidenceCount: number;
+  underconfidenceCount: number;
+}
+
+export interface RevisionMisconceptionSignal {
+  tag: string;
+  count: number;
+  lastSeenAt: string;
 }
 
 export interface RevisionDiagnosis {
@@ -319,6 +336,10 @@ export interface RevisionTurnResult {
     nextRevisionAt: string;
     previousIntervalDays: number;
     lastReviewedAt: string;
+    retentionStability: number;
+    forgettingVelocity: number;
+    misconceptionSignals: RevisionMisconceptionSignal[];
+    calibration: RevisionTopicCalibration;
   };
   sessionDecision: 'continue' | 'complete' | 'reschedule' | 'lesson_revisit';
 }
@@ -519,6 +540,10 @@ export interface RevisionTopic {
   previousIntervalDays: number;
   nextRevisionAt: string;
   lastReviewedAt: string | null;
+  retentionStability: number;
+  forgettingVelocity: number;
+  misconceptionSignals: RevisionMisconceptionSignal[];
+  calibration: RevisionTopicCalibration;
 }
 
 export interface AppState {

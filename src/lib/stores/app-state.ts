@@ -56,6 +56,7 @@ import type {
   LearningMode,
   LessonChatRequest,
   LessonChatResponse,
+  LessonMessage,
   LessonPlanResponse,
   LessonSession,
   OnboardingStep,
@@ -229,6 +230,90 @@ function getLessonForSession(state: AppState, session: LessonSession): Lesson {
       curriculumReference: session.curriculumReference
     })
   );
+}
+
+function formatMisconceptionLabel(tag: string): string {
+  return tag.replace(/-/g, ' ').replace(/\bcore gap\b/g, 'core gap').trim();
+}
+
+function buildRevisionHandoffSession(
+  state: AppState,
+  lessonSession: LessonSession,
+  topic: RevisionTopic,
+  revisionSession: NonNullable<AppState['revisionSession']>
+): LessonSession {
+  const lesson = getLessonForSession(state, lessonSession);
+  const timestamp = new Date().toISOString();
+  const seededMessages = buildInitialLessonMessages(lesson, 'concepts');
+  const diagnosisSummary =
+    revisionSession.lastTurnResult?.diagnosis.summary ??
+    `Revision flagged ${topic.topicTitle} as unstable enough to reteach step by step.`;
+  const interventionContent =
+    revisionSession.currentHelp?.content ??
+    revisionSession.lastTurnResult?.intervention.content ??
+    `We are going to rebuild ${topic.topicTitle} slowly with one clear example at a time.`;
+  const strongestSignal = topic.misconceptionSignals
+    .slice()
+    .sort((left, right) => right.count - left.count)[0];
+  const misconceptionBrief = strongestSignal
+    ? `Repeated gap: ${formatMisconceptionLabel(strongestSignal.tag)} has appeared ${strongestSignal.count} times.`
+    : null;
+
+  const handoffMessages: LessonMessage[] = [
+    seededMessages[0]!,
+    {
+      id: `msg-${crypto.randomUUID()}`,
+      role: 'system',
+      type: 'feedback',
+      content: `Revision handoff: ${diagnosisSummary}${misconceptionBrief ? ` ${misconceptionBrief}` : ''}`,
+      stage: 'concepts',
+      timestamp,
+      metadata: null
+    },
+    {
+      id: `msg-${crypto.randomUUID()}`,
+      role: 'assistant',
+      type: 'teaching',
+      content: `Let's reteach ${topic.topicTitle} carefully. ${interventionContent}${misconceptionBrief ? ` We will focus on the repeated gap around ${formatMisconceptionLabel(strongestSignal!.tag)}.` : ''}`,
+      stage: 'concepts',
+      timestamp,
+      metadata: {
+        action: 'stay',
+        next_stage: null,
+        reteach_style: 'step_by_step',
+        reteach_count: 1,
+        confidence_assessment: Math.min(0.45, topic.confidenceScore),
+        needs_teacher_review: false,
+        stuck_concept: topic.topicTitle,
+        profile_update: {
+          struggled_with: [topic.topicTitle]
+        }
+      }
+    },
+    ...seededMessages.slice(1)
+  ];
+
+  return {
+    ...lessonSession,
+    id: `lesson-session-${crypto.randomUUID()}`,
+    currentStage: 'concepts',
+    stagesCompleted: ['orientation'],
+    messages: handoffMessages,
+    questionCount: 0,
+    reteachCount: 1,
+    confidenceScore: Math.min(lessonSession.confidenceScore, topic.confidenceScore),
+    needsTeacherReview: false,
+    stuckConcept: topic.topicTitle,
+    startedAt: timestamp,
+    lastActiveAt: timestamp,
+    completedAt: null,
+    status: 'active',
+    profileUpdates: [
+      {
+        struggled_with: [topic.topicTitle]
+      }
+    ]
+  };
 }
 
 const MUTUALLY_EXCLUSIVE_SUBJECT_GROUPS: ReadonlyArray<ReadonlyArray<string>> = [
@@ -1273,6 +1358,57 @@ export function createAppStore(initialState: AppState = readState()) {
         navigate(lessonPath(resumedSessionId));
       }
     },
+    startRevisionLessonHandoff: () => {
+      let handoffSessionId = '';
+      update((state) => {
+        const revisionSession = state.revisionSession;
+
+        if (!revisionSession) {
+          return state;
+        }
+
+        const activeQuestion = revisionSession.questions[revisionSession.questionIndex] ?? revisionSession.questions[0];
+        const topic = activeQuestion
+          ? state.revisionTopics.find((item) => item.lessonSessionId === activeQuestion.revisionTopicId)
+          : null;
+        const lessonSession = topic
+          ? state.lessonSessions.find((item) => item.id === topic.lessonSessionId)
+          : null;
+
+        if (!topic || !lessonSession) {
+          return state;
+        }
+
+        const handoffSession = buildRevisionHandoffSession(state, lessonSession, topic, revisionSession);
+        const handoffLesson = getLessonForSession(state, handoffSession);
+        handoffSessionId = handoffSession.id;
+
+        return persistAndSync({
+          ...state,
+          learnerProfile: {
+            ...state.learnerProfile,
+            total_sessions: state.learnerProfile.total_sessions + 1,
+            total_reteach_events: state.learnerProfile.total_reteach_events + 1
+          },
+          lessonSessions: [handoffSession, ...state.lessonSessions],
+          ui: {
+            ...state.ui,
+            currentScreen: 'lesson',
+            learningMode: 'learn',
+            activeLessonSessionId: handoffSession.id,
+            selectedSubjectId: handoffSession.subjectId,
+            selectedTopicId: handoffSession.topicId,
+            selectedSubtopicId: handoffLesson.subtopicId,
+            selectedLessonId: handoffSession.lessonId,
+            composerDraft: '',
+            showTopicDiscoveryComposer: false
+          }
+        });
+      });
+      if (handoffSessionId) {
+        navigate(lessonPath(handoffSessionId));
+      }
+    },
     archiveSession: (sessionId: string) =>
       update((state) =>
         persistAndSync({
@@ -2054,7 +2190,11 @@ export function createAppStore(initialState: AppState = readState()) {
                   confidenceScore: result.topicUpdate.confidenceScore,
                   nextRevisionAt: result.topicUpdate.nextRevisionAt,
                   previousIntervalDays: result.topicUpdate.previousIntervalDays,
-                  lastReviewedAt: result.topicUpdate.lastReviewedAt
+                  lastReviewedAt: result.topicUpdate.lastReviewedAt,
+                  retentionStability: result.topicUpdate.retentionStability,
+                  forgettingVelocity: result.topicUpdate.forgettingVelocity,
+                  misconceptionSignals: result.topicUpdate.misconceptionSignals,
+                  calibration: result.topicUpdate.calibration
                 }
               : item
           ),

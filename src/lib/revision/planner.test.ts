@@ -14,6 +14,17 @@ function createRevisionTopic(overrides: Partial<RevisionTopic>): RevisionTopic {
     previousIntervalDays: 3,
     nextRevisionAt: '2026-03-31T08:00:00.000Z',
     lastReviewedAt: '2026-03-28T08:00:00.000Z',
+    retentionStability: 0.68,
+    forgettingVelocity: 0.34,
+    misconceptionSignals: [],
+    calibration: {
+      attempts: 2,
+      averageSelfConfidence: 3,
+      averageCorrectness: 0.6,
+      confidenceGap: 0,
+      overconfidenceCount: 0,
+      underconfidenceCount: 0
+    },
     ...overrides
   };
 }

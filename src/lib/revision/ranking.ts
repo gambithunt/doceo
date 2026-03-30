@@ -79,6 +79,59 @@ function buildExamReason(exam: RevisionExamSnapshot): string {
   return `Exam topic for the next ${exam.daysUntilExam} days`;
 }
 
+function getCalibrationCue(topic: RevisionTopic): { weight: number; text: string } | null {
+  const gap = topic.calibration.confidenceGap;
+
+  if (gap >= 0.22 || topic.calibration.overconfidenceCount >= 2) {
+    return {
+      weight: 46 + Math.round(gap * 18),
+      text: 'You felt sure here, but the answer quality slipped'
+    };
+  }
+
+  if (gap <= -0.22 || topic.calibration.underconfidenceCount >= 2) {
+    return {
+      weight: 20 + Math.round(Math.abs(gap) * 16),
+      text: 'You know more than you think here'
+    };
+  }
+
+  return null;
+}
+
+function getFragilityCue(topic: RevisionTopic): { weight: number; text: string } | null {
+  if (topic.retentionStability <= 0.35 || topic.forgettingVelocity >= 0.72) {
+    return {
+      weight: 40 + Math.round((1 - topic.retentionStability) * 12 + topic.forgettingVelocity * 10),
+      text: 'This one improves, then slips again'
+    };
+  }
+
+  if (topic.retentionStability <= 0.5 || topic.forgettingVelocity >= 0.58) {
+    return {
+      weight: 22 + Math.round((1 - topic.retentionStability) * 10),
+      text: 'Still fragile without a recent recheck'
+    };
+  }
+
+  return null;
+}
+
+function getMisconceptionCue(topic: RevisionTopic): { weight: number; text: string } | null {
+  const strongestSignal = topic.misconceptionSignals
+    .slice()
+    .sort((left, right) => right.count - left.count)[0];
+
+  if (!strongestSignal || strongestSignal.count < 2) {
+    return null;
+  }
+
+  return {
+    weight: 26 + strongestSignal.count * 6,
+    text: 'Repeated misconception signal'
+  };
+}
+
 function createRecommendation(topic: RevisionTopic, state: AppState, now: Date): RevisionRecommendation {
   const cues: Array<{ weight: number; text: string }> = [];
   const dueDate = new Date(topic.nextRevisionAt);
@@ -119,6 +172,24 @@ function createRecommendation(topic: RevisionTopic, state: AppState, now: Date):
     const weight = isExamTopic ? examWeightBase + 12 : examWeightBase;
     priority += weight;
     cues.push({ weight, text: buildExamReason(nearestExam) });
+  }
+
+  const calibrationCue = getCalibrationCue(topic);
+  if (calibrationCue) {
+    priority += calibrationCue.weight;
+    cues.push(calibrationCue);
+  }
+
+  const fragilityCue = getFragilityCue(topic);
+  if (fragilityCue) {
+    priority += fragilityCue.weight;
+    cues.push(fragilityCue);
+  }
+
+  const misconceptionCue = getMisconceptionCue(topic);
+  if (misconceptionCue) {
+    priority += misconceptionCue.weight;
+    cues.push(misconceptionCue);
   }
 
   if (lastReviewedAt) {
@@ -170,7 +241,15 @@ export function deriveRevisionHomeModel(state: AppState, now = new Date()): Revi
   const nearestExam = getNearestExam(state, now);
   const doToday = recommendations.slice(0, 6);
   const focusWeaknesses = recommendations
-    .filter((item) => item.topic.confidenceScore < 0.55 || item.reason.includes('shaky'))
+    .filter(
+      (item) =>
+        item.topic.confidenceScore < 0.55 ||
+        item.reason.includes('shaky') ||
+        Math.abs(item.topic.calibration.confidenceGap) >= 0.22 ||
+        item.topic.retentionStability <= 0.5 ||
+        item.topic.forgettingVelocity >= 0.58 ||
+        item.topic.misconceptionSignals.some((signal) => signal.count >= 2)
+    )
     .slice(0, 4);
   const hero = doToday[0] ? buildHero(doToday[0], nearestExam) : null;
 
