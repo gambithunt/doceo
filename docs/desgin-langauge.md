@@ -4,6 +4,19 @@ Doceo should feel like the smartest person you have ever met — someone who kno
 
 The entire product runs on one shared design language. Change the tokens once, change everything. Every screen — onboarding, dashboard, lesson, revision — must feel like it belongs to the same living system.
 
+> **Pending color system update — March 2026**
+> A color revision has been agreed but not yet implemented in code. Key changes:
+> - **Accent**: Electric lime green (`#4ade80`) → **Teal** (`#14B8A6` dark / `#0D9488` light)
+> - **Light mode background**: Periwinkle (`#f0f4ff`) → **Neutral soft canvas** (`#F5F6F7`)
+> - **Primary buttons**: Teal fill (not black, not lime green)
+> - **Light mode cards**: Adopt semantic pastel variants (green=done, blue=info, yellow=task, purple=content)
+> - **Shadow + pill system**: Lighter, softer — aligned with `docs/workstreams/design-color-01.md`
+> - **Dark mode**: Navy base and surfaces preserved; only accent changes
+> - **Gamification colors**: Unchanged (orange, gold, purple)
+>
+> Full decisions documented in [`docs/workstreams/design-color-01.md`](workstreams/design-color-01.md) under "Doceo Adaptation Decisions".
+> When implementing, update all token values in `src/app.css` before touching components.
+
 ---
 
 ## The Personality

@@ -52,11 +52,19 @@ function createEvent(type: AnalyticsEvent['type'], detail: string): AnalyticsEve
   };
 }
 
-function buildRevisionPlan(subjectId: string, subjectName: string, selectedTopics: string[]): RevisionPlan {
+function buildRevisionPlan(
+  subjectId: string,
+  subjectName: string,
+  selectedTopics: string[],
+  options?: Partial<Pick<RevisionPlan, 'examName' | 'examDate' | 'studyMode' | 'timeBudgetMinutes'>>
+): RevisionPlan {
   return {
     subjectId,
-    examDate: '2026-06-18',
+    examName: options?.examName,
+    examDate: options?.examDate ?? '2026-06-18',
     topics: selectedTopics,
+    studyMode: options?.studyMode,
+    timeBudgetMinutes: options?.timeBudgetMinutes,
     quickSummary: `Prioritize ${selectedTopics[0] ?? subjectName}, then move through the remaining ${subjectName} topics with active recall and exam-style prompts.`,
     keyConcepts: [
       `State the key vocabulary in ${subjectName} before attempting the harder questions.`,
@@ -289,7 +297,10 @@ export function createInitialState(): AppState {
     progress: {},
     lessonSessions: [],
     revisionTopics: [],
+    revisionAttempts: [],
+    revisionSession: null,
     analytics: [],
+    upcomingExams: [],
     revisionPlan: buildRevisionPlan(program.curriculum.subjects[0].id, program.curriculum.subjects[0].name, [
       selectedTopic.name
     ]),
@@ -324,7 +335,8 @@ export function createInitialState(): AppState {
       pendingAssistantSessionId: null,
       composerDraft: '',
       showTopicDiscoveryComposer: false,
-      showLessonCloseConfirm: false
+      showLessonCloseConfirm: false,
+      showRevisionPlanner: false
     }
   };
 
@@ -412,8 +424,11 @@ export function normalizeAppState(value: unknown): AppState {
         }))
       : base.lessonSessions,
     revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics : base.revisionTopics,
+    revisionAttempts: Array.isArray(input.revisionAttempts) ? input.revisionAttempts : base.revisionAttempts,
+    revisionSession: input.revisionSession ?? base.revisionSession,
     analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,
     revisionPlan: input.revisionPlan ?? base.revisionPlan,
+    upcomingExams: Array.isArray(input.upcomingExams) ? input.upcomingExams : base.upcomingExams,
     askQuestion: {
       ...base.askQuestion,
       ...(input.askQuestion ?? {}),
@@ -485,10 +500,18 @@ export function deriveLearningState(state: AppState): AppState {
   const practiceQuestionId =
     selectedLesson.practiceQuestionIds.find((questionId) => questionId === state.ui.practiceQuestionId) ??
     selectedLesson.practiceQuestionIds[0];
+  const revisionPlanSubject =
+    program.curriculum.subjects.find((subject) => subject.id === state.revisionPlan.subjectId) ?? selectedSubject;
   const revisionPlan = buildRevisionPlan(
-    selectedSubject.id,
-    selectedSubject.name,
-    selectedSubject.topics.map((topic) => topic.name)
+    revisionPlanSubject.id,
+    revisionPlanSubject.name,
+    state.revisionPlan.topics.length > 0 ? state.revisionPlan.topics : revisionPlanSubject.topics.map((topic) => topic.name),
+    {
+      examName: state.revisionPlan.examName,
+      examDate: state.revisionPlan.examDate,
+      studyMode: state.revisionPlan.studyMode,
+      timeBudgetMinutes: state.revisionPlan.timeBudgetMinutes
+    }
   );
 
   const lessonSessions = Array.isArray(state.lessonSessions)
@@ -514,7 +537,15 @@ export function deriveLearningState(state: AppState): AppState {
     }),
     lessonSessions,
     revisionTopics,
+    revisionAttempts: Array.isArray(state.revisionAttempts)
+      ? state.revisionAttempts.filter((attempt) => revisionTopics.some((topic) => topic.lessonSessionId === attempt.revisionTopicId))
+      : [],
+    revisionSession:
+      state.revisionSession && revisionTopics.some((topic) => topic.lessonSessionId === state.revisionSession?.revisionTopicId)
+        ? state.revisionSession
+        : null,
     revisionPlan,
+    upcomingExams: Array.isArray(state.upcomingExams) ? state.upcomingExams : [],
     topicDiscovery: {
       ...state.topicDiscovery,
       selectedSubjectId: state.topicDiscovery.selectedSubjectId || selectedSubject.id

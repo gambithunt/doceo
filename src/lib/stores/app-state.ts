@@ -14,6 +14,12 @@ import {
   updateLearnerProfile
 } from '$lib/lesson-system';
 import {
+  applyRevisionTurn,
+  buildRevisionSession,
+  evaluateRevisionAnswer,
+  getRequestedIntervention
+} from '$lib/revision/engine';
+import {
   buildAskQuestionResponse,
   buildRevisionTopics,
   createInitialState,
@@ -28,6 +34,7 @@ import {
   recalculateMastery,
   upsertRevisionTopicFromSession
 } from '$lib/data/platform';
+import { buildRevisionPlanFromInput, type RevisionPlanInput } from '$lib/revision/planner';
 import {
   dashboardPath,
   lessonPath,
@@ -253,8 +260,8 @@ function applyOnboardingSubjectExclusivity(
   return [...withoutConflicts, subjectId];
 }
 
-function createAppStore() {
-  const { subscribe, update, set } = writable<AppState>(readState());
+export function createAppStore(initialState: AppState = readState()) {
+  const { subscribe, update, set } = writable<AppState>(initialState);
   let hasInitializedRemoteState = false;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1949,10 +1956,58 @@ function createAppStore() {
           }
         })
       ),
-    runRevisionSession: (topic: RevisionTopic) => {
+    setRevisionPlannerOpen: (open: boolean) =>
       update((state) =>
         persistAndSync({
           ...state,
+          ui: {
+            ...state.ui,
+            showRevisionPlanner: open
+          }
+        })
+      ),
+    createRevisionPlan: (input: RevisionPlanInput) =>
+      update((state) => {
+        const { plan, exam } = buildRevisionPlanFromInput(state, input);
+        const existingExamIndex = state.upcomingExams.findIndex((item) => item.id === exam.id);
+        const nextUpcomingExams =
+          existingExamIndex === -1
+            ? [exam, ...state.upcomingExams]
+            : state.upcomingExams.map((item, index) => (index === existingExamIndex ? exam : item));
+
+        return persistAndSync({
+          ...state,
+          revisionPlan: plan,
+          upcomingExams: nextUpcomingExams
+            .slice()
+            .sort((left, right) => Date.parse(left.examDate) - Date.parse(right.examDate)),
+          ui: {
+            ...state.ui,
+            currentScreen: 'revision',
+            learningMode: 'revision',
+            selectedSubjectId: plan.subjectId,
+            showRevisionPlanner: false
+          }
+        });
+      }),
+    runRevisionSession: (
+      topic: RevisionTopic,
+      options?: {
+        mode?: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
+        source?: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
+        recommendationReason?: string;
+        topicSet?: RevisionTopic[];
+      }
+    ) => {
+      update((state) =>
+        persistAndSync({
+          ...state,
+          revisionSession: buildRevisionSession(
+            options?.topicSet && options.topicSet.length > 0 ? options.topicSet : topic,
+            options?.recommendationReason ?? 'Due today',
+            options?.mode ?? 'deep_revision',
+            options?.source ?? 'do_today'
+          ),
           ui: {
             ...state.ui,
             currentScreen: 'revision',
@@ -1962,6 +2017,169 @@ function createAppStore() {
         })
       );
       navigate(revisionPath());
+    },
+    submitRevisionAnswer: (answer: string, selfConfidence: number) => {
+      update((state) => {
+        const session = state.revisionSession;
+        if (!session) {
+          return state;
+        }
+
+        const question = session.questions[session.questionIndex];
+        const topic = question
+          ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+          : null;
+
+        if (!topic || !question) {
+          return state;
+        }
+
+        const attemptNumber = state.revisionAttempts.filter((item) => item.revisionTopicId === topic.lessonSessionId).length + 1;
+        const result = evaluateRevisionAnswer({
+          topic,
+          question,
+          answer,
+          selfConfidence,
+          currentInterventionLevel: session.currentInterventionLevel,
+          attemptNumber
+        });
+        const nextSession = applyRevisionTurn(session, result);
+
+        return persistAndSync({
+          ...state,
+          revisionTopics: state.revisionTopics.map((item) =>
+            item.lessonSessionId === topic.lessonSessionId
+              ? {
+                  ...item,
+                  confidenceScore: result.topicUpdate.confidenceScore,
+                  nextRevisionAt: result.topicUpdate.nextRevisionAt,
+                  previousIntervalDays: result.topicUpdate.previousIntervalDays,
+                  lastReviewedAt: result.topicUpdate.lastReviewedAt
+                }
+              : item
+          ),
+          revisionAttempts: [
+            {
+              id: `revision-attempt-${crypto.randomUUID()}`,
+              revisionTopicId: topic.lessonSessionId,
+              questionId: question.id,
+              answer,
+              selfConfidence,
+              result,
+              createdAt: new Date().toISOString()
+            },
+            ...state.revisionAttempts
+          ],
+          revisionSession: {
+            ...nextSession,
+            selfConfidenceHistory: [...session.selfConfidenceHistory, selfConfidence]
+          }
+        });
+      });
+    },
+    requestRevisionNudge: () => {
+      update((state) => {
+        const session = state.revisionSession;
+        if (!session) {
+          return state;
+        }
+
+        const question = session.questions[session.questionIndex];
+        const topic = question
+          ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+          : null;
+
+        if (!topic || !question) {
+          return state;
+        }
+
+        return persistAndSync({
+          ...state,
+          revisionSession: {
+            ...session,
+            currentInterventionLevel: 'nudge',
+            currentHelp: getRequestedIntervention({
+              topic,
+              question,
+              requestedType: 'nudge',
+              currentInterventionLevel: session.currentInterventionLevel
+            }),
+            lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
+    },
+    requestRevisionHint: () => {
+      update((state) => {
+        const session = state.revisionSession;
+        if (!session) {
+          return state;
+        }
+
+        const question = session.questions[session.questionIndex];
+        const topic = question
+          ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+          : null;
+
+        if (!topic || !question) {
+          return state;
+        }
+
+        const help = getRequestedIntervention({
+          topic,
+          question,
+          requestedType: 'hint',
+          currentInterventionLevel: session.currentInterventionLevel
+        });
+
+        return persistAndSync({
+          ...state,
+          revisionSession: {
+            ...session,
+            currentInterventionLevel: help.type,
+            currentHelp: help,
+            lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
+    },
+    markRevisionStuck: () => {
+      update((state) => {
+        const session = state.revisionSession;
+        if (!session) {
+          return state;
+        }
+
+        const question = session.questions[session.questionIndex];
+        const topic = question
+          ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+          : null;
+
+        if (!topic || !question) {
+          return state;
+        }
+
+        const help = getRequestedIntervention({
+          topic,
+          question,
+          requestedType: 'hint',
+          currentInterventionLevel: 'mini_reteach'
+        });
+
+        return persistAndSync({
+          ...state,
+          revisionSession: {
+            ...session,
+            currentInterventionLevel: 'mini_reteach',
+            currentHelp: {
+              type: 'mini_reteach',
+              content: `${help.content} If this still feels muddy, return to lesson mode for a full walkthrough.`
+            },
+            status: 'escalated_to_lesson',
+            lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
     }
   };
 }

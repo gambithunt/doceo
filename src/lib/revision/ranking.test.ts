@@ -1,0 +1,123 @@
+import { describe, expect, it } from 'vitest';
+import { createInitialState } from '$lib/data/platform';
+import { deriveRevisionHomeModel } from '$lib/revision/ranking';
+import type { AppState, RevisionTopic } from '$lib/types';
+
+function createRevisionTopic(overrides: Partial<RevisionTopic>): RevisionTopic {
+  return {
+    lessonSessionId: 'session-default',
+    subjectId: 'subject-math',
+    subject: 'Mathematics',
+    topicTitle: 'Number patterns',
+    curriculumReference: 'CAPS Grade 6',
+    confidenceScore: 0.7,
+    previousIntervalDays: 3,
+    nextRevisionAt: '2026-03-31T08:00:00.000Z',
+    lastReviewedAt: '2026-03-28T08:00:00.000Z',
+    ...overrides
+  };
+}
+
+function createState(overrides: Partial<AppState> = {}): AppState {
+  const base = createInitialState();
+
+  return {
+    ...base,
+    ...overrides,
+    revisionPlan: {
+      ...base.revisionPlan,
+      ...overrides.revisionPlan
+    },
+    ui: {
+      ...base.ui,
+      ...overrides.ui
+    }
+  };
+}
+
+describe('deriveRevisionHomeModel', () => {
+  it('ranks overdue, weak, exam-near topics above stable recent topics', () => {
+    const overdueWeakExamTopic = createRevisionTopic({
+      lessonSessionId: 'session-overdue',
+      topicTitle: 'Fractions',
+      confidenceScore: 0.34,
+      nextRevisionAt: '2026-03-25T08:00:00.000Z'
+    });
+    const stableRecentTopic = createRevisionTopic({
+      lessonSessionId: 'session-stable',
+      topicTitle: 'Area',
+      confidenceScore: 0.91,
+      nextRevisionAt: '2026-04-03T08:00:00.000Z',
+      lastReviewedAt: '2026-03-29T08:00:00.000Z'
+    });
+
+    const state = createState({
+      revisionTopics: [stableRecentTopic, overdueWeakExamTopic],
+      revisionPlan: {
+        ...createInitialState().revisionPlan,
+        subjectId: 'subject-math',
+        examDate: '2026-04-02',
+        topics: ['Fractions']
+      }
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.doToday[0]?.topic.lessonSessionId).toBe('session-overdue');
+    expect(model.hero?.topic.lessonSessionId).toBe('session-overdue');
+  });
+
+  it('returns only one primary hero recommendation', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({ lessonSessionId: 'session-1', topicTitle: 'Fractions', confidenceScore: 0.4 }),
+        createRevisionTopic({ lessonSessionId: 'session-2', topicTitle: 'Area', confidenceScore: 0.42 })
+      ]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.hero).not.toBeNull();
+    expect(model.doToday.length).toBeGreaterThan(0);
+    expect(model.hero?.topic.lessonSessionId).toBe(model.doToday[0]?.topic.lessonSessionId);
+  });
+
+  it('adds human-readable reasons to each surfaced recommendation', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-weak',
+          topicTitle: 'Photosynthesis',
+          subjectId: 'subject-science',
+          subject: 'Natural Sciences',
+          confidenceScore: 0.31,
+          nextRevisionAt: '2026-03-27T08:00:00.000Z'
+        }),
+        createRevisionTopic({
+          lessonSessionId: 'session-focus',
+          topicTitle: 'Cells',
+          subjectId: 'subject-science',
+          subject: 'Natural Sciences',
+          confidenceScore: 0.35,
+          nextRevisionAt: '2026-04-01T08:00:00.000Z'
+        })
+      ],
+      revisionPlan: {
+        ...createInitialState().revisionPlan,
+        subjectId: 'subject-science',
+        examDate: '2026-04-04',
+        topics: ['Photosynthesis', 'Cells']
+      }
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    const visibleRecommendations = [model.hero, ...model.doToday, ...model.focusWeaknesses].filter(
+      (item): item is NonNullable<typeof item> => item !== null
+    );
+
+    expect(visibleRecommendations.length).toBeGreaterThan(0);
+    expect(visibleRecommendations.every((item) => item.reason.length > 0)).toBe(true);
+    expect(visibleRecommendations.some((item) => /due|weak|exam|shaky/i.test(item.reason))).toBe(true);
+  });
+});

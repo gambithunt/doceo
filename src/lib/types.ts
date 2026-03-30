@@ -21,6 +21,8 @@ export type QuestionType =
   | 'step-by-step'
   | 'ask-follow-up';
 export type ProblemType = 'concept' | 'procedural' | 'word_problem' | 'proof' | 'revision';
+export type RevisionQuestionType = 'recall' | 'explain' | 'apply' | 'spot_error' | 'transfer' | 'teacher_mode';
+export type RevisionInterventionType = 'none' | 'nudge' | 'hint' | 'worked_step' | 'mini_reteach' | 'lesson_refer';
 export type ResponseStage =
   | 'clarify'
   | 'hint'
@@ -250,12 +252,104 @@ export interface LessonSelectorResponse {
 
 export interface RevisionPlan {
   subjectId: string;
+  examName?: string;
   examDate: string;
   topics: string[];
+  studyMode?: 'weak_topics' | 'full_subject' | 'manual';
+  timeBudgetMinutes?: number;
   quickSummary: string;
   keyConcepts: string[];
   examFocus: string[];
   weaknessDetection: string;
+}
+
+export interface UpcomingExam {
+  id: string;
+  subjectId: string;
+  subjectName: string;
+  examName: string;
+  examDate: string;
+  topics: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RevisionQuestion {
+  id: string;
+  revisionTopicId: string;
+  questionType: RevisionQuestionType;
+  prompt: string;
+  expectedSkills: string[];
+  misconceptionTags: string[];
+  difficulty: 'foundation' | 'core' | 'stretch';
+}
+
+export interface RevisionTurnScores {
+  correctness: number;
+  reasoning: number;
+  completeness: number;
+  confidenceAlignment: number;
+}
+
+export interface RevisionDiagnosis {
+  type:
+    | 'forgotten_fact'
+    | 'weak_explanation'
+    | 'procedure_break'
+    | 'misconception'
+    | 'transfer_failure'
+    | 'false_confidence'
+    | 'underconfidence';
+  summary: string;
+  misconceptionTags: string[];
+}
+
+export interface RevisionIntervention {
+  type: RevisionInterventionType;
+  content: string;
+}
+
+export interface RevisionTurnResult {
+  scores: RevisionTurnScores;
+  diagnosis: RevisionDiagnosis;
+  intervention: RevisionIntervention;
+  nextQuestion: RevisionQuestion | null;
+  topicUpdate: {
+    confidenceScore: number;
+    nextRevisionAt: string;
+    previousIntervalDays: number;
+    lastReviewedAt: string;
+  };
+  sessionDecision: 'continue' | 'complete' | 'reschedule' | 'lesson_revisit';
+}
+
+export interface RevisionAttemptRecord {
+  id: string;
+  revisionTopicId: string;
+  questionId: string;
+  answer: string;
+  selfConfidence: number;
+  result: RevisionTurnResult;
+  createdAt: string;
+}
+
+export interface ActiveRevisionSession {
+  id: string;
+  revisionTopicId: string;
+  revisionTopicIds: string[];
+  mode: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
+  source: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
+  topicTitle: string;
+  recommendationReason: string;
+  questions: RevisionQuestion[];
+  questionIndex: number;
+  currentInterventionLevel: RevisionInterventionType;
+  currentHelp: RevisionIntervention | null;
+  selfConfidenceHistory: number[];
+  lastTurnResult: RevisionTurnResult | null;
+  status: 'active' | 'completed' | 'abandoned' | 'escalated_to_lesson';
+  startedAt: string;
+  lastActiveAt: string;
 }
 
 export interface ShortlistedTopic {
@@ -471,8 +565,11 @@ export interface AppState {
   progress: Record<string, LessonProgress>;
   lessonSessions: LessonSession[];
   revisionTopics: RevisionTopic[];
+  revisionAttempts: RevisionAttemptRecord[];
+  revisionSession: ActiveRevisionSession | null;
   analytics: AnalyticsEvent[];
   revisionPlan: RevisionPlan;
+  upcomingExams: UpcomingExam[];
   askQuestion: {
     request: AskQuestionRequest;
     response: AskQuestionResponse;
@@ -501,5 +598,6 @@ export interface AppState {
     composerDraft: string;
     showTopicDiscoveryComposer: boolean;
     showLessonCloseConfirm: boolean;
+    showRevisionPlanner: boolean;
   };
 }
