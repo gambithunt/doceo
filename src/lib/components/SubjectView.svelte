@@ -78,9 +78,16 @@
           >
             {subjectName}
           </button>
-          <button type="button" class="remove-button ghost" onclick={() => appState.removeSubjectFromProfile(subjectName)}>
-            Remove
-          </button>
+          <div class="pill-footer">
+            <button
+              type="button"
+              class="remove-button"
+              onclick={() => appState.removeSubjectFromProfile(subjectName)}
+              aria-label="Remove {subjectName}"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       {/each}
     </div>
@@ -207,88 +214,97 @@
 
   .subject-list {
     display: grid;
-    gap: 0.6rem;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.65rem;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-auto-rows: 1fr;
   }
 
+  /* Pill: column layout so name gets all vertical space, remove anchors to bottom */
   .subject-pill {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.45rem;
-    padding: 0.4rem;
-    border-radius: 0.95rem;
-    background: color-mix(in srgb, var(--accent) 9%, var(--surface));
-    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
-    min-height: 3rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.85rem 0.6rem;
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+    transition: background 160ms, border-color 160ms, box-shadow 200ms var(--ease-soft);
+    cursor: default;
+  }
+
+  .subject-pill:hover {
+    background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   }
 
   .subject-pill.active {
     background: color-mix(in srgb, var(--accent) 18%, var(--surface));
-  }
-
-  .subject-button,
-  .remove-button,
-  .menu-button {
-    font: inherit;
-    cursor: pointer;
-    border: 1px solid var(--border);
-    border-radius: 1rem;
-    transition:
-      transform 120ms ease,
-      background 120ms ease,
-      border-color 120ms ease;
-  }
-
-  .subject-button,
-  .menu-button {
-    background: var(--surface-soft);
-    color: var(--text);
-    padding: 0.8rem 1rem;
-    text-align: left;
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
   }
 
   .subject-button {
+    font: inherit;
     background: transparent;
-    border-color: transparent;
-    padding: 0.45rem 0.7rem;
+    border: none;
+    color: var(--text);
+    padding: 0;
     font-weight: 600;
-    line-height: 1.2;
+    font-size: 0.95rem;
+    line-height: 1.3;
+    text-align: left;
+    cursor: pointer;
     flex: 1;
+    transition: color 150ms;
+  }
+
+  .subject-button:hover { color: var(--accent); transform: none; }
+
+  /* Footer row: pushes remove button to the right */
+  .pill-footer {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .remove-button {
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
     background: var(--color-red-dim);
     color: var(--color-error);
-    border-color: color-mix(in srgb, var(--color-error) 25%, transparent);
-    padding: 0.45rem 0.7rem;
-    font-size: 0.78rem;
+    border: 1px solid color-mix(in srgb, var(--color-error) 22%, transparent);
     border-radius: 999px;
+    padding: 0.25rem 0.65rem;
+    cursor: pointer;
+    transition: background 150ms, border-color 150ms, transform 120ms;
   }
 
   .remove-button:hover {
-    background: color-mix(in srgb, var(--color-error) 20%, transparent);
+    background: color-mix(in srgb, var(--color-error) 22%, transparent);
     border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+    transform: none;
   }
 
   .subject-actions {
     display: flex;
     justify-content: flex-end;
-    margin-top: 0.1rem;
-  }
-
-  .menu-button.active {
-    border-color: color-mix(in srgb, var(--accent) 48%, transparent);
-    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    margin-top: 0.25rem;
   }
 
   .menu-button {
+    font: inherit;
+    cursor: pointer;
     width: 100%;
     min-height: 3rem;
     display: flex;
     align-items: flex-start;
     justify-content: flex-start;
+    border: 1px solid var(--border);
     border-radius: 0.9rem;
+    background: var(--surface-soft);
+    color: var(--text);
+    padding: 0.8rem 1rem;
     text-align: left;
     transition:
       transform 170ms var(--ease-spring),
@@ -300,7 +316,13 @@
   .menu-button:hover {
     transform: translateY(-1px);
     border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.09);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  }
+
+  .menu-button.active {
+    border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    font-weight: 600;
   }
 
   .column-heading {

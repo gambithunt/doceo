@@ -624,6 +624,237 @@ enum ConnectionError {
 
 ---
 
+## 4b. Codebase Integration Notes
+
+> This section documents codebase-specific findings from a scan of the existing implementation. Use these notes to avoid integration pitfalls and align implementation with current architecture.
+
+### Critical: Route Group Blocker
+
+The `(app)` layout (`src/routes/(app)/+layout.svelte:24`) redirects any signed-in user to `/onboarding` if `onboarding.completed` is false. Parents will **never** have onboarding completed (they skip it entirely), so they will be trapped in an infinite redirect loop if any `(app)` route is used.
+
+**Fix:** The parent portal routes **must** live at `src/routes/parent/` — a sibling to `(app)/`, not inside it. This is already the structure proposed in Phase 2, but the blocker must be called out explicitly: do not place parent routes inside the `(app)` group.
+
+Additionally, update `src/routes/(app)/+layout.svelte` to skip the onboarding redirect for parent roles:
+```typescript
+// src/routes/(app)/+layout.svelte
+if (!$appState.onboarding.completed && $appState.profile.role !== 'parent') {
+  void goto(onboardingPath());
+}
+```
+
+---
+
+### Critical: `entryPathForState` Must Handle Parent Role
+
+`src/lib/routing.ts:64` — `entryPathForState()` routes signed-in users to either `/dashboard` (onboarding done) or `/onboarding` (not done). A parent will always be sent to `/onboarding`.
+
+**Fix:** Add a role branch before the onboarding check:
+
+```typescript
+// src/lib/routing.ts
+export function entryPathForState(state: AppState): string {
+  if (state.auth.status !== 'signed_in') return '/';
+  if (state.profile.role === 'parent') {
+    return '/parent'; // Parent portal entry — empty state or first student
+  }
+  return state.onboarding.completed ? dashboardPath() : onboardingPath();
+}
+```
+
+Also add a `parentPath()` helper:
+```typescript
+export function parentPath(studentId?: string): string {
+  return studentId ? `/parent/${encodeURIComponent(studentId)}` : '/parent';
+}
+```
+
+---
+
+### Mastery Heatmap: Correct Data Source
+
+Phase 2 references `state.progress` as the data source for the mastery heatmap. **This is incorrect.** `AppState.progress` is `Record<lessonId, LessonProgress>` — a map of lesson completion data — and `LessonProgress` does not carry subject/topic metadata.
+
+**Correct data source:** `LessonSession[]` stored in `lesson_sessions` Supabase table. Each session has:
+- `subjectId`, `subject`, `topicId`, `topicTitle` — for grouping into heatmap cells
+- `confidenceScore` (0–1) — use as the mastery proxy
+- `status` — only `'complete'` sessions count toward mastery
+- `lastActiveAt` — determines cell recency
+
+Heatmap aggregation logic: group completed `lessonSessions` by `(subjectId, topicId)`, take the max (or most recent) `confidenceScore` as the mastery value for that cell. Sessions with `status !== 'complete'` show as "in progress" (grey or partial fill).
+
+**Fix:** Update Phase 2 heatmap section:
+> ~~Data source: `state.progress` aggregated by subject/topic~~
+> Data source: `lesson_sessions` table, grouped by `(subjectId, topicId)`, using `confidenceScore` on `status = 'complete'` records.
+
+---
+
+### Appendix B Correction: No `mastery_records` Table
+
+Appendix B index references:
+```sql
+CREATE INDEX idx_mastery_student_subject ON mastery_records(student_id, subject_id);
+```
+
+There is no `mastery_records` table in the codebase. Mastery data lives in `lesson_sessions`. Replace with:
+```sql
+CREATE INDEX idx_lesson_sessions_student_topic
+  ON lesson_sessions(student_id, subject_id, topic_id, last_active_at DESC)
+  WHERE status = 'complete';
+```
+
+---
+
+### `UserProfile` Fields for Parent Users
+
+`UserProfile` (`src/lib/types.ts:44`) has student-specific fields (`grade`, `gradeId`, `curriculum`, `curriculumId`, `schoolYear`, `term`) that are meaningless for parents. These will be empty strings when a parent signs up without onboarding.
+
+**Implication:** Parent-facing code must never display or depend on these fields. The parent API routes should fetch the linked *student's* profile for curriculum context. No schema change needed — the existing fields just stay empty for parent accounts.
+
+---
+
+### `bootstrap` API and `saveAppState` — Role Awareness
+
+`GET /api/state/bootstrap` loads a full `AppState` including `lessonSessions`, `learnerProfile`, `revisionTopics`, etc. When called for a parent user, this returns an empty student shell, which is harmless but wasteful.
+
+`saveAppState` in `src/lib/server/state-repository.ts` syncs student-specific tables (`lesson_sessions`, `learner_profiles`, `revision_topics`, `lesson_messages`). If a parent's browser somehow triggers a sync, these upserts will produce empty/no-op writes.
+
+**Implication:** Parent users should never call `POST /api/state/sync` — the parent store is database-driven and uses dedicated parent API routes. Add a role check in the sync endpoint to return early for non-student roles.
+
+---
+
+### Parent Auth Flow — Onboarding Skip
+
+The current auth flow (`src/lib/stores/app-state.ts` `signUp`) creates a student profile and begins onboarding. There is no mechanism to sign up as a parent role.
+
+**Required:** The landing page (`src/routes/+page.svelte` → `LandingView`) needs a role toggle or separate entry point for parents:
+- Option A: "Sign in as a parent" link → shows simplified auth form without onboarding
+- Option B: Role selection step immediately after auth, before onboarding screen
+- Profile creation must set `role = 'parent'` server-side (never client-overridden, matching existing security posture where role is excluded from client sync)
+
+---
+
+### Admin Guard — Pattern to Replicate
+
+`src/lib/server/admin/admin-guard.ts` is the established pattern for role-based API guards. The `parent-guard.ts` should mirror this file's structure but also validate the `student_parent_links` record (active link between `auth.uid()` and requested `studentId`).
+
+Place at: `src/lib/server/parent/parent-guard.ts`
+
+---
+
+### Bug: `getDataFreshness` Math Error
+
+Section 4 contains a bug in the sync indicator implementation:
+
+```typescript
+// WRONG — operator precedence divides getTime() first, then subtracts
+const minutesAgo = Date.now() - new Date(lastSync).getTime() / 60000;
+```
+
+Fix:
+```typescript
+// CORRECT
+const minutesAgo = (Date.now() - new Date(lastSync).getTime()) / 60000;
+```
+
+---
+
+### Security: Remove `parentId` from `ParentSummaryRequest`
+
+`ParentSummaryRequest` (Phase 3) includes `parentId` as a request body field. This is a security flaw — a caller could pass any `parentId` to probe cached summaries for parents they aren't. The parent identity must always be derived server-side from `auth.uid()`.
+
+**Fix:** Remove `parentId` from the interface; derive it in the API handler:
+```typescript
+interface ParentSummaryRequest {
+  studentId: string;
+  // parentId removed — use auth.uid() server-side
+  timeframe: 'week' | 'month' | 'custom';
+  startDate?: string;
+  endDate?: string;
+}
+```
+
+---
+
+### Activity Timeline: `timeSpentMinutes` Lives on `LessonProgress`, Not `LessonSession`
+
+The activity timeline displays "time spent" per session. `LessonSession` (`src/lib/types.ts:347`) has no `timeSpentMinutes` field. The `timeSpentMinutes` field is on `LessonProgress` (`src/lib/types.ts:196`), which is the quiz/practice progress record.
+
+For the timeline, derive session duration from `LessonSession` timestamps:
+```typescript
+const timeSpent = session.completedAt
+  ? (new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()) / 60000
+  : (new Date(session.lastActiveAt).getTime() - new Date(session.startedAt).getTime()) / 60000;
+```
+
+---
+
+### Cognitive Profile Trends Require Historical Snapshots
+
+Phase 2 specifies trend indicators (↑ Improving, ↓ Declining, → Stable) comparing to the prior week. `LearnerProfile` (`src/lib/types.ts:297`) only stores the *current* values — there is no weekly snapshot history.
+
+**Options:**
+- **MVP:** Omit trend arrows; show current values only
+- **Post-MVP:** Add a `learner_profile_snapshots` table capturing weekly snapshots for trend computation
+- **Alternative:** Query `lesson_signals` records (individual signal events stored per session) and compute trailing 7-day vs prior 7-day average
+
+Recommend shipping without trend arrows in Phase 2 and adding a snapshot table post-MVP.
+
+---
+
+### Student "Online/Offline" Status Requires Supabase Realtime Presence
+
+The student selector card spec includes a "current status indicator (online/offline/learning)". No realtime presence system exists in the codebase. Implementing this requires Supabase Realtime presence channels.
+
+**Recommendation:** Defer to post-MVP. For Phase 2 MVP, replace with a simpler "last active" relative timestamp (e.g. "Active 5 mins ago") derived from `max(lastActiveAt)` across the student's sessions — no realtime subscription needed.
+
+---
+
+### `parent_summaries` Table Schema Missing from Appendix B
+
+Phase 3 mentions caching AI summaries in a `parent_summaries` table with TTL, but the schema is never defined. Add to Appendix B:
+
+```sql
+CREATE TABLE parent_summaries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parent_id UUID REFERENCES auth.users(id) NOT NULL,
+  student_id UUID REFERENCES auth.users(id) NOT NULL,
+  timeframe TEXT NOT NULL DEFAULT 'week',
+  summary_json JSONB NOT NULL,
+  generated_at TIMESTAMPTZ DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  feedback TEXT CHECK (feedback IN ('helpful', 'not_relevant')),
+  UNIQUE(parent_id, student_id, timeframe)
+);
+
+CREATE INDEX idx_parent_summaries_lookup
+  ON parent_summaries(parent_id, student_id, expires_at DESC);
+```
+
+Invalidation: update `expires_at = now()` when the student completes a new lesson (via trigger or API hook).
+
+---
+
+### `pulse_events.parent_id` Nullable Index Issue
+
+The `pulse_events` schema has `parent_id` as nullable ("populated when sent"). The index `idx_pulse_events_parent ON pulse_events(parent_id, ...)` performs poorly when `parent_id IS NULL` since PostgreSQL includes NULLs in B-tree indexes but equality queries on NULL don't match. Additionally, if events are created without a `parent_id` and populated later, a fetch by `parent_id` before population silently returns nothing.
+
+**Fix:** Populate `parent_id` at event creation time by querying `student_parent_links` for all active parents of the student. Store one row per parent, not one row per student:
+
+```sql
+-- Revised: one pulse row per (student, parent) pair
+ALTER TABLE pulse_events ALTER COLUMN parent_id SET NOT NULL;
+```
+
+Or create a separate `pulse_deliveries` join table if the fan-out model is preferred.
+
+---
+
+### Settings Page Is Empty — "Invite Parent" UI Has No Foundation
+
+`src/routes/(app)/settings/+page.svelte` is ~305 bytes — just a shell component with no content. Phase 1 places the "Invite Parent" button here. This is correct but the page needs to be built from scratch; there is no existing settings UI to extend.
+
+---
+
 ## 5. UI/UX Design Specifications
 
 ### Design Language Alignment

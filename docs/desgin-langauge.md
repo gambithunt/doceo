@@ -593,3 +593,209 @@ Before shipping any screen or component, check every item:
 **Reuse**
 - [ ] Does this reuse an existing component before inventing a new one?
 - [ ] If a new variant is needed, is it expressed as a modifier class on an existing component?
+
+---
+
+## Admin Panel Design Language
+
+The admin panel is a separate design surface from the student-facing app. It is aimed at a power user (the operator/founder) rather than a student, so it leans professional and data-dense — but it must still feel part of the same product family. It always runs in **dark mode** regardless of the user's system preference.
+
+### Theme
+
+Admin forces `data-theme="dark"` on mount via a Svelte `$effect`, restoring the previous theme on unmount. This means the deep navy background, electric lime accent, and dark glass card surfaces are always active in admin. Do not use light mode in admin.
+
+### Layout
+
+```
+[ sidebar 232px ] [ main content area ]
+```
+
+- Sidebar: `var(--surface-soft)` background, sticky, `border-right: 1px solid var(--border)`
+- Main: transparent (inherits the dark navy + gradient background from `:root[data-theme='dark']`)
+- Page body padding: `1.75rem 2rem 3rem`
+- Gap between sections: `1.5rem`
+- Max width for settings/forms: `720px`
+
+### Entrance Animation
+
+Every admin page body animates in on navigation. Apply this to `.page-body`:
+
+```css
+.page-body {
+  animation: page-in 280ms var(--ease-spring) both;
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+```
+
+### Sidebar
+
+The sidebar uses **per-section accent colors** to add visual identity without noise. Each nav item carries a `--nav-color` CSS custom property set inline.
+
+**Section color map:**
+
+| Section    | Color               |
+|------------|---------------------|
+| Overview   | `var(--color-blue)` |
+| Users      | `var(--color-purple)` |
+| Learning   | `var(--accent)` |
+| Messages   | `var(--color-orange)` |
+| Content    | `var(--color-yellow)` |
+| Revenue    | `var(--accent)` |
+| AI & Costs | `var(--color-purple)` |
+| System     | `var(--color-blue)` |
+| Settings   | `var(--muted)` |
+
+**Active state**: left inset shadow in the section's color + a very subtle tinted background. No solid fills.
+
+```css
+.nav-item.active {
+  background: color-mix(in srgb, var(--nav-color) 12%, transparent);
+  border-color: color-mix(in srgb, var(--nav-color) 20%, transparent);
+  box-shadow: inset 3px 0 0 var(--nav-color);
+  font-weight: 600;
+}
+
+.nav-item.active .nav-icon,
+.nav-item:hover .nav-icon {
+  color: var(--nav-color);
+}
+```
+
+**Brand mark**: the "D" logo uses `var(--accent)` background with a double glow:
+```css
+box-shadow: 0 0 0 1px var(--accent-glow), 0 4px 14px var(--accent-glow);
+```
+
+### KPI Cards (`AdminKpiCard`)
+
+KPI cards communicate a single metric. The design prioritises the number above everything else.
+
+**Structure (top to bottom):**
+1. Header row: uppercase muted label (left) + colored icon badge (right)
+2. Large number in the card's color
+3. Optional delta line
+
+**Left border**: each card has a `3px` left border in its metric color — this is the only place that color appears as a solid fill.
+
+```css
+.kpi-card {
+  border-left: 3px solid var(--card-color);
+  border-radius: 1rem;
+  padding: 1.35rem 1.4rem 1.25rem;
+}
+
+.kpi-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+
+.kpi-value {
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--card-color);
+}
+
+.kpi-icon {
+  width: 2rem; height: 2rem;
+  border-radius: 0.55rem;
+  background: [colorDim];
+  color: [colorVar];
+}
+```
+
+**Hover**: lift + shadow via `transform: translateY(-2px)` + `var(--shadow)`.
+
+**Color map for metrics** (use semantically, not decoratively):
+
+| Color    | Use case |
+|----------|----------|
+| `accent` | Neutral positive counts (lessons started, completion) |
+| `blue`   | User counts |
+| `purple` | Totals / aggregate metrics |
+| `yellow` | Cost / spend (caution) |
+| `red`    | Errors / alerts |
+| `orange` | Warnings |
+
+### Page Header (`AdminPageHeader`)
+
+```css
+.page-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+.page-desc {
+  font-size: 0.9rem;
+  color: var(--text-soft);
+}
+
+.page-header {
+  padding: 2rem 2rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+```
+
+### Time Range Selector (`AdminTimeRange`)
+
+Active button uses a **solid accent fill** (not just a dim tint) so the selected period is always immediately obvious:
+
+```css
+.range-btn.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+```
+
+### Chart Cards
+
+All chart/data cards share the same base:
+
+```css
+.chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 1rem;
+  padding: 1.35rem 1.5rem 1.4rem;
+  box-shadow: var(--shadow);
+}
+```
+
+Chart title: `0.875rem / weight 700`. Period label: `0.73rem / weight 400 / var(--muted)`.
+
+Bar chart fill: `var(--accent-dim)` → `var(--accent)` on hover.
+Route bar fill: `linear-gradient(90deg, var(--accent), var(--color-blue))`.
+
+### Save / Action Buttons in Admin Forms
+
+The save button cycles through three states using CSS class modifiers:
+
+| State    | Class              | Appearance |
+|----------|--------------------|------------|
+| `idle`   | `.save-btn--idle`  | Solid accent background |
+| `saving` | `.save-btn--saving`| 60% dimmed accent, `scale(0.98)`, spinner |
+| `saved`  | `.save-btn--saved` | Green background, `scale(1.02)`, animated ✓ checkmark |
+
+The checkmark uses `cubic-bezier(0.34, 1.56, 0.64, 1)` for a brief elastic overshoot that makes confirmation feel physical.
+
+### Admin Checklist
+
+Before shipping any admin screen:
+
+- [ ] `data-theme="dark"` is forced by the admin layout — do not re-set it per page
+- [ ] Page body has the `page-in` entrance animation
+- [ ] KPI cards use the semantic color map — not arbitrary colors
+- [ ] Nav items carry `--nav-color` inline for correct active state coloring
+- [ ] Chart cards use `var(--shadow)` — not just a border
+- [ ] Buttons provide loading and success state feedback (no silent submits)
+- [ ] Section titles are `0.95rem / weight 700`, not ALL CAPS
+- [ ] Form sections have `box-shadow: var(--shadow)` for depth
