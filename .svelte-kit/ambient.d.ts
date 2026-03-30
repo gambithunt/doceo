@@ -47,9 +47,11 @@ declare module '$env/static/private' {
 	export const GITHUB_MODELS_FAST: string;
 	export const GITHUB_MODELS_DEFAULT: string;
 	export const GITHUB_MODELS_THINKING: string;
-	export const STARSHIP_SHELL: string;
 	export const MANPATH: string;
+	export const STARSHIP_SHELL: string;
+	export const NoDefaultCurrentDirectoryInExePath: string;
 	export const GHOSTTY_RESOURCES_DIR: string;
+	export const CLAUDE_CODE_ENTRYPOINT: string;
 	export const TERM_PROGRAM: string;
 	export const NODE: string;
 	export const INIT_CWD: string;
@@ -61,6 +63,7 @@ declare module '$env/static/private' {
 	export const COLOR: string;
 	export const npm_config_noproxy: string;
 	export const npm_config_local_prefix: string;
+	export const GIT_EDITOR: string;
 	export const USER: string;
 	export const COMMAND_MODE: string;
 	export const npm_config_globalconfig: string;
@@ -69,6 +72,7 @@ declare module '$env/static/private' {
 	export const npm_execpath: string;
 	export const PATH: string;
 	export const npm_package_json: string;
+	export const _: string;
 	export const LaunchInstanceID: string;
 	export const GHOSTTY_SHELL_FEATURES: string;
 	export const npm_config_userconfig: string;
@@ -78,6 +82,7 @@ declare module '$env/static/private' {
 	export const PWD: string;
 	export const npm_lifecycle_event: string;
 	export const EDITOR: string;
+	export const OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: string;
 	export const npm_package_name: string;
 	export const LANG: string;
 	export const npm_config_npm_version: string;
@@ -93,15 +98,22 @@ declare module '$env/static/private' {
 	export const STARSHIP_SESSION_KEY: string;
 	export const npm_lifecycle_script: string;
 	export const XDG_DATA_DIRS: string;
+	export const COREPACK_ENABLE_AUTO_PIN: string;
 	export const GHOSTTY_BIN_DIR: string;
 	export const npm_config_user_agent: string;
 	export const OSLogRateLimit: string;
+	export const CLAUDECODE: string;
 	export const SECURITYSESSIONID: string;
 	export const npm_node_execpath: string;
 	export const npm_config_prefix: string;
 	export const COLORTERM: string;
-	export const _: string;
+	export const TEST: string;
+	export const VITEST: string;
 	export const NODE_ENV: string;
+	export const PROD: string;
+	export const DEV: string;
+	export const BASE_URL: string;
+	export const MODE: string;
 }
 
 /**
@@ -198,9 +210,11 @@ declare module '$env/dynamic/private' {
 		GITHUB_MODELS_FAST: string;
 		GITHUB_MODELS_DEFAULT: string;
 		GITHUB_MODELS_THINKING: string;
-		STARSHIP_SHELL: string;
 		MANPATH: string;
+		STARSHIP_SHELL: string;
+		NoDefaultCurrentDirectoryInExePath: string;
 		GHOSTTY_RESOURCES_DIR: string;
+		CLAUDE_CODE_ENTRYPOINT: string;
 		TERM_PROGRAM: string;
 		NODE: string;
 		INIT_CWD: string;
@@ -212,6 +226,7 @@ declare module '$env/dynamic/private' {
 		COLOR: string;
 		npm_config_noproxy: string;
 		npm_config_local_prefix: string;
+		GIT_EDITOR: string;
 		USER: string;
 		COMMAND_MODE: string;
 		npm_config_globalconfig: string;
@@ -220,6 +235,7 @@ declare module '$env/dynamic/private' {
 		npm_execpath: string;
 		PATH: string;
 		npm_package_json: string;
+		_: string;
 		LaunchInstanceID: string;
 		GHOSTTY_SHELL_FEATURES: string;
 		npm_config_userconfig: string;
@@ -229,6 +245,7 @@ declare module '$env/dynamic/private' {
 		PWD: string;
 		npm_lifecycle_event: string;
 		EDITOR: string;
+		OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: string;
 		npm_package_name: string;
 		LANG: string;
 		npm_config_npm_version: string;
@@ -244,15 +261,22 @@ declare module '$env/dynamic/private' {
 		STARSHIP_SESSION_KEY: string;
 		npm_lifecycle_script: string;
 		XDG_DATA_DIRS: string;
+		COREPACK_ENABLE_AUTO_PIN: string;
 		GHOSTTY_BIN_DIR: string;
 		npm_config_user_agent: string;
 		OSLogRateLimit: string;
+		CLAUDECODE: string;
 		SECURITYSESSIONID: string;
 		npm_node_execpath: string;
 		npm_config_prefix: string;
 		COLORTERM: string;
-		_: string;
+		TEST: string;
+		VITEST: string;
 		NODE_ENV: string;
+		PROD: string;
+		DEV: string;
+		BASE_URL: string;
+		MODE: string;
 		[key: `PUBLIC_${string}`]: undefined;
 		[key: `${string}`]: string | undefined;
 	}

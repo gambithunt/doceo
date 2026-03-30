@@ -5,27 +5,27 @@
   font-family: 'Inter', 'Helvetica Neue', sans-serif;
   color-scheme: light;
 
-  /* Base surfaces */
-  --bg: #eef2ff;
-  --surface: rgba(255, 255, 255, 0.92);
-  --surface-soft: rgba(238, 242, 255, 0.72);
-  --surface-strong: rgba(255, 255, 255, 0.98);
-  --surface-tint: rgba(228, 233, 255, 0.88);
+  /* Base surfaces — neutral soft canvas */
+  --bg: #F5F6F7;
+  --surface: rgba(255, 255, 255, 0.96);
+  --surface-soft: rgba(250, 250, 250, 0.90);
+  --surface-strong: rgba(255, 255, 255, 0.99);
+  --surface-tint: rgba(240, 241, 242, 0.88);
 
   /* Borders */
-  --border: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.14);
+  --border: rgba(0, 0, 0, 0.06);
+  --border-strong: rgba(0, 0, 0, 0.10);
 
   /* Text */
   --text: #0f172a;
   --text-soft: #475569;
   --muted: #94a3b8;
 
-  /* Accent — forest green in light mode (readable on white) */
-  --accent: #16a34a;
-  --accent-contrast: #052e16;
-  --accent-dim: rgba(22, 163, 74, 0.10);
-  --accent-glow: rgba(22, 163, 74, 0.20);
+  /* Accent — teal in light mode */
+  --accent: #0D9488;
+  --accent-contrast: #ffffff;
+  --accent-dim: rgba(13, 148, 136, 0.10);
+  --accent-glow: rgba(13, 148, 136, 0.20);
 
   /* Subject tone accents */
   --color-blue: #2563eb;
@@ -51,10 +51,15 @@
   --color-warning: #d97706;
   --color-error: #dc2626;
 
-  /* Shadows — light and crisp */
-  --shadow: 0 2px 8px rgba(15, 23, 42, 0.08), 0 8px 24px rgba(15, 23, 42, 0.06);
-  --shadow-strong: 0 4px 16px rgba(15, 23, 42, 0.12), 0 16px 40px rgba(15, 23, 42, 0.08);
-  --shadow-glow: 0 0 0 3px var(--accent-glow);
+  /* Shadows — soft, floating */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.09);
+  --shadow: var(--shadow-md);
+  --shadow-strong: var(--shadow-lg);
+  --shadow-glow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --shadow-glow-accent: 0 0 16px var(--accent-glow);
+  --shadow-glow-blue: 0 0 12px rgba(37, 99, 235, 0.18);
 
   /* Glass */
   --glass-bg:     rgba(255, 255, 255, 0.52);
@@ -63,9 +68,9 @@
   --glass-inset:  inset 0 1px 0 rgba(255, 255, 255, 0.88);
 
   /* Tile-weight glass — light mode: solid white card with soft shadow, no blur */
-  --glass-bg-tile:    rgba(255, 255, 255, 0.94);
+  --glass-bg-tile:    rgba(255, 255, 255, 0.97);
   --glass-blur-tile:  none;
-  --glass-inset-tile: 0 2px 8px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --glass-inset-tile: var(--shadow-sm);
 
   /* Shape */
   --radius-xl: 1.8rem;
@@ -87,9 +92,9 @@
   --btn-pad-x: 1.2rem;
 
   background:
-    radial-gradient(ellipse 80% 60% at top left,    rgba(37, 99, 235, 0.18) 0%, transparent 55%),
-    radial-gradient(ellipse 70% 50% at bottom right, rgba(124, 58, 237, 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 50% 40% at 70% 20%,      rgba(22, 163, 74, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 60% at top left,    rgba(37, 99, 235, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at bottom right, rgba(124, 58, 237, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 70% 20%,      rgba(13, 148, 136, 0.06) 0%, transparent 50%),
     var(--bg);
   color: var(--text);
 }
@@ -113,11 +118,11 @@
   --text-soft: #94a3b8;
   --muted: #64748b;
 
-  /* Accent — electric lime in dark mode */
-  --accent: #4ade80;
-  --accent-contrast: #052e16;
-  --accent-dim: rgba(74, 222, 128, 0.12);
-  --accent-glow: rgba(74, 222, 128, 0.24);
+  /* Accent — teal in dark mode */
+  --accent: #14B8A6;
+  --accent-contrast: #042f2e;
+  --accent-dim: rgba(20, 184, 166, 0.12);
+  --accent-glow: rgba(20, 184, 166, 0.28);
 
   /* Subject tone accents — lighter for dark surfaces */
   --color-blue: #60a5fa;
@@ -144,9 +149,14 @@
   --color-error: #f87171;
 
   /* Shadows — deeper for dark */
-  --shadow: 0 4px 16px rgba(2, 6, 23, 0.4), 0 1px 4px rgba(2, 6, 23, 0.3);
-  --shadow-strong: 0 8px 32px rgba(2, 6, 23, 0.6), 0 2px 8px rgba(2, 6, 23, 0.4);
-  --shadow-glow: 0 0 0 3px var(--accent-glow);
+  --shadow-sm: 0 2px 8px rgba(2, 6, 23, 0.30);
+  --shadow-md: 0 4px 16px rgba(2, 6, 23, 0.40);
+  --shadow-lg: 0 8px 32px rgba(2, 6, 23, 0.55);
+  --shadow: var(--shadow-md);
+  --shadow-strong: var(--shadow-lg);
+  --shadow-glow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --shadow-glow-accent: 0 0 16px var(--accent-glow);
+  --shadow-glow-blue: 0 0 16px rgba(96, 165, 250, 0.28);
 
   /* Glass — dark mode */
   --glass-bg:     rgba(15, 18, 41, 0.42);
@@ -160,7 +170,7 @@
   --glass-inset-tile: inset 0 1px 0 rgba(255, 255, 255, 0.09);
 
   background:
-    radial-gradient(ellipse 80% 55% at top left,     rgba(74, 222, 128, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 55% at top left,     rgba(20, 184, 166, 0.14) 0%, transparent 55%),
     radial-gradient(ellipse 70% 50% at top right,    rgba(96, 165, 250, 0.12) 0%, transparent 50%),
     radial-gradient(ellipse 60% 45% at bottom center, rgba(167, 139, 250, 0.10) 0%, transparent 50%),
     var(--bg);
@@ -340,6 +350,158 @@ h1, h2, h3, h4, p {
   button,
   [role='button'],
   summary {
+    transition: none !important;
+  }
+}
+
+/* ── Semantic pastel card surfaces ── */
+:root {
+  --surface-done:         #CFEED6;
+  --surface-done-text:    #166534;
+  --surface-info:         #D6EEF6;
+  --surface-info-text:    #1e40af;
+  --surface-task:         #F6E7C9;
+  --surface-task-text:    #92400e;
+  --surface-content:      #E6D6F6;
+  --surface-content-text: #5b21b6;
+  --surface-warm:         #F6D6E6;
+  --surface-warm-text:    #9d174d;
+}
+
+:root[data-theme='dark'] {
+  --surface-done:         rgba(20, 184, 166, 0.10);
+  --surface-done-text:    #5eead4;
+  --surface-info:         rgba(96, 165, 250, 0.10);
+  --surface-info-text:    #93c5fd;
+  --surface-task:         rgba(251, 191, 36, 0.10);
+  --surface-task-text:    #fde68a;
+  --surface-content:      rgba(167, 139, 250, 0.10);
+  --surface-content-text: #c4b5fd;
+  --surface-warm:         rgba(251, 113, 133, 0.10);
+  --surface-warm-text:    #fda4af;
+}
+
+/* ── Pill system ── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color 280ms var(--ease-soft),
+    color 280ms var(--ease-soft),
+    transform 100ms var(--ease-spring);
+}
+
+.pill--success  { background: var(--surface-done);    color: var(--surface-done-text); }
+.pill--neutral  { background: rgba(0,0,0,0.06);        color: var(--text-soft); }
+.pill--info     { background: var(--surface-info);    color: var(--surface-info-text); }
+.pill--task     { background: var(--surface-task);    color: var(--surface-task-text); }
+.pill--content  { background: var(--surface-content); color: var(--surface-content-text); }
+
+:root[data-theme='dark'] .pill--neutral {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-soft);
+}
+
+/* Pill appearing (first render) */
+.pill {
+  animation: pill-in 200ms var(--ease-spring) both;
+}
+
+@keyframes pill-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Two-ring focus style ── */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+/* ── Input focus bloom ── */
+input,
+select,
+textarea {
+  transition:
+    border-color 160ms var(--ease-soft),
+    box-shadow 200ms var(--ease-soft);
+}
+
+/* ── Theme crossfade ── */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 220ms ease,
+    border-color 220ms ease,
+    color 160ms ease;
+}
+
+/* Exclude elements that need instant response or have their own transitions */
+button,
+[role='button'],
+summary,
+input,
+select,
+textarea,
+.no-theme-fade {
+  transition:
+    transform var(--motion-fast) var(--ease-spring),
+    box-shadow var(--motion-med) var(--ease-soft),
+    border-color var(--motion-med) var(--ease-soft),
+    background-color var(--motion-med) var(--ease-soft),
+    color var(--motion-med) var(--ease-soft),
+    opacity var(--motion-fast) var(--ease-soft);
+}
+
+/* ── Button primary — press spring ── */
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.975);
+  transition:
+    transform 80ms ease-in,
+    box-shadow 80ms ease-in;
+}
+
+/* ── Card hover/press ── */
+.card-interactive {
+  transition:
+    transform 200ms var(--ease-spring),
+    box-shadow 200ms var(--ease-soft);
+  cursor: pointer;
+}
+
+.card-interactive:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+
+.card-interactive:active {
+  transform: translateY(-1px) scale(0.99);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 80ms ease-in,
+    box-shadow 80ms ease-in;
+}
+
+/* ── Number count-in animation (applied via JS action) ── */
+.count-in {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill { animation: none; }
+  *, *::before, *::after {
     transition: none !important;
   }
 }

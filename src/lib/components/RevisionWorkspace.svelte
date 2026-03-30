@@ -957,8 +957,7 @@
 
   .question-type {
     font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     color: var(--muted);
   }
 
@@ -1186,8 +1185,7 @@
 
   .eyebrow {
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     font-size: 0.72rem;
   }
 

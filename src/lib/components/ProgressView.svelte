@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getCompletionSummary, getWeakTopicLabels } from '$lib/data/platform';
+  import { countIn } from '$lib/utils/countIn';
   import type { AppState } from '$lib/types';
 
   export let state: AppState;
@@ -20,11 +21,15 @@
 
   <section class="summary-grid">
     <article class="card">
-      <strong>{summary.completedLessons}/{summary.totalLessons}</strong>
+      <strong>
+        <span class="count-in" use:countIn={{ value: summary.completedLessons }}>{summary.completedLessons}</span>/{summary.totalLessons}
+      </strong>
       <span>Lessons completed</span>
     </article>
     <article class="card">
-      <strong>{summary.averageMastery}%</strong>
+      <strong>
+        <span class="count-in" use:countIn={{ value: summary.averageMastery, format: (n) => `${Math.round(n)}%` }}>{summary.averageMastery}%</span>
+      </strong>
       <span>Average confidence</span>
     </article>
     <article class="card">
@@ -145,8 +150,7 @@
 
   .eyebrow {
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     font-size: 0.72rem;
   }
 

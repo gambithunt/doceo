@@ -12,6 +12,9 @@ coverage/
 playwright-report/
 test-results/
 
+# Local MCP config
+.mcp.json
+
 # Environment files
 .env
 .env.*

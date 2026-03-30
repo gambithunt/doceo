@@ -652,8 +652,7 @@
   label span {
     margin: 0;
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     font-size: 0.72rem;
     font-family: var(--mono);
   }

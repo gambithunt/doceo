@@ -327,8 +327,7 @@
 
   .column-heading {
     font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     color: var(--muted);
   }
 
@@ -362,8 +361,7 @@
   .eyebrow,
   label span {
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     font-size: 0.72rem;
   }
 

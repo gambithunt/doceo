@@ -7,6 +7,7 @@
   import { getCompletionSummary } from '$lib/data/platform';
   import { getStageLabel } from '$lib/lesson-system';
   import { appState } from '$lib/stores/app-state';
+  import { countIn } from '$lib/utils/countIn';
   import type { AppState, LessonSession, ShortlistedTopic } from '$lib/types';
 
   const { state: viewState }: { state: AppState } = $props();
@@ -492,7 +493,9 @@
       <div class="stat-pill">
         <span class="stat-pill-icon" aria-hidden="true">⭐</span>
         <div class="stat-pill-text">
-          <span class="stat-pill-value" style="color: var(--color-xp);">{summary.averageMastery}%</span>
+          <span class="stat-pill-value count-in" style="color: var(--color-xp);"
+            use:countIn={{ value: summary.averageMastery, format: (n) => `${Math.round(n)}%` }}
+          >{summary.averageMastery}%</span>
           <span class="stat-pill-label">mastery · {selectedSubject?.name ?? 'overall'}</span>
         </div>
       </div>
@@ -500,7 +503,9 @@
         <div class="stat-pill">
           <span class="stat-pill-icon" aria-hidden="true">✅</span>
           <div class="stat-pill-text">
-            <span class="stat-pill-value">{summary.completedLessons}</span>
+            <span class="stat-pill-value count-in"
+              use:countIn={{ value: summary.completedLessons }}
+            >{summary.completedLessons}</span>
             <span class="stat-pill-label">{summary.completedLessons === 1 ? 'lesson' : 'lessons'} done</span>
           </div>
         </div>
@@ -901,8 +906,11 @@
     text-align: left;
     font: inherit;
     cursor: pointer;
-    box-shadow: var(--glass-inset-tile);
-    transition: transform var(--motion-fast) var(--ease-spring), border-color var(--motion-fast) var(--ease-soft);
+    box-shadow: var(--shadow-sm);
+    transition:
+      transform 200ms var(--ease-spring),
+      box-shadow 200ms var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
   }
 
   .path-tile--recommended {
@@ -936,12 +944,17 @@
   }
 
   .path-tile:hover:not(:disabled):not([aria-disabled='true']) {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
     border-color: var(--accent);
   }
 
   .path-tile:active:not(:disabled) {
-    transform: translateY(0) scale(0.985);
+    transform: translateY(-1px) scale(0.99);
+    box-shadow: var(--shadow-sm);
+    transition:
+      transform 80ms ease-in,
+      box-shadow 80ms ease-in;
   }
 
   .path-tile.selected {
@@ -1151,13 +1164,23 @@
     text-align: left;
     font: inherit;
     cursor: pointer;
-    box-shadow: var(--glass-inset-tile);
-    transition: transform var(--motion-fast) var(--ease-spring), border-color var(--motion-fast) var(--ease-soft);
+    box-shadow: var(--shadow-sm);
+    transition:
+      transform 200ms var(--ease-spring),
+      box-shadow 200ms var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
   }
 
   .topic-tile:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
     border-color: var(--accent);
+  }
+
+  .topic-tile:active {
+    transform: translateY(-1px) scale(0.99);
+    box-shadow: var(--shadow-sm);
+    transition: transform 80ms ease-in, box-shadow 80ms ease-in;
   }
 
   .topic-index {
@@ -1210,15 +1233,25 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     padding: 1rem 1.1rem;
-    box-shadow: var(--glass-inset-tile);
+    box-shadow: var(--shadow-sm);
     display: grid;
     gap: 0.45rem;
-    transition: transform var(--motion-fast) var(--ease-spring), border-color var(--motion-fast) var(--ease-soft);
+    transition:
+      transform 200ms var(--ease-spring),
+      box-shadow 200ms var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
   }
 
   .recent-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
     border-color: var(--accent);
+  }
+
+  .recent-card:active {
+    transform: translateY(-1px) scale(0.99);
+    box-shadow: var(--shadow-sm);
+    transition: transform 80ms ease-in, box-shadow 80ms ease-in;
   }
 
   .recent-card-top {

@@ -1880,8 +1880,7 @@
   .concept-example-label {
     font-size: 0.7rem;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
+    letter-spacing: 0.04em;
     color: color-mix(in srgb, var(--accent) 72%, var(--text-soft) 28%);
   }
 

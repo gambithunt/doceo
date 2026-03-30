@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const invokeAuthenticatedAiEdge = vi.fn();
 const logAiInteraction = vi.fn();
 const logLessonSignal = vi.fn();
+const getAiConfig = vi.fn();
+const resolveAiRoute = vi.fn();
 
 vi.mock('$lib/server/ai-edge', () => ({
   invokeAuthenticatedAiEdge
+}));
+
+vi.mock('$lib/server/ai-config', () => ({
+  getAiConfig,
+  resolveAiRoute
 }));
 
 vi.mock('$lib/server/state-repository', () => ({
@@ -16,6 +23,19 @@ vi.mock('$lib/server/state-repository', () => ({
 describe('ai routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    getAiConfig.mockResolvedValue({
+      provider: 'github-models',
+      tiers: {
+        fast: { model: 'openai/gpt-4.1-nano' },
+        default: { model: 'openai/gpt-4o-mini' },
+        thinking: { model: 'openai/gpt-4.1-mini' }
+      },
+      routeOverrides: {}
+    });
+    resolveAiRoute.mockReturnValue({
+      provider: 'github-models',
+      model: 'openai/gpt-4.1-nano'
+    });
   });
 
   it('tutor route forwards the expected edge mode', async () => {
@@ -150,5 +170,61 @@ describe('ai routes', () => {
     } as never);
 
     expect(response.status).toBe(502);
+  });
+
+  it('subject hints route accepts a successful non-github provider when that provider is configured for the route', async () => {
+    resolveAiRoute.mockReturnValue({
+      provider: 'openai',
+      model: 'gpt-4.1-nano'
+    });
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        response: {
+          hints: ['Photosynthesis', 'Plant Cells', 'Chloroplasts', 'Leaves', 'Water Transport']
+        },
+        provider: 'openai',
+        modelTier: 'fast',
+        model: 'gpt-4.1-nano'
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/subject-hints/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/subject-hints', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            curriculumId: 'caps',
+            curriculumName: 'CAPS',
+            gradeId: 'grade-6',
+            gradeLabel: 'Grade 6',
+            term: 'Term 1',
+            subject: {
+              id: 'subject-biology',
+              name: 'Biology',
+              topics: [
+                {
+                  id: 'topic-1',
+                  name: 'Plants',
+                  subtopics: [
+                    { id: 'subtopic-1', name: 'Photosynthesis' },
+                    { id: 'subtopic-2', name: 'Plant Cells' }
+                  ]
+                }
+              ]
+            }
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
   });
 });

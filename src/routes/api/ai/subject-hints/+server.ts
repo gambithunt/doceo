@@ -71,7 +71,7 @@ export async function POST({ request, fetch }) {
     subjectName: parsed.data.request.subject.name
   });
   const aiConfig = await getAiConfig();
-  const { model: resolvedModel } = resolveAiRoute(aiConfig, 'subject-hints');
+  const { provider: resolvedProvider, model: resolvedModel } = resolveAiRoute(aiConfig, 'subject-hints');
   const edge = await invokeAuthenticatedAiEdge<{
     response?: { hints?: string[] };
     provider?: string;
@@ -94,8 +94,22 @@ export async function POST({ request, fetch }) {
   const functionPayload = edge.payload;
   const validated = validateSubjectHints(functionPayload.response?.hints ?? [], subject, referenceTopics);
 
-  if (validated.length === 0 || functionPayload.provider !== 'github-models') {
-    return json({ error: 'AI edge function returned invalid hint data.' }, { status: 502 });
+  if (functionPayload.provider !== resolvedProvider) {
+    return json(
+      {
+        error: `AI edge function returned provider "${functionPayload.provider ?? 'unknown'}" but route expected "${resolvedProvider}".`
+      },
+      { status: 502 }
+    );
+  }
+
+  if (validated.length === 0) {
+    return json(
+      {
+        error: 'AI edge function returned hint data that did not pass subject-hint validation.'
+      },
+      { status: 502 }
+    );
   }
 
   return json({

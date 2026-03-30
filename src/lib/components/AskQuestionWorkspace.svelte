@@ -104,8 +104,7 @@
 
   .eyebrow {
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     font-size: 0.72rem;
     margin-bottom: 0.5rem;
   }
@@ -125,7 +124,6 @@
     padding: 0.6rem 0.85rem;
     background: var(--surface-soft);
     color: var(--muted);
-    text-transform: uppercase;
   }
 
   label {

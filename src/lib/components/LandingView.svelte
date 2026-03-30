@@ -263,8 +263,7 @@
 
   .eyebrow {
     color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     font-size: 0.74rem;
   }
 
