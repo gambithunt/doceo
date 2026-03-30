@@ -1,10 +1,14 @@
 import type { AppState, RevisionTopic } from '$lib/types';
 
+type RecommendedRevisionMode = 'quick_fire' | 'deep_revision' | 'teacher_mode';
+
 export interface RevisionRecommendation {
   topic: RevisionTopic;
   priority: number;
   reason: string;
   cues: string[];
+  suggestedMode: RecommendedRevisionMode;
+  suggestedModeReason: string;
 }
 
 export interface RevisionHeroRecommendation extends RevisionRecommendation {
@@ -132,6 +136,42 @@ function getMisconceptionCue(topic: RevisionTopic): { weight: number; text: stri
   };
 }
 
+function getSuggestedMode(topic: RevisionTopic): {
+  mode: RecommendedRevisionMode;
+  reason: string;
+} {
+  const repeatedMisconception = topic.misconceptionSignals.some((signal) => signal.count >= 2);
+  const overconfidence = topic.calibration.confidenceGap >= 0.22 || topic.calibration.overconfidenceCount >= 2;
+  const fragile = topic.retentionStability <= 0.5 || topic.forgettingVelocity >= 0.58 || topic.confidenceScore < 0.5;
+  const stable = topic.confidenceScore >= 0.72 && topic.retentionStability >= 0.68 && topic.forgettingVelocity <= 0.35;
+
+  if (repeatedMisconception || overconfidence) {
+    return {
+      mode: 'teacher_mode',
+      reason: 'Explain it back to expose the gap clearly.'
+    };
+  }
+
+  if (fragile) {
+    return {
+      mode: 'deep_revision',
+      reason: 'This topic needs a structured recall-and-recheck loop.'
+    };
+  }
+
+  if (stable) {
+    return {
+      mode: 'quick_fire',
+      reason: 'A short recall check is enough to keep this topic warm.'
+    };
+  }
+
+  return {
+    mode: 'deep_revision',
+    reason: 'Use a full revision pass to check understanding and application.'
+  };
+}
+
 function createRecommendation(topic: RevisionTopic, state: AppState, now: Date): RevisionRecommendation {
   const cues: Array<{ weight: number; text: string }> = [];
   const dueDate = new Date(topic.nextRevisionAt);
@@ -208,12 +248,15 @@ function createRecommendation(topic: RevisionTopic, state: AppState, now: Date):
   }
 
   cues.sort((left, right) => right.weight - left.weight);
+  const suggestedMode = getSuggestedMode(topic);
 
   return {
     topic,
     priority,
     reason: cues[0]?.text ?? 'Ready for reinforcement',
-    cues: cues.map((cue) => cue.text)
+    cues: cues.map((cue) => cue.text),
+    suggestedMode: suggestedMode.mode,
+    suggestedModeReason: suggestedMode.reason
   };
 }
 
@@ -229,7 +272,12 @@ function buildHero(recommendation: RevisionRecommendation, exam: RevisionExamSna
     ...recommendation,
     heading: 'Revise this now',
     summary: `${examContext} ${recommendation.topic.topicTitle} needs attention next.`,
-    ctaLabel: 'Start revision'
+    ctaLabel:
+      recommendation.suggestedMode === 'teacher_mode'
+        ? 'Start teacher mode'
+        : recommendation.suggestedMode === 'quick_fire'
+          ? 'Start quick-fire'
+          : 'Start deep revision'
   };
 }
 

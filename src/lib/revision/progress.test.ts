@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState } from '$lib/data/platform';
-import { deriveRevisionProgressModel } from '$lib/revision/progress';
+import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
 import type { AppState, RevisionAttemptRecord, RevisionTopic } from '$lib/types';
 
 function createRevisionTopic(overrides: Partial<RevisionTopic>): RevisionTopic {
@@ -215,5 +215,94 @@ describe('deriveRevisionProgressModel', () => {
     expect(model.weeklyActivity).toHaveLength(7);
     expect(model.weeklyActivity.at(-1)?.count).toBe(2);
     expect(model.weeklyActivity.some((item) => item.count === 1)).toBe(true);
+  });
+});
+
+describe('deriveRevisionTopicHistoryModel', () => {
+  it('builds a topic history summary with recent entries and a dominant issue', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({ lessonSessionId: 'session-1', topicTitle: 'Fractions' }),
+        createRevisionTopic({ lessonSessionId: 'session-2', topicTitle: 'Area' })
+      ],
+      revisionAttempts: [
+        createAttempt({
+          id: 'attempt-1',
+          revisionTopicId: 'session-1',
+          createdAt: '2026-03-30T08:00:00.000Z',
+          result: {
+            ...createAttempt().result,
+            diagnosis: {
+              type: 'weak_explanation',
+              summary: 'You remembered parts of Fractions, but the explanation still needs clearer logic.',
+              misconceptionTags: ['fractions-core-gap']
+            }
+          }
+        }),
+        createAttempt({
+          id: 'attempt-2',
+          revisionTopicId: 'session-1',
+          createdAt: '2026-03-29T08:00:00.000Z',
+          result: {
+            ...createAttempt().result,
+            diagnosis: {
+              type: 'weak_explanation',
+              summary: 'The explanation for Fractions still breaks down.',
+              misconceptionTags: ['fractions-core-gap']
+            }
+          }
+        }),
+        createAttempt({
+          id: 'attempt-3',
+          revisionTopicId: 'session-1',
+          createdAt: '2026-03-28T08:00:00.000Z'
+        })
+      ]
+    });
+
+    const model = deriveRevisionTopicHistoryModel(state, 'session-1');
+
+    expect(model).not.toBeNull();
+    expect(model?.entries).toHaveLength(3);
+    expect(model?.dominantIssue).toMatch(/explanation/i);
+  });
+
+  it('detects when a topic trend is improving', () => {
+    const state = createState({
+      revisionTopics: [createRevisionTopic({ lessonSessionId: 'session-1', topicTitle: 'Fractions' })],
+      revisionAttempts: [
+        createAttempt({
+          id: 'attempt-1',
+          revisionTopicId: 'session-1',
+          createdAt: '2026-03-30T08:00:00.000Z',
+          result: {
+            ...createAttempt().result,
+            scores: { ...createAttempt().result.scores, correctness: 0.82 }
+          }
+        }),
+        createAttempt({
+          id: 'attempt-2',
+          revisionTopicId: 'session-1',
+          createdAt: '2026-03-29T08:00:00.000Z',
+          result: {
+            ...createAttempt().result,
+            scores: { ...createAttempt().result.scores, correctness: 0.62 }
+          }
+        }),
+        createAttempt({
+          id: 'attempt-3',
+          revisionTopicId: 'session-1',
+          createdAt: '2026-03-28T08:00:00.000Z',
+          result: {
+            ...createAttempt().result,
+            scores: { ...createAttempt().result.scores, correctness: 0.35 }
+          }
+        })
+      ]
+    });
+
+    const model = deriveRevisionTopicHistoryModel(state, 'session-1');
+
+    expect(model?.trend).toBe('improving');
   });
 });

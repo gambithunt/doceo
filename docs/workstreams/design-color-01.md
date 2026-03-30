@@ -612,6 +612,33 @@ These are the highest-emotion interactions in the product. They deserve the most
 
 ---
 
+## Number Count-In on Page Load
+
+Any numeric value displayed on page mount should count up from zero to its final value. The animation starts fast and decelerates into the final number — the deceleration is what makes it feel settled and real rather than mechanical.
+
+**Timing:** ≤ 500ms total. Non-negotiable. Numbers that linger mid-count feel like loading states, not delight.
+
+**Easing:** `cubic-bezier(0.22, 1, 0.36, 1)` — a strong ease-out. Starts at roughly 80% speed, bleeds off quickly in the final 20% of the range. The student reads the last few digits as the count slows, which is what makes the final value register.
+
+**Applies to:**
+- Streak count (days)
+- Mastery / XP percentage
+- Lesson completion counts
+- Progress stats (lessons done, topics covered)
+- Any KPI or stat card number
+
+**Does not apply to:**
+- Numbers inside body copy or descriptions
+- Timestamps and dates
+- Numbers in table rows or lists
+- Counts that update in real-time (they have their own transition)
+
+**On value change (not initial load):** count from old value to new, not from zero. Duration scales with the size of the delta — a +1 streak increment should take ~150ms; a large jump (e.g. mastery going from 40% to 65%) should still cap at 500ms.
+
+**Interruption:** if the user navigates away before the count finishes, snap to the final value immediately. Never leave a number mid-count on a departing screen.
+
+---
+
 ## Restrained by Design
 
 These elements are intentionally kept static or minimal. Do not add delight here.

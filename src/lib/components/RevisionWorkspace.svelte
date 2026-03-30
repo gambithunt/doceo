@@ -1,6 +1,6 @@
 <script lang="ts">
   import { renderSimpleMarkdown } from '$lib/markdown';
-  import { deriveRevisionProgressModel } from '$lib/revision/progress';
+  import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
   import { appState } from '$lib/stores/app-state';
   import type { AppState, RevisionTopic } from '$lib/types';
@@ -44,6 +44,13 @@
   $: currentQuestionTopic =
     currentQuestion ? state.revisionTopics.find((topic) => topic.lessonSessionId === currentQuestion.revisionTopicId) ?? null : null;
   $: displayTopic = currentQuestionTopic ?? selectedTopic;
+  $: topicHistory = displayTopic ? deriveRevisionTopicHistoryModel(state, displayTopic.lessonSessionId) : null;
+  $: selectedRecommendation =
+    homeModel.hero?.topic.lessonSessionId === displayTopic?.lessonSessionId
+      ? homeModel.hero
+      : homeModel.doToday.find((item) => item.topic.lessonSessionId === displayTopic?.lessonSessionId) ??
+        homeModel.focusWeaknesses.find((item) => item.topic.lessonSessionId === displayTopic?.lessonSessionId) ??
+        null;
   $: isSessionActive = revisionSession?.status === 'active';
   $: dueTodayCount = state.revisionTopics.filter((topic) => {
     const dueDate = new Date(topic.nextRevisionAt);
@@ -133,6 +140,10 @@
     });
     recallDraft = '';
     selfConfidence = 3;
+  }
+
+  function startRecommendedRevision(topic: RevisionTopic): void {
+    review(topic, selectedRecommendation?.suggestedMode ?? 'deep_revision');
   }
 
   function startMixedSession(): void {
@@ -267,6 +278,19 @@
 
     return signal.tag.replace(/-/g, ' ');
   }
+
+  function formatTrendLabel(trend: NonNullable<typeof topicHistory>['trend']): string {
+    switch (trend) {
+      case 'improving':
+        return 'Improving';
+      case 'slipping':
+        return 'Slipping';
+      case 'mixed':
+        return 'Mixed';
+      default:
+        return 'Limited history';
+    }
+  }
 </script>
 
 <section class="workspace">
@@ -384,7 +408,11 @@
           </article>
         </div>
         <div class="hero-actions">
-          <button type="button" class="action-btn" onclick={() => review(homeModel.hero!.topic)}>
+          <button
+            type="button"
+            class="action-btn"
+            onclick={() => review(homeModel.hero!.topic, homeModel.hero!.suggestedMode)}
+          >
             {homeModel.hero.ctaLabel}
           </button>
           {#if homeModel.doToday.length > 1}
@@ -539,6 +567,7 @@
                   <small>{formatDueLabel(recommendation.topic.nextRevisionAt)}</small>
                 </div>
                 <span>{recommendation.topic.subject}</span>
+                <span class="topic-meta">{recommendation.suggestedModeReason}</span>
                 <p>{recommendation.reason}</p>
               </button>
             {/each}
@@ -567,6 +596,7 @@
                     <strong>{recommendation.topic.topicTitle}</strong>
                     <small>{Math.round(recommendation.topic.confidenceScore * 100)}%</small>
                   </div>
+                  <span class="topic-meta">{recommendation.suggestedModeReason}</span>
                   <p>{recommendation.reason}</p>
                 </button>
               {/each}
@@ -583,6 +613,9 @@
               <h3>{displayTopic?.topicTitle ?? selectedTopic.topicTitle}</h3>
               {#if currentQuestionTopic && selectedTopic && currentQuestionTopic.lessonSessionId !== selectedTopic.lessonSessionId}
                 <p class="session-topic-note">Current question from {currentQuestionTopic.topicTitle}</p>
+              {/if}
+              {#if selectedRecommendation}
+                <p class="session-topic-note">Best mode: {selectedRecommendation.suggestedMode.replace('_', ' ')}. {selectedRecommendation.suggestedModeReason}</p>
               {/if}
             </div>
             <small>{formatDueLabel((displayTopic ?? selectedTopic).nextRevisionAt)}</small>
@@ -660,8 +693,12 @@
                     Try revision again
                   </button>
                 {:else}
-                  <button type="button" class="action-btn" onclick={() => review(selectedTopic, 'deep_revision')}>
-                    Start deep revision
+                  <button type="button" class="action-btn" onclick={() => startRecommendedRevision(selectedTopic)}>
+                    {selectedRecommendation?.suggestedMode === 'teacher_mode'
+                      ? 'Start teacher mode'
+                      : selectedRecommendation?.suggestedMode === 'quick_fire'
+                        ? 'Start quick-fire'
+                        : 'Start deep revision'}
                   </button>
                   <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'quick_fire')}>
                     Quick-fire
@@ -733,6 +770,34 @@
                     <span>Strongest repeated gap</span>
                   </article>
                 {/if}
+              </div>
+            </article>
+          {/if}
+
+          {#if topicHistory}
+            <article class="feedback-card">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Topic History</p>
+                  <h3>{topicHistory.topicTitle}</h3>
+                </div>
+                <span class="hero-pill subdued">{formatTrendLabel(topicHistory.trend)}</span>
+              </div>
+              <p>Dominant issue: {topicHistory.dominantIssue}.</p>
+              <div class="activity-list">
+                {#each topicHistory.entries as entry}
+                  <article class="activity-item">
+                    <div class="topic-row">
+                      <strong>{entry.label}</strong>
+                      <small>{new Date(entry.createdAt).toLocaleDateString()}</small>
+                    </div>
+                    <div class="hero-meta">
+                      <span class="hero-pill subdued">{Math.round(entry.correctness * 100)}% correct</span>
+                      <span class="hero-pill subdued">Confidence {entry.selfConfidence}/5</span>
+                    </div>
+                    <p>{entry.summary}</p>
+                  </article>
+                {/each}
               </div>
             </article>
           {/if}
@@ -1066,6 +1131,11 @@
   .topic-button p,
   .empty-state p {
     color: var(--text-soft);
+  }
+
+  .topic-meta {
+    color: var(--text-soft);
+    font-size: 0.8rem;
   }
 
   textarea {

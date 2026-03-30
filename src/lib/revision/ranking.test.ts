@@ -215,4 +215,48 @@ describe('deriveRevisionHomeModel', () => {
     expect(model.focusWeaknesses[0]?.topic.lessonSessionId).toBe('session-gap');
     expect(model.focusWeaknesses[0]?.reason).toMatch(/misconception|repeated/i);
   });
+
+  it('recommends teacher mode for overconfident or misconception-heavy topics', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-teacher',
+          topicTitle: 'Fractions',
+          confidenceScore: 0.62,
+          misconceptionSignals: [{ tag: 'fractions-core-gap', count: 3, lastSeenAt: '2026-03-30T08:00:00.000Z' }],
+          calibration: {
+            attempts: 4,
+            averageSelfConfidence: 4.4,
+            averageCorrectness: 0.45,
+            confidenceGap: 0.43,
+            overconfidenceCount: 3,
+            underconfidenceCount: 0
+          }
+        })
+      ]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.hero?.suggestedMode).toBe('teacher_mode');
+    expect(model.hero?.ctaLabel).toMatch(/teacher mode/i);
+  });
+
+  it('recommends quick-fire for stable topics that only need a light touch', () => {
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-quick',
+          topicTitle: 'Area',
+          confidenceScore: 0.8,
+          retentionStability: 0.8,
+          forgettingVelocity: 0.2
+        })
+      ]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.hero?.suggestedMode).toBe('quick_fire');
+  });
 });

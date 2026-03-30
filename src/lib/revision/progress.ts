@@ -20,6 +20,22 @@ export interface RevisionActivityDay {
   count: number;
 }
 
+export interface RevisionTopicHistoryEntry {
+  id: string;
+  createdAt: string;
+  label: string;
+  summary: string;
+  correctness: number;
+  selfConfidence: number;
+}
+
+export interface RevisionTopicHistoryModel {
+  topicTitle: string;
+  trend: 'improving' | 'slipping' | 'mixed' | 'limited';
+  dominantIssue: string;
+  entries: RevisionTopicHistoryEntry[];
+}
+
 export interface RevisionProgressModel {
   memoryStrength: number;
   consistencyDays: number;
@@ -184,5 +200,81 @@ export function deriveRevisionProgressModel(state: AppState, now = new Date()): 
     recentActivity,
     insights,
     weeklyActivity
+  };
+}
+
+function mapDiagnosisToIssue(type: RevisionAttemptRecord['result']['diagnosis']['type']): string {
+  switch (type) {
+    case 'false_confidence':
+      return 'confidence mismatch';
+    case 'underconfidence':
+      return 'confidence lag';
+    case 'forgotten_fact':
+      return 'recall breakdown';
+    case 'weak_explanation':
+      return 'explanation gap';
+    case 'misconception':
+      return 'misconception pattern';
+    default:
+      return 'revision gap';
+  }
+}
+
+function deriveTrend(attempts: RevisionAttemptRecord[]): RevisionTopicHistoryModel['trend'] {
+  if (attempts.length < 3) {
+    return 'limited';
+  }
+
+  const [latest, middle, oldest] = attempts.slice(0, 3).map((attempt) => attempt.result.scores.correctness);
+
+  if (latest > middle && middle > oldest) {
+    return 'improving';
+  }
+
+  if (latest < middle && middle < oldest) {
+    return 'slipping';
+  }
+
+  return 'mixed';
+}
+
+export function deriveRevisionTopicHistoryModel(
+  state: AppState,
+  revisionTopicId: string
+): RevisionTopicHistoryModel | null {
+  const topic = state.revisionTopics.find((item) => item.lessonSessionId === revisionTopicId);
+
+  if (!topic) {
+    return null;
+  }
+
+  const attempts = state.revisionAttempts
+    .filter((attempt) => attempt.revisionTopicId === revisionTopicId)
+    .slice()
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+    .slice(0, 5);
+  const issueCounts = attempts.reduce<Record<string, number>>((accumulator, attempt) => {
+    const issue = mapDiagnosisToIssue(attempt.result.diagnosis.type);
+    return {
+      ...accumulator,
+      [issue]: (accumulator[issue] ?? 0) + 1
+    };
+  }, {});
+  const dominantIssue =
+    Object.entries(issueCounts).sort((left, right) => right[1] - left[1])[0]?.[0] ??
+    'not enough history yet';
+
+  return {
+    topicTitle: topic.topicTitle,
+    trend: deriveTrend(attempts),
+    dominantIssue,
+    entries: attempts.map((attempt) => ({
+      id: attempt.id,
+      createdAt: attempt.createdAt,
+      label: buildActivityLabel(attempt),
+      summary: attempt.result.diagnosis.summary,
+      correctness: attempt.result.scores.correctness,
+      selfConfidence: attempt.selfConfidence
+    }))
   };
 }
