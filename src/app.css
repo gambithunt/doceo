@@ -12,6 +12,9 @@
   --surface-strong: rgba(255, 255, 255, 0.99);
   --surface-tint: rgba(240, 241, 242, 0.88);
   --surface-callout: #FAF3E9;
+  --surface-blend-base: #ffffff;
+  --surface-overlay: rgba(255, 255, 255, 0.68);
+  --surface-overlay-border: rgba(255, 255, 255, 0.55);
 
   /* Borders */
   --border: rgba(0, 0, 0, 0.06);
@@ -110,6 +113,9 @@
   --surface-strong: rgba(30, 37, 69, 0.98);
   --surface-tint: rgba(37, 45, 82, 0.96);
   --surface-callout: color-mix(in srgb, var(--color-yellow-dim) 32%, var(--surface-strong));
+  --surface-blend-base: var(--surface-strong);
+  --surface-overlay: rgba(37, 45, 82, 0.92);
+  --surface-overlay-border: rgba(255, 255, 255, 0.10);
 
   /* Borders */
   --border: rgba(255, 255, 255, 0.08);

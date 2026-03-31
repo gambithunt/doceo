@@ -1,4 +1,4 @@
-import type { RevisionPlan, RevisionTopic } from '$lib/types';
+import type { ActiveRevisionSession, RevisionPlan, RevisionTopic, RevisionTopicCalibration } from '$lib/types';
 
 export function sortRevisionPlans(plans: RevisionPlan[]): RevisionPlan[] {
   const statusWeight: Record<RevisionPlan['status'], number> = {
@@ -76,6 +76,106 @@ export function getPlanPreviewTopics(plan: RevisionPlan): string[] {
 
 export function getPlanOverflowTopicCount(plan: RevisionPlan): number {
   return Math.max(0, plan.topics.length - getPlanPreviewTopics(plan).length);
+}
+
+const EMPTY_CALIBRATION: RevisionTopicCalibration = {
+  attempts: 0,
+  averageSelfConfidence: 0,
+  averageCorrectness: 0,
+  confidenceGap: 0,
+  overconfidenceCount: 0,
+  underconfidenceCount: 0
+};
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function buildSyntheticTopic(plan: RevisionPlan, topicTitle: string, now: Date): RevisionTopic {
+  return {
+    lessonSessionId: `synthetic-${plan.subjectId}-${slugify(topicTitle)}`,
+    subjectId: plan.subjectId,
+    subject: plan.subjectName,
+    topicTitle,
+    curriculumReference: `${plan.subjectName} · ${topicTitle}`,
+    confidenceScore: 0,
+    previousIntervalDays: 1,
+    nextRevisionAt: now.toISOString(),
+    lastReviewedAt: null,
+    retentionStability: 0.5,
+    forgettingVelocity: 0.5,
+    misconceptionSignals: [],
+    calibration: { ...EMPTY_CALIBRATION },
+    isSynthetic: true,
+    hasLesson: false
+  };
+}
+
+const sortByNeed = (left: RevisionTopic, right: RevisionTopic) => {
+  const dueDiff = Date.parse(left.nextRevisionAt) - Date.parse(right.nextRevisionAt);
+  return dueDiff !== 0 ? dueDiff : left.confidenceScore - right.confidenceScore;
+};
+
+/**
+ * Build the full ordered topic set for a plan session.
+ * Topics named in the plan are included first; if a named topic has no RevisionTopic
+ * (no lesson taken yet), a synthetic placeholder is created and flagged with isSynthetic.
+ */
+export function buildPlanTopicSet(
+  plan: RevisionPlan,
+  revisionTopics: RevisionTopic[],
+  now = new Date()
+): RevisionTopic[] {
+  const sameSubject = revisionTopics.filter((t) => t.subjectId === plan.subjectId);
+
+  if (plan.planStyle === 'full_subject') {
+    // Use all topics the student has studied in this subject, sorted by need
+    return sameSubject.length > 0 ? sameSubject.slice().sort(sortByNeed) : [];
+  }
+
+  // weak_topics and manual: build set from plan.topics names, preserving order
+  const seen = new Set<string>();
+  const result: RevisionTopic[] = [];
+
+  for (const topicName of plan.topics) {
+    const match = sameSubject.find((t) => t.topicTitle.toLowerCase() === topicName.toLowerCase());
+    if (match && !seen.has(match.lessonSessionId)) {
+      result.push(match);
+      seen.add(match.lessonSessionId);
+    } else if (!match) {
+      const synthetic = buildSyntheticTopic(plan, topicName, now);
+      if (!seen.has(synthetic.lessonSessionId)) {
+        result.push(synthetic);
+        seen.add(synthetic.lessonSessionId);
+      }
+    }
+  }
+
+  if (result.length === 0) {
+    // Fallback: use same-subject topics sorted by need
+    return sameSubject.slice().sort(sortByNeed);
+  }
+
+  // For weak_topics, sort real topics by need (synthetic stay as-is — all overdue)
+  if (plan.planStyle === 'weak_topics') {
+    return result.sort(sortByNeed);
+  }
+
+  return result;
+}
+
+/** Map a plan's style to the appropriate session mode. */
+export function inferSessionMode(plan: RevisionPlan): ActiveRevisionSession['mode'] {
+  if (plan.planStyle === 'full_subject') return 'shuffle';
+  if (plan.planStyle === 'manual' && plan.topics.length >= 3) return 'shuffle';
+  return 'deep_revision';
+}
+
+/** Calculate the target number of questions from a time budget (~6 min per question). */
+export function inferQuestionCount(timeBudgetMinutes?: number, topicCount = 1): number {
+  const budget = timeBudgetMinutes ?? 20;
+  const raw = Math.round(budget / 6);
+  return Math.max(topicCount, Math.min(12, raw));
 }
 
 export function pickPlanStartTopic(plan: RevisionPlan, topics: RevisionTopic[]): RevisionTopic | null {

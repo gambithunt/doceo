@@ -311,6 +311,12 @@ export interface RevisionTopicCalibration {
   underconfidenceCount: number;
 }
 
+export interface RevisionQuestionFeedback {
+  difficulty: 'too_easy' | 'just_right' | 'too_hard';
+  clarity: 'clear' | 'confusing';
+  submittedAt: string;
+}
+
 export interface RevisionMisconceptionSignal {
   tag: string;
   count: number;
@@ -360,11 +366,13 @@ export interface RevisionAttemptRecord {
   answer: string;
   selfConfidence: number;
   result: RevisionTurnResult;
+  studentFeedback?: RevisionQuestionFeedback;
   createdAt: string;
 }
 
 export interface ActiveRevisionSession {
   id: string;
+  revisionPlanId?: string;
   revisionTopicId: string;
   revisionTopicIds: string[];
   mode: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
@@ -553,6 +561,8 @@ export interface RevisionTopic {
   forgettingVelocity: number;
   misconceptionSignals: RevisionMisconceptionSignal[];
   calibration: RevisionTopicCalibration;
+  isSynthetic?: boolean;
+  hasLesson?: boolean;
 }
 
 export interface AppState {

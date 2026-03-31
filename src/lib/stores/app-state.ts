@@ -61,6 +61,7 @@ import type {
   LessonPlanResponse,
   LessonSession,
   OnboardingStep,
+  RevisionQuestionFeedback,
   RevisionTopic,
   SchoolTerm,
   ShortlistedTopic,
@@ -2233,16 +2234,27 @@ export function createAppStore(initialState: AppState = readState()) {
         source?: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
         recommendationReason?: string;
         topicSet?: RevisionTopic[];
+        targetQuestionCount?: number;
+        revisionPlanId?: string;
       }
     ) => {
-      update((state) =>
-        persistAndSync({
+      update((state) => {
+        const effectiveTopics = options?.topicSet && options.topicSet.length > 0 ? options.topicSet : [topic];
+        // Upsert synthetic topics so submitRevisionAnswer can look them up
+        const syntheticToAdd = effectiveTopics.filter(
+          (t) => t.isSynthetic && !state.revisionTopics.some((r) => r.lessonSessionId === t.lessonSessionId)
+        );
+        return persistAndSync({
           ...state,
+          revisionTopics: syntheticToAdd.length > 0 ? [...state.revisionTopics, ...syntheticToAdd] : state.revisionTopics,
           revisionSession: buildRevisionSession(
-            options?.topicSet && options.topicSet.length > 0 ? options.topicSet : topic,
+            effectiveTopics.length > 1 ? effectiveTopics : topic,
             options?.recommendationReason ?? 'Due today',
             options?.mode ?? 'deep_revision',
-            options?.source ?? 'do_today'
+            options?.source ?? 'do_today',
+            new Date(),
+            options?.targetQuestionCount,
+            options?.revisionPlanId
           ),
           ui: {
             ...state.ui,
@@ -2250,8 +2262,8 @@ export function createAppStore(initialState: AppState = readState()) {
             learningMode: 'revision',
             activeLessonSessionId: topic.lessonSessionId
           }
-        })
-      );
+        });
+      });
       navigate(revisionPath());
     },
     exitRevisionSession: () => {
@@ -2354,6 +2366,14 @@ export function createAppStore(initialState: AppState = readState()) {
         });
       });
     },
+    submitQuestionFeedback: (questionId: string, feedback: RevisionQuestionFeedback) =>
+      update((state) => {
+        const idx = state.revisionAttempts.findIndex((a) => a.questionId === questionId);
+        if (idx === -1) return state;
+        const next = [...state.revisionAttempts];
+        next[idx] = { ...next[idx]!, studentFeedback: feedback };
+        return persistAndSync({ ...state, revisionAttempts: next });
+      }),
     requestRevisionNudge: () => {
       update((state) => {
         const session = state.revisionSession;

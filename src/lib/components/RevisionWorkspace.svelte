@@ -11,6 +11,8 @@
   } from '$lib/ai/subject-hints';
   import { buildFallbackTopicShortlist } from '$lib/ai/topic-shortlist';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
+  import { formatSavedPlansCount, getRevisionPlansHeader } from '$lib/components/revision-plans';
+  import { getRevisionPlanRemovalContent } from '$lib/components/revision-plan-removal';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { renderSimpleMarkdown } from '$lib/markdown';
   import { openDateInputPicker, shouldClosePlannerOnKey } from '$lib/components/revision-planner';
@@ -23,16 +25,19 @@
   import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
   import { deriveRevisionWorkspaceMode } from '$lib/revision/workspace';
   import {
+    buildPlanTopicSet,
     describePlanStyle,
     formatPlanDailyLabel,
     formatPlanStyleLabel,
     formatPlanTiming,
+    inferQuestionCount,
+    inferSessionMode,
     pickPlanStartTopic,
     sortRevisionPlans
   } from '$lib/revision/plans';
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
   import { appState } from '$lib/stores/app-state';
-  import type { AppState, RevisionTopic, SchoolTerm, ShortlistedTopic } from '$lib/types';
+  import type { AppState, RevisionQuestionFeedback, RevisionTopic, SchoolTerm, ShortlistedTopic } from '$lib/types';
 
   export let state: AppState;
 
@@ -52,6 +57,9 @@
 
   let recallDraft = '';
   let selfConfidence = 3;
+  let feedbackDifficulty: RevisionQuestionFeedback['difficulty'] | '' = '';
+  let feedbackClarity: RevisionQuestionFeedback['clarity'] | '' = '';
+  let feedbackSubmittedForQuestionId = '';
   let plannerSubjectId = '';
   let plannerExamName = '';
   let plannerExamDate = '';
@@ -72,6 +80,7 @@
   let cachedHeaders: Record<string, string> | null = null;
   let plannerErrors: { examName?: string; examDate?: string; manualTopics?: string } = {};
   let plannerDateInput: HTMLInputElement | null = null;
+  let pendingPlanRemoval: { id: string; name: string } | null = null;
 
   $: homeModel = deriveRevisionHomeModel(state);
   $: focusModel = deriveRevisionFocusModel(state, homeModel, activeRevisionPlan);
@@ -82,6 +91,8 @@
     id: `${selectedPlannerSubject?.id ?? 'subject'}:${index}:${label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
     label
   }));
+  const revisionPlansHeader = getRevisionPlansHeader();
+  $: planRemovalContent = getRevisionPlanRemovalContent(pendingPlanRemoval?.name);
   $: sortedRevisionPlans = sortRevisionPlans(state.revisionPlans);
   $: activeRevisionPlan =
     state.revisionPlans.find((plan) => plan.id === state.activeRevisionPlanId) ??
@@ -142,7 +153,7 @@
 
   function seedPlannerFields(): void {
     plannerSubjectId = state.revisionPlan.subjectId || state.ui.selectedSubjectId || state.curriculum.subjects[0]?.id || '';
-    plannerExamName = state.revisionPlan.examName ?? '';
+    plannerExamName = '';
     plannerExamDate = state.revisionPlan.examDate ?? '';
     plannerMode = state.revisionPlan.planStyle ?? state.revisionPlan.studyMode ?? 'weak_topics';
     plannerTimeBudgetMinutes = state.revisionPlan.timeBudgetMinutes ?? 20;
@@ -603,31 +614,49 @@
 
     appState.setActiveRevisionPlan(planId);
 
-    const topic = pickPlanStartTopic(plan, state.revisionTopics);
+    const topicSet = buildPlanTopicSet(plan, state.revisionTopics);
+    const primaryTopic = topicSet[0] ?? pickPlanStartTopic(plan, state.revisionTopics);
 
-    if (!topic) {
+    if (!primaryTopic) {
       return;
     }
 
-    appState.runRevisionSession(topic, {
-      mode: 'deep_revision',
+    const mode = inferSessionMode(plan);
+    const targetQuestionCount = inferQuestionCount(plan.timeBudgetMinutes, topicSet.length);
+
+    appState.runRevisionSession(primaryTopic, {
+      mode,
       source: 'exam_plan',
-      recommendationReason: plan.examName
-        ? `Start revision for ${plan.examName}`
-        : 'Start this revision plan'
+      recommendationReason: plan.examName ? `Start revision for ${plan.examName}` : 'Start this revision plan',
+      topicSet: topicSet.length > 1 ? topicSet : undefined,
+      targetQuestionCount,
+      revisionPlanId: plan.id
     });
     recallDraft = '';
     selfConfidence = 3;
+    feedbackDifficulty = '';
+    feedbackClarity = '';
+    feedbackSubmittedForQuestionId = '';
   }
 
   function removePlan(planId: string, planName?: string): void {
-    const resolvedName = planName?.trim() || 'this revision plan';
+    pendingPlanRemoval = {
+      id: planId,
+      name: planName?.trim() || ''
+    };
+  }
 
-    if (browser && !window.confirm(`Remove ${resolvedName}? This will delete it from your saved revision plans.`)) {
+  function cancelPlanRemoval(): void {
+    pendingPlanRemoval = null;
+  }
+
+  function confirmPlanRemoval(): void {
+    if (!pendingPlanRemoval) {
       return;
     }
 
-    appState.removeRevisionPlan(planId);
+    appState.removeRevisionPlan(pendingPlanRemoval.id);
+    pendingPlanRemoval = null;
   }
 
   function getSessionContext(topic: RevisionTopic): {
@@ -675,6 +704,9 @@
     });
     recallDraft = '';
     selfConfidence = 3;
+    feedbackDifficulty = '';
+    feedbackClarity = '';
+    feedbackSubmittedForQuestionId = '';
   }
 
   function startRecommendedRevision(topic: RevisionTopic): void {
@@ -726,9 +758,26 @@
     if (!selectedTopic || !currentQuestion || recallDraft.trim().length === 0) {
       return;
     }
+    const answeredQuestionId = currentQuestion.id;
     appState.submitRevisionAnswer(recallDraft.trim(), selfConfidence);
     recallDraft = '';
     selfConfidence = 3;
+    // Reset feedback state for the new turn
+    if (feedbackSubmittedForQuestionId !== answeredQuestionId) {
+      feedbackDifficulty = '';
+      feedbackClarity = '';
+      feedbackSubmittedForQuestionId = '';
+    }
+  }
+
+  function submitQuestionFeedback(questionId: string): void {
+    if (!feedbackDifficulty || !feedbackClarity) return;
+    appState.submitQuestionFeedback(questionId, {
+      difficulty: feedbackDifficulty,
+      clarity: feedbackClarity,
+      submittedAt: new Date().toISOString()
+    });
+    feedbackSubmittedForQuestionId = questionId;
   }
 
   function feedbackMarkdown(): string | null {
@@ -976,10 +1025,11 @@
   <section class="panel plans-panel">
     <div class="panel-header">
       <div>
-        <h3>Your revision plans</h3>
-        <p class="plans-summary">Saved plans you can launch directly into revision.</p>
+        <p class="eyebrow">{revisionPlansHeader.eyebrow}</p>
+        <h3>{revisionPlansHeader.title}</h3>
+        <p class="plans-summary">{revisionPlansHeader.summary}</p>
       </div>
-      <small>{sortedRevisionPlans.length} saved</small>
+      <small class="plans-count">{formatSavedPlansCount(sortedRevisionPlans.length)}</small>
     </div>
 
     {#if sortedRevisionPlans.length > 0}
@@ -1540,6 +1590,9 @@
                 </div>
                 <span class="hero-pill subdued">{getSessionStatusBadge()}</span>
               </div>
+              {#if currentQuestionTopic?.isSynthetic}
+                <p class="synthetic-topic-note">You haven't taken a lesson on this topic yet. Answer from what you already know — Doceo will build from here.</p>
+              {/if}
               <p>{currentQuestion.prompt}</p>
             </article>
 
@@ -1640,6 +1693,53 @@
               </div>
               {@html renderSimpleMarkdown(feedbackMarkdown()!)}
             </article>
+          {/if}
+
+          {#if revisionSession?.lastTurnResult}
+            {@const lastQuestion = revisionSession.questions[Math.max(0, revisionSession.questionIndex - (revisionSession.status === 'active' ? 1 : 0))]}
+            {#if lastQuestion && feedbackSubmittedForQuestionId !== lastQuestion.id}
+              <article class="feedback-card student-question-feedback">
+                <p class="eyebrow">Rate this question</p>
+                <p class="feedback-invite">Your ratings help Doceo improve how it challenges you.</p>
+                <div class="feedback-chip-row">
+                  <span class="feedback-chip-label">Difficulty</span>
+                  {#each [['too_easy', 'Too easy'], ['just_right', 'Just right'], ['too_hard', 'Too hard']] as [val, label]}
+                    <button
+                      type="button"
+                      class="feedback-chip"
+                      class:active={feedbackDifficulty === val}
+                      onclick={() => { feedbackDifficulty = val as RevisionQuestionFeedback['difficulty']; }}
+                    >{label}</button>
+                  {/each}
+                </div>
+                <div class="feedback-chip-row">
+                  <span class="feedback-chip-label">Clarity</span>
+                  {#each [['clear', 'Clear'], ['confusing', 'Confusing']] as [val, label]}
+                    <button
+                      type="button"
+                      class="feedback-chip"
+                      class:active={feedbackClarity === val}
+                      onclick={() => { feedbackClarity = val as RevisionQuestionFeedback['clarity']; }}
+                    >{label}</button>
+                  {/each}
+                </div>
+                <div class="feedback-actions">
+                  <button
+                    type="button"
+                    class="secondary action-btn feedback-submit-btn"
+                    disabled={!feedbackDifficulty || !feedbackClarity}
+                    onclick={() => submitQuestionFeedback(lastQuestion.id)}
+                  >Submit feedback</button>
+                  <button
+                    type="button"
+                    class="ghost-btn"
+                    onclick={() => { feedbackSubmittedForQuestionId = lastQuestion.id; }}
+                  >Skip</button>
+                </div>
+              </article>
+            {:else if feedbackSubmittedForQuestionId === lastQuestion?.id}
+              <p class="feedback-thanks">Thanks — feedback recorded.</p>
+            {/if}
           {/if}
         </section>
 
@@ -1761,7 +1861,7 @@
             <span>Exam name</span>
             <input
               bind:value={plannerExamName}
-              placeholder="Mid-term test"
+              placeholder="e.g. Mid-year exam, Term 2 test"
               oninput={() => { if (plannerErrors.examName) plannerErrors = { ...plannerErrors, examName: undefined }; }}
             />
             {#if plannerErrors.examName}
@@ -1883,6 +1983,41 @@
 
         <div class="actions">
           <button type="button" class="action-btn" onclick={submitPlanner}>Generate plan</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if pendingPlanRemoval}
+    <div class="planner-shell">
+      <button
+        type="button"
+        class="planner-backdrop"
+        aria-label="Close revision plan removal dialog"
+        onclick={cancelPlanRemoval}
+      ></button>
+      <div
+        class="planner-modal plan-removal-modal"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(event) => shouldClosePlannerOnKey(event.key) && cancelPlanRemoval()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="plan-removal-title"
+        tabindex="-1"
+      >
+        <div class="plan-removal-copy">
+          <span class="plan-removal-kicker">Remove plan</span>
+          <h2 id="plan-removal-title">{planRemovalContent.title}</h2>
+          <p>{planRemovalContent.body}</p>
+        </div>
+
+        <div class="actions plan-removal-actions">
+          <button type="button" class="secondary action-btn" onclick={cancelPlanRemoval}>
+            {planRemovalContent.cancelLabel}
+          </button>
+          <button type="button" class="action-btn plan-remove-confirm-btn" onclick={confirmPlanRemoval}>
+            {planRemovalContent.confirmLabel}
+          </button>
         </div>
       </div>
     </div>
@@ -2248,6 +2383,95 @@
     background: color-mix(in srgb, var(--surface-callout) 64%, white);
   }
 
+  .student-question-feedback {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem 1.05rem;
+    border-radius: 1.2rem;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface-soft) 80%, white);
+  }
+
+  .feedback-invite {
+    font-size: 0.84rem;
+    color: var(--text-soft);
+    margin: 0;
+  }
+
+  .feedback-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .feedback-chip-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-soft);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    min-width: 4.5rem;
+  }
+
+  .feedback-chip {
+    padding: 0.3rem 0.75rem;
+    border-radius: 2rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    color: var(--text);
+  }
+
+  .feedback-chip.active {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .feedback-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .feedback-submit-btn {
+    font-size: 0.84rem;
+    padding: 0.4rem 1rem;
+  }
+
+  .ghost-btn {
+    background: none;
+    border: none;
+    font-size: 0.82rem;
+    color: var(--text-soft);
+    cursor: pointer;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .ghost-btn:hover {
+    color: var(--text);
+  }
+
+  .feedback-thanks {
+    font-size: 0.82rem;
+    color: var(--text-soft);
+    padding: 0.5rem 0;
+  }
+
+  .synthetic-topic-note {
+    font-size: 0.83rem;
+    color: var(--color-yellow, #d97706);
+    background: color-mix(in srgb, #fef3c7 80%, transparent);
+    border: 1px solid color-mix(in srgb, #fde68a 60%, transparent);
+    border-radius: 0.65rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
   .revision-session-context-card {
     background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 84%, white), var(--surface));
   }
@@ -2317,10 +2541,10 @@
       0 10px 24px rgba(15, 23, 42, 0.07),
       0 24px 56px rgba(15, 23, 42, 0.04);
     background:
-      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 100%, white), transparent 40%),
-      radial-gradient(circle at 85% 20%, color-mix(in srgb, var(--accent-dim) 95%, white), transparent 34%),
-      radial-gradient(circle at bottom right, color-mix(in srgb, var(--color-purple-dim) 82%, white), transparent 44%),
-      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 28%, var(--surface-strong)), color-mix(in srgb, var(--surface) 94%, white));
+      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 100%, var(--surface-blend-base)), transparent 40%),
+      radial-gradient(circle at 85% 20%, color-mix(in srgb, var(--accent-dim) 95%, var(--surface-blend-base)), transparent 34%),
+      radial-gradient(circle at bottom right, color-mix(in srgb, var(--color-purple-dim) 82%, var(--surface-blend-base)), transparent 44%),
+      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 28%, var(--surface-strong)), color-mix(in srgb, var(--surface) 94%, var(--surface-blend-base)));
   }
 
   /* Build plan invite card */
@@ -2337,7 +2561,7 @@
   }
 
   .panel.build-plan-invite-card:hover {
-    background: color-mix(in srgb, var(--surface-callout) 88%, white);
+    background: color-mix(in srgb, var(--surface-callout) 88%, var(--surface-blend-base));
     border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
   }
 
@@ -2397,7 +2621,7 @@
     padding: 1.15rem;
     border-radius: 1.3rem;
     background:
-      linear-gradient(135deg, color-mix(in srgb, var(--color-blue-dim) 68%, white), color-mix(in srgb, var(--accent-dim) 72%, white));
+      linear-gradient(135deg, color-mix(in srgb, var(--color-blue-dim) 68%, var(--surface-blend-base)), color-mix(in srgb, var(--accent-dim) 72%, var(--surface-blend-base)));
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.55),
       var(--shadow-sm);
@@ -2428,9 +2652,9 @@
     min-width: 9rem;
     padding: 0.95rem 1rem;
     border-radius: 1.2rem;
-    background: rgba(255,255,255,0.68);
+    background: var(--surface-overlay);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.55),
+      inset 0 1px 0 var(--surface-overlay-border),
       var(--shadow-sm);
   }
 
@@ -2482,23 +2706,23 @@
   }
 
   .revision-signal-card.tone-teal {
-    background: color-mix(in srgb, var(--accent-dim) 92%, white);
+    background: color-mix(in srgb, var(--accent-dim) 92%, var(--surface-blend-base));
   }
 
   .revision-signal-card.tone-yellow {
-    background: color-mix(in srgb, var(--color-yellow-dim) 92%, white);
+    background: color-mix(in srgb, var(--color-yellow-dim) 92%, var(--surface-blend-base));
   }
 
   .revision-signal-card.tone-purple {
-    background: color-mix(in srgb, var(--color-purple-dim) 92%, white);
+    background: color-mix(in srgb, var(--color-purple-dim) 92%, var(--surface-blend-base));
   }
 
   .revision-signal-card.tone-blue {
-    background: color-mix(in srgb, var(--color-blue-dim) 92%, white);
+    background: color-mix(in srgb, var(--color-blue-dim) 92%, var(--surface-blend-base));
   }
 
   .revision-signal-card.tone-green {
-    background: color-mix(in srgb, var(--color-green-dim) 92%, white);
+    background: color-mix(in srgb, var(--color-green-dim) 92%, var(--surface-blend-base));
   }
 
   .revision-outlook-side {
@@ -2546,19 +2770,19 @@
   }
 
   .revision-plan-preview.tone-0 {
-    background: color-mix(in srgb, var(--color-blue-dim) 90%, white);
+    background: color-mix(in srgb, var(--color-blue-dim) 90%, var(--surface-blend-base));
   }
 
   .revision-plan-preview.tone-1 {
-    background: color-mix(in srgb, var(--color-purple-dim) 90%, white);
+    background: color-mix(in srgb, var(--color-purple-dim) 90%, var(--surface-blend-base));
   }
 
   .revision-plan-preview.tone-2 {
-    background: color-mix(in srgb, var(--color-yellow-dim) 90%, white);
+    background: color-mix(in srgb, var(--color-yellow-dim) 90%, var(--surface-blend-base));
   }
 
   .revision-plan-preview.tone-3 {
-    background: color-mix(in srgb, var(--accent-dim) 90%, white);
+    background: color-mix(in srgb, var(--accent-dim) 90%, var(--surface-blend-base));
   }
 
   .revision-plan-preview-topline {
@@ -2865,10 +3089,10 @@
   }
 
   .plan-remove-btn {
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--color-error) 20%, var(--border));
     border-radius: 999px;
-    background: color-mix(in srgb, var(--surface) 86%, transparent);
-    color: var(--text-soft);
+    background: color-mix(in srgb, var(--color-error) 12%, var(--surface));
+    color: color-mix(in srgb, var(--color-error) 70%, var(--text));
     padding: 0.32rem 0.72rem;
     font: inherit;
     font-size: 0.78rem;
@@ -2879,19 +3103,26 @@
       color 140ms var(--ease-soft),
       border-color 140ms var(--ease-soft),
       background 140ms var(--ease-soft),
+      box-shadow 140ms var(--ease-soft),
       transform 140ms var(--ease-soft);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
   }
 
   .plan-remove-btn:hover {
     color: var(--color-error);
-    border-color: color-mix(in srgb, var(--color-error) 28%, var(--border));
-    background: color-mix(in srgb, var(--color-error-dim) 72%, var(--surface));
+    border-color: color-mix(in srgb, var(--color-error) 34%, var(--border));
+    background: color-mix(in srgb, var(--color-error) 18%, var(--surface));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.38),
+      0 6px 14px color-mix(in srgb, var(--color-error) 10%, transparent);
     transform: translateY(-1px);
   }
 
   .plan-remove-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error) 16%, transparent);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-error) 16%, transparent),
+      inset 0 1px 0 rgba(255,255,255,0.4);
   }
 
   .plan-countdown {
@@ -3014,8 +3245,33 @@
     align-items: center;
   }
 
+  .plans-panel .panel-header > div {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .plans-panel .panel-header h3 {
+    font-size: 1.12rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
   .plans-summary {
     color: var(--text-soft);
+    max-width: 36rem;
+  }
+
+  .plans-count {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    background: color-mix(in srgb, var(--surface-soft) 82%, white);
+    border: 1px solid var(--border);
+    color: var(--text-soft);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1;
   }
 
   .plan-subject {
@@ -3582,6 +3838,68 @@
       0 24px 56px rgba(0, 0, 0, 0.18),
       0 8px 20px rgba(0, 0, 0, 0.12);
     animation: modal-rise 220ms var(--ease-spring) both;
+  }
+
+  .plan-removal-modal {
+    max-width: 31rem;
+    gap: 1rem;
+    background:
+      radial-gradient(circle at top right, color-mix(in srgb, var(--color-error) 12%, white), transparent 34%),
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 32%, white), var(--surface));
+    border-color: color-mix(in srgb, var(--color-error) 22%, var(--border-strong));
+  }
+
+  .plan-removal-copy {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .plan-removal-kicker {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    background: color-mix(in srgb, var(--color-error) 14%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--color-error) 22%, var(--border));
+    color: color-mix(in srgb, var(--color-error) 72%, var(--text));
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .plan-removal-copy h2 {
+    font-size: clamp(1.25rem, 1.06rem + 0.35vw, 1.5rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+  }
+
+  .plan-removal-copy p {
+    color: var(--text-soft);
+    line-height: 1.6;
+    max-width: 32ch;
+  }
+
+  .plan-removal-actions {
+    justify-content: flex-end;
+  }
+
+  .plan-remove-confirm-btn {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-error) 42%, white), color-mix(in srgb, var(--color-error) 22%, var(--surface)));
+    border: 1px solid color-mix(in srgb, var(--color-error) 28%, var(--border));
+    color: color-mix(in srgb, var(--color-error) 78%, var(--text));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.4),
+      0 12px 24px color-mix(in srgb, var(--color-error) 14%, transparent);
+  }
+
+  .plan-remove-confirm-btn:hover {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-error) 50%, white), color-mix(in srgb, var(--color-error) 28%, var(--surface)));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.44),
+      0 16px 28px color-mix(in srgb, var(--color-error) 18%, transparent);
   }
 
   @keyframes modal-rise {

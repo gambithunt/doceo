@@ -63,7 +63,9 @@ export function buildRevisionSession(
   recommendationReason: string,
   mode: ActiveRevisionSession['mode'] = 'deep_revision',
   source: ActiveRevisionSession['source'] = 'do_today',
-  now = new Date()
+  now = new Date(),
+  targetQuestionCount?: number,
+  revisionPlanId?: string
 ): ActiveRevisionSession {
   const topics = Array.isArray(topicOrTopics) ? topicOrTopics : [topicOrTopics];
   const primaryTopic = topics[0];
@@ -72,20 +74,28 @@ export function buildRevisionSession(
     throw new Error('buildRevisionSession requires at least one revision topic');
   }
 
-  const questionTypes: RevisionQuestionType[] =
+  // Type pool ordered from foundational to stretching
+  const typePool: RevisionQuestionType[] =
     mode === 'quick_fire'
       ? ['recall']
       : mode === 'teacher_mode'
-        ? ['recall', 'teacher_mode']
-        : mode === 'shuffle'
-          ? ['recall', 'apply', 'transfer']
-          : ['recall', 'explain'];
-  const questions =
-    mode === 'shuffle' && topics.length > 1
-      ? topics.map((topic, index) => buildQuestion(topic, questionTypes[index % questionTypes.length]!, index))
-      : questionTypes.map((type, index) => buildQuestion(primaryTopic, type, index));
+        ? ['teacher_mode', 'recall', 'explain']
+        : ['recall', 'explain', 'apply', 'spot_error', 'transfer'];
+
+  // Default count: quick_fire=1, shuffle=one per topic, others=2
+  const defaultCount =
+    targetQuestionCount ??
+    (mode === 'quick_fire' ? 1 : mode === 'shuffle' ? Math.max(topics.length, 2) : 2);
+  const count = Math.max(1, Math.min(20, defaultCount));
+
+  const questions: RevisionQuestion[] = Array.from({ length: count }, (_, i) => {
+    const topic = topics.length > 1 ? topics[i % topics.length]! : primaryTopic;
+    const type = typePool[i % typePool.length]!;
+    return buildQuestion(topic, type, i);
+  });
 
   return {
+    revisionPlanId,
     id: `revision-session-${crypto.randomUUID()}`,
     revisionTopicId: primaryTopic.lessonSessionId,
     revisionTopicIds: topics.map((topic) => topic.lessonSessionId),
