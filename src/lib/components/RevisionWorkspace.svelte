@@ -17,6 +17,7 @@
     parseManualTopicDraft,
     resolveMatchedManualTopics
   } from '$lib/revision/manual-topics';
+  import { deriveRevisionFocusModel, type RevisionFocusTab } from '$lib/revision/focus';
   import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
   import {
     describePlanStyle,
@@ -63,10 +64,12 @@
   let latestPlannerHintRequest = 0;
   let plannerHintSeed = '';
   let lastPlannerAssistSubjectId = '';
+  let activeFocusTab: RevisionFocusTab | null = null;
   let cachedHeaders: Record<string, string> | null = null;
   let plannerErrors: { examName?: string; examDate?: string; manualTopics?: string } = {};
 
   $: homeModel = deriveRevisionHomeModel(state);
+  $: focusModel = deriveRevisionFocusModel(state, homeModel, activeRevisionPlan);
   $: progressModel = deriveRevisionProgressModel(state);
   $: availableSubjects = state.curriculum.subjects;
   $: selectedPlannerSubject = availableSubjects.find((subject) => subject.id === plannerSubjectId) ?? availableSubjects[0];
@@ -98,6 +101,10 @@
       : homeModel.doToday.find((item) => item.topic.lessonSessionId === displayTopic?.lessonSessionId) ??
         homeModel.focusWeaknesses.find((item) => item.topic.lessonSessionId === displayTopic?.lessonSessionId) ??
         null;
+  $: if (activeFocusTab === null) {
+    activeFocusTab = focusModel.defaultTab;
+  }
+  $: activeFocusPanel = focusModel.panels[activeFocusTab ?? focusModel.defaultTab];
   $: isSessionActive = revisionSession?.status === 'active';
   $: dueTodayCount = state.revisionTopics.filter((topic) => {
     const dueDate = new Date(topic.nextRevisionAt);
@@ -251,6 +258,63 @@
     }
 
     return stats;
+  }
+
+  function selectFocusTab(tab: RevisionFocusTab): void {
+    activeFocusTab = tab;
+  }
+
+  function getFocusItemSummary(tab: RevisionFocusTab, item: (typeof activeFocusPanel.items)[number]): string {
+    if (tab === 'prepare_exam' && activeRevisionPlan?.examName) {
+      return activeRevisionPlan.examName;
+    }
+
+    return item.topic.subject;
+  }
+
+  function getFocusItemMeta(tab: RevisionFocusTab, item: (typeof activeFocusPanel.items)[number]): string {
+    if (tab === 'focus_weaknesses') {
+      return item.recommendation?.suggestedModeReason ?? 'Use a structured revision loop to repair this gap.';
+    }
+
+    if (tab === 'prepare_exam') {
+      return item.recommendation?.reason ?? 'Part of your active exam runway.';
+    }
+
+    if (tab === 'choose_topic') {
+      return item.recommendation?.reason ?? 'Open this topic directly when you already know what needs work.';
+    }
+
+    return item.recommendation?.suggestedModeReason ?? 'Best next revision move right now.';
+  }
+
+  function getFocusItemDescription(tab: RevisionFocusTab, item: (typeof activeFocusPanel.items)[number]): string {
+    if (tab === 'focus_weaknesses') {
+      return item.recommendation?.reason ?? 'This topic is showing a weakness signal worth repairing next.';
+    }
+
+    if (tab === 'prepare_exam') {
+      return item.recommendation?.suggestedModeReason ?? 'Use this as part of your current exam build-up.';
+    }
+
+    if (tab === 'choose_topic') {
+      return item.recommendation?.suggestedModeReason ?? 'Start a fresh revision pass whenever you want to target this topic directly.';
+    }
+
+    return item.recommendation?.reason ?? 'Ready for another reinforcement pass.';
+  }
+
+  function getFocusButtonTone(tab: RevisionFocusTab): string {
+    switch (tab) {
+      case 'focus_weaknesses':
+        return 'weakness';
+      case 'prepare_exam':
+        return 'exam';
+      case 'choose_topic':
+        return 'library';
+      default:
+        return '';
+    }
   }
 
   function openPlanner(): void {
@@ -1096,64 +1160,77 @@
           </section>
         {/if}
 
-        <section class="panel">
+        <section class="panel revision-focus-panel">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Do Today</p>
-              <h3>Best next revision moves</h3>
+              <p class="eyebrow">Revision Paths</p>
+              <h3>{activeFocusPanel.title}</h3>
             </div>
-            <small>{homeModel.doToday.length} topics</small>
+            <small>{activeFocusPanel.items.length} topics</small>
           </div>
 
-          <div class="queue-list">
-            {#each homeModel.doToday as recommendation}
+          <div class="focus-tablist" role="tablist" aria-label="Revision paths">
+            {#each focusModel.tabs as tab}
               <button
                 type="button"
-                class:selected={selectedTopic?.lessonSessionId === recommendation.topic.lessonSessionId}
-                class="topic-button"
-                onclick={() => review(recommendation.topic)}
+                role="tab"
+                class:active={activeFocusTab === tab.id}
+                class="focus-tab"
+                aria-selected={activeFocusTab === tab.id}
+                onclick={() => selectFocusTab(tab.id)}
               >
-                <div class="topic-row">
-                  <strong>{recommendation.topic.topicTitle}</strong>
-                  <small>{formatDueLabel(recommendation.topic.nextRevisionAt)}</small>
-                </div>
-                <span>{recommendation.topic.subject}</span>
-                <span class="topic-meta">{recommendation.suggestedModeReason}</span>
-                <p>{recommendation.reason}</p>
+                <span>{tab.label}</span>
+                <strong>{tab.count}</strong>
               </button>
             {/each}
           </div>
-        </section>
 
-        {#if homeModel.focusWeaknesses.length > 0}
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">Focus Weaknesses</p>
-                <h3>Topics that still feel unstable</h3>
-              </div>
-              <small>{homeModel.focusWeaknesses.length} topics</small>
+          <p class="focus-summary">{activeFocusPanel.summary}</p>
+
+          {#if activeFocusTab === 'prepare_exam' && activeRevisionPlan}
+            <div class="focus-context">
+              <span class="hero-pill">{activeRevisionPlan.examName ?? 'Active plan'}</span>
+              <span class="hero-pill subdued">{formatPlanTiming(activeRevisionPlan.examDate)}</span>
+              <span class="hero-pill subdued">{activeRevisionPlan.subjectName}</span>
             </div>
+          {/if}
 
-            <div class="queue-list compact">
-              {#each homeModel.focusWeaknesses as recommendation}
+          {#if activeFocusPanel.items.length > 0}
+            <div class:compact={activeFocusTab !== 'choose_topic'} class="queue-list focus-queue">
+              {#each activeFocusPanel.items as item}
                 <button
                   type="button"
-                  class:selected={selectedTopic?.lessonSessionId === recommendation.topic.lessonSessionId}
-                  class="topic-button weakness"
-                  onclick={() => review(recommendation.topic)}
+                  class:selected={selectedTopic?.lessonSessionId === item.topic.lessonSessionId}
+                  class:weakness={getFocusButtonTone(activeFocusTab ?? focusModel.defaultTab) === 'weakness'}
+                  class:exam={getFocusButtonTone(activeFocusTab ?? focusModel.defaultTab) === 'exam'}
+                  class:library={getFocusButtonTone(activeFocusTab ?? focusModel.defaultTab) === 'library'}
+                  class="topic-button"
+                  onclick={() => review(item.topic, item.recommendation?.suggestedMode ?? 'deep_revision')}
                 >
                   <div class="topic-row">
-                    <strong>{recommendation.topic.topicTitle}</strong>
-                    <small>{Math.round(recommendation.topic.confidenceScore * 100)}%</small>
+                    <strong>{item.topic.topicTitle}</strong>
+                    <small>{formatDueLabel(item.topic.nextRevisionAt)}</small>
                   </div>
-                  <span class="topic-meta">{recommendation.suggestedModeReason}</span>
-                  <p>{recommendation.reason}</p>
+                  <span>{getFocusItemSummary(activeFocusTab ?? focusModel.defaultTab, item)}</span>
+                  <span class="topic-meta">{getFocusItemMeta(activeFocusTab ?? focusModel.defaultTab, item)}</span>
+                  <p>{getFocusItemDescription(activeFocusTab ?? focusModel.defaultTab, item)}</p>
                 </button>
               {/each}
             </div>
-          </section>
-        {/if}
+          {:else}
+            <div class="focus-empty-state">
+              <div>
+                <p class="eyebrow">{activeFocusPanel.emptyTitle}</p>
+                <p>{activeFocusPanel.emptyCopy}</p>
+              </div>
+              {#if (activeFocusTab ?? focusModel.defaultTab) === 'prepare_exam'}
+                <button type="button" class="secondary action-btn" onclick={openPlanner}>
+                  Build my plan
+                </button>
+              {/if}
+            </div>
+          {/if}
+        </section>
       </aside>
 
       <section class="panel recall-panel">
@@ -1494,10 +1571,7 @@
   }
 
   .build-plan-panel {
-    background:
-      radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.72), transparent 24%),
-      radial-gradient(circle at 88% 78%, color-mix(in srgb, var(--accent-dim) 68%, transparent), transparent 28%),
-      linear-gradient(135deg, #FAF3E9, color-mix(in srgb, #FAF3E9 82%, white));
+    background: var(--surface-callout);
   }
 
   .hero-copy,
@@ -2194,6 +2268,85 @@
     gap: 0.7rem;
   }
 
+  .revision-focus-panel {
+    gap: 1rem;
+  }
+
+  .focus-tablist,
+  .focus-context,
+  .focus-empty-state {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .focus-tablist {
+    padding: 0.35rem;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+  }
+
+  .focus-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    min-width: 0;
+    flex: 1 1 10rem;
+    padding: 0.72rem 0.9rem;
+    border: 1px solid transparent;
+    border-radius: 0.9rem;
+    background: transparent;
+    color: var(--text-soft);
+    font: inherit;
+    font-weight: 600;
+    transition:
+      transform 140ms var(--ease-soft),
+      background 180ms var(--ease-soft),
+      border-color 180ms var(--ease-soft),
+      color 180ms var(--ease-soft),
+      box-shadow 180ms var(--ease-soft);
+    cursor: pointer;
+  }
+
+  .focus-tab strong {
+    color: inherit;
+    font-size: 0.82rem;
+  }
+
+  .focus-tab:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--surface-high) 72%, transparent);
+  }
+
+  .focus-tab.active {
+    color: var(--text);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.04),
+      0 10px 18px rgba(0,0,0,0.08);
+  }
+
+  .focus-summary {
+    color: var(--text-soft);
+    line-height: 1.5;
+  }
+
+  .focus-queue {
+    gap: 0.8rem;
+  }
+
+  .focus-empty-state {
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    border: 1px dashed var(--border);
+    background: var(--surface-soft);
+  }
+
   .topic-button {
     display: grid;
     gap: 0.45rem;
@@ -2219,6 +2372,14 @@
 
   .topic-button.weakness {
     background: color-mix(in srgb, var(--color-orange-dim) 48%, var(--surface-soft));
+  }
+
+  .topic-button.exam {
+    background: color-mix(in srgb, var(--color-blue-dim) 42%, var(--surface-soft));
+  }
+
+  .topic-button.library {
+    background: color-mix(in srgb, var(--color-purple-dim) 34%, var(--surface-soft));
   }
 
   .topic-button.selected {
@@ -2373,9 +2534,15 @@
       grid-template-columns: 1fr;
     }
 
+    .focus-tablist,
+    .focus-empty-state,
     .revision-outlook-header,
     .revision-outlook-countdown {
       width: 100%;
+    }
+
+    .focus-tab {
+      flex-basis: calc(50% - 0.4rem);
     }
 
     .revision-outlook-header {
@@ -2422,6 +2589,16 @@
       grid-auto-columns: min(15rem, 78vw);
       overflow-x: auto;
       scrollbar-width: none;
+    }
+
+    .focus-tablist {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .focus-tab {
+      min-width: 0;
+      flex-basis: auto;
     }
 
     .queue-list::-webkit-scrollbar {
