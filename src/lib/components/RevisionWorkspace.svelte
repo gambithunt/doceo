@@ -32,6 +32,7 @@
   export let state: AppState;
 
   type RevisionSessionMode = 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
+  type RevisionOutlookStatTone = 'teal' | 'yellow' | 'purple' | 'blue' | 'green';
 
   const revisionModes: Array<{
     mode: RevisionSessionMode;
@@ -106,6 +107,10 @@
   $: weakTopicCount = state.revisionTopics.filter((topic) => topic.confidenceScore < 0.55).length;
   $: calibrationGapCount = state.revisionTopics.filter((topic) => Math.abs(topic.calibration.confidenceGap) >= 0.22).length;
   $: fragileTopicCount = state.revisionTopics.filter((topic) => topic.retentionStability <= 0.5 || topic.forgettingVelocity >= 0.58).length;
+  $: hasSessionFocus = Boolean(revisionSession);
+  $: upcomingExamInfo = getUpcomingExamInfo();
+  $: outlookPlans = sortedRevisionPlans.slice(0, 4);
+  $: outlookStats = buildRevisionOutlookStats();
 
   function seedPlannerFields(): void {
     plannerSubjectId = state.revisionPlan.subjectId || state.ui.selectedSubjectId || state.curriculum.subjects[0]?.id || '';
@@ -142,6 +147,110 @@
     }
 
     return `Due in ${diff} days`;
+  }
+
+  function formatRevisionLessonLabel(topic: RevisionTopic | null): string | null {
+    if (!topic) {
+      return null;
+    }
+
+    const lessonSession = state.lessonSessions.find((session) => session.id === topic.lessonSessionId);
+
+    if (!lessonSession) {
+      return null;
+    }
+
+    const lastActive = new Date(lessonSession.lastActiveAt);
+
+    if (Number.isNaN(lastActive.getTime())) {
+      return `From your ${lessonSession.subject} lesson`;
+    }
+
+    return `From your ${lessonSession.subject} lesson on ${lastActive.toLocaleDateString()}`;
+  }
+
+  function getUpcomingExamInfo(): { examName: string; subjectName: string; daysLabel: string } | null {
+    if (activeRevisionPlan) {
+      const timing = formatPlanTiming(activeRevisionPlan.examDate).replace(/^Exam\s+/i, '');
+      return {
+        examName: activeRevisionPlan.examName || 'Upcoming exam',
+        subjectName: activeRevisionPlan.subjectName,
+        daysLabel: timing
+      };
+    }
+
+    if (homeModel.nearestExam) {
+      const subjectName =
+        availableSubjects.find((item) => item.id === homeModel.nearestExam?.subjectId)?.name ?? 'Subject';
+
+      return {
+        examName: 'Upcoming exam',
+        subjectName,
+        daysLabel: `${homeModel.nearestExam.daysUntilExam} day${homeModel.nearestExam.daysUntilExam === 1 ? '' : 's'}`
+      };
+    }
+
+    return null;
+  }
+
+  function getUpcomingExamDays(): number | null {
+    if (activeRevisionPlan) {
+      const examDate = new Date(activeRevisionPlan.examDate);
+
+      if (!Number.isNaN(examDate.getTime())) {
+        return Math.max(0, Math.round((examDate.getTime() - Date.now()) / 86400000));
+      }
+    }
+
+    if (homeModel.nearestExam) {
+      return homeModel.nearestExam.daysUntilExam;
+    }
+
+    return null;
+  }
+
+  function getRevisionOutlookMessage(): string {
+    const daysUntilExam = getUpcomingExamDays();
+
+    if (daysUntilExam === null) {
+      return 'Set an exam target and Doceo will turn this into a clearer revision runway.';
+    }
+
+    if (daysUntilExam <= 7) {
+      return 'This one is close now. Keep the plan tight and rescue the weak spots first.';
+    }
+
+    if (daysUntilExam <= 21) {
+      return 'This exam is moving into focus. Keep the rhythm steady so the pressure stays manageable.';
+    }
+
+    return 'There is still runway here. Start early and let the strong recall sessions compound before the pressure hits.';
+  }
+
+  function buildRevisionOutlookStats(): Array<{ label: string; value: string; tone: RevisionOutlookStatTone }> {
+    const stats: Array<{ label: string; value: string; tone: RevisionOutlookStatTone }> = [];
+
+    if (dueTodayCount > 0) {
+      stats.push({ label: 'Ready today', value: String(dueTodayCount), tone: 'yellow' });
+    }
+
+    if (weakTopicCount > 0) {
+      stats.push({ label: 'Needs rescue', value: String(weakTopicCount), tone: 'teal' });
+    }
+
+    if (calibrationGapCount > 0) {
+      stats.push({ label: 'Confidence drift', value: String(calibrationGapCount), tone: 'purple' });
+    }
+
+    if (fragileTopicCount > 0) {
+      stats.push({ label: 'Fragile memory', value: String(fragileTopicCount), tone: 'blue' });
+    }
+
+    if (stats.length === 0) {
+      stats.push({ label: 'Revision state', value: 'Calm and ready', tone: 'green' });
+    }
+
+    return stats;
   }
 
   function openPlanner(): void {
@@ -581,27 +690,67 @@
   }
 </script>
 
-<section class="workspace">
-  <header class="section-header">
-    <div>
-      <p class="eyebrow">Revision</p>
-      <h2>Recall first, then tighten the gaps</h2>
-      <p>Do the most important work first, then let Doceo narrow the next gap.</p>
-    </div>
-    <div class="header-actions">
-      <button type="button" class="secondary action-btn" onclick={openPlanner}>Build my plan</button>
-      <button type="button" class="secondary action-btn" onclick={() => appState.generateRevisionPlan()}>
-        Refresh plan
-      </button>
-    </div>
-  </header>
+<section class="workspace" class:session-focus={hasSessionFocus}>
+  {#if !state.ui.showRevisionPlanner && upcomingExamInfo}
+    <section class="panel revision-outlook-panel">
+      <div class="revision-outlook-main">
+        <div class="revision-outlook-header">
+          <div class="revision-outlook-copy">
+            <p class="eyebrow">On The Horizon</p>
+            <h2>{upcomingExamInfo.examName}</h2>
+            <p class="revision-outlook-subject">{upcomingExamInfo.subjectName} revision path</p>
+          </div>
+          <div class="revision-outlook-countdown">
+            <span>Time left</span>
+            <strong>{upcomingExamInfo.daysLabel}</strong>
+          </div>
+        </div>
 
-  {#if state.ui.showRevisionPlanner}
-    <section class="panel planner-panel">
-      <div class="panel-header">
+        <p class="build-plan-summary revision-outlook-summary">{getRevisionOutlookMessage()}</p>
+
+        <div class="revision-outlook-stats" aria-label="Revision signals">
+          {#each outlookStats as stat}
+            <article class={`revision-signal-card tone-${stat.tone}`}>
+              <span>{stat.label}</span>
+              <strong>{stat.value}</strong>
+            </article>
+          {/each}
+        </div>
+      </div>
+
+      {#if outlookPlans.length > 0}
+        <div class="revision-outlook-side">
+          <div class="revision-outlook-side-header">
+            <p class="eyebrow">On Deck</p>
+            <small>{outlookPlans.length} target{outlookPlans.length === 1 ? '' : 's'}</small>
+          </div>
+          <div class="revision-plan-preview-grid" aria-label="Upcoming revision plans">
+            {#each outlookPlans as plan, index}
+              <article class={`revision-plan-preview tone-${index % 4}`}>
+                <div class="revision-plan-preview-topline">
+                  <strong>{plan.examName}</strong>
+                  {#if activeRevisionPlan?.id === plan.id}
+                    <span class="preview-badge">Current</span>
+                  {/if}
+                </div>
+                <span>{plan.subjectName}</span>
+                <p>{formatPlanTiming(plan.examDate)}</p>
+              </article>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </section>
+  {/if}
+
+  <section class="panel build-plan-panel">
+    {#if state.ui.showRevisionPlanner}
+      <div class="panel-header build-plan-header">
         <div>
-          <p class="eyebrow">Build My Plan</p>
-          <h3>Set the next exam and let Doceo shape the revision load</h3>
+          <h2>Build a revision plan</h2>
+          <p class="build-plan-summary">
+            Set the next exam and let revision follow it clearly.
+          </p>
         </div>
         <button type="button" class="secondary action-btn" onclick={closePlanner}>Cancel</button>
       </div>
@@ -731,23 +880,32 @@
       <div class="actions">
         <button type="button" class="action-btn" onclick={submitPlanner}>Generate plan</button>
       </div>
-    </section>
-  {/if}
+    {:else}
+      <div class="build-plan-shell">
+        <div class="build-plan-copy">
+          <h3>Build your next revision path</h3>
+          <p class="build-plan-summary">
+            Choose the exam, and Doceo will organise what to revise next.
+          </p>
+        </div>
+
+        <div class="build-plan-actions">
+          <button type="button" class="action-btn build-plan-cta" onclick={openPlanner}>Build revision</button>
+        </div>
+      </div>
+    {/if}
+  </section>
 
   <section class="panel plans-panel">
     <div class="panel-header">
       <div>
-        <p class="eyebrow">Revision Plans</p>
-        <h3>Your exam plans</h3>
+        <h3>Revision Plans</h3>
+        <p class="plans-summary">Saved plans you can launch directly into revision.</p>
       </div>
       <small>{sortedRevisionPlans.length} saved</small>
     </div>
 
     {#if sortedRevisionPlans.length > 0}
-      <p class="plans-summary">
-        Pick one plan to set the current exam context, then use the revision flow below.
-      </p>
-
       <div class="plan-grid">
         {#each sortedRevisionPlans as plan}
           <article
@@ -796,41 +954,30 @@
   </section>
 
   {#if homeModel.hero}
-    <section class="hero-card">
+    <section class="hero-card revise-now-card">
       <div class="hero-copy">
-        <p class="eyebrow">Revise This Now</p>
+        <p class="eyebrow">Next Revision</p>
         <h3>{homeModel.hero.topic.topicTitle}</h3>
-        <p>{homeModel.hero.summary}</p>
+        <p class="hero-support">{homeModel.hero.summary}</p>
+        {#if formatRevisionLessonLabel(homeModel.hero.topic)}
+          <p class="revision-source-note">{formatRevisionLessonLabel(homeModel.hero.topic)}</p>
+        {/if}
         <div class="hero-meta">
           <span class="hero-pill">{homeModel.hero.reason}</span>
           <span class="hero-pill subdued">{formatDueLabel(homeModel.hero.topic.nextRevisionAt)}</span>
+          <span class="hero-pill subdued">{homeModel.hero.suggestedMode.replace('_', ' ')}</span>
           {#if homeModel.nearestExam}
             <span class="hero-pill subdued">
               Exam in {homeModel.nearestExam.daysUntilExam} day{homeModel.nearestExam.daysUntilExam === 1 ? '' : 's'}
             </span>
           {/if}
+          {#if activeRevisionPlan}
+            <span class="hero-pill subdued">From {activeRevisionPlan.examName}</span>
+          {/if}
         </div>
       </div>
 
-        <div class="hero-side">
-          <div class="hero-stats">
-          <article class="stat-card">
-            <strong>{dueTodayCount}</strong>
-            <span>Due now</span>
-          </article>
-          <article class="stat-card">
-            <strong>{weakTopicCount}</strong>
-            <span>Weak topics</span>
-          </article>
-          <article class="stat-card">
-            <strong>{calibrationGapCount}</strong>
-            <span>Calibration gaps</span>
-          </article>
-          <article class="stat-card">
-            <strong>{fragileTopicCount}</strong>
-            <span>Fragile topics</span>
-          </article>
-        </div>
+      <div class="hero-side">
         <div class="hero-actions">
           <button
             type="button"
@@ -844,12 +991,11 @@
               Shuffle top topics
             </button>
           {/if}
-          <button type="button" class="secondary action-btn" onclick={openPlanner}>Build my plan</button>
         </div>
       </div>
     </section>
 
-    <div class="content-grid">
+    <div class="content-grid" class:session-focus-grid={hasSessionFocus}>
       <aside class="queue-stack">
         <section class="panel">
           <div class="panel-header">
@@ -1245,19 +1391,27 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  .workspace > .section-header {
+  .workspace > .revision-outlook-panel {
     animation: section-enter 0.35s var(--ease-soft) both;
+    animation-delay: 0.02s;
+  }
+  .workspace > .build-plan-panel {
+    animation: section-enter 0.35s var(--ease-soft) both;
+    animation-delay: 0.04s;
+  }
+  .workspace > .plans-panel {
+    animation: section-enter 0.35s var(--ease-soft) both;
+    animation-delay: 0.07s;
   }
   .workspace > .hero-card {
     animation: section-enter 0.35s var(--ease-soft) both;
-    animation-delay: 0.06s;
+    animation-delay: 0.1s;
   }
   .workspace > .content-grid {
     animation: section-enter 0.35s var(--ease-soft) both;
-    animation-delay: 0.12s;
+    animation-delay: 0.16s;
   }
 
-  .section-header,
   .hero-card,
   .panel-header,
   .topic-row,
@@ -1270,8 +1424,8 @@
     gap: 0.75rem;
   }
 
-  .header-actions,
-  .hero-actions {
+  .hero-actions,
+  .build-plan-actions {
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
@@ -1283,7 +1437,24 @@
     gap: 1rem;
   }
 
-  .section-header,
+  .content-grid.session-focus-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .content-grid.session-focus-grid .queue-stack {
+    display: none;
+  }
+
+  .content-grid.session-focus-grid .recall-panel {
+    min-height: calc(100vh - 12rem);
+    border-radius: 1.75rem;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-high) 42%, var(--surface)), var(--surface));
+    box-shadow:
+      0 24px 48px rgba(0,0,0,0.22),
+      inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+
   .panel-header,
   .topic-row {
     justify-content: space-between;
@@ -1291,6 +1462,8 @@
   }
 
   .hero-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.9fr);
     justify-content: space-between;
     align-items: stretch;
     border: 1px solid var(--border-strong);
@@ -1301,13 +1474,42 @@
     padding: 1.35rem;
   }
 
+  .revision-outlook-panel,
+  .build-plan-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: 1.6rem;
+    box-shadow:
+      0 10px 24px rgba(15, 23, 42, 0.07),
+      0 24px 56px rgba(15, 23, 42, 0.04);
+  }
+
+  .revision-outlook-panel {
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 100%, white), transparent 40%),
+      radial-gradient(circle at 85% 20%, color-mix(in srgb, var(--accent-dim) 95%, white), transparent 34%),
+      radial-gradient(circle at bottom right, color-mix(in srgb, var(--color-purple-dim) 82%, white), transparent 44%),
+      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 28%, var(--surface-strong)), color-mix(in srgb, var(--surface) 94%, white));
+  }
+
+  .build-plan-panel {
+    background:
+      radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.72), transparent 24%),
+      radial-gradient(circle at 88% 78%, color-mix(in srgb, var(--accent-dim) 68%, transparent), transparent 28%),
+      linear-gradient(135deg, #FAF3E9, color-mix(in srgb, #FAF3E9 82%, white));
+  }
+
   .hero-copy,
+  .revision-outlook-main,
+  .revision-outlook-copy,
+  .revision-outlook-side,
   .hero-side,
   .panel,
   .feedback-card,
   .stat-card,
   .plans-panel,
-  .planner-panel,
+  .build-plan-panel,
   .starter-card,
   .mode-list,
   .calibration-grid,
@@ -1321,27 +1523,277 @@
     max-width: 42rem;
   }
 
+  .build-plan-shell {
+    display: grid;
+    gap: 1rem;
+    align-items: center;
+    grid-template-columns: minmax(0, 1.5fr) auto;
+  }
+
+  .revision-outlook-panel {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.95fr);
+    align-items: center;
+  }
+
+  .revision-outlook-main {
+    gap: 1rem;
+    padding: 1.15rem;
+    border-radius: 1.3rem;
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--color-blue-dim) 68%, white), color-mix(in srgb, var(--accent-dim) 72%, white));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.55),
+      var(--shadow-sm);
+  }
+
+  .revision-outlook-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .revision-outlook-copy {
+    display: grid;
+    gap: 0.45rem;
+    max-width: 28rem;
+  }
+
+  .revision-outlook-subject {
+    color: var(--text-soft);
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .revision-outlook-countdown {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 9rem;
+    padding: 0.95rem 1rem;
+    border-radius: 1.2rem;
+    background: rgba(255,255,255,0.68);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.55),
+      var(--shadow-sm);
+  }
+
+  .revision-outlook-countdown span {
+    color: var(--text-soft);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .revision-outlook-countdown strong {
+    font-size: 1.35rem;
+    line-height: 1.1;
+  }
+
+  .revision-outlook-summary {
+    max-width: 36rem;
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
+  .revision-outlook-stats {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .revision-signal-card {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 8.5rem;
+    padding: 0.85rem 1rem;
+    border-radius: 1.1rem;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.5),
+      var(--shadow-sm);
+  }
+
+  .revision-signal-card span {
+    color: var(--text-soft);
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .revision-signal-card strong {
+    font-size: 1.15rem;
+    line-height: 1.15;
+  }
+
+  .revision-signal-card.tone-teal {
+    background: color-mix(in srgb, var(--accent-dim) 92%, white);
+  }
+
+  .revision-signal-card.tone-yellow {
+    background: color-mix(in srgb, var(--color-yellow-dim) 92%, white);
+  }
+
+  .revision-signal-card.tone-purple {
+    background: color-mix(in srgb, var(--color-purple-dim) 92%, white);
+  }
+
+  .revision-signal-card.tone-blue {
+    background: color-mix(in srgb, var(--color-blue-dim) 92%, white);
+  }
+
+  .revision-signal-card.tone-green {
+    background: color-mix(in srgb, var(--color-green-dim) 92%, white);
+  }
+
+  .revision-outlook-side {
+    gap: 0.8rem;
+  }
+
+  .revision-outlook-side-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .revision-plan-preview-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .revision-plan-preview {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.95rem 1rem;
+    border-radius: 1.1rem;
+    box-shadow: var(--shadow-sm);
+    transition:
+      transform 150ms var(--ease-soft),
+      box-shadow 180ms var(--ease-soft);
+  }
+
+  .revision-plan-preview:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .revision-plan-preview strong {
+    font-size: 0.98rem;
+    line-height: 1.25;
+  }
+
+  .revision-plan-preview span,
+  .revision-plan-preview p {
+    color: var(--text-soft);
+    font-size: 0.84rem;
+  }
+
+  .revision-plan-preview.tone-0 {
+    background: color-mix(in srgb, var(--color-blue-dim) 90%, white);
+  }
+
+  .revision-plan-preview.tone-1 {
+    background: color-mix(in srgb, var(--color-purple-dim) 90%, white);
+  }
+
+  .revision-plan-preview.tone-2 {
+    background: color-mix(in srgb, var(--color-yellow-dim) 90%, white);
+  }
+
+  .revision-plan-preview.tone-3 {
+    background: color-mix(in srgb, var(--accent-dim) 90%, white);
+  }
+
+  .revision-plan-preview-topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 0.75rem;
+  }
+
+  .preview-badge {
+    padding: 0.26rem 0.55rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.72);
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .build-plan-copy {
+    display: grid;
+    gap: 0.55rem;
+    max-width: 34rem;
+  }
+
+  .build-plan-copy h3 {
+    font-size: clamp(1.5rem, 1.2rem + 0.9vw, 2rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    max-width: 18ch;
+  }
+
+  .build-plan-header {
+    align-items: end;
+  }
+
+  .build-plan-summary {
+    color: var(--text-soft);
+    font-size: 1.02rem;
+    line-height: 1.55;
+  }
+
+  .build-plan-panel .build-plan-summary {
+    max-width: 36rem;
+  }
+
+  .build-plan-actions {
+    align-items: center;
+    justify-self: end;
+  }
+
+  .build-plan-cta {
+    min-width: 11rem;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
   .hero-side {
-    min-width: 13rem;
-    align-content: space-between;
-    justify-items: end;
+    min-width: min(100%, 21rem);
+    align-content: start;
+    justify-items: stretch;
   }
 
   .hero-stats {
     flex-wrap: wrap;
-    justify-content: end;
+    justify-content: flex-start;
   }
 
   .stat-card {
-    min-width: 6.2rem;
-    padding: 0.85rem 1rem;
+    min-width: 6rem;
+    padding: 0.85rem 0.95rem;
     border-radius: 1rem;
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-high) 70%, transparent), color-mix(in srgb, var(--surface) 88%, transparent));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.03),
+      0 10px 18px rgba(0,0,0,0.12);
   }
 
   .stat-card strong {
     font-size: 1.35rem;
+  }
+
+  .hero-support {
+    font-size: 1.05rem;
+    line-height: 1.5;
+  }
+
+  .revision-source-note {
+    color: var(--text-soft);
+    font-size: 0.88rem;
   }
 
   .hero-pill {
@@ -1376,6 +1828,10 @@
     padding: 1.2rem;
   }
 
+  .revise-now-card {
+    grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.9fr);
+  }
+
   .plan-grid {
     display: grid;
     gap: 0.9rem;
@@ -1392,6 +1848,23 @@
     border-radius: 1.1rem;
     border: 1px solid var(--border);
     background: var(--surface-soft);
+    transition:
+      transform 150ms var(--ease-soft),
+      border-color 150ms var(--ease-soft),
+      box-shadow 180ms var(--ease-soft),
+      background 180ms var(--ease-soft);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.02),
+      0 8px 20px rgba(0,0,0,0.08);
+  }
+
+  .plan-card:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+    background: color-mix(in srgb, var(--surface-high) 55%, var(--surface-soft));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.03),
+      0 12px 26px rgba(0,0,0,0.14);
   }
 
   .plan-card.active-plan {
@@ -1730,7 +2203,18 @@
     padding: 0.95rem 1rem;
     text-align: left;
     font: inherit;
+    transition:
+      transform 150ms var(--ease-soft),
+      border-color 150ms var(--ease-soft),
+      background 180ms var(--ease-soft),
+      box-shadow 180ms var(--ease-soft);
     cursor: pointer;
+  }
+
+  .topic-button:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    box-shadow: 0 12px 24px rgba(0,0,0,0.12);
   }
 
   .topic-button.weakness {
@@ -1770,13 +2254,43 @@
     color: var(--accent-contrast);
     padding: 0.8rem 1.15rem;
     font: inherit;
+    font-weight: 600;
+    transition:
+      transform 140ms var(--ease-soft),
+      box-shadow 180ms var(--ease-soft),
+      background 180ms var(--ease-soft),
+      border-color 180ms var(--ease-soft);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.05),
+      0 10px 22px color-mix(in srgb, var(--accent) 18%, transparent);
     cursor: pointer;
+  }
+
+  .action-btn:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 14px 28px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .action-btn:active {
+    transform: translateY(0) scale(0.985);
+  }
+
+  .action-btn:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent),
+      0 12px 24px color-mix(in srgb, var(--accent) 20%, transparent);
   }
 
   .secondary {
     background: var(--surface-soft);
     color: var(--text);
     border: 1px solid var(--border);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.03),
+      0 8px 18px rgba(0,0,0,0.08);
   }
 
   .feedback-card :global(p),
@@ -1806,8 +2320,21 @@
 
   @media (max-width: 980px) {
     .content-grid,
-    .hero-card {
+    .hero-card,
+    .revision-outlook-panel {
       grid-template-columns: 1fr;
+    }
+
+    .build-plan-shell {
+      grid-template-columns: 1fr;
+    }
+
+    .revision-plan-preview-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .build-plan-actions {
+      justify-self: start;
     }
 
     .hero-card {
@@ -1834,16 +2361,29 @@
       gap: 0.85rem;
     }
 
-    .section-header,
     .hero-meta,
     .actions,
-    .header-actions,
-    .hero-actions {
+    .hero-actions,
+    .build-plan-actions {
       flex-direction: column;
       align-items: flex-start;
     }
 
     .planner-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .revision-outlook-header,
+    .revision-outlook-countdown {
+      width: 100%;
+    }
+
+    .revision-outlook-header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .revision-plan-preview-grid {
       grid-template-columns: 1fr;
     }
 

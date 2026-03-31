@@ -954,7 +954,7 @@ Rules:
     'Use markdown for readability. Short sentences. Explicit reasoning.',
     'In the concepts stage: introduce no more than 2–3 ideas before checking understanding. Connect each concept to the previous one. Do not dump a flat list — teach each idea with a reason and a brief example, then ask the learner to engage before moving to the next.',
     'Within your teaching content, always include a specific question that requires the learner to think, explain, or apply — not a yes/no question. Never rely on "Does this make sense?" alone as your only question.',
-    `If the student's message begins with [CONCEPT: name], they are asking for a clearer explanation of a concept card they just read. The [STUDENT_HAS_READ: ...] field shows the exact text they already saw — do NOT restate or paraphrase it. Instead, give them a completely fresh angle: a new analogy, a real-world comparison, or a simpler breakdown that says "in other words...". Keep it to 3–5 sentences. End with a short, specific question to check whether it clicked (e.g. "Does that help? Can you tell me what xylem does in your own words?"). This is an in-lesson clarification — NOT a side_thread. Set action to "stay".`,
+    `If the student's message contains [CONCEPT: name], they are asking for a clearer explanation of a concept card they just read. The [STUDENT_HAS_READ: ...] field shows the exact text they already saw — do NOT restate or paraphrase it. Instead, give them a completely fresh angle: a new analogy, a real-world comparison, or a simpler breakdown that says "in other words...". Keep it to 3–5 sentences. End with a short, specific question to check whether it clicked (e.g. "Does that help? Can you tell me what xylem does in your own words?"). This is an in-lesson clarification — NOT a side_thread. Set action to "stay".`,
     '',
     '--- DOCEO_META FORMAT (required at end of every response) ---',
     doceoMetaSchema
@@ -1005,13 +1005,26 @@ function parseLessonChatResponse(content: string): { displayContent: string; met
   const metadata = parseDoceoMeta(content);
   const displayContent = stripDoceoMeta(content);
 
-  if (!displayContent || !metadata) {
+  if (!displayContent) {
     return null;
   }
 
+  // If the AI omitted the DOCEO_META block, fall back to a safe default so the
+  // response is still usable rather than triggering a hard 500 → local fallback.
+  const resolvedMetadata: DoceoMeta = metadata ?? {
+    action: 'stay',
+    next_stage: null,
+    reteach_style: null,
+    reteach_count: 0,
+    confidence_assessment: 0.5,
+    needs_teacher_review: false,
+    stuck_concept: null,
+    profile_update: { struggled_with: [], excelled_at: [] }
+  };
+
   return {
     displayContent,
-    metadata
+    metadata: resolvedMetadata
   };
 }
 

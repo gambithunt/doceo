@@ -4,19 +4,6 @@ Doceo should feel like the smartest person you have ever met — someone who kno
 
 The entire product runs on one shared design language. Change the tokens once, change everything. Every screen — onboarding, dashboard, lesson, revision — must feel like it belongs to the same living system.
 
-> **Pending color system update — March 2026**
-> A color revision has been agreed but not yet implemented in code. Key changes:
-> - **Accent**: Electric lime green (`#4ade80`) → **Teal** (`#14B8A6` dark / `#0D9488` light)
-> - **Light mode background**: Periwinkle (`#f0f4ff`) → **Neutral soft canvas** (`#F5F6F7`)
-> - **Primary buttons**: Teal fill (not black, not lime green)
-> - **Light mode cards**: Adopt semantic pastel variants (green=done, blue=info, yellow=task, purple=content)
-> - **Shadow + pill system**: Lighter, softer — aligned with `docs/workstreams/design-color-01.md`
-> - **Dark mode**: Navy base and surfaces preserved; only accent changes
-> - **Gamification colors**: Unchanged (orange, gold, purple)
->
-> Full decisions documented in [`docs/workstreams/design-color-01.md`](workstreams/design-color-01.md) under "Doceo Adaptation Decisions".
-> When implementing, update all token values in `src/app.css` before touching components.
-
 ---
 
 ## The Personality
@@ -60,10 +47,10 @@ All colors are defined as CSS custom properties on `:root`. Never hardcode hex v
 --color-text-soft:    #94a3b8   /* secondary / metadata */
 --color-text-muted:   #64748b   /* placeholder / disabled */
 
-/* Accent — electric lime (primary CTA, progress, active states) */
---color-accent:       #4ade80
---color-accent-dim:   rgba(74,222,128,0.12)
---color-accent-glow:  rgba(74,222,128,0.28)
+/* Accent — teal (primary CTA, progress, active states) */
+--color-accent:       #14B8A6
+--color-accent-dim:   rgba(20,184,166,0.12)
+--color-accent-glow:  rgba(20,184,166,0.28)
 
 /* Subject-tone accents — use on subject icons and tinted surfaces */
 --color-blue:         #60a5fa
@@ -83,7 +70,7 @@ All colors are defined as CSS custom properties on `:root`. Never hardcode hex v
 --color-badge:        #a78bfa   /* badge purple */
 
 /* Semantic */
---color-success:      #4ade80
+--color-success:      #14B8A6
 --color-warning:      #fbbf24
 --color-error:        #f87171
 ```
@@ -92,22 +79,22 @@ All colors are defined as CSS custom properties on `:root`. Never hardcode hex v
 
 ```css
 /* Base surfaces */
---color-bg:           #f0f4ff   /* soft periwinkle page base — warm, not sterile white */
---color-surface:      #ffffff   /* card surface */
---color-surface-mid:  #eef2ff   /* elevated card / modal */
---color-surface-high: #e4e9ff   /* highlighted tile / hover state */
---color-border:       rgba(0,0,0,0.08)
---color-border-strong:rgba(0,0,0,0.14)
+--color-bg:           #F5F6F7   /* soft neutral canvas — warm, not sterile white */
+--color-surface:      #FFFFFF   /* card surface */
+--color-surface-mid:  #FAFAFA   /* elevated card / modal */
+--color-surface-high: #F0F1F2   /* highlighted tile / hover state */
+--color-border:       rgba(0,0,0,0.06)
+--color-border-strong:rgba(0,0,0,0.10)
 
 /* Text */
 --color-text:         #0f172a   /* near-black — strong contrast */
 --color-text-soft:    #475569   /* secondary labels */
 --color-text-muted:   #94a3b8   /* placeholder / disabled */
 
-/* Accent — same lime, adjusted glow opacity for light backgrounds */
---color-accent:       #16a34a   /* darker green so it stays readable on white */
---color-accent-dim:   rgba(22,163,74,0.10)
---color-accent-glow:  rgba(22,163,74,0.20)
+/* Accent — teal, deeper value for contrast on light backgrounds */
+--color-accent:       #0D9488   /* teal-600 — readable on white, ~4.7:1 */
+--color-accent-dim:   rgba(13,148,136,0.10)
+--color-accent-glow:  rgba(13,148,136,0.20)
 
 /* Subject-tone accents — slightly deeper so they read on light surfaces */
 --color-blue:         #2563eb
@@ -127,19 +114,19 @@ All colors are defined as CSS custom properties on `:root`. Never hardcode hex v
 --color-badge:        #7c3aed   /* deeper purple */
 
 /* Semantic */
---color-success:      #16a34a
+--color-success:      #0D9488
 --color-warning:      #d97706
 --color-error:        #dc2626
 
-/* Shadows — lighter and crisper on light backgrounds */
---shadow-sm:          0 1px 3px rgba(0,0,0,0.10);
---shadow-md:          0 4px 12px rgba(0,0,0,0.12);
---shadow-lg:          0 8px 24px rgba(0,0,0,0.14);
---shadow-glow-accent: 0 0 12px rgba(22,163,74,0.20);
+/* Shadows — lighter and softer on light backgrounds */
+--shadow-sm:          0 2px 8px rgba(0,0,0,0.04);
+--shadow-md:          0 4px 12px rgba(0,0,0,0.07);
+--shadow-lg:          0 8px 20px rgba(0,0,0,0.09);
+--shadow-glow-accent: 0 0 12px rgba(13,148,136,0.20);
 --shadow-glow-blue:   0 0 12px rgba(37,99,235,0.18);
 ```
 
-Light mode is not just a token inversion. The accent shifts from neon lime (`#4ade80`) to a deeper forest green (`#16a34a`) so CTAs stay readable on white surfaces. Subject-tone colors deepen for the same reason. Shadows become lighter and crisper — depth is created by border and edge definition rather than dark shadow spread.
+Light mode is not just a token inversion. The background shifts from periwinkle (`#f0f4ff`) to a warm neutral canvas (`#F5F6F7`). The accent shifts from dark-mode teal (`#14B8A6`) to a deeper teal-600 (`#0D9488`) so CTAs stay readable on white surfaces. Subject-tone colors deepen for the same reason. Shadows become lighter and softer — depth is created by shadow spread and card separation rather than harsh borders.
 
 ### Radius
 
@@ -275,31 +262,50 @@ Cards never use bright flat fills. Accent color appears as a tinted border, a gl
 
 ### Primary Button (`.btn-primary`)
 
-Pill-shaped. Electric lime. Bold label. The one action that matters on a surface.
+Pill-shaped. Teal. Bold label. The one action that matters on a surface.
 
 ```css
 .btn-primary {
   background: var(--color-accent);
-  color: #0a1a10;         /* dark text on lime */
+  color: #042f2e;         /* very dark teal — high contrast on teal fill */
   font-weight: 700;
   border-radius: var(--radius-pill);
   padding: 0.65rem 1.4rem;
   border: none;
   cursor: pointer;
-  transition: box-shadow 0.15s ease, transform 0.1s ease;
+  transition: transform 180ms ease-out, box-shadow 180ms ease-out;
 }
 
+/* Hover — lift + teal spread glow */
 .btn-primary:hover {
-  box-shadow: var(--shadow-glow-accent);
-  transform: translateY(-1px);
+  box-shadow: 0 0 16px rgba(20,184,166,0.30);
+  transform: translateY(-2px);
 }
 
+/* Press — compress + glow collapses. Snap-back on release uses elastic overshoot */
 .btn-primary:active {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.975);
+  box-shadow: none;
+  transition: transform 80ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 80ms ease;
+}
+
+/* Loading — dimmed fill, label fades, spinner appears inline */
+.btn-primary--loading {
+  background: rgba(20,184,166,0.5);
+  transform: scale(0.985);
+  cursor: wait;
+}
+
+/* Success — brief brighter pulse, then settles. One beat only. */
+.btn-primary--success {
+  background: #2DD4BF;
+  transform: scale(1.02);
+  transition: transform 120ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 ```
 
-One primary button per surface. If two actions compete, demote one to secondary.
+One primary button per surface. If two actions compete, demote one to secondary. In light mode, use `color: #ffffff` — white passes AA contrast on `#0D9488`.
 
 ### Secondary Button (`.btn-secondary`)
 
@@ -444,6 +450,62 @@ Used in sidebar or right rail for streak, mastery %, XP. Bold number, short labe
 }
 ```
 
+### Semantic Card Variants
+
+Color carries meaning — use these for status context, not decoration. Light mode uses pastel fills; dark mode uses the existing `--color-*-dim` rgba tints.
+
+| Meaning         | Light mode surface | Dark mode surface            |
+|-----------------|--------------------|------------------------------|
+| Completed/done  | `#CFEED6`          | `rgba(20,184,166,0.10)`      |
+| Info/learning   | `#D6EEF6`          | `rgba(96,165,250,0.10)`      |
+| Task/attention  | `#F6E7C9`          | `rgba(251,191,36,0.10)`      |
+| Content/media   | `#E6D6F6`          | `rgba(167,139,250,0.10)`     |
+| Warm/social     | `#F6D6E6`          | `rgba(251,113,133,0.10)`     |
+
+```css
+/* Light mode only — add these under :root[data-theme='light'] */
+.card--done    { background: #CFEED6; }
+.card--info    { background: #D6EEF6; }
+.card--task    { background: #F6E7C9; }
+.card--content { background: #E6D6F6; }
+.card--social  { background: #F6D6E6; }
+
+/* Dark mode equivalents — add these under :root (default dark) */
+.card--done    { background: rgba(20,184,166,0.10); }
+.card--info    { background: rgba(96,165,250,0.10); }
+.card--task    { background: rgba(251,191,36,0.10); }
+.card--content { background: rgba(167,139,250,0.10); }
+.card--social  { background: rgba(251,113,133,0.10); }
+```
+
+When a card transitions into a semantic state (e.g. neutral → completed), crossfade the background over `300ms ease`. Never snap.
+
+### Status Pill (`.pill`)
+
+For status signals: completed, upcoming, locked, in-progress. When a pill changes state, the change should feel earned — not just a color swap.
+
+```css
+.pill {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: background 280ms ease, color 280ms ease;
+}
+
+/* Light mode */
+.pill--success { background: #CFEED6; color: #166534; }
+.pill--neutral { background: #EAEAEA; color: #4B5563; }
+.pill--info    { background: #D6EEF6; color: #1e40af; }
+
+/* Dark mode equivalents use rgba tints + text-soft */
+.pill--success { background: rgba(20,184,166,0.12);  color: var(--color-accent); }
+.pill--neutral { background: var(--color-surface-high); color: var(--color-text-soft); }
+.pill--info    { background: var(--color-blue-dim);  color: var(--color-blue); }
+```
+
+**State transitions**: Neutral → Success crossfades color + background over 280ms, with a subtle `scale(1.05)` pop at midpoint (50ms up, 100ms settle). Success → Neutral reverses with no pop — the absence of celebration is intentional. New pills appearing fade in + `scale(0.85 → 1.0)` over `200ms ease-out`.
+
 ### Input (`.input`)
 
 ```css
@@ -455,9 +517,10 @@ Used in sidebar or right rail for streak, mastery %, XP. Bold number, short labe
   color: var(--color-text);
   font-size: var(--text-base);
   width: 100%;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 160ms ease, box-shadow 200ms ease-out;
 }
 
+/* Focus — border blooms to teal + glow ring expands from 0 outward */
 .input:focus {
   outline: none;
   border-color: var(--color-accent);
@@ -468,6 +531,21 @@ Used in sidebar or right rail for streak, mastery %, XP. Bold number, short labe
   color: var(--color-text-muted);
 }
 ```
+
+Do not animate border width — it causes layout shift. Only animate `border-color` and `box-shadow`.
+
+### Focus Ring (Keyboard Navigation)
+
+The browser default focus ring is replaced with a teal two-ring effect. Applies to all focusable elements.
+
+```css
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent);
+}
+```
+
+The inner gap punches through in the background color, creating a card-surface gap between the element edge and the teal ring. In dark mode: navy gap + teal outer ring = soft aquatic halo. In light mode: white gap + teal-600 = crisp and professional.
 
 ---
 
@@ -561,12 +639,89 @@ The lesson experience is the heart of the product. It should feel like entering 
 
 ## Motion
 
-- Hover: `transform: translateY(-2px)` + shadow lift on interactive cards and tiles
-- CTA hover: glow shadow via `--shadow-glow-accent`
-- Progress bars: width transitions with `cubic-bezier(0.4, 0, 0.2, 1)`
-- Chat messages: fade-in + slight upward slide (`opacity 0→1`, `translateY 6px→0`)
-- Stage transitions: fade through a brief chapter marker
-- No motion that exists purely as decoration. Every animation tells the student something changed.
+No motion that exists purely as decoration. Every animation tells the student something changed.
+
+### Cards — Float and Sink
+
+Cards feel like physical objects on a surface, not painted rectangles.
+
+- **Hover** — `translateY(-3px)` + shadow steps up one level (`shadow-sm → shadow-md`). Duration `200ms ease-out`.
+- **Press** — `translateY(-1px)` + `scale(0.99)`. Shadow drops toward resting. Duration `80ms`.
+- **Release** — springs back with `cubic-bezier(0.22, 1, 0.36, 1)` over `200ms`. The card returns with a small amount of momentum, not just a reversal.
+
+### Teal Glow
+
+```
+Hover glow:   0 0 16px rgba(20,184,166,0.30)
+Focus ring:   0 0 0 3px rgba(20,184,166,0.25)
+Active pulse: 0 0 24px rgba(20,184,166,0.40)  (brief, fades in 80ms)
+```
+
+In dark mode the teal glow against navy creates a soft aquatic luminance. In light mode it reads as precision rather than radiance.
+
+### Progress Bars
+
+Width transitions with `cubic-bezier(0.4, 0, 0.2, 1)`. Do not animate every continuous update — animate at stage boundaries only.
+
+### Chat Messages
+
+Fade-in + slight upward slide: `opacity 0→1`, `translateY 6px→0`. Do not animate mid-render text — only on message appear.
+
+### Stage Transitions
+
+Fade through a brief chapter marker between lesson stages.
+
+### Theme Crossfade (Dark ↔ Light)
+
+When the user toggles the theme, surfaces crossfade rather than snap:
+
+```css
+*, *::before, *::after {
+  transition: background-color 220ms ease, border-color 220ms ease, color 160ms ease;
+}
+```
+
+Do NOT transition: SVG fills (flickers), `box-shadow` on the toggle button (has its own), elements mid-animation.
+
+### Number Count-In on Page Load
+
+Any numeric stat displayed on mount counts up from zero to its final value. Non-negotiable timing: ≤ 500ms total. Easing: `cubic-bezier(0.22, 1, 0.36, 1)` — starts fast, decelerates into the final value. On value change (not initial load): count from old value to new, not from zero. If the user navigates away before the count finishes, snap immediately to final value.
+
+Applies to: streak count, mastery %, XP, lesson completion counts, progress stats, any stat card number.
+Does NOT apply to: body copy numbers, timestamps, table rows, real-time updating counts.
+
+### Gamification Moments
+
+These are the highest-emotion interactions. One beat each — never loop or repeat.
+
+**Streak increment (+1 day):**
+- Streak number counts up digit by digit over `400ms`
+- Brief orange radial pulse from flame icon: `scale 1 → 1.6`, `opacity 1 → 0`, `300ms ease-out`
+- Flame icon short wiggle: `rotate(-10deg → 0)`, 2 cycles × `150ms`
+
+**Lesson completion:**
+- Stage progress rail fills final segment with teal accent
+- Flash of `rgba(20,184,166,0.15)` washes the lesson card: `opacity 0 → 1 → 0`, `600ms`
+- Completion pill pops in (scale + crossfade as described above)
+
+**XP / mastery increase:**
+- Mastery number counts up from old to new value over `600ms ease-out`
+- Gold radial pulse from mastery icon (same pattern as streak, but gold)
+
+### Restrained by Design
+
+These are intentionally kept static. Do not add animation here.
+
+| Element | Reason |
+|---|---|
+| Sidebar nav labels | Text in motion while navigating is disorienting |
+| Chat message stream | Animating mid-render text is distracting |
+| Progress bar during lesson | Continuous updates — animating every tick creates noise |
+| Semantic card backgrounds (non-interactive) | Motion implies interactivity |
+| Error states | Errors need immediate clarity |
+| Lesson stage indicators | Students reference these constantly; movement is confusing |
+
+The contrast between calm static elements and the few expressive interactive ones is what makes the delight land. If everything moves, nothing matters.
 
 ---
 
@@ -576,9 +731,9 @@ Before shipping any screen or component, check every item:
 
 **Visual**
 - [ ] All colors use CSS tokens — no hardcoded hex values
-- [ ] Background is deep navy (dark) or soft blue-white (light), never plain grey
+- [ ] Background is deep navy (dark) or warm neutral canvas `#F5F6F7` (light), never plain grey
 - [ ] Cards use `--color-surface` or `--color-surface-mid`, not white in dark mode
-- [ ] Accent (lime green) is used for the primary CTA only — not scattered decoratively
+- [ ] Accent (teal) is used for the primary CTA only — not scattered decoratively
 - [ ] No bright flat fills. Accent appears as glow, tint, or border.
 
 **Layout**
@@ -615,7 +770,7 @@ The admin panel is a separate design surface from the student-facing app. It is 
 
 ### Theme
 
-Admin forces `data-theme="dark"` on mount via a Svelte `$effect`, restoring the previous theme on unmount. This means the deep navy background, electric lime accent, and dark glass card surfaces are always active in admin. Do not use light mode in admin.
+Admin forces `data-theme="dark"` on mount via a Svelte `$effect`, restoring the previous theme on unmount. This means the deep navy background, teal accent, and dark glass card surfaces are always active in admin. Do not use light mode in admin.
 
 ### Layout
 

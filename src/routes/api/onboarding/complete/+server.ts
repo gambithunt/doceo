@@ -21,6 +21,24 @@ export async function POST({ request }) {
   if (!parsed.success) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
-  const result = await completeOnboarding(parsed.data);
-  return json(result);
+  try {
+    const result = await completeOnboarding(parsed.data);
+    return json(result);
+  } catch (err) {
+    // Supabase may not be reachable (e.g. dev with edge-only runtime).
+    // Fall back to deriving a recommendation from local data so the
+    // client can still complete onboarding without a database.
+    const { getSubjectsByCurriculumAndGrade, getRecommendedSubject, getSelectionMode } = await import(
+      '$lib/data/onboarding'
+    );
+    const { deduplicateSubjects } = await import('$lib/utils/strings');
+    const subjects = getSubjectsByCurriculumAndGrade(parsed.data.curriculumId, parsed.data.gradeId);
+    const customSubjects = deduplicateSubjects(parsed.data.customSubjects);
+    const recommendation = getRecommendedSubject(parsed.data.selectedSubjectIds, customSubjects, subjects);
+    const selectionMode = getSelectionMode(parsed.data.selectedSubjectIds, customSubjects, parsed.data.isUnsure);
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[onboarding/complete] Database unavailable, using local fallback.', err);
+    }
+    return json({ recommendation, selectionMode, subjects });
+  }
 }
