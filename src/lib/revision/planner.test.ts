@@ -68,6 +68,10 @@ describe('buildRevisionPlanFromInput', () => {
 
     expect(result.plan.topics).toEqual(['Fractions', 'Area']);
     expect(result.plan.examName).toBe('Math test');
+    expect(result.plan.subjectName).toBe(state.curriculum.subjects[0]?.name);
+    expect(result.plan.planStyle).toBe('weak_topics');
+    expect(result.plan.status).toBe('active');
+    expect(result.plan.id).toMatch(/^revision-plan-/);
     expect(result.exam.examName).toBe('Math test');
   });
 
@@ -87,6 +91,7 @@ describe('buildRevisionPlanFromInput', () => {
     expect(result.plan.topics.length).toBeGreaterThan(0);
     expect(result.plan.topics).toEqual(subjectTopics);
     expect(result.plan.studyMode).toBe('full_subject');
+    expect(result.plan.planStyle).toBe('full_subject');
   });
 
   it('honors manually selected topics when mode is manual', () => {
@@ -104,5 +109,28 @@ describe('buildRevisionPlanFromInput', () => {
 
     expect(result.plan.topics).toEqual(['Fractions', 'Area']);
     expect(result.plan.studyMode).toBe('manual');
+    expect(result.plan.planStyle).toBe('manual');
+  });
+
+  it('returns a saved-plan record with timestamps and display metadata', () => {
+    const state = createState();
+    const subjectId = state.curriculum.subjects[0].id;
+
+    const result = buildRevisionPlanFromInput(
+      state,
+      {
+        subjectId,
+        examName: 'June exam',
+        examDate: '2026-06-20',
+        mode: 'weak_topics',
+        timeBudgetMinutes: 20
+      },
+      new Date('2026-03-31T08:00:00.000Z')
+    );
+
+    expect(result.plan.createdAt).toBe('2026-03-31T08:00:00.000Z');
+    expect(result.plan.updatedAt).toBe('2026-03-31T08:00:00.000Z');
+    expect(result.plan.timeBudgetMinutes).toBe(20);
+    expect(result.plan.subjectName).toBe(state.curriculum.subjects[0]?.name);
   });
 });

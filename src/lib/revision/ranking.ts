@@ -42,7 +42,26 @@ function differenceInCalendarDays(left: Date, right: Date): number {
   return Math.round((toStartOfDay(left) - toStartOfDay(right)) / 86400000);
 }
 
+function getActiveRevisionPlan(state: AppState) {
+  return (
+    state.revisionPlans.find((plan) => plan.id === state.activeRevisionPlanId) ??
+    state.revisionPlans[0] ??
+    state.revisionPlan
+  );
+}
+
 function getNearestExam(state: AppState, now: Date): RevisionExamSnapshot | null {
+  const activePlan = getActiveRevisionPlan(state);
+  const activePlanDate = new Date(activePlan.examDate);
+
+  if (activePlan && !Number.isNaN(activePlanDate.getTime())) {
+    return {
+      subjectId: activePlan.subjectId,
+      examDate: activePlan.examDate,
+      daysUntilExam: differenceInCalendarDays(activePlanDate, now)
+    };
+  }
+
   const upcomingExam = state.upcomingExams
     .slice()
     .sort((left, right) => new Date(left.examDate).getTime() - new Date(right.examDate).getTime())
@@ -180,8 +199,9 @@ function createRecommendation(topic: RevisionTopic, state: AppState, now: Date):
   const daysOverdue = Math.max(0, -daysUntilDue);
   const nearestExam = getNearestExam(state, now);
   const isExamSubject = nearestExam?.subjectId === topic.subjectId;
+  const activePlan = getActiveRevisionPlan(state);
   const isExamTopic =
-    state.revisionPlan.topics.some((item) => item.toLowerCase() === topic.topicTitle.toLowerCase()) && isExamSubject;
+    activePlan.topics.some((item) => item.toLowerCase() === topic.topicTitle.toLowerCase()) && isExamSubject;
 
   let priority = 0;
 

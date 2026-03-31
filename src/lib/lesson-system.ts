@@ -718,17 +718,25 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
 function buildQuestionReply(session: LessonSession, lesson: Lesson, message: string): LessonChatResponse {
   // Handle concept card clarification requests ([CONCEPT: name] prefix)
   const conceptMatch = message.match(/^\[CONCEPT:\s*(.+?)\]/);
-  if (conceptMatch && lesson.keyConcepts?.length) {
+  if (conceptMatch) {
     const conceptName = conceptMatch[1].trim();
-    const concept = lesson.keyConcepts.find(
+
+    // Try exact match in lesson.keyConcepts first (works when lesson is AI-generated and in state)
+    const concept = lesson.keyConcepts?.find(
       (c) => c.name.toLowerCase() === conceptName.toLowerCase()
     );
 
-    if (concept) {
+    // Fallback: use [STUDENT_HAS_READ: ...] content embedded in the message itself.
+    // askAboutConcept() always includes this so we can explain the concept even when
+    // lesson.keyConcepts comes from the dynamic fallback and names don't match.
+    const readMatch = message.match(/\[STUDENT_HAS_READ:\s*([\s\S]+?)\]/);
+    const detailContent = concept?.detail ?? readMatch?.[1]?.trim() ?? null;
+
+    if (detailContent) {
       const reply = [
-        `Let me put **${concept.name}** another way.`,
+        `Let me put **${conceptName}** another way.`,
         '',
-        concept.detail,
+        detailContent,
         '',
         '---',
         '',

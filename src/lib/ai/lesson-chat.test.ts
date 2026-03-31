@@ -118,4 +118,21 @@ describe('lesson-chat', () => {
     // transferChallenge is only injected during check stage
     expect(prompt).not.toContain(lesson.transferChallenge.body);
   });
+
+  it('buildSystemPrompt concept card instruction uses "contains" not "begins with"', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson, { currentStage: 'concepts' });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: session,
+      message: '[CONCEPT: test]',
+      messageType: 'question'
+    });
+    // Must say "contains" not "begins with" since [STAGE:] wrapper precedes [CONCEPT:] in the actual message
+    expect(prompt).toContain('contains [CONCEPT:');
+    expect(prompt).not.toContain('begins with [CONCEPT:');
+  });
 });

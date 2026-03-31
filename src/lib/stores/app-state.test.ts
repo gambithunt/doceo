@@ -258,3 +258,71 @@ describe('revision session loop', () => {
     expect(handoffSession?.messages.some((message) => /repeated gap|fractions core gap/i.test(message.content))).toBe(true);
   });
 });
+
+describe('revision plans', () => {
+  it('creates a saved revision plan and makes it active without overwriting earlier plans', () => {
+    const baseState = createInitialState();
+    const store = createAppStore(baseState);
+
+    store.createRevisionPlan({
+      subjectId: baseState.curriculum.subjects[0]!.id,
+      examName: 'Math mid-term',
+      examDate: '2026-04-12',
+      mode: 'weak_topics',
+      timeBudgetMinutes: 20
+    });
+    store.createRevisionPlan({
+      subjectId: baseState.curriculum.subjects[0]!.id,
+      examName: 'Math final',
+      examDate: '2026-06-18',
+      mode: 'full_subject',
+      timeBudgetMinutes: 30
+    });
+
+    const state = get(store);
+
+    expect(state.revisionPlans).toHaveLength(2);
+    expect(state.activeRevisionPlanId).toBe(state.revisionPlans[0]?.id);
+    expect(state.revisionPlans.map((plan) => plan.examName)).toEqual(['Math final', 'Math mid-term']);
+    expect(state.revisionPlan.examName).toBe('Math final');
+  });
+
+  it('can switch the active revision plan and keep revisionPlan in sync as a compatibility alias', () => {
+    const baseState = createInitialState();
+    const firstPlan = {
+      ...baseState.revisionPlan,
+      id: 'plan-1',
+      examName: 'Math mid-term',
+      subjectName: 'Mathematics',
+      planStyle: 'weak_topics' as const,
+      status: 'active' as const,
+      createdAt: '2026-03-31T08:00:00.000Z',
+      updatedAt: '2026-03-31T08:00:00.000Z'
+    };
+    const secondPlan = {
+      ...baseState.revisionPlan,
+      id: 'plan-2',
+      examName: 'Math final',
+      subjectName: 'Mathematics',
+      planStyle: 'full_subject' as const,
+      studyMode: 'full_subject' as const,
+      status: 'active' as const,
+      createdAt: '2026-03-31T08:10:00.000Z',
+      updatedAt: '2026-03-31T08:10:00.000Z'
+    };
+    const store = createAppStore({
+      ...baseState,
+      revisionPlan: firstPlan,
+      revisionPlans: [firstPlan, secondPlan],
+      activeRevisionPlanId: firstPlan.id
+    });
+
+    store.setActiveRevisionPlan(secondPlan.id);
+
+    const state = get(store);
+
+    expect(state.activeRevisionPlanId).toBe('plan-2');
+    expect(state.revisionPlan.id).toBe('plan-2');
+    expect(state.revisionPlan.examName).toBe('Math final');
+  });
+});

@@ -250,17 +250,25 @@ export interface LessonSelectorResponse {
   candidateSections: string[];
 }
 
+export type RevisionPlanStyle = 'weak_topics' | 'full_subject' | 'manual';
+
 export interface RevisionPlan {
+  id: string;
   subjectId: string;
+  subjectName: string;
   examName?: string;
   examDate: string;
   topics: string[];
-  studyMode?: 'weak_topics' | 'full_subject' | 'manual';
+  planStyle: RevisionPlanStyle;
+  studyMode?: RevisionPlanStyle;
   timeBudgetMinutes?: number;
   quickSummary: string;
   keyConcepts: string[];
   examFocus: string[];
   weaknessDetection: string;
+  status: 'active' | 'completed' | 'archived';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UpcomingExam {
@@ -593,6 +601,8 @@ export interface AppState {
   revisionAttempts: RevisionAttemptRecord[];
   revisionSession: ActiveRevisionSession | null;
   analytics: AnalyticsEvent[];
+  revisionPlans: RevisionPlan[];
+  activeRevisionPlanId: string | null;
   revisionPlan: RevisionPlan;
   upcomingExams: UpcomingExam[];
   askQuestion: {

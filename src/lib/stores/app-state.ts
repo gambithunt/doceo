@@ -2083,15 +2083,34 @@ export function createAppStore(initialState: AppState = readState()) {
       navigate(onboardingPath());
     },
     generateRevisionPlan: () =>
-      update((state) =>
-        persistAndSync({
-          ...state,
-          revisionPlan: {
+      update((state) => {
+        const activePlanId = state.activeRevisionPlanId;
+        const nextTopics = buildRevisionTopics(state);
+        const nextRevisionPlans = activePlanId
+          ? state.revisionPlans.map((plan) =>
+              plan.id === activePlanId
+                ? {
+                    ...plan,
+                    topics: nextTopics,
+                    updatedAt: new Date().toISOString()
+                  }
+                : plan
+            )
+          : state.revisionPlans;
+        const activePlan =
+          nextRevisionPlans.find((plan) => plan.id === activePlanId) ??
+          {
             ...state.revisionPlan,
-            topics: buildRevisionTopics(state)
-          }
-        })
-      ),
+            topics: nextTopics,
+            updatedAt: new Date().toISOString()
+          };
+
+        return persistAndSync({
+          ...state,
+          revisionPlans: nextRevisionPlans,
+          revisionPlan: activePlan
+        });
+      }),
     setRevisionPlannerOpen: (open: boolean) =>
       update((state) =>
         persistAndSync({
@@ -2105,24 +2124,51 @@ export function createAppStore(initialState: AppState = readState()) {
     createRevisionPlan: (input: RevisionPlanInput) =>
       update((state) => {
         const { plan, exam } = buildRevisionPlanFromInput(state, input);
-        const existingExamIndex = state.upcomingExams.findIndex((item) => item.id === exam.id);
-        const nextUpcomingExams =
-          existingExamIndex === -1
-            ? [exam, ...state.upcomingExams]
-            : state.upcomingExams.map((item, index) => (index === existingExamIndex ? exam : item));
+        const nextUpcomingExams = [exam, ...state.upcomingExams]
+          .slice()
+          .sort((left, right) => Date.parse(left.examDate) - Date.parse(right.examDate));
 
         return persistAndSync({
           ...state,
           revisionPlan: plan,
-          upcomingExams: nextUpcomingExams
-            .slice()
-            .sort((left, right) => Date.parse(left.examDate) - Date.parse(right.examDate)),
+          revisionPlans: [plan, ...state.revisionPlans],
+          activeRevisionPlanId: plan.id,
+          upcomingExams: nextUpcomingExams,
           ui: {
             ...state.ui,
             currentScreen: 'revision',
             learningMode: 'revision',
             selectedSubjectId: plan.subjectId,
             showRevisionPlanner: false
+          }
+        });
+      }),
+    setActiveRevisionPlan: (planId: string) =>
+      update((state) => {
+        const nextPlan = state.revisionPlans.find((plan) => plan.id === planId);
+
+        if (!nextPlan) {
+          return state;
+        }
+
+        return persistAndSync({
+          ...state,
+          activeRevisionPlanId: nextPlan.id,
+          revisionPlan: {
+            ...nextPlan,
+            updatedAt: new Date().toISOString()
+          },
+          revisionPlans: state.revisionPlans.map((plan) =>
+            plan.id === nextPlan.id
+              ? {
+                  ...plan,
+                  updatedAt: new Date().toISOString()
+                }
+              : plan
+          ),
+          ui: {
+            ...state.ui,
+            selectedSubjectId: nextPlan.subjectId
           }
         });
       }),

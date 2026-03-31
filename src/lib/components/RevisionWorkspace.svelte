@@ -1,11 +1,33 @@
+<svelte:options runes={false} />
+
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
+  import {
+    buildDeterministicSubjectHints,
+    resolveSubjectHints
+  } from '$lib/ai/subject-hints';
+  import { buildFallbackTopicShortlist } from '$lib/ai/topic-shortlist';
+  import { extractHintChipLabels } from '$lib/components/dashboard-hints';
   import { renderSimpleMarkdown } from '$lib/markdown';
+  import {
+    appendManualTopic,
+    parseManualTopicDraft,
+    resolveMatchedManualTopics
+  } from '$lib/revision/manual-topics';
   import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
+  import {
+    describePlanStyle,
+    formatPlanStyleLabel,
+    formatPlanTiming,
+    pickPlanStartTopic,
+    sortRevisionPlans
+  } from '$lib/revision/plans';
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
   import { appState } from '$lib/stores/app-state';
-  import type { AppState, RevisionTopic } from '$lib/types';
+  import type { AppState, RevisionTopic, SchoolTerm, ShortlistedTopic } from '$lib/types';
 
   export let state: AppState;
 
@@ -30,11 +52,32 @@
   let plannerMode: 'weak_topics' | 'full_subject' | 'manual' = 'weak_topics';
   let plannerTimeBudgetMinutes = 20;
   let plannerManualTopics = '';
-  let plannerErrors: { examName?: string; examDate?: string } = {};
+  let plannerSelectedTopics: string[] = [];
+  let plannerTopicHintsText = '';
+  let plannerTopicHintsLoading = false;
+  let plannerTopicHintsError = '';
+  let plannerTopicMatches: ShortlistedTopic[] = [];
+  let plannerTopicMatchStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+  let plannerTopicMatchError = '';
+  let latestPlannerHintRequest = 0;
+  let plannerHintSeed = '';
+  let lastPlannerAssistSubjectId = '';
+  let cachedHeaders: Record<string, string> | null = null;
+  let plannerErrors: { examName?: string; examDate?: string; manualTopics?: string } = {};
 
   $: homeModel = deriveRevisionHomeModel(state);
   $: progressModel = deriveRevisionProgressModel(state);
   $: availableSubjects = state.curriculum.subjects;
+  $: selectedPlannerSubject = availableSubjects.find((subject) => subject.id === plannerSubjectId) ?? availableSubjects[0];
+  $: plannerHintChips = extractHintChipLabels(plannerTopicHintsText).map((label, index) => ({
+    id: `${selectedPlannerSubject?.id ?? 'subject'}:${index}:${label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    label
+  }));
+  $: sortedRevisionPlans = sortRevisionPlans(state.revisionPlans);
+  $: activeRevisionPlan =
+    state.revisionPlans.find((plan) => plan.id === state.activeRevisionPlanId) ??
+    sortedRevisionPlans[0] ??
+    null;
   $: selectedTopic =
     state.revisionTopics.find((topic) => topic.lessonSessionId === state.ui.activeLessonSessionId) ??
     homeModel.hero?.topic ??
@@ -68,9 +111,20 @@
     plannerSubjectId = state.revisionPlan.subjectId || state.ui.selectedSubjectId || state.curriculum.subjects[0]?.id || '';
     plannerExamName = state.revisionPlan.examName ?? '';
     plannerExamDate = state.revisionPlan.examDate ?? '';
-    plannerMode = state.revisionPlan.studyMode ?? 'weak_topics';
+    plannerMode = state.revisionPlan.planStyle ?? state.revisionPlan.studyMode ?? 'weak_topics';
     plannerTimeBudgetMinutes = state.revisionPlan.timeBudgetMinutes ?? 20;
-    plannerManualTopics = state.revisionPlan.studyMode === 'manual' ? state.revisionPlan.topics.join(', ') : '';
+    plannerManualTopics =
+      (state.revisionPlan.planStyle ?? state.revisionPlan.studyMode) === 'manual'
+        ? state.revisionPlan.topics.join(', ')
+        : '';
+    plannerSelectedTopics =
+      (state.revisionPlan.planStyle ?? state.revisionPlan.studyMode) === 'manual'
+        ? [...state.revisionPlan.topics]
+        : [];
+    plannerTopicMatches = [];
+    plannerTopicMatchStatus = 'idle';
+    plannerTopicHintsError = '';
+    plannerTopicMatchError = '';
   }
 
   function formatDueLabel(dateValue: string): string {
@@ -98,6 +152,235 @@
   function closePlanner(): void {
     plannerErrors = {};
     appState.setRevisionPlannerOpen(false);
+  }
+
+  async function getHeaders(): Promise<Record<string, string>> {
+    if (cachedHeaders) return cachedHeaders;
+    const headers = await getAuthenticatedHeaders();
+    cachedHeaders = headers;
+    return headers;
+  }
+
+  function buildPlannerTopicOptions(subjectId: string) {
+    const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];
+
+    return subject.topics.flatMap((topic) =>
+      topic.subtopics.map((subtopic) => {
+        const lessonId = subtopic.lessonIds[0];
+        const lesson = state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
+        return {
+          topicId: topic.id,
+          topicName: topic.name,
+          subtopicId: subtopic.id,
+          subtopicName: subtopic.name,
+          lessonId: lesson.id,
+          lessonTitle: lesson.title
+        };
+      })
+    );
+  }
+
+  async function loadPlannerTopicHints(forceRefresh = false): Promise<void> {
+    if (!state.ui.showRevisionPlanner || plannerMode !== 'manual' || !selectedPlannerSubject) {
+      return;
+    }
+
+    const hintSeed = `${state.profile.curriculumId}:${state.profile.gradeId}:${state.profile.term}:${selectedPlannerSubject.id}`;
+
+    if (!forceRefresh && hintSeed === plannerHintSeed) {
+      return;
+    }
+
+    plannerHintSeed = hintSeed;
+    plannerTopicHintsError = '';
+    plannerTopicHintsLoading = true;
+    const requestId = ++latestPlannerHintRequest;
+
+    try {
+      const headers = await getHeaders();
+      const result = await resolveSubjectHints({
+        subject: selectedPlannerSubject,
+        curriculumId: state.profile.curriculumId,
+        curriculumName: state.profile.curriculum,
+        gradeId: state.profile.gradeId,
+        gradeLabel: state.profile.grade,
+        term: state.profile.term as SchoolTerm,
+        forceRefresh,
+        fetcher: browser ? window.fetch.bind(window) : undefined,
+        headers
+      });
+
+      if (requestId !== latestPlannerHintRequest) return;
+      plannerTopicHintsText = result.hints.join('\n');
+    } catch {
+      if (requestId !== latestPlannerHintRequest) return;
+      plannerTopicHintsText = buildDeterministicSubjectHints(selectedPlannerSubject, state.profile.term as SchoolTerm).join('\n');
+      if (!plannerTopicHintsText) {
+        plannerTopicHintsError = "Couldn't load topic suggestions right now.";
+      }
+    } finally {
+      if (requestId === latestPlannerHintRequest) {
+        plannerTopicHintsLoading = false;
+      }
+    }
+  }
+
+  $: if (state.ui.showRevisionPlanner && plannerMode === 'manual' && plannerSubjectId) {
+    if (plannerSubjectId !== lastPlannerAssistSubjectId) {
+      lastPlannerAssistSubjectId = plannerSubjectId;
+      plannerHintSeed = '';
+      plannerTopicHintsText = '';
+      plannerTopicHintsError = '';
+      plannerManualTopics = '';
+      plannerSelectedTopics = [];
+      plannerTopicMatches = [];
+      plannerTopicMatchStatus = 'idle';
+      plannerTopicMatchError = '';
+      plannerErrors = { ...plannerErrors, manualTopics: undefined };
+    }
+
+    void loadPlannerTopicHints();
+  }
+
+  function syncSelectedTopicsFromDraft(nextDraft: string): void {
+    if (nextDraft.trim().length === 0) {
+      plannerSelectedTopics = [];
+      return;
+    }
+
+    const parsed = parseManualTopicDraft(nextDraft);
+    const selectedNormalized = plannerSelectedTopics.map((item) => item.trim().toLowerCase());
+    const parsedNormalized = parsed.map((item) => item.trim().toLowerCase());
+    const stillExactMatch =
+      parsed.length === plannerSelectedTopics.length &&
+      parsedNormalized.every((item, index) => item === selectedNormalized[index]);
+
+    if (!stillExactMatch) {
+      plannerSelectedTopics = [];
+    }
+  }
+
+  function onPlannerManualInput(event: Event): void {
+    plannerManualTopics = (event.currentTarget as HTMLInputElement).value;
+    plannerTopicMatchError = '';
+    plannerErrors = { ...plannerErrors, manualTopics: undefined };
+    syncSelectedTopicsFromDraft(plannerManualTopics);
+  }
+
+  function choosePlannerTopic(topicTitle: string): void {
+    plannerSelectedTopics = appendManualTopic(plannerSelectedTopics, topicTitle);
+    plannerManualTopics = plannerSelectedTopics.join(', ');
+    plannerTopicMatchError = '';
+    plannerErrors = { ...plannerErrors, manualTopics: undefined };
+  }
+
+  function plannerTopicSelected(topicTitle: string): boolean {
+    return plannerSelectedTopics.some((item) => item.trim().toLowerCase() === topicTitle.trim().toLowerCase());
+  }
+
+  async function shortlistPlannerTopics(query: string): Promise<ShortlistedTopic[]> {
+    if (!selectedPlannerSubject || query.trim().length === 0) {
+      return [];
+    }
+
+    const request = {
+      studentId: state.profile.id,
+      studentName: state.profile.fullName,
+      country: state.profile.country,
+      curriculum: state.profile.curriculum,
+      grade: state.profile.grade,
+      subject: selectedPlannerSubject.name,
+      term: state.profile.term,
+      year: state.profile.schoolYear,
+      studentInput: query.trim(),
+      availableTopics: buildPlannerTopicOptions(selectedPlannerSubject.id)
+    };
+
+    try {
+      const response = await fetch('/api/ai/topic-shortlist', {
+        method: 'POST',
+        headers: await getHeaders().then((headers) => ({
+          ...headers,
+          'Content-Type': 'application/json'
+        })),
+        body: JSON.stringify({ request })
+      });
+
+      if (!response.ok) {
+        throw new Error('Unable to match topics right now.');
+      }
+
+      const payload = (await response.json()) as { response?: { subtopics?: ShortlistedTopic[] } };
+      return payload.response?.subtopics ?? [];
+    } catch {
+      return buildFallbackTopicShortlist(request).subtopics;
+    }
+  }
+
+  async function matchPlannerDraftTopics(): Promise<string[]> {
+    const draftTopics = parseManualTopicDraft(plannerManualTopics);
+
+    if (plannerSelectedTopics.length > 0) {
+      return [...plannerSelectedTopics];
+    }
+
+    if (draftTopics.length === 0) {
+      return [];
+    }
+
+    plannerTopicMatchStatus = 'loading';
+    plannerTopicMatchError = '';
+
+    const matches = await Promise.all(
+      draftTopics.map(async (topic) => {
+        const shortlist = await shortlistPlannerTopics(topic);
+        return shortlist[0] ?? null;
+      })
+    );
+
+    const resolvedTopics = resolveMatchedManualTopics({
+      selectedTopics: plannerSelectedTopics,
+      draft: plannerManualTopics,
+      matches
+    });
+
+    plannerTopicMatches = matches.filter((item): item is ShortlistedTopic => item !== null);
+    plannerTopicMatchStatus = plannerTopicMatches.length > 0 ? 'ready' : 'error';
+
+    if (resolvedTopics.length === 0) {
+      plannerTopicMatchError = 'We could not match those topics clearly. Try choosing from the suggestion pills.';
+      return [];
+    }
+
+    plannerSelectedTopics = resolvedTopics;
+    plannerManualTopics = resolvedTopics.join(', ');
+    return resolvedTopics;
+  }
+
+  function startPlan(planId: string): void {
+    const plan = state.revisionPlans.find((item) => item.id === planId);
+
+    if (!plan) {
+      return;
+    }
+
+    appState.setActiveRevisionPlan(planId);
+
+    const topic = pickPlanStartTopic(plan, state.revisionTopics);
+
+    if (!topic) {
+      return;
+    }
+
+    appState.runRevisionSession(topic, {
+      mode: 'deep_revision',
+      source: 'exam_plan',
+      recommendationReason: plan.examName
+        ? `Start revision for ${plan.examName}`
+        : 'Start this revision plan'
+    });
+    recallDraft = '';
+    selfConfidence = 3;
   }
 
   function getSessionContext(topic: RevisionTopic): {
@@ -167,18 +450,17 @@
     selfConfidence = 3;
   }
 
-  function submitPlanner(): void {
+  async function submitPlanner(): Promise<void> {
     plannerErrors = {};
     if (!plannerExamName.trim()) plannerErrors.examName = 'Give your exam a name so you can track it.';
     if (!plannerExamDate) plannerErrors.examDate = 'Pick a date so Doceo can pace the plan.';
-    if (plannerErrors.examName || plannerErrors.examDate || !plannerSubjectId) return;
-
     const manualTopics = plannerMode === 'manual'
-      ? plannerManualTopics
-          .split(',')
-          .map((item) => item.trim())
-          .filter((item) => item.length > 0)
+      ? await matchPlannerDraftTopics()
       : undefined;
+    if (plannerMode === 'manual' && (!manualTopics || manualTopics.length === 0)) {
+      plannerErrors.manualTopics = 'Add at least one topic for a manual plan.';
+    }
+    if (plannerErrors.examName || plannerErrors.examDate || plannerErrors.manualTopics || !plannerSubjectId) return;
 
     appState.createRevisionPlan({
       subjectId: plannerSubjectId,
@@ -188,6 +470,7 @@
       manualTopics,
       timeBudgetMinutes: plannerTimeBudgetMinutes
     });
+    plannerErrors = {};
   }
 
   function submitRecall(): void {
@@ -377,10 +660,71 @@
         </label>
 
         {#if plannerMode === 'manual'}
-          <label class="field field-wide">
-            <span>Topics</span>
-            <input bind:value={plannerManualTopics} placeholder="Fractions, Area, Number patterns" />
-          </label>
+          <div class="field field-wide manual-topic-field" class:field-error={plannerErrors.manualTopics}>
+            <div class="manual-topic-header">
+              <span>Topics</span>
+              {#if plannerTopicHintsLoading}
+                <small>Loading suggestions...</small>
+              {/if}
+            </div>
+
+            {#if plannerHintChips.length > 0}
+              <div class="planner-pill-row">
+                {#each plannerHintChips as chip}
+                  <button
+                    type="button"
+                    class:selected={plannerTopicSelected(chip.label)}
+                    class="planner-pill"
+                    aria-pressed={plannerTopicSelected(chip.label)}
+                    onclick={() => choosePlannerTopic(chip.label)}
+                  >
+                    {chip.label}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+
+            {#if plannerTopicHintsError}
+              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerTopicHintsError}</span>
+            {/if}
+
+            <input
+              value={plannerManualTopics}
+              placeholder="Type one or more topics, for example: Fractions, Area"
+              oninput={onPlannerManualInput}
+            />
+
+            <p class="manual-topic-help">
+              Tap a suggestion pill to add it quickly. If you type your own topics, Doceo will match them to real curriculum topics before the plan is created.
+            </p>
+
+            {#if plannerTopicMatchStatus === 'ready' && plannerTopicMatches.length > 0}
+              <div class="manual-match-block">
+                <small>Matched topics</small>
+                <div class="planner-pill-row">
+                  {#each plannerTopicMatches as topic}
+                    <button
+                      type="button"
+                      class:selected={plannerTopicSelected(topic.title)}
+                      class="planner-pill planner-pill--matched"
+                      aria-pressed={plannerTopicSelected(topic.title)}
+                      onclick={() => choosePlannerTopic(topic.title)}
+                    >
+                      {topic.title}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            {#if plannerErrors.manualTopics}
+              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.manualTopics}</span>
+            {/if}
+
+            {#if plannerTopicMatchError}
+              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerTopicMatchError}</span>
+            {/if}
+          </div>
         {/if}
       </div>
 
@@ -389,6 +733,67 @@
       </div>
     </section>
   {/if}
+
+  <section class="panel plans-panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Revision Plans</p>
+        <h3>Your exam plans</h3>
+      </div>
+      <small>{sortedRevisionPlans.length} saved</small>
+    </div>
+
+    {#if sortedRevisionPlans.length > 0}
+      <p class="plans-summary">
+        Pick one plan to set the current exam context, then use the revision flow below.
+      </p>
+
+      <div class="plan-grid">
+        {#each sortedRevisionPlans as plan}
+          <article
+            class:active-plan={activeRevisionPlan?.id === plan.id}
+            class="plan-card"
+          >
+            <div class="topic-row plan-card-header">
+              <div>
+                <strong>{plan.examName ?? 'Revision plan'}</strong>
+                <p class="plan-subject">{plan.subjectName}</p>
+              </div>
+              <div class="plan-badges">
+                {#if activeRevisionPlan?.id === plan.id}
+                  <span class="hero-pill">Current focus</span>
+                {/if}
+              </div>
+            </div>
+
+            <div class="hero-meta plan-meta">
+              <span class="hero-pill subdued">{formatPlanStyleLabel(plan.planStyle)}</span>
+              <span class="hero-pill subdued">{formatPlanTiming(plan.examDate)}</span>
+              <span class="hero-pill subdued">{plan.topics.length} topics</span>
+              <span class="hero-pill subdued">{plan.timeBudgetMinutes ?? 20} min/day</span>
+            </div>
+
+            <p class="plan-style-copy">{describePlanStyle(plan.planStyle)}</p>
+
+            <div class="plan-actions">
+              <button type="button" class="action-btn" onclick={() => startPlan(plan.id)}>
+                Start revision
+              </button>
+            </div>
+          </article>
+        {/each}
+      </div>
+    {:else}
+      <div class="empty-plan-state">
+        <div>
+          <p class="eyebrow">No Saved Plans</p>
+          <h3>Create your first exam plan</h3>
+          <p>Build a revision plan and it will appear here as a reusable card with the exam date, plan style, and included topics.</p>
+        </div>
+        <button type="button" class="action-btn" onclick={openPlanner}>Build my plan</button>
+      </div>
+    {/if}
+  </section>
 
   {#if homeModel.hero}
     <section class="hero-card">
@@ -517,25 +922,6 @@
                 <span>{day.label}</span>
               </article>
             {/each}
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Revision Plan</p>
-              <h3>{state.revisionPlan.examName ?? 'Current plan'}</h3>
-            </div>
-            <small>{state.revisionPlan.timeBudgetMinutes ?? 20} min/day</small>
-          </div>
-          <p>{state.revisionPlan.quickSummary}</p>
-          <div class="hero-meta">
-            <span class="hero-pill subdued">
-              Exam {new Date(state.revisionPlan.examDate).toLocaleDateString()}
-            </span>
-            <span class="hero-pill subdued">
-              {state.revisionPlan.topics.length} topics
-            </span>
           </div>
         </section>
 
@@ -920,6 +1306,7 @@
   .panel,
   .feedback-card,
   .stat-card,
+  .plans-panel,
   .planner-panel,
   .starter-card,
   .mode-list,
@@ -980,6 +1367,67 @@
     border-radius: 1.5rem;
     background: var(--surface);
     padding: 1.2rem;
+  }
+
+  .plans-panel {
+    border: 1px solid var(--border);
+    border-radius: 1.5rem;
+    background: var(--surface);
+    padding: 1.2rem;
+  }
+
+  .plan-grid {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .plan-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .plan-card {
+    display: grid;
+    gap: 0.7rem;
+    padding: 0.95rem 1rem;
+    border-radius: 1.1rem;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+  }
+
+  .plan-card.active-plan {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  .plan-card-header {
+    align-items: center;
+  }
+
+  .plan-badges,
+  .plan-actions,
+  .empty-plan-state {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .empty-plan-state {
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .plan-meta {
+    align-items: center;
+  }
+
+  .plans-summary,
+  .plan-style-copy {
+    color: var(--text-soft);
+  }
+
+  .plan-subject {
+    color: var(--text-soft);
+    font-size: 0.85rem;
+    margin-top: 0.2rem;
   }
 
   .question-card {
@@ -1122,6 +1570,108 @@
     color: var(--text-soft);
   }
 
+  .manual-topic-field,
+  .manual-match-block {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .manual-topic-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .manual-topic-header small,
+  .manual-match-block small,
+  .manual-topic-help {
+    color: var(--text-soft);
+  }
+
+  .planner-pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+  }
+
+  .planner-pill {
+    position: relative;
+    overflow: hidden;
+    transition:
+      transform 140ms var(--ease-soft),
+      border-color 160ms var(--ease-soft),
+      background 160ms var(--ease-soft),
+      box-shadow 180ms var(--ease-soft),
+      color 160ms var(--ease-soft);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-high) 82%, transparent), color-mix(in srgb, var(--surface-soft) 92%, transparent));
+    color: var(--text);
+    padding: 0.52rem 0.92rem;
+    font: inherit;
+    font-size: 0.92rem;
+    font-weight: 600;
+    line-height: 1.1;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.05),
+      0 1px 2px rgba(0,0,0,0.16);
+    cursor: pointer;
+  }
+
+  .planner-pill:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--surface-high)), color-mix(in srgb, var(--surface-soft) 86%, var(--accent-dim)));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 6px 16px rgba(0,0,0,0.18);
+  }
+
+  .planner-pill:active {
+    transform: translateY(0) scale(0.985);
+    box-shadow:
+      inset 0 1px 1px rgba(0,0,0,0.18),
+      0 2px 6px rgba(0,0,0,0.14);
+  }
+
+  .planner-pill:focus-visible {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 56%, var(--border-strong));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
+      0 8px 20px rgba(0,0,0,0.2);
+  }
+
+  .planner-pill.selected {
+    border-color: color-mix(in srgb, var(--accent) 56%, var(--border-strong));
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--accent) 20%, var(--surface-high)), color-mix(in srgb, var(--accent) 12%, var(--surface-soft)));
+    color: color-mix(in srgb, var(--text) 92%, white);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent),
+      0 10px 24px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .planner-pill--matched {
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--surface-high)), color-mix(in srgb, var(--accent) 6%, var(--surface-soft)));
+  }
+
+  .planner-pill--matched:not(.selected)::after {
+    content: 'Matched';
+    margin-left: 0.45rem;
+    opacity: 0.82;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: color-mix(in srgb, var(--accent) 56%, var(--text-soft));
+  }
+
   .field input,
   .field select {
     transition:
@@ -1129,8 +1679,7 @@
       box-shadow 150ms var(--ease-soft);
   }
 
-  .field-error input,
-  .field-error select {
+  .field-error input {
     border-color: var(--color-red, #f87171);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-red, #f87171) 18%, transparent);
     animation: field-shake 0.3s var(--ease-soft) both;
@@ -1300,6 +1849,11 @@
 
     .mode-list {
       grid-template-columns: 1fr;
+    }
+
+    .plan-card-header,
+    .empty-plan-state {
+      align-items: flex-start;
     }
 
     .calibration-grid {

@@ -25,6 +25,7 @@ import type {
   Question,
   ResponseStage,
   RevisionPlan,
+  RevisionPlanStyle,
   RevisionTopic,
   ShortlistedTopic,
   StudentAnswer,
@@ -77,18 +78,45 @@ function normalizeRevisionTopic(topic: RevisionTopic): RevisionTopic {
   };
 }
 
+function normalizeRevisionPlan(plan: RevisionPlan, fallbackSubjectName = 'Revision'): RevisionPlan {
+  const planStyle = plan.planStyle ?? plan.studyMode ?? 'weak_topics';
+  const timestamp = typeof plan.updatedAt === 'string' ? plan.updatedAt : isoNow();
+
+  return {
+    ...plan,
+    id: typeof plan.id === 'string' && plan.id.length > 0 ? plan.id : `revision-plan-${crypto.randomUUID()}`,
+    subjectName: typeof plan.subjectName === 'string' && plan.subjectName.length > 0 ? plan.subjectName : fallbackSubjectName,
+    planStyle,
+    studyMode: plan.studyMode ?? planStyle,
+    status: plan.status ?? 'active',
+    createdAt: typeof plan.createdAt === 'string' ? plan.createdAt : timestamp,
+    updatedAt: timestamp
+  };
+}
+
 function buildRevisionPlan(
   subjectId: string,
   subjectName: string,
   selectedTopics: string[],
-  options?: Partial<Pick<RevisionPlan, 'examName' | 'examDate' | 'studyMode' | 'timeBudgetMinutes'>>
+  options?: Partial<
+    Pick<
+      RevisionPlan,
+      'id' | 'examName' | 'examDate' | 'planStyle' | 'studyMode' | 'timeBudgetMinutes' | 'status' | 'createdAt' | 'updatedAt'
+    >
+  >
 ): RevisionPlan {
+  const planStyle = options?.planStyle ?? options?.studyMode ?? 'weak_topics';
+  const updatedAt = options?.updatedAt ?? isoNow();
+
   return {
+    id: options?.id ?? `revision-plan-${crypto.randomUUID()}`,
     subjectId,
+    subjectName,
     examName: options?.examName,
     examDate: options?.examDate ?? '2026-06-18',
     topics: selectedTopics,
-    studyMode: options?.studyMode,
+    planStyle,
+    studyMode: options?.studyMode ?? planStyle,
     timeBudgetMinutes: options?.timeBudgetMinutes,
     quickSummary: `Prioritize ${selectedTopics[0] ?? subjectName}, then move through the remaining ${subjectName} topics with active recall and exam-style prompts.`,
     keyConcepts: [
@@ -101,7 +129,10 @@ function buildRevisionPlan(
       'Connect each answer to the underlying concept.',
       `Revise ${subjectName} mistakes before doing speed work.`
     ],
-    weaknessDetection: `Watch for places where the learner can state an answer in ${subjectName} but cannot justify the step.`
+    weaknessDetection: `Watch for places where the learner can state an answer in ${subjectName} but cannot justify the step.`,
+    status: options?.status ?? 'active',
+    createdAt: options?.createdAt ?? updatedAt,
+    updatedAt
   };
 }
 
@@ -325,6 +356,8 @@ export function createInitialState(): AppState {
     revisionAttempts: [],
     revisionSession: null,
     analytics: [],
+    revisionPlans: [],
+    activeRevisionPlanId: null,
     upcomingExams: [],
     revisionPlan: buildRevisionPlan(program.curriculum.subjects[0].id, program.curriculum.subjects[0].name, [
       selectedTopic.name
@@ -385,6 +418,20 @@ export function normalizeAppState(value: unknown): AppState {
   }
 
   const input = value as Partial<AppState>;
+  const legacyRevisionPlan = input.revisionPlan
+    ? normalizeRevisionPlan(input.revisionPlan, base.revisionPlan.subjectName)
+    : base.revisionPlan;
+  const revisionPlans = Array.isArray(input.revisionPlans)
+    ? input.revisionPlans.map((plan) => normalizeRevisionPlan(plan, plan.subjectName))
+    : input.revisionPlan
+      ? [legacyRevisionPlan]
+      : base.revisionPlans;
+  const activeRevisionPlanId =
+    typeof input.activeRevisionPlanId === 'string' && revisionPlans.some((plan) => plan.id === input.activeRevisionPlanId)
+      ? input.activeRevisionPlanId
+      : revisionPlans[0]?.id ?? null;
+  const activeRevisionPlan =
+    revisionPlans.find((plan) => plan.id === activeRevisionPlanId) ?? legacyRevisionPlan;
   const normalized: AppState = {
     ...base,
     ...input,
@@ -452,7 +499,9 @@ export function normalizeAppState(value: unknown): AppState {
     revisionAttempts: Array.isArray(input.revisionAttempts) ? input.revisionAttempts : base.revisionAttempts,
     revisionSession: input.revisionSession ?? base.revisionSession,
     analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,
-    revisionPlan: input.revisionPlan ?? base.revisionPlan,
+    revisionPlans,
+    activeRevisionPlanId,
+    revisionPlan: activeRevisionPlan,
     upcomingExams: Array.isArray(input.upcomingExams) ? input.upcomingExams : base.upcomingExams,
     askQuestion: {
       ...base.askQuestion,
@@ -525,19 +574,56 @@ export function deriveLearningState(state: AppState): AppState {
   const practiceQuestionId =
     selectedLesson.practiceQuestionIds.find((questionId) => questionId === state.ui.practiceQuestionId) ??
     selectedLesson.practiceQuestionIds[0];
-  const revisionPlanSubject =
+  const revisionPlans = Array.isArray(state.revisionPlans)
+    ? state.revisionPlans.map((plan) => {
+        const revisionPlanSubject =
+          program.curriculum.subjects.find((subject) => subject.id === plan.subjectId) ?? selectedSubject;
+
+        return buildRevisionPlan(
+          revisionPlanSubject.id,
+          revisionPlanSubject.name,
+          plan.topics.length > 0 ? plan.topics : revisionPlanSubject.topics.map((topic) => topic.name),
+          {
+            id: plan.id,
+            examName: plan.examName,
+            examDate: plan.examDate,
+            planStyle: plan.planStyle ?? plan.studyMode,
+            studyMode: plan.studyMode ?? plan.planStyle,
+            timeBudgetMinutes: plan.timeBudgetMinutes,
+            status: plan.status,
+            createdAt: plan.createdAt,
+            updatedAt: plan.updatedAt
+          }
+        );
+      })
+    : [];
+  const activeRevisionPlanId =
+    state.activeRevisionPlanId && revisionPlans.some((plan) => plan.id === state.activeRevisionPlanId)
+      ? state.activeRevisionPlanId
+      : revisionPlans[0]?.id ?? null;
+  const fallbackRevisionPlanSubject =
     program.curriculum.subjects.find((subject) => subject.id === state.revisionPlan.subjectId) ?? selectedSubject;
-  const revisionPlan = buildRevisionPlan(
-    revisionPlanSubject.id,
-    revisionPlanSubject.name,
-    state.revisionPlan.topics.length > 0 ? state.revisionPlan.topics : revisionPlanSubject.topics.map((topic) => topic.name),
+  const legacyRevisionPlan = buildRevisionPlan(
+    fallbackRevisionPlanSubject.id,
+    fallbackRevisionPlanSubject.name,
+    state.revisionPlan.topics.length > 0
+      ? state.revisionPlan.topics
+      : fallbackRevisionPlanSubject.topics.map((topic) => topic.name),
     {
+      id: state.revisionPlan.id,
       examName: state.revisionPlan.examName,
       examDate: state.revisionPlan.examDate,
-      studyMode: state.revisionPlan.studyMode,
-      timeBudgetMinutes: state.revisionPlan.timeBudgetMinutes
+      planStyle: state.revisionPlan.planStyle ?? state.revisionPlan.studyMode,
+      studyMode: state.revisionPlan.studyMode ?? state.revisionPlan.planStyle,
+      timeBudgetMinutes: state.revisionPlan.timeBudgetMinutes,
+      status: state.revisionPlan.status,
+      createdAt: state.revisionPlan.createdAt,
+      updatedAt: state.revisionPlan.updatedAt
     }
   );
+  const activeRevisionPlan =
+    revisionPlans.find((plan) => plan.id === activeRevisionPlanId) ??
+    legacyRevisionPlan;
 
   const lessonSessions = Array.isArray(state.lessonSessions)
     ? state.lessonSessions.filter(
@@ -571,7 +657,9 @@ export function deriveLearningState(state: AppState): AppState {
       state.revisionSession && revisionTopics.some((topic) => topic.lessonSessionId === state.revisionSession?.revisionTopicId)
         ? state.revisionSession
         : null,
-    revisionPlan,
+    revisionPlans,
+    activeRevisionPlanId,
+    revisionPlan: activeRevisionPlan,
     upcomingExams: Array.isArray(state.upcomingExams) ? state.upcomingExams : [],
     topicDiscovery: {
       ...state.topicDiscovery,

@@ -50,7 +50,7 @@ export async function loadAppState(profileId: string): Promise<AppState> {
   }
 
   // T6.2: Reconstruct from normalized tables. Fall back to snapshot blob if tables are empty.
-  const [sessionsResult, learnerProfileResult, revisionResult] = await Promise.all([
+  const [sessionsResult, learnerProfileResult, revisionResult, snapshotResult] = await Promise.all([
     supabase
       .from('lesson_sessions')
       .select('session_json')
@@ -65,10 +65,16 @@ export async function loadAppState(profileId: string): Promise<AppState> {
     supabase
       .from('revision_topics')
       .select('topic_json')
-      .eq('profile_id', profileId)
+      .eq('profile_id', profileId),
+    supabase
+      .from('app_state_snapshots')
+      .select('state_json, updated_at')
+      .eq('id', createSnapshotId(profileId))
+      .maybeSingle<SnapshotRow>()
   ]);
 
   const sessionRows = (sessionsResult.data ?? []) as Array<{ session_json: LessonSession }>;
+  const snapshotState = coerceState(snapshotResult.data ?? null);
 
   if (sessionRows.length > 0) {
     const base = createInitialState();
@@ -79,18 +85,19 @@ export async function loadAppState(profileId: string): Promise<AppState> {
       lessonSessions: sessionRows.map((row) => row.session_json),
       revisionTopics: (revisionResult.data ?? []).map(
         (row: { topic_json: AppState['revisionTopics'][number] }) => row.topic_json
-      )
+      ),
+      revisionAttempts: snapshotState.revisionAttempts,
+      revisionSession: snapshotState.revisionSession,
+      revisionPlans: snapshotState.revisionPlans,
+      activeRevisionPlanId: snapshotState.activeRevisionPlanId,
+      revisionPlan: snapshotState.revisionPlan,
+      upcomingExams: snapshotState.upcomingExams,
+      analytics: snapshotState.analytics
     });
   }
 
   // Fallback: read full snapshot blob (T6.2b — keep as backup)
-  const { data } = await supabase
-    .from('app_state_snapshots')
-    .select('state_json, updated_at')
-    .eq('id', createSnapshotId(profileId))
-    .maybeSingle<SnapshotRow>();
-
-  return coerceState(data ?? null);
+  return snapshotState;
 }
 
 export async function saveAppState(state: AppState): Promise<SaveStateResult> {

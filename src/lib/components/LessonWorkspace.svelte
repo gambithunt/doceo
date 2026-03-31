@@ -1054,7 +1054,6 @@
 
   .bubble.user.compact-reply .bubble-body :global(p) {
     line-height: 1.35;
-    white-space: nowrap;
   }
 
   :global(:root[data-theme='dark']) .bubble.user.compact-reply {
@@ -2178,7 +2177,7 @@
   @keyframes content-fade {
     from {
       opacity: 0;
-      transform: translateY(4px);
+      transform: translateY(-4px);
     }
 
     to {

@@ -93,6 +93,76 @@ describe('deriveRevisionHomeModel', () => {
     expect(model.hero?.topic.lessonSessionId).toBe(model.doToday[0]?.topic.lessonSessionId);
   });
 
+  it('uses the active revision plan as the main exam context when multiple plans exist', () => {
+    const overdueScienceTopic = createRevisionTopic({
+      lessonSessionId: 'session-science',
+      subjectId: 'subject-science',
+      subject: 'Natural Sciences',
+      topicTitle: 'Cells',
+      confidenceScore: 0.46,
+      nextRevisionAt: '2026-03-30T08:00:00.000Z'
+    });
+    const examMathTopic = createRevisionTopic({
+      lessonSessionId: 'session-math',
+      subjectId: 'subject-math',
+      subject: 'Mathematics',
+      topicTitle: 'Fractions',
+      confidenceScore: 0.46,
+      nextRevisionAt: '2026-03-31T08:00:00.000Z'
+    });
+    const base = createInitialState();
+    const firstPlan = {
+      ...base.revisionPlan,
+      id: 'plan-science',
+      subjectId: 'subject-science',
+      subjectName: 'Natural Sciences',
+      examName: 'Science exam',
+      examDate: '2026-04-02',
+      topics: ['Cells'],
+      planStyle: 'weak_topics' as const,
+      status: 'active' as const,
+      createdAt: '2026-03-31T08:00:00.000Z',
+      updatedAt: '2026-03-31T08:00:00.000Z'
+    };
+    const secondPlan = {
+      ...base.revisionPlan,
+      id: 'plan-math',
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      examName: 'Math exam',
+      examDate: '2026-04-01',
+      topics: ['Fractions'],
+      planStyle: 'weak_topics' as const,
+      status: 'active' as const,
+      createdAt: '2026-03-31T08:10:00.000Z',
+      updatedAt: '2026-03-31T08:10:00.000Z'
+    };
+
+    const state = createState({
+      revisionTopics: [overdueScienceTopic, examMathTopic],
+      revisionPlan: secondPlan,
+      revisionPlans: [firstPlan, secondPlan],
+      activeRevisionPlanId: secondPlan.id,
+      upcomingExams: [
+        {
+          id: 'exam-science',
+          subjectId: 'subject-science',
+          subjectName: 'Natural Sciences',
+          examName: 'Science exam',
+          examDate: '2026-04-02',
+          topics: ['Cells'],
+          createdAt: '2026-03-31T08:00:00.000Z',
+          updatedAt: '2026-03-31T08:00:00.000Z'
+        }
+      ]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.nearestExam?.subjectId).toBe('subject-math');
+    expect(model.hero?.topic.lessonSessionId).toBe('session-math');
+  });
+
   it('adds human-readable reasons to each surfaced recommendation', () => {
     const state = createState({
       revisionTopics: [

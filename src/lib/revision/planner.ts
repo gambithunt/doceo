@@ -51,12 +51,16 @@ export function buildRevisionPlanFromInput(
         ? weakTopics.length > 0 ? weakTopics.slice(0, 5) : subjectTopicNames.slice(0, 5)
         : subjectTopicNames
   );
+  const timestamp = now.toISOString();
 
   const plan: RevisionPlan = {
+    id: `revision-plan-${crypto.randomUUID()}`,
     subjectId: subject.id,
+    subjectName: subject.name,
     examName: input.examName,
     examDate: input.examDate,
     topics: selectedTopics,
+    planStyle: input.mode,
     studyMode: input.mode,
     timeBudgetMinutes: input.timeBudgetMinutes,
     quickSummary: buildSummary(subject.name, selectedTopics, input.timeBudgetMinutes),
@@ -66,18 +70,21 @@ export function buildRevisionPlanFromInput(
       `Use spaced repetition across ${selectedTopics.length || 1} topic areas.`
     ],
     examFocus: buildExamFocus(subject.name, input.timeBudgetMinutes),
-    weaknessDetection: `Watch for places where the learner can state an answer in ${subject.name} but cannot justify the step.`
+    weaknessDetection: `Watch for places where the learner can state an answer in ${subject.name} but cannot justify the step.`,
+    status: 'active',
+    createdAt: timestamp,
+    updatedAt: timestamp
   };
 
   const exam: UpcomingExam = {
-    id: `exam-${subject.id}-${input.examDate}`,
+    id: `exam-${crypto.randomUUID()}`,
     subjectId: subject.id,
     subjectName: subject.name,
     examName: input.examName,
     examDate: input.examDate,
     topics: selectedTopics,
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString()
+    createdAt: timestamp,
+    updatedAt: timestamp
   };
 
   return { plan, exam };

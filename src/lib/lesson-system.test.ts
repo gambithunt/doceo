@@ -587,4 +587,62 @@ describe('lesson-system', () => {
     // Summary's "Watch out for" section should share the same misconception wording
     expect(lesson.summary.body.toLowerCase()).toContain(misconceptionText);
   });
+
+  // ─── Concept card clarification via fallback ─────────────────────────────
+
+  it('concept card question returns stay action when concept is found in keyConcepts', () => {
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-geo',
+      subjectName: 'Geography',
+      grade: 'Grade 10',
+      topicTitle: 'Climate Zones',
+      topicDescription: 'Types of climate zones.',
+      curriculumReference: 'CAPS · Grade 10 · Geography'
+    });
+    // Inject a known concept name
+    lesson.keyConcepts = [
+      {
+        name: 'Impact on Ecosystems',
+        summary: 'How climate affects ecosystems.',
+        detail: 'Detailed explanation of ecosystem impact.',
+        example: 'Example of ecosystem impact.'
+      }
+    ];
+    const session = makeMockSession(lesson, { currentStage: 'concepts' });
+    const message = '[CONCEPT: Impact on Ecosystems]\n[STUDENT_HAS_READ: How climate affects ecosystems. Detailed explanation.]\nCan you explain this differently?';
+
+    const result = buildLocalLessonChatResponse(
+      { student: { id: 's1', fullName: 'Test', grade: 'Grade 10', curriculum: 'CAPS', country: 'ZA', term: '1', schoolYear: '2026' },
+        learnerProfile: createDefaultLearnerProfile('s1'),
+        lesson, lessonSession: session, message, messageType: 'question' },
+      lesson
+    );
+
+    expect(result.metadata?.action).toBe('stay');
+    expect(result.displayContent).toContain('Impact on Ecosystems');
+  });
+
+  it('concept card question returns stay (not side_thread) when concept is NOT in keyConcepts but STUDENT_HAS_READ is present', () => {
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-geo',
+      subjectName: 'Geography',
+      grade: 'Grade 10',
+      topicTitle: 'Climate Zones',
+      topicDescription: 'Types of climate zones.',
+      curriculumReference: 'CAPS · Grade 10 · Geography'
+    });
+    // keyConcepts has generic names — concept name won't match
+    const session = makeMockSession(lesson, { currentStage: 'concepts' });
+    const message = '[CONCEPT: Impact on Ecosystems and Human Life]\n[STUDENT_HAS_READ: Plants and animals depend on stable climates. Rising sea levels threaten coastal communities.]\nCan you explain this differently?';
+
+    const result = buildLocalLessonChatResponse(
+      { student: { id: 's1', fullName: 'Test', grade: 'Grade 10', curriculum: 'CAPS', country: 'ZA', term: '1', schoolYear: '2026' },
+        learnerProfile: createDefaultLearnerProfile('s1'),
+        lesson, lessonSession: session, message, messageType: 'question' },
+      lesson
+    );
+
+    expect(result.metadata?.action).toBe('stay');
+    expect(result.displayContent).toContain('Impact on Ecosystems and Human Life');
+  });
 });
