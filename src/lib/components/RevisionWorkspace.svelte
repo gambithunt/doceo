@@ -86,7 +86,15 @@
   $: focusModel = deriveRevisionFocusModel(state, homeModel, activeRevisionPlan);
   $: progressModel = deriveRevisionProgressModel(state);
   $: availableSubjects = state.curriculum.subjects;
-  $: selectedPlannerSubject = availableSubjects.find((subject) => subject.id === plannerSubjectId) ?? availableSubjects[0];
+  $: plannerAvailableSubjects = (state.onboarding.options?.subjects ?? []).filter(
+    (s) => state.onboarding.selectedSubjectIds.includes(s.id)
+  ).length > 0
+    ? (state.onboarding.options?.subjects ?? []).filter((s) => state.onboarding.selectedSubjectIds.includes(s.id))
+    : state.curriculum.subjects;
+  $: selectedPlannerSubject = plannerAvailableSubjects.find((subject) => subject.id === plannerSubjectId) ?? plannerAvailableSubjects[0];
+  $: selectedPlannerCurriculumSubject = selectedPlannerSubject
+    ? (state.curriculum.subjects.find((s) => s.name === selectedPlannerSubject!.name) ?? { id: selectedPlannerSubject.id, name: selectedPlannerSubject.name, topics: [] })
+    : null;
   $: plannerHintChips = extractHintChipLabels(plannerTopicHintsText).map((label, index) => ({
     id: `${selectedPlannerSubject?.id ?? 'subject'}:${index}:${label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
     label
@@ -152,7 +160,7 @@
   $: outlookStats = buildRevisionOutlookStats();
 
   function seedPlannerFields(): void {
-    plannerSubjectId = state.revisionPlan.subjectId || state.ui.selectedSubjectId || state.curriculum.subjects[0]?.id || '';
+    plannerSubjectId = state.ui.selectedSubjectId || plannerAvailableSubjects[0]?.id || '';
     plannerExamName = '';
     plannerExamDate = state.revisionPlan.examDate ?? '';
     plannerMode = state.revisionPlan.planStyle ?? state.revisionPlan.studyMode ?? 'weak_topics';
@@ -429,7 +437,7 @@
   }
 
   async function loadPlannerTopicHints(forceRefresh = false): Promise<void> {
-    if (!state.ui.showRevisionPlanner || plannerMode !== 'manual' || !selectedPlannerSubject) {
+    if (!state.ui.showRevisionPlanner || plannerMode !== 'manual' || !selectedPlannerSubject || !selectedPlannerCurriculumSubject) {
       return;
     }
 
@@ -447,7 +455,7 @@
     try {
       const headers = await getHeaders();
       const result = await resolveSubjectHints({
-        subject: selectedPlannerSubject,
+        subject: selectedPlannerCurriculumSubject,
         curriculumId: state.profile.curriculumId,
         curriculumName: state.profile.curriculum,
         gradeId: state.profile.gradeId,
@@ -462,7 +470,7 @@
       plannerTopicHintsText = result.hints.join('\n');
     } catch {
       if (requestId !== latestPlannerHintRequest) return;
-      plannerTopicHintsText = buildDeterministicSubjectHints(selectedPlannerSubject, state.profile.term as SchoolTerm).join('\n');
+      plannerTopicHintsText = buildDeterministicSubjectHints(selectedPlannerCurriculumSubject, state.profile.term as SchoolTerm).join('\n');
       if (!plannerTopicHintsText) {
         plannerTopicHintsError = "Couldn't load topic suggestions right now.";
       }
@@ -541,7 +549,7 @@
       term: state.profile.term,
       year: state.profile.schoolYear,
       studentInput: query.trim(),
-      availableTopics: buildPlannerTopicOptions(selectedPlannerSubject.id)
+      availableTopics: buildPlannerTopicOptions(selectedPlannerCurriculumSubject?.id ?? selectedPlannerSubject.id)
     };
 
     try {
@@ -1851,7 +1859,7 @@
           <label class="field">
             <span>Subject</span>
             <select bind:value={plannerSubjectId}>
-              {#each availableSubjects as subject}
+              {#each plannerAvailableSubjects as subject}
                 <option value={subject.id}>{subject.name}</option>
               {/each}
             </select>

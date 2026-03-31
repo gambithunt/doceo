@@ -275,12 +275,8 @@ export function createInitialState(): AppState {
   const selectedGradeId =
     availableGrades.find((grade) => grade.label === 'Grade 6')?.id ?? availableGrades[0]?.id ?? 'grade-6';
   const availableSubjects = getSubjectsByCurriculumAndGrade(selectedCurriculumId, selectedGradeId);
-  const selectedStructuredSubjectIds = availableSubjects
-    .filter((subject) => subject.name === 'Mathematics')
-    .map((subject) => subject.id);
-  const selectedSubjectNames = availableSubjects
-    .filter((subject) => selectedStructuredSubjectIds.includes(subject.id))
-    .map((subject) => subject.name);
+  const selectedStructuredSubjectIds = availableSubjects.map((subject) => subject.id);
+  const selectedSubjectNames = availableSubjects.map((subject) => subject.name);
   const recommendation = getRecommendedSubject(selectedStructuredSubjectIds, [], availableSubjects);
   const program = createDerivedProgram('South Africa', 'CAPS', 'Grade 6', selectedSubjectNames);
   const selectedLesson = program.lessons[0];
@@ -639,7 +635,11 @@ export function deriveLearningState(state: AppState): AppState {
 
   const revisionTopics = Array.isArray(state.revisionTopics)
     ? state.revisionTopics
-        .filter((topic) => lessonSessions.some((session) => session.id === topic.lessonSessionId))
+        .filter(
+          (topic) =>
+            topic.isSynthetic ||
+            lessonSessions.some((session) => session.id === topic.lessonSessionId)
+        )
         .map(normalizeRevisionTopic)
     : [];
 

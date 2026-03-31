@@ -416,3 +416,60 @@ describe('revision plans', () => {
     expect(state.revisionPlan.examName).toBeUndefined();
   });
 });
+
+describe('progress analytics instrumentation', () => {
+  it('logs a session_started event when launching a brand new lesson', () => {
+    const baseState = createInitialState();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: []
+    });
+    const lessonId = baseState.lessons[0]!.id;
+
+    store.launchLesson(lessonId);
+
+    const state = get(store);
+
+    expect(state.analytics[0]?.type).toBe('session_started');
+    expect(state.analytics[0]?.detail).toMatch(/started/i);
+  });
+
+  it('logs a session_resumed event when resuming an existing lesson session', () => {
+    const baseState = createInitialState();
+    const lesson = baseState.lessons[0]!;
+    const session = createLessonSession({
+      id: 'resume-target',
+      lessonId: lesson.id,
+      subjectId: lesson.subjectId,
+      topicId: lesson.topicId,
+      topicTitle: lesson.title.replace(/^.*?:\s*/, ''),
+      status: 'active',
+      completedAt: null,
+      currentStage: 'practice',
+      stagesCompleted: ['orientation', 'concepts', 'construction', 'examples']
+    });
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [session]
+    });
+
+    store.resumeSession(session.id);
+
+    const state = get(store);
+
+    expect(state.analytics[0]?.type).toBe('session_resumed');
+    expect(state.analytics[0]?.detail).toMatch(/resumed/i);
+  });
+
+  it('logs mastery_updated when answering a practice question', () => {
+    const baseState = createInitialState();
+    const questionId = baseState.questions[0]!.id;
+    const store = createAppStore(baseState);
+
+    store.answerQuestion(questionId, 'test answer');
+
+    const state = get(store);
+
+    expect(state.analytics.slice(0, 2).map((event) => event.type)).toEqual(['question_answered', 'mastery_updated']);
+  });
+});

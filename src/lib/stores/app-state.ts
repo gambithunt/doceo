@@ -685,6 +685,7 @@ export function createAppStore(initialState: AppState = readState()) {
         update((state) =>
           persistAndSync({
             ...state,
+            analytics: [createAnalyticsEvent('session_resumed', `Resumed ${existingSession.topicTitle}`), ...state.analytics],
             ui: {
               ...state.ui,
               currentScreen: 'lesson',
@@ -735,6 +736,7 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.learnerProfile,
             total_sessions: state.learnerProfile.total_sessions + 1
           },
+          analytics: [createAnalyticsEvent('session_started', `Started ${session.topicTitle}`), ...state.analytics],
           lessonSessions: upsertLessonSession(state.lessonSessions, session),
           ui: {
             ...state.ui,
@@ -774,6 +776,7 @@ export function createAppStore(initialState: AppState = readState()) {
           },
           analytics: [
             createAnalyticsEvent('question_answered', `${question.prompt} => ${evaluated.isCorrect ? 'correct' : 'review'}`),
+            createAnalyticsEvent('mastery_updated', `${question.lessonId} => ${updatedProgress.masteryLevel}% mastery`),
             ...state.analytics
           ]
         });
@@ -782,6 +785,7 @@ export function createAppStore(initialState: AppState = readState()) {
       update((state) =>
         persistAndSync({
           ...state,
+          analytics: [createAnalyticsEvent('ask_question_submitted', request.question), ...state.analytics],
           askQuestion: {
             ...state.askQuestion,
             request,
@@ -1014,6 +1018,7 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.learnerProfile,
             total_sessions: state.learnerProfile.total_sessions + 1
           },
+          analytics: [createAnalyticsEvent('session_started', `Started ${session.topicTitle}`), ...state.analytics],
           lessonSessions: upsertLessonSession(state.lessonSessions, session),
           topicDiscovery: {
             ...state.topicDiscovery,
@@ -1111,6 +1116,7 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.learnerProfile,
             total_sessions: state.learnerProfile.total_sessions + 1
           },
+          analytics: [createAnalyticsEvent('session_started', `Started ${session.topicTitle}`), ...state.analytics],
           lessonSessions: upsertLessonSession(state.lessonSessions, session),
           topicDiscovery: {
             ...state.topicDiscovery,
@@ -1284,6 +1290,10 @@ export function createAppStore(initialState: AppState = readState()) {
           const nextState: AppState = {
             ...state,
             learnerProfile: nextLearnerProfile,
+            analytics:
+              nextSession.status === 'complete'
+                ? [createAnalyticsEvent('lesson_completed', `${nextSession.topicTitle} complete`), ...state.analytics]
+                : state.analytics,
             lessonSessions: upsertLessonSession(state.lessonSessions, nextSession),
             ui: {
               ...state.ui,
@@ -1346,6 +1356,7 @@ export function createAppStore(initialState: AppState = readState()) {
 
         return persistAndSync({
           ...state,
+          analytics: [createAnalyticsEvent('session_resumed', `Resumed ${lessonSession.topicTitle}`), ...state.analytics],
           ui: {
             ...state.ui,
             currentScreen: 'lesson',
@@ -2125,19 +2136,45 @@ export function createAppStore(initialState: AppState = readState()) {
       ),
     createRevisionPlan: (input: RevisionPlanInput) =>
       update((state) => {
-        const { plan, exam } = buildRevisionPlanFromInput(state, input);
-        const nextUpcomingExams = [exam, ...state.upcomingExams]
+        // If the chosen subject isn't yet in the curriculum, add it to selectedSubjectNames
+        // so deriveLearningState (called inside persistAndSync) includes it.
+        const subjectName =
+          input.subjectName ??
+          state.onboarding.options.subjects.find((s) => s.id === input.subjectId)?.name;
+        const alreadyInCurriculum = state.curriculum.subjects.some((s) => s.id === input.subjectId);
+
+        let stateForPlan = state;
+        if (subjectName && !alreadyInCurriculum) {
+          const nextSelectedNames = deduplicateSubjects([...state.onboarding.selectedSubjectNames, subjectName]);
+          const nextSelectedIds = [
+            ...state.onboarding.selectedSubjectIds,
+            ...state.onboarding.options.subjects
+              .filter((s) => s.name === subjectName && !state.onboarding.selectedSubjectIds.includes(s.id))
+              .map((s) => s.id)
+          ];
+          stateForPlan = deriveLearningState({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              selectedSubjectNames: nextSelectedNames,
+              selectedSubjectIds: nextSelectedIds
+            }
+          });
+        }
+
+        const { plan, exam } = buildRevisionPlanFromInput(stateForPlan, input);
+        const nextUpcomingExams = [exam, ...stateForPlan.upcomingExams]
           .slice()
           .sort((left, right) => Date.parse(left.examDate) - Date.parse(right.examDate));
 
         return persistAndSync({
-          ...state,
+          ...stateForPlan,
           revisionPlan: plan,
-          revisionPlans: [plan, ...state.revisionPlans],
+          revisionPlans: [plan, ...stateForPlan.revisionPlans],
           activeRevisionPlanId: plan.id,
           upcomingExams: nextUpcomingExams,
           ui: {
-            ...state.ui,
+            ...stateForPlan.ui,
             currentScreen: 'revision',
             learningMode: 'revision',
             selectedSubjectId: plan.subjectId,

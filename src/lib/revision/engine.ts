@@ -80,12 +80,14 @@ export function buildRevisionSession(
       ? ['recall']
       : mode === 'teacher_mode'
         ? ['teacher_mode', 'recall', 'explain']
+        : mode === 'shuffle'
+          ? ['recall', 'apply', 'transfer']
         : ['recall', 'explain', 'apply', 'spot_error', 'transfer'];
 
   // Default count: quick_fire=1, shuffle=one per topic, others=2
   const defaultCount =
     targetQuestionCount ??
-    (mode === 'quick_fire' ? 1 : mode === 'shuffle' ? Math.max(topics.length, 2) : 2);
+    (mode === 'quick_fire' ? 1 : mode === 'shuffle' ? Math.max(topics.length, 3) : 2);
   const count = Math.max(1, Math.min(20, defaultCount));
 
   const questions: RevisionQuestion[] = Array.from({ length: count }, (_, i) => {
