@@ -1,6 +1,6 @@
-import { g as getRecommendedSubject, a as getSelectionMode, o as onboardingCountries, b as getCurriculumsByCountry, c as getGradesByCurriculum, d as getSubjectsByCurriculumAndGrade } from "./onboarding.js";
+import { getRecommendedSubject, getSelectionMode, onboardingCountries, getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade } from "./onboarding.js";
 import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
-import { d as deduplicateSubjects } from "./strings.js";
+import { deduplicateSubjects } from "./strings.js";
 function mapCurriculum(row) {
   return {
     id: row.id,

@@ -210,13 +210,16 @@ function getRecommendedSubject(selectedSubjectIds, customSubjects, subjects) {
   };
 }
 export {
-  getSelectionMode as a,
-  getCurriculumsByCountry as b,
-  getGradesByCurriculum as c,
-  getSubjectsByCurriculumAndGrade as d,
-  defaultTerm as e,
-  defaultSchoolYear as f,
-  getRecommendedSubject as g,
-  onboardingStepOrder as h,
-  onboardingCountries as o
+  defaultSchoolYear,
+  defaultTerm,
+  getCurriculumsByCountry,
+  getGradesByCurriculum,
+  getRecommendedSubject,
+  getSelectionMode,
+  getSubjectsByCurriculumAndGrade,
+  onboardingCountries,
+  onboardingCurriculums,
+  onboardingGrades,
+  onboardingStepOrder,
+  onboardingSubjects
 };

@@ -1,6 +1,7 @@
 import "clsx";
 import { o as onDestroy } from "../../chunks/svelte-vendor.js";
 import { d as createInitialState } from "../../chunks/platform.js";
+import "../../chunks/supabase2.js";
 import { a as appState } from "../../chunks/app-state.js";
 function _layout($$renderer, $$props) {
   $$renderer.component(($$renderer2) => {

@@ -19,8 +19,21 @@ async function POST({ request }) {
   if (!parsed.success) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
-  const result = await completeOnboarding(parsed.data);
-  return json(result);
+  try {
+    const result = await completeOnboarding(parsed.data);
+    return json(result);
+  } catch (err) {
+    const { getSubjectsByCurriculumAndGrade, getRecommendedSubject, getSelectionMode } = await import("../../../../../chunks/onboarding.js");
+    const { deduplicateSubjects } = await import("../../../../../chunks/strings.js");
+    const subjects = getSubjectsByCurriculumAndGrade(parsed.data.curriculumId, parsed.data.gradeId);
+    const customSubjects = deduplicateSubjects(parsed.data.customSubjects);
+    const recommendation = getRecommendedSubject(parsed.data.selectedSubjectIds, customSubjects, subjects);
+    const selectionMode = getSelectionMode(parsed.data.selectedSubjectIds, customSubjects, parsed.data.isUnsure);
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[onboarding/complete] Database unavailable, using local fallback.", err);
+    }
+    return json({ recommendation, selectionMode, subjects });
+  }
 }
 export {
   POST

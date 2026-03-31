@@ -1,5 +1,51 @@
 import { d as createInitialState, n as normalizeAppState } from "./platform.js";
 import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
+const MODEL_PRICING = {
+  "openai/gpt-4.1-nano": { inputPer1M: 0.1, outputPer1M: 0.4 },
+  "openai/gpt-4o-mini": { inputPer1M: 0.15, outputPer1M: 0.6 },
+  "openai/gpt-4.1-mini": { inputPer1M: 0.4, outputPer1M: 1.6 },
+  "openai/gpt-4o": { inputPer1M: 2.5, outputPer1M: 10 }
+};
+const TIER_PRICING = {
+  fast: { inputPer1M: 0.1, outputPer1M: 0.4 },
+  default: { inputPer1M: 0.15, outputPer1M: 0.6 },
+  thinking: { inputPer1M: 0.4, outputPer1M: 1.6 }
+};
+const FALLBACK_PRICING = { inputPer1M: 0.15, outputPer1M: 0.6 };
+function calculateCost(tokens, modelOrTier) {
+  const pricing = MODEL_PRICING[modelOrTier] ?? TIER_PRICING[modelOrTier] ?? FALLBACK_PRICING;
+  const inputCostUsd = tokens.inputTokens / 1e6 * pricing.inputPer1M;
+  const outputCostUsd = tokens.outputTokens / 1e6 * pricing.outputPer1M;
+  return { costUsd: inputCostUsd + outputCostUsd, inputCostUsd, outputCostUsd };
+}
+function parseAiCost(response, modelOrTier) {
+  let parsed = response;
+  if (typeof response === "string") {
+    try {
+      parsed = JSON.parse(response);
+    } catch {
+      return { tokensUsed: null, costUsd: null };
+    }
+  }
+  const tokens = extractTokensFromResponse(parsed);
+  if (!tokens) return { tokensUsed: null, costUsd: null };
+  const { costUsd } = calculateCost(tokens, modelOrTier);
+  return {
+    tokensUsed: tokens.inputTokens + tokens.outputTokens,
+    costUsd
+  };
+}
+function extractTokensFromResponse(responseBody) {
+  if (!responseBody || typeof responseBody !== "object") return null;
+  const body = responseBody;
+  if (body.usage && typeof body.usage === "object") {
+    const usage = body.usage;
+    const input = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
+    const output = Number(usage.completion_tokens ?? usage.output_tokens ?? 0);
+    if (input > 0 || output > 0) return { inputTokens: input, outputTokens: output };
+  }
+  return null;
+}
 function createSnapshotId(profileId) {
   return `snapshot-${profileId}`;
 }
@@ -14,12 +60,14 @@ async function loadAppState(profileId) {
   if (!supabase || !isSupabaseConfigured()) {
     return createInitialState();
   }
-  const [sessionsResult, learnerProfileResult, revisionResult] = await Promise.all([
+  const [sessionsResult, learnerProfileResult, revisionResult, snapshotResult] = await Promise.all([
     supabase.from("lesson_sessions").select("session_json").eq("profile_id", profileId).order("last_active_at", { ascending: false }).limit(50),
     supabase.from("learner_profiles").select("profile_json").eq("student_id", profileId).maybeSingle(),
-    supabase.from("revision_topics").select("topic_json").eq("profile_id", profileId)
+    supabase.from("revision_topics").select("topic_json").eq("profile_id", profileId),
+    supabase.from("app_state_snapshots").select("state_json, updated_at").eq("id", createSnapshotId(profileId)).maybeSingle()
   ]);
   const sessionRows = sessionsResult.data ?? [];
+  const snapshotState = coerceState(snapshotResult.data ?? null);
   if (sessionRows.length > 0) {
     const base = createInitialState();
     return normalizeAppState({
@@ -29,11 +77,17 @@ async function loadAppState(profileId) {
       lessonSessions: sessionRows.map((row) => row.session_json),
       revisionTopics: (revisionResult.data ?? []).map(
         (row) => row.topic_json
-      )
+      ),
+      revisionAttempts: snapshotState.revisionAttempts,
+      revisionSession: snapshotState.revisionSession,
+      revisionPlans: snapshotState.revisionPlans,
+      activeRevisionPlanId: snapshotState.activeRevisionPlanId,
+      revisionPlan: snapshotState.revisionPlan,
+      upcomingExams: snapshotState.upcomingExams,
+      analytics: snapshotState.analytics
     });
   }
-  const { data } = await supabase.from("app_state_snapshots").select("state_json, updated_at").eq("id", createSnapshotId(profileId)).maybeSingle();
-  return coerceState(data ?? null);
+  return snapshotState;
 }
 async function saveAppState(state) {
   const normalizedState = normalizeAppState(state);
@@ -48,7 +102,8 @@ async function saveAppState(state) {
     id: normalizedState.profile.id,
     full_name: normalizedState.profile.fullName,
     email: normalizedState.profile.email,
-    role: normalizedState.profile.role,
+    // role is intentionally excluded — it is managed server-side only and must
+    // never be overwritten by a client-side state sync.
     school_year: normalizedState.profile.schoolYear,
     term: normalizedState.profile.term,
     grade: normalizedState.profile.grade,
@@ -157,10 +212,17 @@ async function logAiInteraction(profileId, requestPayload, response, provider, m
       });
     }
   };
+  const modelOrTier = meta?.model ?? meta?.modelTier ?? "default";
+  const { tokensUsed, costUsd } = parseAiCost(response, modelOrTier);
   await supabase.from("ai_interactions").insert({
     id: crypto.randomUUID(),
     profile_id: profileId,
     provider,
+    mode: meta?.mode ?? null,
+    model_tier: meta?.modelTier ?? null,
+    model: meta?.model ?? null,
+    tokens_used: tokensUsed,
+    cost_usd: costUsd,
     request_payload: wrapPayload(requestPayload),
     response_payload: wrapPayload(response),
     created_at: (/* @__PURE__ */ new Date()).toISOString()

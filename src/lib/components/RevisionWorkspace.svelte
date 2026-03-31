@@ -807,157 +807,13 @@
     </section>
   {/if}
 
-  <section class="panel build-plan-panel">
-    {#if state.ui.showRevisionPlanner}
-      <div class="panel-header build-plan-header">
-        <div>
-          <h2>Build a revision plan</h2>
-          <p class="build-plan-summary">
-            Set the next exam and let revision follow it clearly.
-          </p>
-        </div>
-        <button type="button" class="secondary action-btn" onclick={closePlanner}>Cancel</button>
-      </div>
-
-      <div class="planner-grid">
-        <label class="field">
-          <span>Subject</span>
-          <select bind:value={plannerSubjectId}>
-            {#each availableSubjects as subject}
-              <option value={subject.id}>{subject.name}</option>
-            {/each}
-          </select>
-        </label>
-
-        <label class="field" class:field-error={plannerErrors.examName}>
-          <span>Exam name</span>
-          <input
-            bind:value={plannerExamName}
-            placeholder="Mid-term test"
-            oninput={() => { if (plannerErrors.examName) plannerErrors = { ...plannerErrors, examName: undefined }; }}
-          />
-          {#if plannerErrors.examName}
-            <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.examName}</span>
-          {/if}
-        </label>
-
-        <label class="field" class:field-error={plannerErrors.examDate}>
-          <span>Exam date</span>
-          <input
-            type="date"
-            bind:value={plannerExamDate}
-            oninput={() => { if (plannerErrors.examDate) plannerErrors = { ...plannerErrors, examDate: undefined }; }}
-          />
-          {#if plannerErrors.examDate}
-            <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.examDate}</span>
-          {/if}
-        </label>
-
-        <label class="field">
-          <span>Plan style</span>
-          <select bind:value={plannerMode}>
-            <option value="weak_topics">Use my weak topics</option>
-            <option value="full_subject">Use the full subject scope</option>
-            <option value="manual">Choose topics myself</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span>Daily time</span>
-          <select bind:value={plannerTimeBudgetMinutes}>
-            <option value={10}>10 minutes</option>
-            <option value={15}>15 minutes</option>
-            <option value={20}>20 minutes</option>
-            <option value={30}>30 minutes</option>
-          </select>
-        </label>
-
-        {#if plannerMode === 'manual'}
-          <div class="field field-wide manual-topic-field" class:field-error={plannerErrors.manualTopics}>
-            <div class="manual-topic-header">
-              <span>Topics</span>
-              {#if plannerTopicHintsLoading}
-                <small>Loading suggestions...</small>
-              {/if}
-            </div>
-
-            {#if plannerHintChips.length > 0}
-              <div class="planner-pill-row">
-                {#each plannerHintChips as chip}
-                  <button
-                    type="button"
-                    class:selected={plannerTopicSelected(chip.label)}
-                    class="planner-pill"
-                    aria-pressed={plannerTopicSelected(chip.label)}
-                    onclick={() => choosePlannerTopic(chip.label)}
-                  >
-                    {chip.label}
-                  </button>
-                {/each}
-              </div>
-            {/if}
-
-            {#if plannerTopicHintsError}
-              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerTopicHintsError}</span>
-            {/if}
-
-            <input
-              value={plannerManualTopics}
-              placeholder="Type one or more topics, for example: Fractions, Area"
-              oninput={onPlannerManualInput}
-            />
-
-            <p class="manual-topic-help">
-              Tap a suggestion pill to add it quickly. If you type your own topics, Doceo will match them to real curriculum topics before the plan is created.
-            </p>
-
-            {#if plannerTopicMatchStatus === 'ready' && plannerTopicMatches.length > 0}
-              <div class="manual-match-block">
-                <small>Matched topics</small>
-                <div class="planner-pill-row">
-                  {#each plannerTopicMatches as topic}
-                    <button
-                      type="button"
-                      class:selected={plannerTopicSelected(topic.title)}
-                      class="planner-pill planner-pill--matched"
-                      aria-pressed={plannerTopicSelected(topic.title)}
-                      onclick={() => choosePlannerTopic(topic.title)}
-                    >
-                      {topic.title}
-                    </button>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            {#if plannerErrors.manualTopics}
-              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.manualTopics}</span>
-            {/if}
-
-            {#if plannerTopicMatchError}
-              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerTopicMatchError}</span>
-            {/if}
-          </div>
-        {/if}
-      </div>
-
-      <div class="actions">
-        <button type="button" class="action-btn" onclick={submitPlanner}>Generate plan</button>
-      </div>
-    {:else}
-      <div class="build-plan-shell">
-        <div class="build-plan-copy">
-          <h3>Build your next revision path</h3>
-          <p class="build-plan-summary">
-            Choose the exam, and Doceo will organise what to revise next.
-          </p>
-        </div>
-
-        <div class="build-plan-actions">
-          <button type="button" class="action-btn build-plan-cta" onclick={openPlanner}>Build revision</button>
-        </div>
-      </div>
-    {/if}
+  <section class="panel build-plan-panel build-plan-invite-card">
+    <div class="build-plan-invite-icon" aria-hidden="true">🎯</div>
+    <div class="build-plan-invite-body">
+      <h3>Build your next revision path</h3>
+      <p class="build-plan-summary">Choose the exam, and Doceo will organise what to revise next.</p>
+      <button type="button" class="action-btn build-plan-cta" onclick={openPlanner}>Build revision</button>
+    </div>
   </section>
 
   <section class="panel plans-panel">
@@ -971,37 +827,42 @@
 
     {#if sortedRevisionPlans.length > 0}
       <div class="plan-grid">
-        {#each sortedRevisionPlans as plan}
+        {#each sortedRevisionPlans as plan, index}
+          {@const examMs = new Date(plan.examDate).getTime()}
+          {@const daysLeft = Number.isNaN(examMs) ? null : Math.ceil((examMs - Date.now()) / 86400000)}
           <article
             class:active-plan={activeRevisionPlan?.id === plan.id}
-            class="plan-card"
+            class="plan-card tone-{index % 3}"
           >
-            <div class="topic-row plan-card-header">
-              <div>
-                <strong>{plan.examName ?? 'Revision plan'}</strong>
-                <p class="plan-subject">{plan.subjectName}</p>
-              </div>
-              <div class="plan-badges">
+            <div class="plan-card-header">
+              <div class="plan-card-title-block">
                 {#if activeRevisionPlan?.id === plan.id}
-                  <span class="hero-pill">Current focus</span>
+                  <span class="plan-active-badge">Active</span>
                 {/if}
+                <strong class="plan-card-name">{plan.examName ?? 'Revision plan'}</strong>
+                <span class="plan-card-subject">{plan.subjectName}</span>
               </div>
+              {#if daysLeft !== null}
+                <div class="plan-countdown" class:plan-countdown--urgent={daysLeft <= 7 && daysLeft >= 0}>
+                  <strong class="plan-countdown-num">
+                    {daysLeft < 0 ? '—' : daysLeft === 0 ? '0' : daysLeft}
+                  </strong>
+                  <span class="plan-countdown-label">
+                    {daysLeft < 0 ? 'passed' : daysLeft === 0 ? 'today' : 'days left'}
+                  </span>
+                </div>
+              {/if}
             </div>
 
-            <div class="hero-meta plan-meta">
-              <span class="hero-pill subdued">{formatPlanStyleLabel(plan.planStyle)}</span>
-              <span class="hero-pill subdued">{formatPlanTiming(plan.examDate)}</span>
-              <span class="hero-pill subdued">{plan.topics.length} topics</span>
-              <span class="hero-pill subdued">{plan.timeBudgetMinutes ?? 20} min/day</span>
+            <div class="plan-chips-row">
+              <span class="plan-chip plan-chip--info">{formatPlanStyleLabel(plan.planStyle)}</span>
+              <span class="plan-chip">{plan.topics.length} topic{plan.topics.length === 1 ? '' : 's'}</span>
+              <span class="plan-chip">{plan.timeBudgetMinutes ?? 20} min/day</span>
             </div>
 
-            <p class="plan-style-copy">{describePlanStyle(plan.planStyle)}</p>
-
-            <div class="plan-actions">
-              <button type="button" class="action-btn" onclick={() => startPlan(plan.id)}>
-                Start revision
-              </button>
-            </div>
+            <button type="button" class="action-btn plan-start-btn" onclick={() => startPlan(plan.id)}>
+              Start revision
+            </button>
           </article>
         {/each}
       </div>
@@ -1451,6 +1312,146 @@
       </button>
     </section>
   {/if}
+
+  {#if state.ui.showRevisionPlanner}
+    <div class="planner-backdrop" onclick={closePlanner} role="presentation">
+      <div class="planner-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Build a revision plan">
+        <div class="planner-modal-header">
+          <div>
+            <h2>Build a revision plan</h2>
+            <p class="build-plan-summary">Set the next exam and let revision follow it clearly.</p>
+          </div>
+          <button type="button" class="secondary action-btn planner-close-btn" onclick={closePlanner}>Cancel</button>
+        </div>
+
+        <div class="planner-grid">
+          <label class="field">
+            <span>Subject</span>
+            <select bind:value={plannerSubjectId}>
+              {#each availableSubjects as subject}
+                <option value={subject.id}>{subject.name}</option>
+              {/each}
+            </select>
+          </label>
+
+          <label class="field" class:field-error={plannerErrors.examName}>
+            <span>Exam name</span>
+            <input
+              bind:value={plannerExamName}
+              placeholder="Mid-term test"
+              oninput={() => { if (plannerErrors.examName) plannerErrors = { ...plannerErrors, examName: undefined }; }}
+            />
+            {#if plannerErrors.examName}
+              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.examName}</span>
+            {/if}
+          </label>
+
+          <label class="field" class:field-error={plannerErrors.examDate}>
+            <span>Exam date</span>
+            <input
+              type="date"
+              bind:value={plannerExamDate}
+              oninput={() => { if (plannerErrors.examDate) plannerErrors = { ...plannerErrors, examDate: undefined }; }}
+            />
+            {#if plannerErrors.examDate}
+              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.examDate}</span>
+            {/if}
+          </label>
+
+          <label class="field">
+            <span>Plan style</span>
+            <select bind:value={plannerMode}>
+              <option value="weak_topics">Use my weak topics</option>
+              <option value="full_subject">Use the full subject scope</option>
+              <option value="manual">Choose topics myself</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Daily time</span>
+            <select bind:value={plannerTimeBudgetMinutes}>
+              <option value={10}>10 minutes</option>
+              <option value={15}>15 minutes</option>
+              <option value={20}>20 minutes</option>
+              <option value={30}>30 minutes</option>
+            </select>
+          </label>
+
+          {#if plannerMode === 'manual'}
+            <div class="field field-wide manual-topic-field" class:field-error={plannerErrors.manualTopics}>
+              <div class="manual-topic-header">
+                <span>Topics</span>
+                {#if plannerTopicHintsLoading}
+                  <small>Loading suggestions...</small>
+                {/if}
+              </div>
+
+              {#if plannerHintChips.length > 0}
+                <div class="planner-pill-row">
+                  {#each plannerHintChips as chip}
+                    <button
+                      type="button"
+                      class:selected={plannerTopicSelected(chip.label)}
+                      class="planner-pill"
+                      aria-pressed={plannerTopicSelected(chip.label)}
+                      onclick={() => choosePlannerTopic(chip.label)}
+                    >
+                      {chip.label}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+
+              {#if plannerTopicHintsError}
+                <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerTopicHintsError}</span>
+              {/if}
+
+              <input
+                value={plannerManualTopics}
+                placeholder="Type one or more topics, for example: Fractions, Area"
+                oninput={onPlannerManualInput}
+              />
+
+              <p class="manual-topic-help">
+                Tap a pill to add it quickly. Doceo will match typed topics to the real curriculum before creating the plan.
+              </p>
+
+              {#if plannerTopicMatchStatus === 'ready' && plannerTopicMatches.length > 0}
+                <div class="manual-match-block">
+                  <small>Matched topics</small>
+                  <div class="planner-pill-row">
+                    {#each plannerTopicMatches as topic}
+                      <button
+                        type="button"
+                        class:selected={plannerTopicSelected(topic.title)}
+                        class="planner-pill planner-pill--matched"
+                        aria-pressed={plannerTopicSelected(topic.title)}
+                        onclick={() => choosePlannerTopic(topic.title)}
+                      >
+                        {topic.title}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+
+              {#if plannerErrors.manualTopics}
+                <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.manualTopics}</span>
+              {/if}
+
+              {#if plannerTopicMatchError}
+                <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerTopicMatchError}</span>
+              {/if}
+            </div>
+          {/if}
+        </div>
+
+        <div class="actions">
+          <button type="button" class="action-btn" onclick={submitPlanner}>Generate plan</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -1551,8 +1552,7 @@
     padding: 1.35rem;
   }
 
-  .revision-outlook-panel,
-  .build-plan-panel {
+  .revision-outlook-panel {
     position: relative;
     overflow: hidden;
     border: 1px solid transparent;
@@ -1560,9 +1560,6 @@
     box-shadow:
       0 10px 24px rgba(15, 23, 42, 0.07),
       0 24px 56px rgba(15, 23, 42, 0.04);
-  }
-
-  .revision-outlook-panel {
     background:
       radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 100%, white), transparent 40%),
       radial-gradient(circle at 85% 20%, color-mix(in srgb, var(--accent-dim) 95%, white), transparent 34%),
@@ -1570,8 +1567,40 @@
       linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 28%, var(--surface-strong)), color-mix(in srgb, var(--surface) 94%, white));
   }
 
-  .build-plan-panel {
-    background: var(--surface-callout);
+  /* Build plan invite card */
+  .build-plan-invite-card {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: 1rem;
+    background: color-mix(in srgb, var(--accent-dim) 55%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+    position: relative;
+    overflow: hidden;
+    transition: background 180ms var(--ease-soft), border-color 180ms var(--ease-soft);
+  }
+
+
+  .build-plan-invite-card:hover {
+    background: color-mix(in srgb, var(--accent-dim) 80%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  }
+
+  .build-plan-invite-icon {
+    font-size: 1.6rem;
+    line-height: 1;
+    padding-top: 0.15rem;
+  }
+
+  .build-plan-invite-body {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .build-plan-invite-body h3 {
+    font-size: 1.12rem;
+    font-weight: 700;
+    line-height: 1.2;
   }
 
   .hero-copy,
@@ -1598,10 +1627,7 @@
   }
 
   .build-plan-shell {
-    display: grid;
-    gap: 1rem;
-    align-items: center;
-    grid-template-columns: minmax(0, 1.5fr) auto;
+    display: none;
   }
 
   .revision-outlook-panel {
@@ -1908,17 +1934,14 @@
 
   .plan-grid {
     display: grid;
-    gap: 0.9rem;
-  }
-
-  .plan-grid {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
 
   .plan-card {
     display: grid;
-    gap: 0.7rem;
-    padding: 0.95rem 1rem;
+    gap: 0.65rem;
+    padding: 0.85rem 1rem;
     border-radius: 1.1rem;
     border: 1px solid var(--border);
     background: var(--surface-soft);
@@ -1929,27 +1952,176 @@
       background 180ms var(--ease-soft);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.02),
-      0 8px 20px rgba(0,0,0,0.08);
+      0 4px 12px rgba(0,0,0,0.06);
   }
 
   .plan-card:hover {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-    background: color-mix(in srgb, var(--surface-high) 55%, var(--surface-soft));
+    transform: translateY(-3px);
     box-shadow:
       inset 0 1px 0 rgba(255,255,255,0.03),
-      0 12px 26px rgba(0,0,0,0.14);
+      0 10px 24px rgba(0,0,0,0.12);
+  }
+
+  .plan-card.tone-0 {
+    background: color-mix(in srgb, var(--color-blue-dim) 70%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--color-blue) 16%, var(--border));
+  }
+
+  .plan-card.tone-1 {
+    background: color-mix(in srgb, var(--color-purple-dim) 70%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--color-purple) 16%, var(--border));
+  }
+
+  .plan-card.tone-2 {
+    background: color-mix(in srgb, var(--color-yellow-dim) 70%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--color-yellow) 16%, var(--border));
+  }
+
+  .plan-card.tone-0:hover {
+    background: color-mix(in srgb, var(--color-blue-dim) 100%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--color-blue) 28%, var(--border));
+  }
+
+  .plan-card.tone-1:hover {
+    background: color-mix(in srgb, var(--color-purple-dim) 100%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--color-purple) 28%, var(--border));
+  }
+
+  .plan-card.tone-2:hover {
+    background: color-mix(in srgb, var(--color-yellow-dim) 100%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--color-yellow) 28%, var(--border));
   }
 
   .plan-card.active-plan {
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent),
+      0 4px 12px rgba(0,0,0,0.06);
   }
 
   .plan-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .plan-card-toprow {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 0.6rem;
+  }
+
+  .plan-card-title-block {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .plan-active-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    width: fit-content;
+    margin-bottom: 0.15rem;
+  }
+
+  .plan-countdown {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 0.35rem 0.6rem;
+    border-radius: 0.75rem;
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--border);
+    min-width: 3rem;
+    text-align: center;
+  }
+
+  .plan-countdown--urgent {
+    background: var(--color-orange-dim);
+    border-color: color-mix(in srgb, var(--color-orange) 25%, var(--border));
+  }
+
+  .plan-countdown--urgent .plan-countdown-num {
+    color: var(--color-orange);
+  }
+
+  .plan-countdown-num {
+    font-size: 1.35rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--text);
+  }
+
+  .plan-countdown-label {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  .plan-card-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .plan-card-subject {
+    color: var(--text-soft);
+    font-size: 0.8rem;
+  }
+
+  /* Semantic chips used in plan cards */
+  .plan-chips-row {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
     align-items: center;
   }
 
-  .plan-badges,
+  .plan-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.22rem 0.6rem;
+    background: var(--surface-soft);
+    border: 1px solid var(--border-strong);
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .plan-chip--active {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    color: var(--accent);
+  }
+
+  .plan-chip--info {
+    background: var(--color-blue-dim);
+    border-color: color-mix(in srgb, var(--color-blue) 20%, var(--border));
+    color: var(--color-blue);
+  }
+
+  .plan-chip--warn {
+    background: var(--color-yellow-dim);
+    border-color: color-mix(in srgb, var(--color-yellow) 20%, var(--border));
+    color: var(--color-yellow);
+  }
+
   .plan-actions,
   .empty-plan-state {
     display: flex;
@@ -1957,17 +2129,30 @@
     flex-wrap: wrap;
   }
 
+  .plan-start-btn {
+    font-size: 0.85rem;
+    padding: 0.55rem 1rem;
+    justify-self: stretch;
+    width: 100%;
+    justify-content: center;
+    background: var(--accent);
+    color: var(--accent-contrast);
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  }
+
+  .plan-start-btn:hover {
+    background: color-mix(in srgb, var(--accent) 85%, black);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+  }
+
   .empty-plan-state {
     justify-content: space-between;
     align-items: center;
   }
 
-  .plan-meta {
-    align-items: center;
-  }
-
-  .plans-summary,
-  .plan-style-copy {
+  .plans-summary {
     color: var(--text-soft);
   }
 
@@ -2131,9 +2316,15 @@
   }
 
   .manual-topic-header small,
-  .manual-match-block small,
-  .manual-topic-help {
+  .manual-match-block small {
     color: var(--text-soft);
+    font-size: 0.76rem;
+  }
+
+  .manual-topic-help {
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.5;
   }
 
   .planner-pill-row {
@@ -2147,66 +2338,50 @@
     overflow: hidden;
     transition:
       transform 140ms var(--ease-soft),
-      border-color 160ms var(--ease-soft),
-      background 160ms var(--ease-soft),
+      border-color 200ms var(--ease-soft),
+      background 200ms var(--ease-soft),
       box-shadow 180ms var(--ease-soft),
-      color 160ms var(--ease-soft);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
+      color 200ms var(--ease-soft);
+    border: 1px solid var(--border-strong);
     border-radius: 999px;
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-high) 82%, transparent), color-mix(in srgb, var(--surface-soft) 92%, transparent));
-    color: var(--text);
-    padding: 0.52rem 0.92rem;
+    background: var(--surface-soft);
+    color: var(--text-soft);
+    padding: 0.32rem 0.75rem;
     font: inherit;
-    font-size: 0.92rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    line-height: 1.1;
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.05),
-      0 1px 2px rgba(0,0,0,0.16);
+    line-height: 1.2;
     cursor: pointer;
   }
 
   .planner-pill:hover {
     transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--surface-high)), color-mix(in srgb, var(--surface-soft) 86%, var(--accent-dim)));
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.06),
-      0 6px 16px rgba(0,0,0,0.18);
+    border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
+    background: color-mix(in srgb, var(--accent-dim) 60%, var(--surface-soft));
+    color: var(--text);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.08);
   }
 
   .planner-pill:active {
-    transform: translateY(0) scale(0.985);
-    box-shadow:
-      inset 0 1px 1px rgba(0,0,0,0.18),
-      0 2px 6px rgba(0,0,0,0.14);
+    transform: translateY(0) scale(0.975);
   }
 
   .planner-pill:focus-visible {
     outline: none;
-    border-color: color-mix(in srgb, var(--accent) 56%, var(--border-strong));
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
-      0 8px 20px rgba(0,0,0,0.2);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
   .planner-pill.selected {
-    border-color: color-mix(in srgb, var(--accent) 56%, var(--border-strong));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--accent) 20%, var(--surface-high)), color-mix(in srgb, var(--accent) 12%, var(--surface-soft)));
-    color: color-mix(in srgb, var(--text) 92%, white);
-    box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.08),
-      0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent),
-      0 10px 24px color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: var(--accent-dim);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
   .planner-pill--matched {
     border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, var(--surface-high)), color-mix(in srgb, var(--accent) 6%, var(--surface-soft)));
+    background: color-mix(in srgb, var(--accent-dim) 50%, var(--surface-soft));
   }
 
   .planner-pill--matched:not(.selected)::after {
@@ -2479,6 +2654,66 @@
     font-size: 0.72rem;
   }
 
+  /* Planner modal overlay */
+  .planner-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(2px);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    animation: backdrop-fade 200ms ease both;
+  }
+
+  @keyframes backdrop-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .planner-modal {
+    width: 100%;
+    max-width: 600px;
+    max-height: calc(100svh - 3rem);
+    overflow-y: auto;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-xl);
+    padding: 1.5rem;
+    display: grid;
+    gap: 1.2rem;
+    box-shadow:
+      0 24px 56px rgba(0, 0, 0, 0.18),
+      0 8px 20px rgba(0, 0, 0, 0.12);
+    animation: modal-rise 220ms var(--ease-spring) both;
+  }
+
+  @keyframes modal-rise {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .planner-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .planner-modal-header h2 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .planner-close-btn {
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
+  }
+
   @media (max-width: 980px) {
     .content-grid,
     .hero-card,
@@ -2486,16 +2721,16 @@
       grid-template-columns: 1fr;
     }
 
-    .build-plan-shell {
-      grid-template-columns: 1fr;
+    .planner-modal {
+      padding: 1.25rem;
     }
 
     .revision-plan-preview-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .build-plan-actions {
-      justify-self: start;
+    .build-plan-invite-card {
+      grid-template-columns: auto 1fr;
     }
 
     .hero-card {

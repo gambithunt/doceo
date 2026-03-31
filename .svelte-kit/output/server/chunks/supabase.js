@@ -7,7 +7,11 @@ function readEnv(name) {
 const serverEnv = {
   supabaseUrl: readEnv("PUBLIC_SUPABASE_URL") || readEnv("VITE_SUPABASE_URL"),
   supabaseAnonKey: readEnv("PUBLIC_SUPABASE_ANON_KEY") || readEnv("VITE_SUPABASE_ANON_KEY"),
-  supabaseServiceRoleKey: readEnv("SUPABASE_SERVICE_ROLE_KEY")
+  supabaseServiceRoleKey: readEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  githubModelsToken: readEnv("GITHUB_MODELS_TOKEN"),
+  openaiApiKey: readEnv("OPENAI_API_KEY"),
+  anthropicApiKey: readEnv("ANTHROPIC_API_KEY"),
+  kimiApiKey: readEnv("KIMI_API_KEY")
 };
 function hasConfiguredPublicSupabase() {
   return serverEnv.supabaseUrl.length > 0 && serverEnv.supabaseAnonKey.length > 0 && !serverEnv.supabaseUrl.includes("your-project-ref") && !serverEnv.supabaseAnonKey.includes("your-supabase-anon-key");
