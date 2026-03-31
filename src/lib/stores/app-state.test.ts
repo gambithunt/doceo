@@ -230,6 +230,38 @@ describe('revision session loop', () => {
     expect(state.ui.activeLessonSessionId).toBe(handoffSession?.id);
   });
 
+  it('can exit an active revision session back to the regular revision tab', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [
+        createLessonSession({
+          id: topic.lessonSessionId,
+          subjectId: topic.subjectId,
+          subject: topic.subject,
+          topicTitle: topic.topicTitle,
+          curriculumReference: topic.curriculumReference
+        })
+      ],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic, {
+      mode: 'deep_revision',
+      source: 'exam_plan',
+      recommendationReason: 'Start revision for Math exam'
+    });
+    store.exitRevisionSession();
+
+    const state = get(store);
+
+    expect(state.revisionSession).toBeNull();
+    expect(state.ui.currentScreen).toBe('revision');
+    expect(state.ui.learningMode).toBe('revision');
+    expect(state.ui.activeLessonSessionId).toBe(topic.lessonSessionId);
+  });
+
   it('uses repeated misconception signals in the mini-lesson handoff brief', () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic({
@@ -324,5 +356,63 @@ describe('revision plans', () => {
     expect(state.activeRevisionPlanId).toBe('plan-2');
     expect(state.revisionPlan.id).toBe('plan-2');
     expect(state.revisionPlan.examName).toBe('Math final');
+  });
+
+  it('removes the active revision plan, promotes the next saved plan, and clears the linked upcoming exam', () => {
+    const baseState = createInitialState();
+    const store = createAppStore(baseState);
+
+    store.createRevisionPlan({
+      subjectId: baseState.curriculum.subjects[0]!.id,
+      examName: 'Math mid-term',
+      examDate: '2026-04-12',
+      mode: 'manual',
+      manualTopics: ['Fractions'],
+      timeBudgetMinutes: 20
+    });
+    store.createRevisionPlan({
+      subjectId: baseState.curriculum.subjects[0]!.id,
+      examName: 'Math final',
+      examDate: '2026-06-18',
+      mode: 'full_subject',
+      timeBudgetMinutes: 30
+    });
+
+    const activePlanId = get(store).activeRevisionPlanId!;
+
+    store.removeRevisionPlan(activePlanId);
+
+    const state = get(store);
+
+    expect(state.revisionPlans).toHaveLength(1);
+    expect(state.revisionPlans[0]?.examName).toBe('Math mid-term');
+    expect(state.activeRevisionPlanId).toBe(state.revisionPlans[0]?.id);
+    expect(state.revisionPlan.examName).toBe('Math mid-term');
+    expect(state.upcomingExams).toHaveLength(1);
+    expect(state.upcomingExams[0]?.examName).toBe('Math mid-term');
+  });
+
+  it('removes the last saved revision plan and clears the active plan selection', () => {
+    const baseState = createInitialState();
+    const store = createAppStore(baseState);
+
+    store.createRevisionPlan({
+      subjectId: baseState.curriculum.subjects[0]!.id,
+      examName: 'Math mid-term',
+      examDate: '2026-04-12',
+      mode: 'weak_topics',
+      timeBudgetMinutes: 20
+    });
+
+    const activePlanId = get(store).activeRevisionPlanId!;
+
+    store.removeRevisionPlan(activePlanId);
+
+    const state = get(store);
+
+    expect(state.revisionPlans).toHaveLength(0);
+    expect(state.activeRevisionPlanId).toBeNull();
+    expect(state.upcomingExams).toHaveLength(0);
+    expect(state.revisionPlan.examName).toBeUndefined();
   });
 });

@@ -35,6 +35,7 @@ import {
   upsertRevisionTopicFromSession
 } from '$lib/data/platform';
 import { buildRevisionPlanFromInput, type RevisionPlanInput } from '$lib/revision/planner';
+import { sortRevisionPlans } from '$lib/revision/plans';
 import {
   dashboardPath,
   lessonPath,
@@ -2172,6 +2173,59 @@ export function createAppStore(initialState: AppState = readState()) {
           }
         });
       }),
+    removeRevisionPlan: (planId: string) =>
+      update((state) => {
+        const removedPlan = state.revisionPlans.find((plan) => plan.id === planId);
+
+        if (!removedPlan) {
+          return state;
+        }
+
+        const now = new Date().toISOString();
+        const remainingPlans = state.revisionPlans.filter((plan) => plan.id !== planId);
+        const sortedRemainingPlans = sortRevisionPlans(remainingPlans);
+        const nextActivePlanId = remainingPlans.some((plan) => plan.id === state.activeRevisionPlanId)
+          ? state.activeRevisionPlanId
+          : sortedRemainingPlans[0]?.id ?? null;
+        const nextRevisionPlans = remainingPlans.map((plan) =>
+          plan.id === nextActivePlanId
+            ? {
+                ...plan,
+                updatedAt: now
+              }
+            : plan
+        );
+        const nextActivePlan = nextRevisionPlans.find((plan) => plan.id === nextActivePlanId) ?? null;
+
+        return persistAndSync({
+          ...state,
+          activeRevisionPlanId: nextActivePlanId,
+          revisionPlan:
+            nextActivePlan ??
+            {
+              ...state.revisionPlan,
+              examName: undefined,
+              examDate: '',
+              updatedAt: now
+            },
+          revisionPlans: nextRevisionPlans,
+          upcomingExams: state.upcomingExams.filter((exam) => {
+            if (exam.revisionPlanId) {
+              return exam.revisionPlanId !== removedPlan.id;
+            }
+
+            return !(
+              exam.subjectId === removedPlan.subjectId &&
+              exam.examName === removedPlan.examName &&
+              exam.examDate === removedPlan.examDate
+            );
+          }),
+          ui: {
+            ...state.ui,
+            selectedSubjectId: nextActivePlan?.subjectId ?? state.ui.selectedSubjectId
+          }
+        });
+      }),
     runRevisionSession: (
       topic: RevisionTopic,
       options?: {
@@ -2199,6 +2253,43 @@ export function createAppStore(initialState: AppState = readState()) {
         })
       );
       navigate(revisionPath());
+    },
+    exitRevisionSession: () => {
+      let shouldNavigate = false;
+
+      update((state) => {
+        const session = state.revisionSession;
+
+        if (!session) {
+          return state;
+        }
+
+        const activeQuestion = session.questions[session.questionIndex] ?? session.questions[0] ?? null;
+        const activeTopic =
+          (activeQuestion
+            ? state.revisionTopics.find((item) => item.lessonSessionId === activeQuestion.revisionTopicId)
+            : null) ??
+          state.revisionTopics.find((item) => item.lessonSessionId === session.revisionTopicId) ??
+          null;
+
+        shouldNavigate = true;
+
+        return persistAndSync({
+          ...state,
+          revisionSession: null,
+          ui: {
+            ...state.ui,
+            currentScreen: 'revision',
+            learningMode: 'revision',
+            activeLessonSessionId: activeTopic?.lessonSessionId ?? state.ui.activeLessonSessionId,
+            selectedSubjectId: activeTopic?.subjectId ?? state.ui.selectedSubjectId
+          }
+        });
+      });
+
+      if (shouldNavigate) {
+        navigate(revisionPath());
+      }
     },
     submitRevisionAnswer: (answer: string, selfConfidence: number) => {
       update((state) => {

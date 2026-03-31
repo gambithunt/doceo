@@ -93,6 +93,17 @@ describe('deriveRevisionHomeModel', () => {
     expect(model.hero?.topic.lessonSessionId).toBe(model.doToday[0]?.topic.lessonSessionId);
   });
 
+  it('uses build-next-revision hero copy and a generic start action', () => {
+    const state = createState({
+      revisionTopics: [createRevisionTopic({ lessonSessionId: 'session-1', topicTitle: 'Fractions', confidenceScore: 0.4 })]
+    });
+
+    const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
+
+    expect(model.hero?.heading).toBe('Build next revision');
+    expect(model.hero?.ctaLabel).toBe('Start revision');
+  });
+
   it('uses the active revision plan as the main exam context when multiple plans exist', () => {
     const overdueScienceTopic = createRevisionTopic({
       lessonSessionId: 'session-science',
@@ -286,7 +297,7 @@ describe('deriveRevisionHomeModel', () => {
     expect(model.focusWeaknesses[0]?.reason).toMatch(/misconception|repeated/i);
   });
 
-  it('recommends teacher mode for overconfident or misconception-heavy topics', () => {
+  it('keeps the internal teacher-mode suggestion while using a generic start action in the hero', () => {
     const state = createState({
       revisionTopics: [
         createRevisionTopic({
@@ -309,7 +320,7 @@ describe('deriveRevisionHomeModel', () => {
     const model = deriveRevisionHomeModel(state, new Date('2026-03-30T09:00:00.000Z'));
 
     expect(model.hero?.suggestedMode).toBe('teacher_mode');
-    expect(model.hero?.ctaLabel).toMatch(/teacher mode/i);
+    expect(model.hero?.ctaLabel).toBe('Start revision');
   });
 
   it('recommends quick-fire for stable topics that only need a light touch', () => {

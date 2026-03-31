@@ -2,10 +2,12 @@ import type { RevisionHomeModel, RevisionRecommendation } from '$lib/revision/ra
 import type { AppState, RevisionPlan, RevisionTopic } from '$lib/types';
 
 export type RevisionFocusTab = 'do_today' | 'focus_weaknesses' | 'prepare_exam' | 'choose_topic';
+export type RevisionFocusMatchKind = 'recommended' | 'plan_topic' | 'subject_fallback' | 'library';
 
 export interface RevisionFocusItem {
   topic: RevisionTopic;
   recommendation: RevisionRecommendation | null;
+  matchKind: RevisionFocusMatchKind;
 }
 
 export interface RevisionFocusTabOption {
@@ -69,10 +71,15 @@ function buildRecommendationMap(homeModel: RevisionHomeModel): Map<string, Revis
   return map;
 }
 
-function createFocusItem(topic: RevisionTopic, recommendations: Map<string, RevisionRecommendation>): RevisionFocusItem {
+function createFocusItem(
+  topic: RevisionTopic,
+  recommendations: Map<string, RevisionRecommendation>,
+  matchKind: RevisionFocusMatchKind = 'recommended'
+): RevisionFocusItem {
   return {
     topic,
-    recommendation: recommendations.get(topic.lessonSessionId) ?? null
+    recommendation: recommendations.get(topic.lessonSessionId) ?? null,
+    matchKind
   };
 }
 
@@ -102,11 +109,18 @@ function buildPrepareExamItems(
   }
 
   const plannedTitles = new Set(activePlan.topics.map(normalizeTitle));
-  const matchingTopics = state.revisionTopics.filter(
-    (topic) => topic.subjectId === activePlan.subjectId && plannedTitles.has(normalizeTitle(topic.topicTitle))
-  );
+  const sameSubjectTopics = state.revisionTopics.filter((topic) => topic.subjectId === activePlan.subjectId);
+  const matchingTopics = sameSubjectTopics.filter((topic) => plannedTitles.has(normalizeTitle(topic.topicTitle)));
 
-  return sortPlanTopics(matchingTopics, recommendations).map((topic) => createFocusItem(topic, recommendations));
+  if (matchingTopics.length > 0) {
+    return sortPlanTopics(matchingTopics, recommendations).map((topic) =>
+      createFocusItem(topic, recommendations, 'plan_topic')
+    );
+  }
+
+  return sortPlanTopics(sameSubjectTopics, recommendations).map((topic) =>
+    createFocusItem(topic, recommendations, 'subject_fallback')
+  );
 }
 
 export function deriveRevisionFocusModel(
@@ -122,10 +136,10 @@ export function deriveRevisionFocusModel(
   const chooseTopicItems = state.revisionTopics
     .slice()
     .sort(compareTopics)
-    .map((topic) => createFocusItem(topic, recommendations));
+    .map((topic) => createFocusItem(topic, recommendations, 'library'));
 
   const defaultTab: RevisionFocusTab =
-    prepareExamItems.length > 0 && (homeModel.nearestExam?.daysUntilExam ?? Number.MAX_SAFE_INTEGER) <= 7
+    activePlan && prepareExamItems.length > 0
       ? 'prepare_exam'
       : doTodayItems.length > 0
         ? 'do_today'

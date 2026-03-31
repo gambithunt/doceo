@@ -290,14 +290,9 @@ function buildHero(recommendation: RevisionRecommendation, exam: RevisionExamSna
 
   return {
     ...recommendation,
-    heading: 'Revise this now',
-    summary: `${examContext} ${recommendation.topic.topicTitle} needs attention next.`,
-    ctaLabel:
-      recommendation.suggestedMode === 'teacher_mode'
-        ? 'Start teacher mode'
-        : recommendation.suggestedMode === 'quick_fire'
-          ? 'Start quick-fire'
-          : 'Start deep revision'
+    heading: 'Build next revision',
+    summary: `${examContext} ${recommendation.reason}.`,
+    ctaLabel: 'Start revision'
   };
 }
 

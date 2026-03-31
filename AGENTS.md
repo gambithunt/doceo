@@ -15,7 +15,8 @@
 ## UI Work
 - Use the ui-design skill
 - Always be mindefull of mobile design, every part of the site should work equally well on desktop and mobile
-- Read `/docs/desgin-langauge.md` before implementing or revising app UI so new work matches the established component language
-- Use `/docs/desgin-langauge.md` as the local source of truth for component hierarchy, tile states, spacing, and copy restraint
+- When making design updates or changes always make changes to both light and dark mode colors
+- Read `/docs/design-langauge.md` before implementing or revising app UI so new work matches the established component language
+- Use `/docs/design-langauge.md` as the local source of truth for component hierarchy, tile states, spacing, and copy restraint
 
 ----

@@ -273,6 +273,7 @@ export interface RevisionPlan {
 
 export interface UpcomingExam {
   id: string;
+  revisionPlanId?: string;
   subjectId: string;
   subjectName: string;
   examName: string;

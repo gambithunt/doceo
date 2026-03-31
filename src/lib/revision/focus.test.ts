@@ -101,6 +101,39 @@ describe('deriveRevisionFocusModel', () => {
     expect(focusModel.panels.prepare_exam.items.map((item) => item.topic.lessonSessionId)).toEqual(['session-fractions']);
   });
 
+  it('keeps the active revision plan as the default focus when it has relevant topics', () => {
+    const activePlan = createPlan({
+      topics: ['Fractions'],
+      examDate: '2026-04-20'
+    });
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-fractions',
+          topicTitle: 'Fractions',
+          confidenceScore: 0.52,
+          nextRevisionAt: '2026-04-01T08:00:00.000Z'
+        }),
+        createRevisionTopic({
+          lessonSessionId: 'session-area',
+          topicTitle: 'Area',
+          confidenceScore: 0.28,
+          nextRevisionAt: '2026-03-29T08:00:00.000Z'
+        })
+      ],
+      revisionPlan: activePlan,
+      revisionPlans: [activePlan],
+      activeRevisionPlanId: activePlan.id
+    });
+
+    const now = new Date('2026-03-30T09:00:00.000Z');
+    const homeModel = deriveRevisionHomeModel(state, now);
+    const focusModel = deriveRevisionFocusModel(state, homeModel, activePlan, now);
+
+    expect(focusModel.defaultTab).toBe('prepare_exam');
+    expect(focusModel.panels.prepare_exam.items[0]?.matchKind).toBe('plan_topic');
+  });
+
   it('orders prepare-for-exam topics by recommendation urgency instead of plan insertion order', () => {
     const activePlan = createPlan({
       topics: ['Area', 'Fractions']
@@ -133,6 +166,50 @@ describe('deriveRevisionFocusModel', () => {
       'session-fractions',
       'session-area'
     ]);
+  });
+
+  it('falls back to same-subject revision topics when the plan topics do not exist yet', () => {
+    const activePlan = createPlan({
+      topics: ['Percentages'],
+      examDate: '2026-04-18'
+    });
+    const state = createState({
+      revisionTopics: [
+        createRevisionTopic({
+          lessonSessionId: 'session-area',
+          topicTitle: 'Area',
+          confidenceScore: 0.33,
+          nextRevisionAt: '2026-03-28T08:00:00.000Z'
+        }),
+        createRevisionTopic({
+          lessonSessionId: 'session-fractions',
+          topicTitle: 'Fractions',
+          confidenceScore: 0.57,
+          nextRevisionAt: '2026-03-31T08:00:00.000Z'
+        }),
+        createRevisionTopic({
+          lessonSessionId: 'session-cells',
+          subjectId: 'subject-science',
+          subject: 'Natural Sciences',
+          topicTitle: 'Cells',
+          confidenceScore: 0.21,
+          nextRevisionAt: '2026-03-27T08:00:00.000Z'
+        })
+      ],
+      revisionPlan: activePlan,
+      revisionPlans: [activePlan],
+      activeRevisionPlanId: activePlan.id
+    });
+
+    const now = new Date('2026-03-30T09:00:00.000Z');
+    const homeModel = deriveRevisionHomeModel(state, now);
+    const focusModel = deriveRevisionFocusModel(state, homeModel, activePlan, now);
+
+    expect(focusModel.panels.prepare_exam.items.map((item) => item.topic.lessonSessionId)).toEqual([
+      'session-area',
+      'session-fractions'
+    ]);
+    expect(focusModel.panels.prepare_exam.items.every((item) => item.matchKind === 'subject_fallback')).toBe(true);
   });
 
   it('sorts choose-topic items by due date and then title so the full library stays scannable', () => {

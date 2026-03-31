@@ -2,6 +2,7 @@
   import { getActiveLessonSession } from '$lib/data/platform';
   import { getNextStage, getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
+  import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { appState } from '$lib/stores/app-state';
   import type { AppState, ConceptItem, LessonMessage, LessonStage } from '$lib/types';
   import { dev } from '$app/environment';
@@ -357,11 +358,7 @@
 
           {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
             <article class="bubble assistant pending enter-assistant">
-              <div class="typing-dots" aria-label="Doceo is thinking" role="status">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
+              <LoadingDots label="Doceo is thinking" />
             </article>
           {/if}
         </div>
@@ -1690,29 +1687,6 @@
     align-items: center;
   }
 
-  .typing-dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.38rem;
-    padding: 0.25rem 0.1rem;
-  }
-
-  .typing-dots span {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--text) 34%, white);
-    animation: typing-bounce 1.1s ease-in-out infinite;
-  }
-
-  .typing-dots span:nth-child(2) {
-    animation-delay: 0.12s;
-  }
-
-  .typing-dots span:nth-child(3) {
-    animation-delay: 0.24s;
-  }
-
   /* ── Overlay ── */
   .overlay {
     position: fixed;
@@ -2212,20 +2186,6 @@
     }
   }
 
-  @keyframes typing-bounce {
-    0%,
-    60%,
-    100% {
-      transform: translateY(0) scale(0.96);
-      opacity: 0.45;
-    }
-
-    30% {
-      transform: translateY(-4px) scale(1);
-      opacity: 1;
-    }
-  }
-
   @keyframes fab-card-in {
     from {
       opacity: 0;
@@ -2261,7 +2221,6 @@
     .stage-transition,
     .bubble,
     .bubble-body,
-    .typing-dots span,
     .node-dot,
     .node-label,
     .scroll-down-pill,

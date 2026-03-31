@@ -2,6 +2,7 @@ import type { AppState, RevisionPlan, UpcomingExam } from '$lib/types';
 
 export interface RevisionPlanInput {
   subjectId: string;
+  subjectName?: string;
   examName: string;
   examDate: string;
   mode: 'weak_topics' | 'full_subject' | 'manual';
@@ -35,6 +36,7 @@ export function buildRevisionPlanFromInput(
 ): { plan: RevisionPlan; exam: UpcomingExam } {
   const subject =
     state.curriculum.subjects.find((item) => item.id === input.subjectId) ??
+    (input.subjectName ? state.curriculum.subjects.find((item) => item.name === input.subjectName) : undefined) ??
     state.curriculum.subjects[0];
   const subjectTopicNames = subject.topics.map((topic) => topic.name);
 
@@ -78,6 +80,7 @@ export function buildRevisionPlanFromInput(
 
   const exam: UpcomingExam = {
     id: `exam-${crypto.randomUUID()}`,
+    revisionPlanId: plan.id,
     subjectId: subject.id,
     subjectName: subject.name,
     examName: input.examName,

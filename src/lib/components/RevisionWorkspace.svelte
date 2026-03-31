@@ -11,7 +11,9 @@
   } from '$lib/ai/subject-hints';
   import { buildFallbackTopicShortlist } from '$lib/ai/topic-shortlist';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
+  import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { renderSimpleMarkdown } from '$lib/markdown';
+  import { openDateInputPicker, shouldClosePlannerOnKey } from '$lib/components/revision-planner';
   import {
     appendManualTopic,
     parseManualTopicDraft,
@@ -19,6 +21,7 @@
   } from '$lib/revision/manual-topics';
   import { deriveRevisionFocusModel, type RevisionFocusTab } from '$lib/revision/focus';
   import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
+  import { deriveRevisionWorkspaceMode } from '$lib/revision/workspace';
   import {
     describePlanStyle,
     formatPlanDailyLabel,
@@ -68,6 +71,7 @@
   let activeFocusTab: RevisionFocusTab | null = null;
   let cachedHeaders: Record<string, string> | null = null;
   let plannerErrors: { examName?: string; examDate?: string; manualTopics?: string } = {};
+  let plannerDateInput: HTMLInputElement | null = null;
 
   $: homeModel = deriveRevisionHomeModel(state);
   $: focusModel = deriveRevisionFocusModel(state, homeModel, activeRevisionPlan);
@@ -91,10 +95,15 @@
     null;
   $: revisionSession =
     state.revisionSession ?? null;
+  $: revisionWorkspaceMode = deriveRevisionWorkspaceMode(revisionSession);
   $: currentQuestion = revisionSession?.questions[revisionSession.questionIndex] ?? null;
   $: currentQuestionTopic =
     currentQuestion ? state.revisionTopics.find((topic) => topic.lessonSessionId === currentQuestion.revisionTopicId) ?? null : null;
   $: displayTopic = currentQuestionTopic ?? selectedTopic;
+  $: sessionRootTopic =
+    (revisionSession
+      ? state.revisionTopics.find((topic) => topic.lessonSessionId === revisionSession.revisionTopicId) ?? null
+      : null) ?? displayTopic;
   $: topicHistory = displayTopic ? deriveRevisionTopicHistoryModel(state, displayTopic.lessonSessionId) : null;
   $: selectedRecommendation =
     homeModel.hero?.topic.lessonSessionId === displayTopic?.lessonSessionId
@@ -107,6 +116,16 @@
   }
   $: activeFocusPanel = focusModel.panels[activeFocusTab ?? focusModel.defaultTab];
   $: isSessionActive = revisionSession?.status === 'active';
+  $: sessionProgressCurrent =
+    revisionSession && revisionSession.questions.length > 0
+      ? Math.min(revisionSession.questionIndex + 1, revisionSession.questions.length)
+      : 0;
+  $: sessionProgressTotal = revisionSession?.questions.length ?? 0;
+  $: nextRevisionRecommendation = revisionSession
+    ? homeModel.doToday.find((item) => !revisionSession.revisionTopicIds.includes(item.topic.lessonSessionId)) ??
+      homeModel.focusWeaknesses.find((item) => !revisionSession.revisionTopicIds.includes(item.topic.lessonSessionId)) ??
+      null
+    : null;
   $: dueTodayCount = state.revisionTopics.filter((topic) => {
     const dueDate = new Date(topic.nextRevisionAt);
     const now = new Date();
@@ -116,6 +135,7 @@
   $: calibrationGapCount = state.revisionTopics.filter((topic) => Math.abs(topic.calibration.confidenceGap) >= 0.22).length;
   $: fragileTopicCount = state.revisionTopics.filter((topic) => topic.retentionStability <= 0.5 || topic.forgettingVelocity >= 0.58).length;
   $: hasSessionFocus = Boolean(revisionSession);
+  $: sessionSubjectSlug = getSubjectSlug(sessionRootTopic?.subject ?? displayTopic?.subject);
   $: upcomingExamInfo = getUpcomingExamInfo();
   $: outlookPlans = sortedRevisionPlans.slice(0, 4);
   $: outlookStats = buildRevisionOutlookStats();
@@ -175,6 +195,41 @@
     }
 
     return `From your ${lessonSession.subject} lesson on ${lastActive.toLocaleDateString()}`;
+  }
+
+  function formatRecommendationSummary(): string {
+    if (!homeModel.hero) {
+      return '';
+    }
+
+    const reason = homeModel.hero.reason.trim().replace(/\.$/, '');
+    const loweredReason = reason.charAt(0).toLowerCase() + reason.slice(1);
+
+    if (/^(you|this)\b/i.test(reason)) {
+      return `Doceo recommends this topic next because ${loweredReason}.`;
+    }
+
+    return `Doceo recommends this topic next because it is ${loweredReason}.`;
+  }
+
+  function getRecommendationContextItems(): string[] {
+    if (!homeModel.hero) {
+      return [];
+    }
+
+    const items: string[] = [];
+    const lessonSession = state.lessonSessions.find((session) => session.id === homeModel.hero?.topic.lessonSessionId);
+
+    if (lessonSession?.subject) {
+      items.push(`From ${lessonSession.subject}`);
+    }
+
+    if (activeRevisionPlan?.examName) {
+      items.push(`Linked to ${activeRevisionPlan.examName}`);
+      items.push(formatPlanTiming(activeRevisionPlan.examDate));
+    }
+
+    return items;
   }
 
   function getUpcomingExamInfo(): { examName: string; subjectName: string; daysLabel: string } | null {
@@ -267,7 +322,7 @@
 
   function getFocusItemSummary(tab: RevisionFocusTab, item: (typeof activeFocusPanel.items)[number]): string {
     if (tab === 'prepare_exam' && activeRevisionPlan?.examName) {
-      return activeRevisionPlan.examName;
+      return item.matchKind === 'subject_fallback' ? `${activeRevisionPlan.subjectName} fallback` : activeRevisionPlan.examName;
     }
 
     return item.topic.subject;
@@ -279,7 +334,9 @@
     }
 
     if (tab === 'prepare_exam') {
-      return item.recommendation?.reason ?? 'Part of your active exam runway.';
+      return item.matchKind === 'subject_fallback'
+        ? item.recommendation?.reason ?? 'Best available topic from this subject while the plan fills out.'
+        : item.recommendation?.reason ?? 'Part of your active exam runway.';
     }
 
     if (tab === 'choose_topic') {
@@ -295,7 +352,9 @@
     }
 
     if (tab === 'prepare_exam') {
-      return item.recommendation?.suggestedModeReason ?? 'Use this as part of your current exam build-up.';
+      return item.matchKind === 'subject_fallback'
+        ? item.recommendation?.suggestedModeReason ?? 'Use this as the strongest available bridge into your active plan.'
+        : item.recommendation?.suggestedModeReason ?? 'Use this as part of your current exam build-up.';
     }
 
     if (tab === 'choose_topic') {
@@ -326,6 +385,10 @@
   function closePlanner(): void {
     plannerErrors = {};
     appState.setRevisionPlannerOpen(false);
+  }
+
+  function openPlannerDateField(): void {
+    openDateInputPicker(plannerDateInput);
   }
 
   async function getHeaders(): Promise<Record<string, string>> {
@@ -557,6 +620,16 @@
     selfConfidence = 3;
   }
 
+  function removePlan(planId: string, planName?: string): void {
+    const resolvedName = planName?.trim() || 'this revision plan';
+
+    if (browser && !window.confirm(`Remove ${resolvedName}? This will delete it from your saved revision plans.`)) {
+      return;
+    }
+
+    appState.removeRevisionPlan(planId);
+  }
+
   function getSessionContext(topic: RevisionTopic): {
     reason: string;
     source: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
@@ -593,6 +666,7 @@
   }
 
   function review(topic: RevisionTopic, mode: RevisionSessionMode = 'deep_revision'): void {
+    console.log('[revision] review() called:', topic.topicTitle, '|', topic.subject, '| mode:', mode);
     const context = getSessionContext(topic);
     appState.runRevisionSession(topic, {
       mode,
@@ -638,6 +712,7 @@
 
     appState.createRevisionPlan({
       subjectId: plannerSubjectId,
+      subjectName: selectedPlannerSubject?.name,
       examName: plannerExamName.trim(),
       examDate: plannerExamDate,
       mode: plannerMode,
@@ -753,9 +828,90 @@
         return 'Limited history';
     }
   }
+
+  function formatSessionModeLabel(mode: RevisionSessionMode | null | undefined): string {
+    if (!mode) {
+      return 'Revision';
+    }
+
+    return revisionModes.find((option) => option.mode === mode)?.label ?? mode.replace(/_/g, ' ');
+  }
+
+  function getSessionHeroSummary(): string {
+    if (!revisionSession || !sessionRootTopic) {
+      return 'Pick a topic and move into a focused revision loop.';
+    }
+
+    if (revisionWorkspaceMode === 'summary' && revisionSession.status === 'completed') {
+      return `This ${sessionRootTopic.subject} round is complete. Check what improved, what still needs care, and where Doceo wants you to go next.`;
+    }
+
+    if (revisionWorkspaceMode === 'summary' && revisionSession.status === 'escalated_to_lesson') {
+      return `Revision found a real gap in ${sessionRootTopic.topicTitle}. Step into a focused reteach or come back to the queue when you are ready.`;
+    }
+
+    return `Stay with ${sessionRootTopic.topicTitle}. Answer the prompt, rate your confidence, and let Doceo adapt the next move to this ${sessionRootTopic.subject} topic.`;
+  }
+
+  function getSessionStatusBadge(): string {
+    if (!revisionSession) {
+      return '';
+    }
+
+    if (revisionSession.status === 'completed') {
+      return 'Round complete';
+    }
+
+    if (revisionSession.status === 'escalated_to_lesson') {
+      return 'Lesson revisit';
+    }
+
+    return `Question ${sessionProgressCurrent} of ${sessionProgressTotal}`;
+  }
+
+  function getSessionSummaryHeading(): string {
+    if (revisionSession?.status === 'escalated_to_lesson') {
+      return 'This topic needs a short reteach';
+    }
+
+    return 'This revision round has landed';
+  }
+
+  function getSessionSummaryBody(): string {
+    if (!revisionSession?.lastTurnResult) {
+      return 'Doceo has finished this pass and updated the next move for you.';
+    }
+
+    if (revisionSession.status === 'escalated_to_lesson') {
+      return `${revisionSession.lastTurnResult.diagnosis.summary} Move into lesson mode for a slower rebuild, or return to revision when you want another pass.`;
+    }
+
+    return `${revisionSession.lastTurnResult.diagnosis.summary} The next schedule now reflects how this round actually went.`;
+  }
+
+  function getSubjectSlug(subject: string | null | undefined): string {
+    if (!subject) return 'default';
+    return subject.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  function getSessionMetricCards(): Array<{ label: string; value: string; tone: 'green' | 'blue' | 'yellow' | 'pink' }> {
+    if (!revisionSession?.lastTurnResult) {
+      return [];
+    }
+
+    const { scores, topicUpdate } = revisionSession.lastTurnResult;
+
+    return [
+      { label: 'Correctness', value: `${Math.round(scores.correctness * 100)}%`, tone: 'green' },
+      { label: 'Reasoning', value: `${Math.round(scores.reasoning * 100)}%`, tone: 'blue' },
+      { label: 'Confidence match', value: `${Math.round(scores.confidenceAlignment * 100)}%`, tone: 'yellow' },
+      { label: 'Next review', value: formatDueLabel(topicUpdate.nextRevisionAt), tone: 'pink' }
+    ];
+  }
 </script>
 
 <section class="workspace" class:session-focus={hasSessionFocus}>
+  {#if revisionWorkspaceMode === 'home'}
   {#if upcomingExamInfo}
     <section class="panel revision-outlook-panel">
       <div class="revision-outlook-main">
@@ -843,16 +999,26 @@
                 <strong class="plan-card-name">{plan.examName ?? 'Revision plan'}</strong>
                 <span class="plan-card-subject">{plan.subjectName}</span>
               </div>
-              {#if daysLeft !== null}
-                <div class="plan-countdown" class:plan-countdown--urgent={daysLeft <= 7 && daysLeft >= 0}>
-                  <strong class="plan-countdown-num">
-                    {daysLeft < 0 ? '—' : daysLeft === 0 ? '0' : daysLeft}
-                  </strong>
-                  <span class="plan-countdown-label">
-                    {daysLeft < 0 ? 'passed' : daysLeft === 0 ? 'today' : 'days left'}
-                  </span>
-                </div>
-              {/if}
+              <div class="plan-card-aside">
+                <button
+                  type="button"
+                  class="plan-remove-btn"
+                  aria-label={`Remove ${plan.examName ?? 'revision plan'}`}
+                  onclick={() => removePlan(plan.id, plan.examName)}
+                >
+                  Remove
+                </button>
+                {#if daysLeft !== null}
+                  <div class="plan-countdown" class:plan-countdown--urgent={daysLeft <= 7 && daysLeft >= 0}>
+                    <strong class="plan-countdown-num">
+                      {daysLeft < 0 ? '—' : daysLeft === 0 ? '0' : daysLeft}
+                    </strong>
+                    <span class="plan-countdown-label">
+                      {daysLeft < 0 ? 'Passed' : daysLeft === 0 ? 'Today' : 'Days left'}
+                    </span>
+                  </div>
+                {/if}
+              </div>
             </div>
 
             <div class="plan-chips-row">
@@ -881,42 +1047,28 @@
 
   {#if homeModel.hero}
     <section class="hero-card revise-now-card">
-      <div class="hero-copy">
-        <p class="eyebrow">Next Revision</p>
-        <h3>{homeModel.hero.topic.topicTitle}</h3>
-        <p class="hero-support">{homeModel.hero.summary}</p>
-        {#if formatRevisionLessonLabel(homeModel.hero.topic)}
-          <p class="revision-source-note">{formatRevisionLessonLabel(homeModel.hero.topic)}</p>
+      <div class="hero-copy recommendation-copy">
+        <p class="recommendation-heading">{homeModel.hero.heading}</p>
+        <h3 class="recommendation-topic">{homeModel.hero.topic.topicTitle}</h3>
+        <p class="hero-support recommendation-summary">{formatRecommendationSummary()}</p>
+        {#if getRecommendationContextItems().length > 0}
+          <div class="recommendation-context" aria-label="Recommendation context">
+            {#each getRecommendationContextItems() as item}
+              <span>{item}</span>
+            {/each}
+          </div>
         {/if}
-        <div class="hero-meta">
-          <span class="hero-pill">{homeModel.hero.reason}</span>
-          <span class="hero-pill subdued">{formatDueLabel(homeModel.hero.topic.nextRevisionAt)}</span>
-          <span class="hero-pill subdued">{homeModel.hero.suggestedMode.replace('_', ' ')}</span>
-          {#if homeModel.nearestExam}
-            <span class="hero-pill subdued">
-              Exam in {homeModel.nearestExam.daysUntilExam} day{homeModel.nearestExam.daysUntilExam === 1 ? '' : 's'}
-            </span>
-          {/if}
-          {#if activeRevisionPlan}
-            <span class="hero-pill subdued">From {activeRevisionPlan.examName}</span>
-          {/if}
-        </div>
       </div>
 
-      <div class="hero-side">
+      <div class="hero-side recommendation-side">
         <div class="hero-actions">
           <button
             type="button"
-            class="action-btn"
+            class="action-btn recommendation-cta"
             onclick={() => review(homeModel.hero!.topic, homeModel.hero!.suggestedMode)}
           >
             {homeModel.hero.ctaLabel}
           </button>
-          {#if homeModel.doToday.length > 1}
-            <button type="button" class="secondary action-btn" onclick={startMixedSession}>
-              Shuffle top topics
-            </button>
-          {/if}
         </div>
       </div>
     </section>
@@ -1313,10 +1465,280 @@
       </button>
     </section>
   {/if}
+  {:else}
+    <section class={`revision-session-shell status-${revisionSession?.status ?? 'active'} subject-${sessionSubjectSlug}`}>
+      <header class="revision-session-topbar">
+        <button type="button" class="secondary action-btn session-exit-btn" onclick={() => appState.exitRevisionSession()}>
+          Back to revision
+        </button>
+
+        <div class="revision-session-topbar-copy">
+          <p class="eyebrow">{revisionWorkspaceMode === 'summary' ? 'Revision Summary' : 'Active Revision'}</p>
+          <h2 class="session-subject-heading">{sessionRootTopic?.subject ?? displayTopic?.subject ?? 'Revision'}</h2>
+        </div>
+
+        {#if revisionSession}
+          <div class="revision-session-topbar-meta">
+            <span class="hero-pill">{formatSessionModeLabel(revisionSession.mode)}</span>
+            <span class="hero-pill subdued">{getSessionStatusBadge()}</span>
+          </div>
+        {/if}
+      </header>
+
+      <section class="revision-session-hero">
+        <div class="revision-session-hero-copy">
+          <p class="eyebrow session-subject-eyebrow">
+            {revisionWorkspaceMode === 'summary'
+              ? revisionSession?.status === 'escalated_to_lesson'
+                ? 'Needs Rebuild'
+                : 'Round Complete'
+              : (displayTopic?.subject ?? sessionRootTopic?.subject ?? 'Focused Revision')}
+          </p>
+          <h2>{displayTopic?.topicTitle ?? revisionSession?.topicTitle ?? 'Revision session'}</h2>
+          <p class="revision-session-summary">{getSessionHeroSummary()}</p>
+
+          <div class="revision-session-pill-row">
+            {#if displayTopic?.subject}
+              <span class="plan-chip plan-chip--subject">{displayTopic.subject}</span>
+            {/if}
+            {#if revisionSession}
+              <span class="plan-chip">{formatSessionModeLabel(revisionSession.mode)}</span>
+              <span class="plan-chip">{revisionSession.recommendationReason}</span>
+            {/if}
+            {#if activeRevisionPlan && displayTopic?.subjectId === activeRevisionPlan.subjectId}
+              <span class="plan-chip plan-chip--active">{activeRevisionPlan.examName ?? 'Active plan'}</span>
+            {/if}
+            {#if displayTopic}
+              <span class="plan-chip">{formatDueLabel(displayTopic.nextRevisionAt)}</span>
+            {/if}
+          </div>
+        </div>
+
+        <div class="revision-session-hero-side">
+          <article class="session-progress-card">
+            <span>{revisionWorkspaceMode === 'summary' ? 'Session state' : 'Current progress'}</span>
+            <strong>{getSessionStatusBadge()}</strong>
+            {#if revisionWorkspaceMode === 'session' && sessionProgressTotal > 0}
+              <p>{sessionProgressTotal} prompt{sessionProgressTotal === 1 ? '' : 's'} in this revision loop.</p>
+            {:else if revisionSession?.status === 'escalated_to_lesson'}
+              <p>Revision has identified a gap that needs a calmer reteach.</p>
+            {:else}
+              <p>Use the summary below to decide whether to continue, reteach, or move on.</p>
+            {/if}
+          </article>
+        </div>
+      </section>
+
+      <div class="revision-session-layout">
+        <section class="revision-session-main">
+          {#if revisionWorkspaceMode === 'session' && currentQuestion}
+            <article class="question-card session-question-card">
+              <div class="revision-session-card-header">
+                <div>
+                  <p class="question-type">{currentQuestion.questionType.replace('_', ' ')}</p>
+                  <h3>{displayTopic?.topicTitle ?? currentQuestion.revisionTopicId}</h3>
+                </div>
+                <span class="hero-pill subdued">{getSessionStatusBadge()}</span>
+              </div>
+              <p>{currentQuestion.prompt}</p>
+            </article>
+
+            <label class="field revision-answer-field">
+              <span>Your answer</span>
+              <textarea
+                bind:value={recallDraft}
+                rows="9"
+                placeholder={`Answer the ${currentQuestion.questionType.replace('_', ' ')} prompt for ${(displayTopic ?? selectedTopic).topicTitle}`}
+              ></textarea>
+            </label>
+
+            <label class="field">
+              <span>How confident do you feel?</span>
+              <select bind:value={selfConfidence}>
+                <option value={1}>1 · Not at all</option>
+                <option value={2}>2 · A bit shaky</option>
+                <option value={3}>3 · Mixed</option>
+                <option value={4}>4 · Mostly sure</option>
+                <option value={5}>5 · Very sure</option>
+              </select>
+            </label>
+
+            <div class="actions revision-session-actions">
+              <button type="button" class="action-btn" onclick={submitRecall}>Check answer</button>
+              <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionNudge()}>
+                Nudge
+              </button>
+              <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionHint()}>
+                Hint
+              </button>
+              <button type="button" class="secondary action-btn" onclick={() => appState.markRevisionStuck()}>
+                I'm stuck
+              </button>
+            </div>
+          {:else}
+            <article class="revision-summary-card">
+              <div class="revision-session-card-header">
+                <div>
+                  <p class="eyebrow">Session Summary</p>
+                  <h3>{getSessionSummaryHeading()}</h3>
+                </div>
+                {#if revisionSession}
+                  <span class="hero-pill subdued">{formatSessionModeLabel(revisionSession.mode)}</span>
+                {/if}
+              </div>
+
+              <p>{getSessionSummaryBody()}</p>
+
+              {#if getSessionMetricCards().length > 0}
+                <div class="revision-summary-metrics">
+                  {#each getSessionMetricCards() as stat}
+                    <article class={`revision-summary-stat tone-${stat.tone}`}>
+                      <span>{stat.label}</span>
+                      <strong>{stat.value}</strong>
+                    </article>
+                  {/each}
+                </div>
+              {/if}
+
+              <div class="starter-actions revision-summary-actions">
+                {#if revisionSession?.status === 'escalated_to_lesson'}
+                  <button type="button" class="action-btn" onclick={() => appState.startRevisionLessonHandoff()}>
+                    Start focused reteach
+                  </button>
+                  {#if sessionRootTopic}
+                    <button type="button" class="secondary action-btn" onclick={() => review(sessionRootTopic, 'deep_revision')}>
+                      Try revision again
+                    </button>
+                  {/if}
+                {:else}
+                  {#if nextRevisionRecommendation}
+                    <button
+                      type="button"
+                      class="action-btn"
+                      onclick={() => review(nextRevisionRecommendation.topic, nextRevisionRecommendation.suggestedMode)}
+                    >
+                      Next: {nextRevisionRecommendation.topic.topicTitle}
+                    </button>
+                  {/if}
+                  {#if sessionRootTopic}
+                    <button type="button" class="secondary action-btn" onclick={() => startRecommendedRevision(sessionRootTopic)}>
+                      Revisit this topic
+                    </button>
+                  {/if}
+                {/if}
+              </div>
+            </article>
+          {/if}
+
+          {#if feedbackMarkdown()}
+            <article class="feedback-card revision-session-feedback">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">{revisionWorkspaceMode === 'summary' ? 'Round feedback' : 'Live feedback'}</p>
+                  <h3>{displayTopic?.topicTitle ?? 'Feedback'}</h3>
+                </div>
+              </div>
+              {@html renderSimpleMarkdown(feedbackMarkdown()!)}
+            </article>
+          {/if}
+        </section>
+
+        <aside class="revision-session-side">
+          {#if displayTopic}
+            <article class="feedback-card calibration-card revision-session-context-card">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Topic Signals</p>
+                  <h3>{getCalibrationHeading(displayTopic)}</h3>
+                </div>
+                <span class="hero-pill subdued">{Math.round(displayTopic.calibration.averageCorrectness * 100)}% accuracy</span>
+              </div>
+              <p>{getCalibrationSummary(displayTopic)}</p>
+              <div class="calibration-grid">
+                <article class="mini-stat">
+                  <strong>{Math.round(displayTopic.retentionStability * 100)}%</strong>
+                  <span>Retention stability</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{Math.round(displayTopic.forgettingVelocity * 100)}%</strong>
+                  <span>Forgetting velocity</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{displayTopic.calibration.averageSelfConfidence.toFixed(1)}</strong>
+                  <span>Avg confidence / 5</span>
+                </article>
+                <article class="mini-stat">
+                  <strong>{displayTopic.calibration.overconfidenceCount + displayTopic.calibration.underconfidenceCount}</strong>
+                  <span>Calibration flags</span>
+                </article>
+                {#if getStrongestMisconceptionLabel(displayTopic)}
+                  <article class="mini-stat wide-stat">
+                    <strong>{getStrongestMisconceptionLabel(displayTopic)}</strong>
+                    <span>Strongest repeated gap</span>
+                  </article>
+                {/if}
+              </div>
+            </article>
+          {/if}
+
+          {#if topicHistory}
+            <article class="feedback-card revision-session-context-card">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Topic History</p>
+                  <h3>{topicHistory.topicTitle}</h3>
+                </div>
+                <span class="hero-pill subdued">{formatTrendLabel(topicHistory.trend)}</span>
+              </div>
+              <p>Dominant issue: {topicHistory.dominantIssue}.</p>
+              <div class="activity-list">
+                {#each topicHistory.entries.slice(0, 3) as entry}
+                  <article class="activity-item">
+                    <div class="topic-row">
+                      <strong>{entry.label}</strong>
+                      <small>{new Date(entry.createdAt).toLocaleDateString()}</small>
+                    </div>
+                    <div class="hero-meta">
+                      <span class="hero-pill subdued">{Math.round(entry.correctness * 100)}% correct</span>
+                      <span class="hero-pill subdued">Confidence {entry.selfConfidence}/5</span>
+                    </div>
+                    <p>{entry.summary}</p>
+                  </article>
+                {/each}
+              </div>
+            </article>
+          {/if}
+
+          {#if nextRevisionRecommendation && revisionWorkspaceMode === 'summary'}
+            <article class="feedback-card revision-next-card">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Next best move</p>
+                  <h3>{nextRevisionRecommendation.topic.topicTitle}</h3>
+                </div>
+                <span class="hero-pill subdued">{nextRevisionRecommendation.topic.subject}</span>
+              </div>
+              <p>{nextRevisionRecommendation.reason}</p>
+              <p class="revision-next-note">Use the main action to continue straight into this topic, or return to the queue from the header.</p>
+            </article>
+          {/if}
+        </aside>
+      </div>
+    </section>
+  {/if}
 
   {#if state.ui.showRevisionPlanner}
-    <div class="planner-backdrop" onclick={closePlanner} role="presentation">
-      <div class="planner-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Build a revision plan">
+    <div class="planner-shell">
+      <button type="button" class="planner-backdrop" aria-label="Close revision plan modal" onclick={closePlanner}></button>
+      <div
+        class="planner-modal"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(event) => shouldClosePlannerOnKey(event.key) && closePlanner()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Build a revision plan"
+        tabindex="-1"
+      >
         <div class="planner-modal-header">
           <div>
             <h2>Build a revision plan</h2>
@@ -1347,11 +1769,14 @@
             {/if}
           </label>
 
-          <label class="field" class:field-error={plannerErrors.examDate}>
+          <label class="field planner-date-field" class:field-error={plannerErrors.examDate} for="planner-exam-date">
             <span>Exam date</span>
             <input
+              id="planner-exam-date"
               type="date"
+              bind:this={plannerDateInput}
               bind:value={plannerExamDate}
+              onfocus={openPlannerDateField}
               oninput={() => { if (plannerErrors.examDate) plannerErrors = { ...plannerErrors, examDate: undefined }; }}
             />
             {#if plannerErrors.examDate}
@@ -1383,9 +1808,18 @@
               <div class="manual-topic-header">
                 <span>Topics</span>
                 {#if plannerTopicHintsLoading}
-                  <small>Loading suggestions...</small>
+                  <small class="planner-loading-state">
+                    <LoadingDots size="sm" label="Loading topic suggestions" />
+                    <span>Loading suggestions...</span>
+                  </small>
                 {/if}
               </div>
+
+              {#if plannerTopicHintsLoading && plannerHintChips.length === 0}
+                <div class="planner-pill-loader" aria-hidden="true">
+                  <LoadingDots label="Loading topic suggestions" />
+                </div>
+              {/if}
 
               {#if plannerHintChips.length > 0}
                 <div class="planner-pill-row">
@@ -1508,6 +1942,327 @@
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
+  }
+
+  .revision-session-shell,
+  .revision-session-main,
+  .revision-session-side,
+  .revision-session-hero-copy,
+  .revision-session-hero-side {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .revision-session-shell {
+    min-height: calc(100svh - 9rem);
+    align-content: start;
+    animation: section-enter 0.28s var(--ease-soft) both;
+  }
+
+  .revision-session-topbar,
+  .revision-session-card-header,
+  .revision-session-topbar-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .revision-session-topbar {
+    justify-content: space-between;
+    padding: 0.15rem 0.1rem;
+  }
+
+  .revision-session-topbar-copy {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .session-subject-heading {
+    font-size: clamp(1rem, 0.88rem + 0.35vw, 1.25rem);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--session-subject-color, var(--text));
+    margin: 0;
+  }
+
+  /* Subject-specific accent colors applied via CSS custom properties on the shell */
+  .subject-mathematics {
+    --session-subject-color: #3b82f6;
+    --session-hero-a: color-mix(in srgb, #dbeafe 90%, white);
+    --session-hero-b: color-mix(in srgb, #ede9fe 88%, white);
+    --session-hero-c: color-mix(in srgb, #e0f2fe 86%, white);
+  }
+
+  .subject-physical-sciences {
+    --session-subject-color: #10b981;
+    --session-hero-a: color-mix(in srgb, #d1fae5 90%, white);
+    --session-hero-b: color-mix(in srgb, #ccfbf1 88%, white);
+    --session-hero-c: color-mix(in srgb, #e0f2fe 86%, white);
+  }
+
+  .subject-life-sciences {
+    --session-subject-color: #22c55e;
+    --session-hero-a: color-mix(in srgb, #dcfce7 90%, white);
+    --session-hero-b: color-mix(in srgb, #d1fae5 88%, white);
+    --session-hero-c: color-mix(in srgb, #fef9c3 86%, white);
+  }
+
+  .subject-history {
+    --session-subject-color: #f59e0b;
+    --session-hero-a: color-mix(in srgb, #fef3c7 90%, white);
+    --session-hero-b: color-mix(in srgb, #fde68a 86%, white);
+    --session-hero-c: color-mix(in srgb, #ffe4e6 84%, white);
+  }
+
+  .subject-geography {
+    --session-subject-color: #14b8a6;
+    --session-hero-a: color-mix(in srgb, #ccfbf1 90%, white);
+    --session-hero-b: color-mix(in srgb, #d1fae5 88%, white);
+    --session-hero-c: color-mix(in srgb, #e0f7fa 86%, white);
+  }
+
+  .subject-english,
+  .subject-english-home-language,
+  .subject-english-first-additional-language {
+    --session-subject-color: #8b5cf6;
+    --session-hero-a: color-mix(in srgb, #ede9fe 90%, white);
+    --session-hero-b: color-mix(in srgb, #fce7f3 88%, white);
+    --session-hero-c: color-mix(in srgb, #e0e7ff 86%, white);
+  }
+
+  .subject-afrikaans {
+    --session-subject-color: #f97316;
+    --session-hero-a: color-mix(in srgb, #ffedd5 90%, white);
+    --session-hero-b: color-mix(in srgb, #fef3c7 88%, white);
+    --session-hero-c: color-mix(in srgb, #ffe4e6 86%, white);
+  }
+
+  /* Apply the subject colors to the hero banner when they are set */
+  .subject-mathematics .revision-session-hero,
+  .subject-physical-sciences .revision-session-hero,
+  .subject-life-sciences .revision-session-hero,
+  .subject-history .revision-session-hero,
+  .subject-geography .revision-session-hero,
+  .subject-english .revision-session-hero,
+  .subject-english-home-language .revision-session-hero,
+  .subject-english-first-additional-language .revision-session-hero,
+  .subject-afrikaans .revision-session-hero {
+    background:
+      radial-gradient(circle at top left, var(--session-hero-a, color-mix(in srgb, var(--color-blue-dim) 92%, white)), transparent 38%),
+      radial-gradient(circle at 82% 18%, var(--session-hero-b, color-mix(in srgb, var(--color-purple-dim) 90%, white)), transparent 34%),
+      radial-gradient(circle at 72% 80%, var(--session-hero-c, color-mix(in srgb, var(--color-yellow-dim) 88%, white)), transparent 40%),
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 38%, white), var(--surface));
+    border-color: color-mix(in srgb, var(--session-subject-color) 22%, var(--border));
+  }
+
+  .session-exit-btn {
+    justify-self: start;
+    white-space: nowrap;
+  }
+
+  .revision-session-topbar-meta {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .revision-session-hero {
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.75fr);
+    gap: 1rem;
+    padding: 1.35rem;
+    border-radius: 1.8rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 92%, white), transparent 38%),
+      radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--color-purple-dim) 90%, white), transparent 34%),
+      radial-gradient(circle at 72% 80%, color-mix(in srgb, var(--color-yellow-dim) 88%, white), transparent 40%),
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 38%, white), var(--surface));
+    box-shadow:
+      0 18px 40px rgba(15, 23, 42, 0.10),
+      0 32px 72px rgba(15, 23, 42, 0.06);
+  }
+
+  .revision-session-hero::after {
+    content: '';
+    position: absolute;
+    inset: auto -12% -42% 42%;
+    height: 18rem;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-dim) 80%, white), transparent 62%);
+    pointer-events: none;
+    opacity: 0.8;
+  }
+
+  .revision-session-hero > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .revision-session-hero h2 {
+    font-size: clamp(1.7rem, 1.28rem + 1.2vw, 2.45rem);
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    max-width: 14ch;
+  }
+
+  .revision-session-summary {
+    max-width: 60ch;
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  .revision-session-pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .session-progress-card {
+    align-self: stretch;
+    display: grid;
+    gap: 0.45rem;
+    padding: 1rem 1.05rem;
+    border-radius: 1.35rem;
+    border: 1px solid color-mix(in srgb, var(--color-blue) 14%, var(--border));
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,255,255,0.58));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.6),
+      0 10px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .session-progress-card span {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-soft);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .session-progress-card strong {
+    font-size: clamp(1.3rem, 1.06rem + 0.5vw, 1.7rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+  }
+
+  .session-progress-card p {
+    color: var(--text-soft);
+    line-height: 1.5;
+  }
+
+  .revision-session-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.78fr);
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .session-question-card,
+  .revision-summary-card,
+  .revision-session-feedback,
+  .revision-session-context-card,
+  .revision-next-card {
+    border: 1px solid var(--border);
+    border-radius: 1.5rem;
+    background: var(--surface);
+    padding: 1.15rem;
+  }
+
+  .session-question-card {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 34%, white), var(--surface));
+    box-shadow:
+      0 12px 28px rgba(15, 23, 42, 0.06),
+      inset 0 1px 0 rgba(255,255,255,0.72);
+  }
+
+  .revision-summary-card {
+    background:
+      radial-gradient(circle at top right, color-mix(in srgb, var(--color-yellow-dim) 90%, white), transparent 34%),
+      linear-gradient(180deg, color-mix(in srgb, var(--green-soft, var(--accent-dim)) 38%, white), var(--surface));
+    box-shadow:
+      0 14px 30px rgba(15, 23, 42, 0.08),
+      inset 0 1px 0 rgba(255,255,255,0.7);
+  }
+
+  .revision-summary-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .revision-summary-stat {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.85rem 0.9rem;
+    border-radius: 1rem;
+    border: 1px solid transparent;
+  }
+
+  .revision-summary-stat span {
+    font-size: 0.76rem;
+    color: var(--text-soft);
+  }
+
+  .revision-summary-stat strong {
+    font-size: 1.15rem;
+    line-height: 1.1;
+    color: var(--text);
+  }
+
+  .revision-summary-stat.tone-green {
+    background: color-mix(in srgb, var(--green-soft, var(--accent-dim)) 92%, white);
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  }
+
+  .revision-summary-stat.tone-blue {
+    background: color-mix(in srgb, var(--color-blue-dim) 92%, white);
+    border-color: color-mix(in srgb, var(--color-blue) 18%, var(--border));
+  }
+
+  .revision-summary-stat.tone-yellow {
+    background: color-mix(in srgb, var(--color-yellow-dim) 92%, white);
+    border-color: color-mix(in srgb, var(--color-yellow) 20%, var(--border));
+  }
+
+  .revision-summary-stat.tone-pink {
+    background: color-mix(in srgb, var(--color-purple-dim) 88%, white);
+    border-color: color-mix(in srgb, var(--color-purple) 20%, var(--border));
+  }
+
+  .revision-summary-actions,
+  .revision-session-actions {
+    align-items: center;
+  }
+
+  .revision-answer-field textarea {
+    min-height: 13rem;
+    resize: vertical;
+  }
+
+  .revision-session-feedback {
+    background: color-mix(in srgb, var(--surface-callout) 64%, white);
+  }
+
+  .revision-session-context-card {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 84%, white), var(--surface));
+  }
+
+  .revision-next-card {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 44%, white), color-mix(in srgb, var(--accent-dim) 38%, white));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.72),
+      0 10px 24px rgba(15, 23, 42, 0.06);
+  }
+
+  .revision-next-note {
+    color: var(--text-soft);
+    line-height: 1.55;
   }
 
   .content-grid {
@@ -1828,13 +2583,6 @@
     max-width: 34rem;
   }
 
-  .build-plan-copy h3 {
-    font-size: clamp(1.5rem, 1.2rem + 0.9vw, 2rem);
-    line-height: 1.08;
-    letter-spacing: -0.02em;
-    max-width: 18ch;
-  }
-
   .build-plan-header {
     align-items: end;
   }
@@ -1865,6 +2613,26 @@
     justify-items: stretch;
   }
 
+  .recommendation-copy {
+    gap: 0.75rem;
+  }
+
+  .recommendation-heading {
+    color: var(--text);
+    font-size: 1.12rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .recommendation-topic {
+    font-size: clamp(1rem, 0.96rem + 0.18vw, 1.08rem);
+    line-height: 1.26;
+    letter-spacing: -0.005em;
+    font-weight: 600;
+  }
+
   .hero-stats {
     flex-wrap: wrap;
     justify-content: flex-start;
@@ -1891,9 +2659,60 @@
     line-height: 1.5;
   }
 
+  .recommendation-summary {
+    max-width: 40rem;
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
   .revision-source-note {
     color: var(--text-soft);
     font-size: 0.88rem;
+  }
+
+  .recommendation-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 1rem;
+    color: var(--text-soft);
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  .recommendation-context span {
+    position: relative;
+  }
+
+  .recommendation-context span:not(:first-child)::before {
+    content: '';
+    position: absolute;
+    left: -0.55rem;
+    top: 50%;
+    width: 0.2rem;
+    height: 0.2rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-soft) 48%, transparent);
+    transform: translateY(-50%);
+  }
+
+  .recommendation-side {
+    display: grid;
+    align-content: end;
+    justify-items: end;
+  }
+
+  .recommendation-cta {
+    min-width: 15rem;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      0 12px 28px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+
+  .recommendation-cta:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 18px 34px color-mix(in srgb, var(--accent) 24%, transparent);
   }
 
   .hero-pill {
@@ -1930,6 +2749,10 @@
 
   .revise-now-card {
     grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.9fr);
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 78%, white), transparent 42%),
+      radial-gradient(circle at 70% 25%, color-mix(in srgb, var(--accent-dim) 62%, white), transparent 36%),
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 18%, var(--surface-strong)), var(--surface));
   }
 
   .plan-grid {
@@ -1939,10 +2762,11 @@
   }
 
   .plan-card {
-    display: grid;
-    gap: 0.65rem;
-    padding: 0.85rem 1rem;
-    border-radius: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 1.1rem 1.15rem;
+    border-radius: 1.4rem;
     border: 1px solid var(--border);
     background: var(--surface-soft);
     transition:
@@ -2003,7 +2827,7 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 0.6rem;
+    gap: 0.85rem;
   }
 
   .plan-card-toprow {
@@ -2015,23 +2839,59 @@
 
   .plan-card-title-block {
     display: grid;
-    gap: 0.2rem;
+    gap: 0.3rem;
     min-width: 0;
+    flex: 1 1 auto;
   }
 
   .plan-active-badge {
     display: inline-flex;
     align-items: center;
     border-radius: 999px;
-    padding: 0.15rem 0.55rem;
+    padding: 0.25rem 0.65rem;
     background: var(--accent);
     color: var(--accent-contrast);
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
+    font-size: 0.72rem;
+    font-weight: 600;
     width: fit-content;
     margin-bottom: 0.15rem;
+  }
+
+  .plan-card-aside {
+    display: grid;
+    justify-items: end;
+    gap: 0.45rem;
+    flex-shrink: 0;
+  }
+
+  .plan-remove-btn {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    color: var(--text-soft);
+    padding: 0.32rem 0.72rem;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      color 140ms var(--ease-soft),
+      border-color 140ms var(--ease-soft),
+      background 140ms var(--ease-soft),
+      transform 140ms var(--ease-soft);
+  }
+
+  .plan-remove-btn:hover {
+    color: var(--color-error);
+    border-color: color-mix(in srgb, var(--color-error) 28%, var(--border));
+    background: color-mix(in srgb, var(--color-error-dim) 72%, var(--surface));
+    transform: translateY(-1px);
+  }
+
+  .plan-remove-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error) 16%, transparent);
   }
 
   .plan-countdown {
@@ -2039,11 +2899,11 @@
     flex-direction: column;
     align-items: center;
     flex-shrink: 0;
-    padding: 0.35rem 0.6rem;
-    border-radius: 0.75rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 1rem;
     background: rgba(0, 0, 0, 0.04);
     border: 1px solid var(--border);
-    min-width: 3rem;
+    min-width: 4.5rem;
     text-align: center;
   }
 
@@ -2064,23 +2924,22 @@
   }
 
   .plan-countdown-label {
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     font-weight: 600;
     color: var(--text-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
     white-space: nowrap;
   }
 
   .plan-card-name {
-    font-size: 0.95rem;
+    font-size: 1.15rem;
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.15;
   }
 
   .plan-card-subject {
     color: var(--text-soft);
-    font-size: 0.8rem;
+    font-size: 1rem;
+    line-height: 1.35;
   }
 
   /* Semantic chips used in plan cards */
@@ -2095,11 +2954,11 @@
     display: inline-flex;
     align-items: center;
     border-radius: 999px;
-    padding: 0.22rem 0.6rem;
+    padding: 0.32rem 0.7rem;
     background: var(--surface-soft);
     border: 1px solid var(--border-strong);
     color: var(--text-soft);
-    font-size: 0.72rem;
+    font-size: 0.85rem;
     font-weight: 600;
     white-space: nowrap;
   }
@@ -2116,6 +2975,19 @@
     color: var(--color-blue);
   }
 
+  .plan-chip--subject {
+    background: color-mix(in srgb, var(--session-subject-color, var(--color-blue)) 12%, transparent);
+    border-color: color-mix(in srgb, var(--session-subject-color, var(--color-blue)) 28%, var(--border));
+    color: var(--session-subject-color, var(--color-blue));
+    font-weight: 700;
+  }
+
+  .session-subject-eyebrow {
+    color: var(--session-subject-color, var(--text-soft));
+    font-weight: 800;
+    letter-spacing: 0.06em;
+  }
+
   .plan-chip--warn {
     background: var(--color-yellow-dim);
     border-color: color-mix(in srgb, var(--color-yellow) 20%, var(--border));
@@ -2130,21 +3002,11 @@
   }
 
   .plan-start-btn {
-    font-size: 0.85rem;
-    padding: 0.55rem 1rem;
+    margin-top: auto;
     justify-self: stretch;
     width: 100%;
+    min-height: var(--touch-target);
     justify-content: center;
-    background: var(--accent);
-    color: var(--accent-contrast);
-    border: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
-  }
-
-  .plan-start-btn:hover {
-    background: color-mix(in srgb, var(--accent) 85%, black);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
   }
 
   .empty-plan-state {
@@ -2315,6 +3177,12 @@
     gap: 0.75rem;
   }
 
+  .planner-loading-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
   .manual-topic-header small,
   .manual-match-block small {
     color: var(--text-soft);
@@ -2331,6 +3199,13 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.55rem;
+  }
+
+  .planner-pill-loader {
+    display: grid;
+    place-items: center;
+    min-height: 3rem;
+    padding: 0.35rem 0;
   }
 
   .planner-pill {
@@ -2399,6 +3274,14 @@
     transition:
       border-color 150ms var(--ease-soft),
       box-shadow 150ms var(--ease-soft);
+  }
+
+  .planner-date-field {
+    cursor: pointer;
+  }
+
+  .planner-date-field input {
+    cursor: pointer;
   }
 
   .field-error input {
@@ -2655,17 +3538,26 @@
   }
 
   /* Planner modal overlay */
-  .planner-backdrop {
+  .planner-shell {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(2px);
     z-index: 200;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
+  }
+
+  .planner-backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(2px);
     animation: backdrop-fade 200ms ease both;
+    cursor: default;
   }
 
   @keyframes backdrop-fade {
@@ -2674,6 +3566,8 @@
   }
 
   .planner-modal {
+    position: relative;
+    z-index: 1;
     width: 100%;
     max-width: 600px;
     max-height: calc(100svh - 3rem);
@@ -2714,10 +3608,19 @@
     padding: 0.5rem 1rem;
   }
 
+  .planner-modal .action-btn:hover,
+  .planner-modal .action-btn:active,
+  .planner-modal .planner-pill:hover,
+  .planner-modal .planner-pill:active {
+    transform: none;
+  }
+
   @media (max-width: 980px) {
     .content-grid,
     .hero-card,
-    .revision-outlook-panel {
+    .revision-outlook-panel,
+    .revision-session-hero,
+    .revision-session-layout {
       grid-template-columns: 1fr;
     }
 
@@ -2741,6 +3644,24 @@
       justify-items: start;
     }
 
+    .recommendation-side {
+      align-content: start;
+      justify-items: start;
+    }
+
+    .revision-session-topbar {
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    .revision-session-topbar-meta {
+      justify-content: flex-start;
+    }
+
+    .session-progress-card {
+      max-width: 100%;
+    }
+
     .hero-stats {
       justify-content: start;
     }
@@ -2748,6 +3669,10 @@
 
   @media (max-width: 720px) {
     .content-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .revision-summary-metrics {
       grid-template-columns: 1fr;
     }
   }
@@ -2760,9 +3685,20 @@
     .hero-meta,
     .actions,
     .hero-actions,
-    .build-plan-actions {
+    .build-plan-actions,
+    .revision-session-actions,
+    .revision-summary-actions {
       flex-direction: column;
       align-items: flex-start;
+    }
+
+    .recommendation-context {
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .recommendation-context span:not(:first-child)::before {
+      display: none;
     }
 
     .planner-grid {
@@ -2813,9 +3749,23 @@
 
     .hero-card,
     .panel,
-    .feedback-card {
+    .feedback-card,
+    .revision-session-hero,
+    .session-question-card,
+    .revision-summary-card,
+    .revision-session-feedback,
+    .revision-session-context-card,
+    .revision-next-card {
       padding: 1rem;
       border-radius: 1.1rem;
+    }
+
+    .revision-session-topbar-copy {
+      width: 100%;
+    }
+
+    .revision-session-pill-row {
+      gap: 0.4rem;
     }
 
     .queue-list {

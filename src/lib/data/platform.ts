@@ -577,7 +577,9 @@ export function deriveLearningState(state: AppState): AppState {
   const revisionPlans = Array.isArray(state.revisionPlans)
     ? state.revisionPlans.map((plan) => {
         const revisionPlanSubject =
-          program.curriculum.subjects.find((subject) => subject.id === plan.subjectId) ?? selectedSubject;
+          program.curriculum.subjects.find((subject) => subject.id === plan.subjectId) ??
+          program.curriculum.subjects.find((subject) => subject.name === plan.subjectName) ??
+          selectedSubject;
 
         return buildRevisionPlan(
           revisionPlanSubject.id,
@@ -602,7 +604,9 @@ export function deriveLearningState(state: AppState): AppState {
       ? state.activeRevisionPlanId
       : revisionPlans[0]?.id ?? null;
   const fallbackRevisionPlanSubject =
-    program.curriculum.subjects.find((subject) => subject.id === state.revisionPlan.subjectId) ?? selectedSubject;
+    program.curriculum.subjects.find((subject) => subject.id === state.revisionPlan.subjectId) ??
+    program.curriculum.subjects.find((subject) => subject.name === state.revisionPlan.subjectName) ??
+    selectedSubject;
   const legacyRevisionPlan = buildRevisionPlan(
     fallbackRevisionPlanSubject.id,
     fallbackRevisionPlanSubject.name,
