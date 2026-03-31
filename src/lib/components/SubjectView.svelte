@@ -188,6 +188,18 @@
     gap: 1rem;
   }
 
+  @keyframes section-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .view > * {
+    animation: section-enter 0.35s var(--ease-soft) both;
+  }
+  .view > *:nth-child(2) { animation-delay: 0.06s; }
+  .view > *:nth-child(3) { animation-delay: 0.12s; }
+  .view > *:nth-child(4) { animation-delay: 0.18s; }
+
   .hero {
     align-items: start;
   }

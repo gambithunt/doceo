@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
@@ -399,7 +401,7 @@
         <button type="button" class="btn btn-secondary shuffle-btn" disabled={hintChipsRefreshing} onclick={refreshSubjectHints}>
           {hintChipsRefreshing ? '↻ Shuffling...' : '⇄ Shuffle topics'}
         </button>
-        {#if hintRefreshError}<span class="error-note">{hintRefreshError}</span>{/if}
+        {#if hintRefreshError}<span class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{hintRefreshError}</span>{/if}
       </div>
     {/if}
 
@@ -430,7 +432,7 @@
     </div>
 
     {#if viewState.topicDiscovery.error}
-      <p class="error-note">{viewState.topicDiscovery.error}</p>
+      <p class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{viewState.topicDiscovery.error}</p>
     {/if}
 
     {#if viewState.topicDiscovery.shortlist}

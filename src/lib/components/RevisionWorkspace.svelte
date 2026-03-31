@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { renderSimpleMarkdown } from '$lib/markdown';
   import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
@@ -28,6 +30,7 @@
   let plannerMode: 'weak_topics' | 'full_subject' | 'manual' = 'weak_topics';
   let plannerTimeBudgetMinutes = 20;
   let plannerManualTopics = '';
+  let plannerErrors: { examName?: string; examDate?: string } = {};
 
   $: homeModel = deriveRevisionHomeModel(state);
   $: progressModel = deriveRevisionProgressModel(state);
@@ -93,6 +96,7 @@
   }
 
   function closePlanner(): void {
+    plannerErrors = {};
     appState.setRevisionPlannerOpen(false);
   }
 
@@ -164,9 +168,10 @@
   }
 
   function submitPlanner(): void {
-    if (!plannerSubjectId || !plannerExamName.trim() || !plannerExamDate) {
-      return;
-    }
+    plannerErrors = {};
+    if (!plannerExamName.trim()) plannerErrors.examName = 'Give your exam a name so you can track it.';
+    if (!plannerExamDate) plannerErrors.examDate = 'Pick a date so Doceo can pace the plan.';
+    if (plannerErrors.examName || plannerErrors.examDate || !plannerSubjectId) return;
 
     const manualTopics = plannerMode === 'manual'
       ? plannerManualTopics
@@ -328,14 +333,28 @@
           </select>
         </label>
 
-        <label class="field">
+        <label class="field" class:field-error={plannerErrors.examName}>
           <span>Exam name</span>
-          <input bind:value={plannerExamName} placeholder="Mid-term test" />
+          <input
+            bind:value={plannerExamName}
+            placeholder="Mid-term test"
+            oninput={() => { if (plannerErrors.examName) plannerErrors = { ...plannerErrors, examName: undefined }; }}
+          />
+          {#if plannerErrors.examName}
+            <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.examName}</span>
+          {/if}
         </label>
 
-        <label class="field">
+        <label class="field" class:field-error={plannerErrors.examDate}>
           <span>Exam date</span>
-          <input type="date" bind:value={plannerExamDate} />
+          <input
+            type="date"
+            bind:value={plannerExamDate}
+            oninput={() => { if (plannerErrors.examDate) plannerErrors = { ...plannerErrors, examDate: undefined }; }}
+          />
+          {#if plannerErrors.examDate}
+            <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.examDate}</span>
+          {/if}
         </label>
 
         <label class="field">
@@ -835,6 +854,23 @@
     gap: 1rem;
   }
 
+  @keyframes section-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .workspace > .section-header {
+    animation: section-enter 0.35s var(--ease-soft) both;
+  }
+  .workspace > .hero-card {
+    animation: section-enter 0.35s var(--ease-soft) both;
+    animation-delay: 0.06s;
+  }
+  .workspace > .content-grid {
+    animation: section-enter 0.35s var(--ease-soft) both;
+    animation-delay: 0.12s;
+  }
+
   .section-header,
   .hero-card,
   .panel-header,
@@ -1084,6 +1120,36 @@
   .field span {
     font-size: 0.8rem;
     color: var(--text-soft);
+  }
+
+  .field input,
+  .field select {
+    transition:
+      border-color 150ms var(--ease-soft),
+      box-shadow 150ms var(--ease-soft);
+  }
+
+  .field-error input,
+  .field-error select {
+    border-color: var(--color-red, #f87171);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-red, #f87171) 18%, transparent);
+    animation: field-shake 0.3s var(--ease-soft) both;
+  }
+
+  @keyframes field-shake {
+    0%   { transform: translateX(0); }
+    20%  { transform: translateX(-5px); }
+    45%  { transform: translateX(4px); }
+    65%  { transform: translateX(-3px); }
+    80%  { transform: translateX(2px); }
+    100% { transform: translateX(0); }
+  }
+
+  .field-hint-error {
+    display: block;
+    font-size: 0.76rem;
+    color: var(--color-red, #f87171);
+    margin-top: -0.1rem;
   }
 
   .session-topic-note {

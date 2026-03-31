@@ -76,6 +76,16 @@
     gap: 1rem;
   }
 
+  @keyframes section-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .view > * {
+    animation: section-enter 0.35s var(--ease-soft) both;
+  }
+  .view > *:nth-child(2) { animation-delay: 0.08s; }
+
   .hero {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;

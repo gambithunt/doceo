@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { appState } from '$lib/stores/app-state';
   import { getRecommendedSubject } from '$lib/data/onboarding';
   import type { AppState, OnboardingStep, SchoolTerm, SubjectOption, SubjectVerificationState } from '$lib/types';
@@ -431,17 +433,17 @@
         </div>
 
         {#if verification.status === 'verified'}
-          <div class="verify-feedback verify-ok verify-compact">
+          <div class="verify-feedback verify-ok verify-compact" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>
             Added <strong>{verification.normalizedName}</strong> to your subjects.
             <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Add another</button>
           </div>
         {:else if verification.status === 'provisional'}
-          <div class="verify-feedback verify-warn">
+          <div class="verify-feedback verify-warn" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>
             Couldn't verify <strong>{verification.normalizedName}</strong> right now — it's been saved locally and will be confirmed later.
             <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Try another</button>
           </div>
         {:else if verification.status === 'invalid'}
-          <div class="verify-feedback verify-error">
+          <div class="verify-feedback verify-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>
             {#if verification.suggestion}
               Did you mean <strong>{verification.suggestion}</strong>? {verification.reason}
             {:else}
@@ -450,7 +452,7 @@
             <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Try again</button>
           </div>
         {:else if verification.status === 'error'}
-          <div class="verify-feedback verify-error">
+          <div class="verify-feedback verify-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>
             {verification.reason ?? 'Something went wrong. Please try again.'}
             <button type="button" class="link-btn" onclick={() => appState.resetSubjectVerification()}>Try again</button>
           </div>

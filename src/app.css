@@ -438,6 +438,12 @@ textarea {
     box-shadow 200ms var(--ease-soft);
 }
 
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--accent);
+}
+
 /* ── Theme crossfade ── */
 *,
 *::before,

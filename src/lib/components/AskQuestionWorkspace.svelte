@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { appState } from '$lib/stores/app-state';
   import type { AppState } from '$lib/types';
 
@@ -64,7 +66,7 @@
       <p>{state.askQuestion.response.teacherResponse}</p>
       <p><strong>Next check:</strong> {state.askQuestion.response.checkForUnderstanding}</p>
       {#if state.askQuestion.error}
-        <p class="error"><strong>Error:</strong> {state.askQuestion.error}</p>
+        <p class="error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}><strong>Error:</strong> {state.askQuestion.error}</p>
       {/if}
     </article>
 
@@ -171,6 +173,6 @@
   }
 
   .error {
-    color: #ef4444;
+    color: var(--color-red, #ef4444);
   }
 </style>

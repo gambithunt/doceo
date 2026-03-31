@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { appState } from '$lib/stores/app-state';
   import type { AppState } from '$lib/types';
@@ -123,7 +125,7 @@
       {viewState.auth.status === 'loading' ? 'Working...' : authMode === 'signup' ? 'Create account' : 'Sign in'}
     </button>
     {#if viewState.auth.error}
-      <p class="error">{viewState.auth.error}</p>
+      <p class="error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{viewState.auth.error}</p>
     {/if}
   </article>
 </section>
@@ -268,7 +270,7 @@
   }
 
   .error {
-    color: #ef4444;
+    color: var(--color-red, #ef4444);
   }
 
   /* ── Tablet ── */
