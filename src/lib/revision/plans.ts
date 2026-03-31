@@ -66,6 +66,10 @@ export function formatPlanTiming(examDate: string, now = new Date()): string {
   return `Exam in ${diff} days`;
 }
 
+export function formatPlanDailyLabel(timeBudgetMinutes?: number): string {
+  return `${timeBudgetMinutes ?? 20} min daily`;
+}
+
 export function getPlanPreviewTopics(plan: RevisionPlan): string[] {
   return plan.topics.slice(0, 3);
 }

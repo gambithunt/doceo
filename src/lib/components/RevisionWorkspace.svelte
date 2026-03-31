@@ -21,6 +21,7 @@
   import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
   import {
     describePlanStyle,
+    formatPlanDailyLabel,
     formatPlanStyleLabel,
     formatPlanTiming,
     pickPlanStartTopic,
@@ -755,7 +756,7 @@
 </script>
 
 <section class="workspace" class:session-focus={hasSessionFocus}>
-  {#if !state.ui.showRevisionPlanner && upcomingExamInfo}
+  {#if upcomingExamInfo}
     <section class="panel revision-outlook-panel">
       <div class="revision-outlook-main">
         <div class="revision-outlook-header">
@@ -819,7 +820,7 @@
   <section class="panel plans-panel">
     <div class="panel-header">
       <div>
-        <h3>Revision Plans</h3>
+        <h3>Your revision plans</h3>
         <p class="plans-summary">Saved plans you can launch directly into revision.</p>
       </div>
       <small>{sortedRevisionPlans.length} saved</small>
@@ -857,7 +858,7 @@
             <div class="plan-chips-row">
               <span class="plan-chip plan-chip--info">{formatPlanStyleLabel(plan.planStyle)}</span>
               <span class="plan-chip">{plan.topics.length} topic{plan.topics.length === 1 ? '' : 's'}</span>
-              <span class="plan-chip">{plan.timeBudgetMinutes ?? 20} min/day</span>
+              <span class="plan-chip">{formatPlanDailyLabel(plan.timeBudgetMinutes)}</span>
             </div>
 
             <button type="button" class="action-btn plan-start-btn" onclick={() => startPlan(plan.id)}>
@@ -1568,21 +1569,20 @@
   }
 
   /* Build plan invite card */
-  .build-plan-invite-card {
+  .panel.build-plan-invite-card {
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: start;
     gap: 1rem;
-    background: color-mix(in srgb, var(--accent-dim) 55%, var(--surface));
+    background: var(--surface-callout);
     border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
     position: relative;
     overflow: hidden;
     transition: background 180ms var(--ease-soft), border-color 180ms var(--ease-soft);
   }
 
-
-  .build-plan-invite-card:hover {
-    background: color-mix(in srgb, var(--accent-dim) 80%, var(--surface));
+  .panel.build-plan-invite-card:hover {
+    background: color-mix(in srgb, var(--surface-callout) 88%, white);
     border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
   }
 

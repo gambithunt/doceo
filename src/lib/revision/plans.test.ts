@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RevisionPlan, RevisionTopic } from '$lib/types';
 import {
   describePlanStyle,
+  formatPlanDailyLabel,
   formatPlanStyleLabel,
   formatPlanTiming,
   getPlanOverflowTopicCount,
@@ -73,6 +74,10 @@ describe('revision plan presentation helpers', () => {
 
   it('formats a compact timing label for the card', () => {
     expect(formatPlanTiming('2026-04-02', new Date('2026-03-31T10:00:00.000Z'))).toBe('Exam in 2 days');
+  });
+
+  it('formats the daily revision budget in clearer card copy', () => {
+    expect(formatPlanDailyLabel(20)).toBe('20 min daily');
   });
 
   it('maps plan styles into clear scanning labels and descriptions', () => {
