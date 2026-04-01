@@ -16,7 +16,6 @@ import {
 } from '$lib/lesson-system';
 import {
   applyRevisionTurn,
-  buildRevisionSession,
   evaluateRevisionAnswer,
   getRequestedIntervention
 } from '$lib/revision/engine';
@@ -60,9 +59,11 @@ import type {
   LessonChatResponse,
   LessonMessage,
   LessonPlanResponse,
+  LessonRating,
   LessonSession,
   OnboardingStep,
   RevisionQuestionFeedback,
+  RevisionPackResponse,
   RevisionTopic,
   SchoolTerm,
   ShortlistedTopic,
@@ -125,6 +126,10 @@ interface LearningProgramResponse {
 interface ResetOnboardingResponse {
   reset: boolean;
   reason?: string;
+}
+
+interface LessonArtifactRatingResponse {
+  saved: boolean;
 }
 
 function readState(): AppState {
@@ -609,6 +614,50 @@ export function createAppStore(initialState: AppState = readState()) {
 
     if (!payload.lesson?.title || !Array.isArray(payload.questions)) {
       throw new Error('Lesson plan response was invalid.');
+    }
+
+    return payload;
+  }
+
+  async function requestRevisionPack(
+    state: AppState,
+    topics: RevisionTopic[],
+    options: {
+      mode: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
+      source: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
+      recommendationReason: string;
+      targetQuestionCount?: number;
+      revisionPlanId?: string;
+    }
+  ) {
+    const response = await fetch('/api/ai/revision-pack', {
+      method: 'POST',
+      headers: await getAuthenticatedHeaders({
+        'Content-Type': 'application/json'
+      }),
+      body: JSON.stringify({
+        request: {
+          student: state.profile,
+          learnerProfile: state.learnerProfile,
+          topics,
+          recommendationReason: options.recommendationReason,
+          mode: options.mode,
+          source: options.source,
+          targetQuestionCount: options.targetQuestionCount,
+          revisionPlanId: options.revisionPlanId
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({ error: 'Revision pack request failed.' }))) as { error?: string };
+      throw new Error(payload.error ?? 'Revision pack request failed.');
+    }
+
+    const payload = (await response.json()) as RevisionPackResponse;
+
+    if (!payload.session?.questions?.length) {
+      throw new Error('Revision pack response was invalid.');
     }
 
     return payload;
@@ -1457,6 +1506,65 @@ export function createAppStore(initialState: AppState = readState()) {
         );
       }
     },
+    submitLessonRating: async (
+      sessionId: string,
+      rating: Omit<LessonRating, 'submittedAt'>
+    ) => {
+      const snapshot = currentState();
+      const session = snapshot.lessonSessions.find((item) => item.id === sessionId);
+
+      if (!session || session.status !== 'complete' || !session.lessonArtifactId || !session.nodeId) {
+        return;
+      }
+
+      const response = await fetch('/api/lesson-artifacts/rate', {
+        method: 'POST',
+        headers: await getAuthenticatedHeaders({
+          'Content-Type': 'application/json'
+        }),
+        body: JSON.stringify({
+          lessonSessionId: session.id,
+          lessonArtifactId: session.lessonArtifactId,
+          nodeId: session.nodeId,
+          usefulness: rating.usefulness,
+          clarity: rating.clarity,
+          confidenceGain: rating.confidenceGain,
+          note: rating.note,
+          completed: true,
+          reteachCount: session.reteachCount
+        })
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as LessonArtifactRatingResponse;
+
+      if (!payload.saved) {
+        return;
+      }
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          lessonSessions: state.lessonSessions.map((item) =>
+            item.id === sessionId
+              ? {
+                  ...item,
+                  lessonRating: {
+                    usefulness: rating.usefulness,
+                    clarity: rating.clarity,
+                    confidenceGain: rating.confidenceGain,
+                    note: rating.note,
+                    submittedAt: new Date().toISOString()
+                  }
+                }
+              : item
+          )
+        })
+      );
+    },
     startRevisionFromSelection: (subjectId: string, sectionName: string, _focusDetail: string) => {
       update((state) => {
         const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];
@@ -2263,12 +2371,14 @@ export function createAppStore(initialState: AppState = readState()) {
       update((state) => {
         const activePlanId = state.activeRevisionPlanId;
         const nextTopics = buildRevisionTopics(state);
+        const nextTopicNodeIds = getSelectedSubject(state).topics.map((topic) => topic.id);
         const nextRevisionPlans = activePlanId
           ? state.revisionPlans.map((plan) =>
               plan.id === activePlanId
                 ? {
                     ...plan,
                     topics: nextTopics,
+                    topicNodeIds: nextTopicNodeIds,
                     updatedAt: new Date().toISOString()
                   }
                 : plan
@@ -2279,6 +2389,7 @@ export function createAppStore(initialState: AppState = readState()) {
           {
             ...state.revisionPlan,
             topics: nextTopics,
+            topicNodeIds: nextTopicNodeIds,
             updatedAt: new Date().toISOString()
           };
 
@@ -2298,7 +2409,11 @@ export function createAppStore(initialState: AppState = readState()) {
           }
         })
       ),
-    createRevisionPlan: (input: RevisionPlanInput) =>
+    createRevisionPlan: (input: RevisionPlanInput) => {
+      let result:
+        | { ok: true; planId: string }
+        | { ok: false; error: string } = { ok: false, error: 'Unable to create revision plan.' };
+
       update((state) => {
         try {
           // If the chosen subject isn't yet in the curriculum, add it to selectedSubjectNames
@@ -2331,6 +2446,10 @@ export function createAppStore(initialState: AppState = readState()) {
           const nextUpcomingExams = [exam, ...stateForPlan.upcomingExams]
             .slice()
             .sort((left, right) => Date.parse(left.examDate) - Date.parse(right.examDate));
+          result = {
+            ok: true,
+            planId: plan.id
+          };
 
           return persistAndSync({
             ...stateForPlan,
@@ -2346,10 +2465,17 @@ export function createAppStore(initialState: AppState = readState()) {
               showRevisionPlanner: false
             }
           });
-        } catch {
+        } catch (error) {
+          result = {
+            ok: false,
+            error: error instanceof Error ? error.message : 'Unable to create revision plan.'
+          };
           return state;
         }
-      }),
+      });
+
+      return result;
+    },
     setActiveRevisionPlan: (planId: string) =>
       update((state) => {
         const nextPlan = state.revisionPlans.find((plan) => plan.id === planId);
@@ -2432,7 +2558,7 @@ export function createAppStore(initialState: AppState = readState()) {
           }
         });
       }),
-    runRevisionSession: (
+    runRevisionSession: async (
       topic: RevisionTopic,
       options?: {
         mode?: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
@@ -2443,33 +2569,51 @@ export function createAppStore(initialState: AppState = readState()) {
         revisionPlanId?: string;
       }
     ) => {
-      update((state) => {
+      try {
+        const currentState = get({ subscribe });
         const effectiveTopics = options?.topicSet && options.topicSet.length > 0 ? options.topicSet : [topic];
-        // Upsert synthetic topics so submitRevisionAnswer can look them up
-        const syntheticToAdd = effectiveTopics.filter(
-          (t) => t.isSynthetic && !state.revisionTopics.some((r) => r.lessonSessionId === t.lessonSessionId)
-        );
-        return persistAndSync({
-          ...state,
-          revisionTopics: syntheticToAdd.length > 0 ? [...state.revisionTopics, ...syntheticToAdd] : state.revisionTopics,
-          revisionSession: buildRevisionSession(
-            effectiveTopics.length > 1 ? effectiveTopics : topic,
-            options?.recommendationReason ?? 'Due today',
-            options?.mode ?? 'deep_revision',
-            options?.source ?? 'do_today',
-            new Date(),
-            options?.targetQuestionCount,
-            options?.revisionPlanId
-          ),
-          ui: {
-            ...state.ui,
-            currentScreen: 'revision',
-            learningMode: 'revision',
-            activeLessonSessionId: topic.lessonSessionId
-          }
+        const payload = await requestRevisionPack(currentState, effectiveTopics, {
+          mode: options?.mode ?? 'deep_revision',
+          source: options?.source ?? 'do_today',
+          recommendationReason: options?.recommendationReason ?? 'Due today',
+          targetQuestionCount: options?.targetQuestionCount,
+          revisionPlanId: options?.revisionPlanId
         });
-      });
-      navigate(revisionPath());
+
+        update((state) => {
+          const resolvedTopicIds = new Map(
+            payload.resolvedTopics.map((resolved) => [resolved.lessonSessionId, resolved.nodeId ?? null])
+          );
+          const existingTopicIds = new Set(state.revisionTopics.map((item) => item.lessonSessionId));
+          const mergedExistingTopics = state.revisionTopics.map((item) =>
+            resolvedTopicIds.has(item.lessonSessionId)
+              ? { ...item, nodeId: resolvedTopicIds.get(item.lessonSessionId) ?? item.nodeId ?? null }
+              : item
+          );
+          const missingTopics = effectiveTopics
+            .filter((item) => !existingTopicIds.has(item.lessonSessionId))
+            .map((item) => ({
+              ...item,
+              nodeId: resolvedTopicIds.get(item.lessonSessionId) ?? item.nodeId ?? null
+            }));
+
+          return persistAndSync({
+            ...state,
+            revisionTopics: [...mergedExistingTopics, ...missingTopics],
+            revisionSession: payload.session,
+            ui: {
+              ...state.ui,
+              currentScreen: 'revision',
+              learningMode: 'revision',
+              activeLessonSessionId: topic.lessonSessionId
+            }
+          });
+        });
+        navigate(revisionPath());
+        return true;
+      } catch {
+        return false;
+      }
     },
     exitRevisionSession: () => {
       let shouldNavigate = false;
@@ -2555,6 +2699,9 @@ export function createAppStore(initialState: AppState = readState()) {
             {
               id: `revision-attempt-${crypto.randomUUID()}`,
               revisionTopicId: topic.lessonSessionId,
+              nodeId: topic.nodeId ?? question.nodeId ?? session.nodeId ?? null,
+              revisionPackArtifactId: session.revisionPackArtifactId ?? null,
+              revisionQuestionArtifactId: session.revisionQuestionArtifactId ?? null,
               questionId: question.id,
               answer,
               selfConfidence,

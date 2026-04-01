@@ -57,7 +57,7 @@ This phase may be released before full admin tooling is complete if event logs a
 
 ### 7.1 Add evidence model
 
-- [ ] define evidence inputs:
+- [x] define evidence inputs:
   - successful resolution count
   - repeat use count
   - average artifact rating
@@ -68,41 +68,48 @@ This phase may be released before full admin tooling is complete if event logs a
 
 ### 7.2 Add trust scoring
 
-- [ ] derive trust score from evidence
-- [ ] keep trust score explainable
-- [ ] store trust score snapshots when major transitions occur
+- [x] derive trust score from evidence
+- [x] keep trust score explainable
+- [x] store trust score snapshots when major transitions occur
 
 ### 7.3 Add auto-promotion rules
 
-- [ ] provisional to canonical
-- [ ] provisional to review_needed
-- [ ] canonical to review_needed when trust degrades
-- [ ] provisional to rejected for strong negative evidence
+- [x] provisional to canonical
+- [x] provisional to review_needed
+- [x] canonical to review_needed when trust degrades
+- [x] provisional to rejected for strong negative evidence
 
 ### 7.4 Add duplicate detection
 
-- [ ] exact normalized duplicates
-- [ ] alias overlap detection
-- [ ] scoped near-duplicate detection
-- [ ] merge candidate generation
+- [x] exact normalized duplicates
+- [x] alias overlap detection
+- [x] scoped near-duplicate detection
+- [x] merge candidate generation
 
 ### 7.5 Add automatic event generation
 
-- [ ] node reused
-- [ ] trust increased
-- [ ] trust decreased
-- [ ] node promoted
-- [ ] node flagged for review
-- [ ] duplicate candidate created
+- [x] node reused
+- [x] trust increased
+- [x] trust decreased
+- [x] node promoted
+- [x] node flagged for review
+- [x] duplicate candidate created
 
 ## Required Tests
 
-- [ ] provisional node accumulates evidence correctly
-- [ ] trust score changes as expected
-- [ ] auto-promotion triggers when threshold met
-- [ ] review-needed state triggers when quality degrades
-- [ ] duplicate candidates are created for overlapping nodes
-- [ ] all automatic transitions generate events
+- [x] provisional node accumulates evidence correctly
+- [x] trust score changes as expected
+- [x] auto-promotion triggers when threshold met
+- [x] review-needed state triggers when quality degrades
+- [x] duplicate candidates are created for overlapping nodes
+- [x] all automatic transitions generate events
+
+## Phase 7 Findings
+
+- `src/lib/server/graph-repository.ts` now persists node evidence and duplicate candidates, derives explainable trust snapshots, and applies automatic lifecycle transitions without changing stable node ids.
+- `src/lib/server/revision-plan-resolution.ts`, `src/lib/server/lesson-launch-service.ts`, and `src/lib/server/revision-generation-service.ts` now feed successful-resolution and repeat-use evidence into the graph layer so trust starts moving on real planner, lesson, and revision usage.
+- `src/routes/api/lesson-artifacts/rate/+server.ts` feeds artifact rating, completion, and contradiction signals into graph evidence, while `src/routes/api/admin/lesson-artifacts/+server.ts` increments admin intervention pressure for manual artifact actions.
+- `supabase/migrations/20260401160000_graph_automation.sql` extends the graph event vocabulary and adds persistent `curriculum_graph_evidence` and `curriculum_graph_duplicate_candidates` tables for later Phase 8 admin surfaces.
 
 ## Exit Criteria
 
@@ -134,76 +141,84 @@ This phase should ship as a coherent admin surface, not as disconnected debuggin
 
 ### 8.1 Graph overview
 
-- [ ] counts by:
+- [x] counts by:
   - country
   - curriculum
   - grade
   - subject
   - node status
-- [ ] highlight:
+- [x] highlight:
   - provisional growth
   - auto-promotions
   - review-needed spikes
 
 ### 8.2 Provisional queue
 
-- [ ] newest provisional nodes
-- [ ] highest-use provisional nodes
-- [ ] promotion candidates
-- [ ] duplicate candidates
-- [ ] low-trust nodes
+- [x] newest provisional nodes
+- [x] highest-use provisional nodes
+- [x] promotion candidates
+- [x] duplicate candidates
+- [x] low-trust nodes
 
 ### 8.3 Node detail screen
 
-- [ ] metadata summary
-- [ ] alias list
-- [ ] parent/children
-- [ ] trust score
-- [ ] lifecycle history
-- [ ] related artifacts
-- [ ] usage metrics
-- [ ] merge history
+- [x] metadata summary
+- [x] alias list
+- [x] parent/children
+- [x] trust score
+- [x] lifecycle history
+- [x] related artifacts
+- [x] usage metrics
+- [x] merge history
 
 ### 8.4 Node actions
 
-- [ ] rename label
-- [ ] edit aliases
-- [ ] merge nodes
-- [ ] reparent node
-- [ ] promote/demote manually
-- [ ] archive/reject
-- [ ] restore from archived where allowed
+- [x] rename label
+- [x] edit aliases
+- [x] merge nodes
+- [x] reparent node
+- [x] promote/demote manually
+- [x] archive/reject
+- [x] restore from archived where allowed
 
 ### 8.5 Artifact quality surfaces
 
-- [ ] preferred lesson artifact
-- [ ] preferred revision pack
-- [ ] artifact rating distributions
-- [ ] regeneration history
-- [ ] manual preferred override
+- [x] preferred lesson artifact
+- [x] preferred revision pack
+- [x] artifact rating distributions
+- [x] regeneration history
+- [x] manual preferred override
 
 ### 8.6 Admin event timeline
 
-- [ ] show automatic transitions
-- [ ] show admin changes
-- [ ] show merges
-- [ ] show artifact preference changes
-- [ ] filter by node, operator, event type, date
+- [x] show automatic transitions
+- [x] show admin changes
+- [x] show merges
+- [x] show artifact preference changes
+- [x] filter by node, operator, event type, date
 
 ### 8.7 Admin design requirements
 
-- [ ] apply `docs/design-langauge.md`
-- [ ] apply `docs/workstreams/design-color-01.md`
-- [ ] ensure dark and light modes are both finished
-- [ ] keep cards, status pills, and timelines visually consistent with main app surfaces
+- [x] apply `docs/design-langauge.md`
+- [x] apply `docs/workstreams/design-color-01.md`
+- [x] ensure dark and light modes are both finished
+- [x] keep cards, status pills, and timelines visually consistent with main app surfaces
 
 ## Required Tests
 
-- [ ] admin can view provisional nodes
-- [ ] admin can merge nodes safely
-- [ ] admin can archive/reject with audit trail
-- [ ] node detail shows artifact lineage correctly
-- [ ] event timeline shows automatic and manual events
+- [x] admin can view provisional nodes
+- [x] admin can merge nodes safely
+- [x] admin can archive/reject with audit trail
+- [x] node detail shows artifact lineage correctly
+- [x] event timeline shows automatic and manual events
+
+## Phase 8 Findings
+
+- `src/lib/server/admin/admin-graph.ts` now assembles the admin graph dashboard, provisional queues, duplicate summaries, node detail payloads, and mixed graph/artifact timelines on top of the Phase 7 repository layer.
+- `src/lib/server/graph-repository.ts` now exposes admin-safe alias listing/replacement, event queries, rename/reparent/status/restore mutations, and actor-aware merge/archive/reject logging so every manual graph change remains auditable.
+- `src/routes/admin/graph/+page.svelte` and `src/routes/admin/graph/[nodeId]/+page.svelte` deliver the operational UI as soft-card admin surfaces with country/curriculum/grade/status/trust/origin filters, operator/event/date timeline filtering, provisional queues, duplicate candidate views, artifact quality panels, and manual graph controls.
+- `src/routes/admin/+layout.svelte` now keeps the admin shell on the shared app theme instead of forcing dark mode, while adding responsive nav behavior so the new graph surfaces remain usable in both light and dark mode on desktop and mobile.
+- `src/lib/server/lesson-artifact-repository.ts` and `src/lib/server/revision-artifact-repository.ts` now expose node-level artifact listings so the node detail view can show preferred artifacts, lineage, question counts, and regeneration history without bypassing repository boundaries.
 
 ## Exit Criteria
 
@@ -388,4 +403,3 @@ This execution plan is complete only when:
 - provisional nodes progress automatically with logs
 - admin can mold the graph safely
 - legacy history is migrated or explicitly queued for review
-

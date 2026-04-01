@@ -10,9 +10,9 @@ describe('revision manual topic helpers', () => {
     expect(parseManualTopicDraft('Fractions, Area\nRatio')).toEqual(['Fractions', 'Area', 'Ratio']);
   });
 
-  it('replaces the selected topic when a new suggestion pill is clicked', () => {
+  it('appends unique suggestion pills without duplicating selections', () => {
     expect(appendManualTopic(['Fractions'], 'Fractions')).toEqual(['Fractions']);
-    expect(appendManualTopic(['Fractions'], 'Area')).toEqual(['Area']);
+    expect(appendManualTopic(['Fractions'], 'Area')).toEqual(['Fractions', 'Area']);
   });
 
   it('prefers selected topics over typed draft when manual topics were chosen directly', () => {

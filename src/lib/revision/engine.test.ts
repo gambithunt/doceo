@@ -10,6 +10,7 @@ import type { RevisionQuestion, RevisionTopic } from '$lib/types';
 function createTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
   return {
     lessonSessionId: 'session-1',
+    nodeId: 'graph-subtopic-fractions',
     subjectId: 'subject-1',
     subject: 'Mathematics',
     topicTitle: 'Fractions',
@@ -37,47 +38,72 @@ function createQuestion(overrides: Partial<RevisionQuestion> = {}): RevisionQues
   return {
     id: 'question-1',
     revisionTopicId: 'session-1',
+    nodeId: 'graph-subtopic-fractions',
     questionType: 'recall',
     prompt: 'Without looking at notes, what is the key idea in Fractions?',
     expectedSkills: ['define the rule', 'give one example'],
     misconceptionTags: ['forgets-key-rule'],
     difficulty: 'foundation',
+    helpLadder: {
+      nudge: 'Start with the key idea and one simple example.',
+      hint: 'Name the part and the whole, then connect them.',
+      workedStep: '1. Define the fraction. 2. Name numerator and denominator. 3. Give one example.',
+      miniReteach: 'A fraction names part of a whole.',
+      lessonRefer: 'Open lesson mode for a full reteach.'
+    },
     ...overrides
   };
 }
 
 describe('buildRevisionSession', () => {
-  it('creates a recall-first session with multiple revision questions', () => {
-    const session = buildRevisionSession(createTopic(), 'Due today');
+  it('creates a revision session from authored artifact questions instead of generating prompts locally', () => {
+    const session = buildRevisionSession({
+      topics: [createTopic()],
+      recommendationReason: 'Due today',
+      mode: 'deep_revision',
+      source: 'do_today',
+      questions: [createQuestion(), createQuestion({ id: 'question-2', questionType: 'apply' })],
+      nodeId: 'graph-subtopic-fractions',
+      revisionPackArtifactId: 'revision-pack-1',
+      revisionQuestionArtifactId: 'revision-question-set-1'
+    });
 
-    expect(session.questions.length).toBeGreaterThanOrEqual(2);
+    expect(session.questions.length).toBe(2);
     expect(session.questions[0]?.questionType).toBe('recall');
+    expect(session.questions[1]?.questionType).toBe('apply');
+    expect(session.revisionPackArtifactId).toBe('revision-pack-1');
+    expect(session.revisionQuestionArtifactId).toBe('revision-question-set-1');
     expect(session.status).toBe('active');
     expect(session.awaitingAdvance).toBe(false);
     expect(session.skippedQuestionIds).toEqual([]);
   });
 
-  it('builds distinct question stacks for quick-fire and teacher mode', () => {
-    const quickFire = buildRevisionSession(createTopic(), 'Due today', 'quick_fire');
-    const teacherMode = buildRevisionSession(createTopic(), 'Due today', 'teacher_mode');
-
-    expect(quickFire.questions).toHaveLength(1);
-    expect(teacherMode.questions.some((question) => question.questionType === 'teacher_mode')).toBe(true);
-  });
-
-  it('builds a shuffle session with mixed prompts instead of repeating recall wording', () => {
-    const shuffle = buildRevisionSession(createTopic(), 'Due today', 'shuffle');
-
-    expect(shuffle.questions.map((question) => question.questionType)).toEqual(['recall', 'apply', 'transfer']);
-    expect(shuffle.questions[2]?.prompt).toMatch(/connect|new situation|different/i);
-  });
-
   it('builds a mixed-topic shuffle session when multiple topics are provided', () => {
-    const shuffle = buildRevisionSession(
-      [createTopic(), createTopic({ lessonSessionId: 'session-2', topicTitle: 'Area' }), createTopic({ lessonSessionId: 'session-3', topicTitle: 'Ratio' })],
-      'Mixed revision',
-      'shuffle'
-    );
+    const shuffle = buildRevisionSession({
+      topics: [
+        createTopic(),
+        createTopic({ lessonSessionId: 'session-2', nodeId: 'graph-subtopic-area', topicTitle: 'Area' }),
+        createTopic({ lessonSessionId: 'session-3', nodeId: 'graph-subtopic-ratio', topicTitle: 'Ratio' })
+      ],
+      recommendationReason: 'Mixed revision',
+      mode: 'shuffle',
+      source: 'do_today',
+      questions: [
+        createQuestion(),
+        createQuestion({
+          id: 'question-2',
+          revisionTopicId: 'session-2',
+          nodeId: 'graph-subtopic-area',
+          questionType: 'apply'
+        }),
+        createQuestion({
+          id: 'question-3',
+          revisionTopicId: 'session-3',
+          nodeId: 'graph-subtopic-ratio',
+          questionType: 'transfer'
+        })
+      ]
+    });
 
     expect(shuffle.revisionTopicIds).toEqual(['session-1', 'session-2', 'session-3']);
     expect(shuffle.questions.map((question) => question.revisionTopicId)).toEqual(['session-1', 'session-2', 'session-3']);
@@ -187,7 +213,7 @@ describe('evaluateRevisionAnswer', () => {
 });
 
 describe('getRequestedIntervention', () => {
-  it('returns a nudge before a hint', () => {
+  it('returns artifact-authored help content before any legacy fallback wording', () => {
     const question = createQuestion();
     const topic = createTopic();
 
@@ -206,6 +232,8 @@ describe('getRequestedIntervention', () => {
 
     expect(nudge.type).toBe('nudge');
     expect(hint.type).toBe('hint');
+    expect(nudge.content).toBe('Start with the key idea and one simple example.');
+    expect(hint.content).toBe('Name the part and the whole, then connect them.');
   });
 
   it('can return worked steps for explicit scaffolding requests', () => {
@@ -217,13 +245,23 @@ describe('getRequestedIntervention', () => {
     });
 
     expect(intervention.type).toBe('worked_step');
-    expect(intervention.content).toMatch(/define|structure|example/i);
+    expect(intervention.content).toMatch(/1\. Define the fraction/);
   });
 });
 
 describe('applyRevisionTurn', () => {
+  function createSession() {
+    return buildRevisionSession({
+      topics: [createTopic()],
+      recommendationReason: 'Due today',
+      mode: 'deep_revision',
+      source: 'do_today',
+      questions: [createQuestion(), createQuestion({ id: 'question-2' })]
+    });
+  }
+
   it('keeps the same question active when the answer needs a recheck', () => {
-    const session = buildRevisionSession(createTopic(), 'Due today');
+    const session = createSession();
     const result = evaluateRevisionAnswer({
       topic: createTopic(),
       question: session.questions[0]!,
@@ -242,7 +280,7 @@ describe('applyRevisionTurn', () => {
   });
 
   it('advances to the next question after a strong answer', () => {
-    const session = buildRevisionSession(createTopic(), 'Due today');
+    const session = createSession();
     const result = evaluateRevisionAnswer({
       topic: createTopic(),
       question: session.questions[0]!,
@@ -260,7 +298,7 @@ describe('applyRevisionTurn', () => {
   });
 
   it('force-advances after a weak answer and records the skipped question', () => {
-    const session = buildRevisionSession(createTopic(), 'Due today');
+    const session = createSession();
     const result = evaluateRevisionAnswer({
       topic: createTopic(),
       question: session.questions[0]!,
@@ -280,7 +318,13 @@ describe('applyRevisionTurn', () => {
   });
 
   it('completes the round when force-advance is used on the last question', () => {
-    const session = buildRevisionSession(createTopic(), 'Due today', 'quick_fire');
+    const session = buildRevisionSession({
+      topics: [createTopic()],
+      recommendationReason: 'Due today',
+      mode: 'quick_fire',
+      source: 'do_today',
+      questions: [createQuestion()]
+    });
     const result = evaluateRevisionAnswer({
       topic: createTopic(),
       question: session.questions[0]!,

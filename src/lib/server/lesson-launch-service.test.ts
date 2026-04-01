@@ -118,9 +118,12 @@ describe('lesson launch service', () => {
   const generator = vi.fn<() => Promise<LessonPlanResponse>>();
   let service: ReturnType<typeof createLessonLaunchService>;
   let artifactRepository: ReturnType<typeof createLessonArtifactRepository>;
+  let graphStore: ReturnType<typeof createInMemoryGraphStore>;
+  let graphRepository: ReturnType<typeof createGraphRepository>;
 
   beforeEach(async () => {
-    const graphRepository = createGraphRepository(createInMemoryGraphStore());
+    graphStore = createInMemoryGraphStore();
+    graphRepository = createGraphRepository(graphStore);
     await bootstrapGraphFromLegacyData(graphRepository, createLegacySnapshot());
     artifactRepository = createLessonArtifactRepository(createInMemoryLessonArtifactStore());
     generator.mockReset();
@@ -132,6 +135,34 @@ describe('lesson launch service', () => {
       pedagogyVersion: 'v1',
       promptVersion: 'v1'
     });
+  });
+
+  it('records launch reuse evidence so a repeatedly used provisional node can auto-promote', async () => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await service.launchLesson({
+        request: {
+          student: createProfile(),
+          subjectId: 'graph-subject-mathematics',
+          subject: 'Mathematics',
+          topicTitle: 'Bridge proofs',
+          topicDescription: 'Explain bridge-style proof steps.',
+          curriculumReference: 'CAPS · Grade 6 · Mathematics'
+        }
+      });
+    }
+
+    const createdNode = graphStore.snapshot().nodes.find((node) => node.label === 'Bridge proofs');
+    const createdEvidence = graphStore.snapshot().evidence.find((evidence) => evidence.nodeId === createdNode?.id);
+
+    expect(createdNode?.status).toBe('canonical');
+    expect(createdNode?.origin).toBe('promoted_from_provisional');
+    expect(createdEvidence?.successfulResolutionCount).toBe(4);
+    expect(graphStore.snapshot().events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: createdNode?.id, eventType: 'node_reused' }),
+        expect.objectContaining({ nodeId: createdNode?.id, eventType: 'node_promoted' })
+      ])
+    );
   });
 
   it('creates lesson and question artifacts on cache miss', async () => {
@@ -217,5 +248,63 @@ describe('lesson launch service', () => {
     expect(bridged.lessonArtifactId).toBeTruthy();
     expect(bridged.questionArtifactId).toBeTruthy();
     expect(bridged.lesson.title).toContain('Equivalent Fractions');
+  });
+
+  it('creates a new artifact on launch when the previous preferred artifact becomes stale from low ratings', async () => {
+    const first = await service.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+
+    await artifactRepository.recordLessonFeedback({
+      artifactId: first.lessonArtifactId!,
+      nodeId: 'graph-subtopic-equivalent-fractions',
+      profileId: 'student-1',
+      lessonSessionId: 'session-low-rating',
+      usefulness: 1,
+      clarity: 1,
+      confidenceGain: 1,
+      note: 'Still confused after the lesson.',
+      completed: false,
+      reteachCount: 3
+    });
+
+    generator.mockResolvedValueOnce({
+      ...createGeneratedLessonResponse(),
+      lesson: {
+        ...createGeneratedLessonResponse().lesson,
+        id: 'generated-lesson-fractions-v2',
+        orientation: { title: 'Orientation', body: 'Replacement orientation' }
+      }
+    });
+
+    const relaunched = await service.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+
+    const originalArtifact = await artifactRepository.getLessonArtifactById(first.lessonArtifactId!);
+    const replacementArtifact = await artifactRepository.getLessonArtifactById(relaunched.lessonArtifactId!);
+
+    expect(generator).toHaveBeenCalledTimes(2);
+    expect(relaunched.lessonArtifactId).not.toBe(first.lessonArtifactId);
+    expect(originalArtifact?.status).toBe('stale');
+    expect(replacementArtifact?.supersedesArtifactId).toBe(first.lessonArtifactId);
+    expect(originalArtifact?.payload.lesson.orientation.body).toBe('Generated orientation');
+    expect(replacementArtifact?.payload.lesson.orientation.body).toBe('Replacement orientation');
   });
 });

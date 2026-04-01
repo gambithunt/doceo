@@ -95,13 +95,15 @@ function buildSyntheticTopic(
   plan: RevisionPlan,
   topicTitle: string,
   now: Date,
+  nodeId?: string | null,
   subjectOverride?: { subjectId: string; subjectName: string }
 ): RevisionTopic {
   const subjectId = subjectOverride?.subjectId ?? plan.subjectId;
   const subjectName = subjectOverride?.subjectName ?? plan.subjectName;
 
   return {
-    lessonSessionId: `synthetic-${subjectId}-${slugify(topicTitle)}`,
+    lessonSessionId: `synthetic-${subjectId}-${slugify(nodeId ?? topicTitle)}`,
+    nodeId: nodeId ?? null,
     subjectId,
     subject: subjectName,
     topicTitle,
@@ -117,6 +119,13 @@ function buildSyntheticTopic(
     isSynthetic: true,
     hasLesson: false
   };
+}
+
+function getPlanTopicRefs(plan: RevisionPlan): Array<{ label: string; nodeId: string | null }> {
+  return plan.topics.map((label, index) => ({
+    label,
+    nodeId: plan.topicNodeIds?.[index] ?? null
+  }));
 }
 
 const sortByNeed = (left: RevisionTopic, right: RevisionTopic) => {
@@ -168,13 +177,21 @@ export function buildPlanTopicSet(
   const seen = new Set<string>();
   const result: RevisionTopic[] = [];
 
-  for (const topicName of plan.topics) {
-    const match = sameSubject.find((t) => t.topicTitle.toLowerCase() === topicName.toLowerCase());
+  for (const topicRef of getPlanTopicRefs(plan)) {
+    const match =
+      sameSubject.find((t) => topicRef.nodeId && t.nodeId === topicRef.nodeId) ??
+      sameSubject.find((t) => t.topicTitle.toLowerCase() === topicRef.label.toLowerCase());
     if (match && !seen.has(match.lessonSessionId)) {
       result.push(match);
       seen.add(match.lessonSessionId);
     } else if (!match) {
-      const synthetic = buildSyntheticTopic(plan, topicName, now, inferSubjectOverride(plan, topicName, revisionTopics));
+      const synthetic = buildSyntheticTopic(
+        plan,
+        topicRef.label,
+        now,
+        topicRef.nodeId,
+        inferSubjectOverride(plan, topicRef.label, revisionTopics)
+      );
       if (!seen.has(synthetic.lessonSessionId)) {
         result.push(synthetic);
         seen.add(synthetic.lessonSessionId);
@@ -221,8 +238,15 @@ export function pickPlanStartTopic(plan: RevisionPlan, topics: RevisionTopic[]):
     return left.confidenceScore - right.confidenceScore;
   };
 
+  const planTopicRefs = getPlanTopicRefs(plan);
   const planNamedTopics = sameSubjectTopics
-    .filter((topic) => plan.topics.some((item) => item.toLowerCase() === topic.topicTitle.toLowerCase()))
+    .filter((topic) =>
+      planTopicRefs.some(
+        (item) =>
+          (item.nodeId && topic.nodeId === item.nodeId) ||
+          item.label.toLowerCase() === topic.topicTitle.toLowerCase()
+      )
+    )
     .sort(sortByNeed);
 
   if (planNamedTopics[0]) {

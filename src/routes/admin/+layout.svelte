@@ -14,6 +14,7 @@
     { id: 'learning',  label: 'Learning',   icon: '↗', path: '/admin/learning', color: 'var(--accent)'       },
     { id: 'messages',  label: 'Messages',   icon: '◎', path: '/admin/messages', color: 'var(--color-orange)' },
     { id: 'content',   label: 'Content',    icon: '◫', path: '/admin/content',  color: 'var(--color-yellow)' },
+    { id: 'graph',     label: 'Graph',      icon: '◇', path: '/admin/graph',    color: 'var(--color-blue)'   },
     { id: 'revenue',   label: 'Revenue',    icon: '$', path: '/admin/revenue',  color: 'var(--accent)'       },
     { id: 'ai',        label: 'AI & Costs', icon: '⬡', path: '/admin/ai',       color: 'var(--color-purple)' },
     { id: 'system',    label: 'System',     icon: '◐', path: '/admin/system',   color: 'var(--color-blue)'   },
@@ -25,12 +26,6 @@
     if (path === '/admin') return pathname === '/admin';
     return pathname.startsWith(path);
   }
-
-  // Force dark mode for the admin panel; restore on unmount
-  $effect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    return () => document.documentElement.removeAttribute('data-theme');
-  });
 
   onMount(async () => {
     if (!supabase) {
@@ -327,5 +322,39 @@
   .admin-main {
     min-height: 100vh;
     overflow-y: auto;
+  }
+
+  @media (max-width: 900px) {
+    .admin-shell {
+      grid-template-columns: 1fr;
+    }
+
+    .admin-sidebar {
+      position: static;
+      height: auto;
+      grid-template-rows: auto auto auto;
+      gap: 0.85rem;
+    }
+
+    nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.35rem;
+    }
+
+    .sidebar-footer {
+      border-top: none;
+      padding-top: 0;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .admin-sidebar {
+      padding: 1rem 0.75rem;
+    }
+
+    nav {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 </style>

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { createInitialState } from '$lib/data/platform';
-import type { LessonSession, RevisionTopic } from '$lib/types';
+import { buildRevisionSession } from '$lib/revision/engine';
+import type { LessonSession, RevisionPackRequest, RevisionPackResponse, RevisionQuestion, RevisionTopic } from '$lib/types';
 import { appState, createAppStore, lessonSessionStore, profileStore, uiStore, revisionStore } from './app-state';
 
-const { getAuthenticatedHeaders } = vi.hoisted(() => ({
-  getAuthenticatedHeaders: vi.fn()
+const { getAuthenticatedHeaders, fetchMock } = vi.hoisted(() => ({
+  getAuthenticatedHeaders: vi.fn(),
+  fetchMock: vi.fn()
 }));
 
 vi.mock('$lib/authenticated-fetch', () => ({
@@ -15,6 +17,7 @@ vi.mock('$lib/authenticated-fetch', () => ({
 function createRevisionTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
   return {
     lessonSessionId: 'revision-session-1',
+    nodeId: 'graph-subtopic-fractions',
     subjectId: 'subject-1',
     subject: 'Mathematics',
     topicTitle: 'Fractions',
@@ -35,6 +38,72 @@ function createRevisionTopic(overrides: Partial<RevisionTopic> = {}): RevisionTo
       underconfidenceCount: 0
     },
     ...overrides
+  };
+}
+
+function createRevisionQuestion(
+  topic: RevisionTopic,
+  id: string,
+  questionType: RevisionQuestion['questionType']
+): RevisionQuestion {
+  return {
+    id,
+    revisionTopicId: topic.lessonSessionId,
+    nodeId: topic.nodeId ?? null,
+    questionType,
+    prompt: `${questionType} ${topic.topicTitle}`,
+    expectedSkills: ['explain clearly', 'use one example'],
+    misconceptionTags: [`${topic.topicTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-core-gap`],
+    difficulty: questionType === 'apply' || questionType === 'teacher_mode' ? 'core' : 'foundation',
+    helpLadder: {
+      nudge: `Start with the core idea in ${topic.topicTitle}.`,
+      hint: `Use one clear example from ${topic.subject}.`,
+      workedStep: `1. Define ${topic.topicTitle}. 2. Explain the rule. 3. Give one example.`,
+      miniReteach: `${topic.topicTitle} needs a slower rebuild from the definition upward.`,
+      lessonRefer: `Go back to lesson mode for a step-by-step reteach of ${topic.topicTitle}.`
+    }
+  };
+}
+
+function buildMockRevisionPackPayload(request: RevisionPackRequest): RevisionPackResponse {
+  const resolvedTopics = request.topics.map((topic, index) => ({
+    ...topic,
+    nodeId: topic.nodeId ?? `graph-topic-${index + 1}`
+  }));
+  const typePool: RevisionQuestion['questionType'][] =
+    request.mode === 'quick_fire'
+      ? ['recall']
+      : request.mode === 'teacher_mode'
+        ? ['teacher_mode', 'recall']
+        : request.mode === 'shuffle'
+          ? ['recall', 'apply', 'transfer']
+          : ['recall', 'explain'];
+  const questions = typePool.map((questionType, index) =>
+    createRevisionQuestion(resolvedTopics[index % resolvedTopics.length]!, `question-${index + 1}`, questionType)
+  );
+
+  return {
+    session: buildRevisionSession({
+      topics: resolvedTopics,
+      recommendationReason: request.recommendationReason,
+      mode: request.mode,
+      source: request.source,
+      questions,
+      nodeId: resolvedTopics[0]?.nodeId ?? null,
+      revisionPackArtifactId: 'revision-pack-artifact-1',
+      revisionQuestionArtifactId: 'revision-question-artifact-1',
+      revisionPlanId: request.revisionPlanId,
+      sessionTitle: request.mode === 'shuffle' ? 'Mixed shuffle session' : resolvedTopics[0]?.topicTitle ?? 'Revision',
+      sessionRecommendations: ['Repair the weakest recall gap first.']
+    }),
+    resolvedTopics: resolvedTopics.map((topic) => ({
+      lessonSessionId: topic.lessonSessionId,
+      nodeId: topic.nodeId ?? null
+    })),
+    provider: 'github-models',
+    revisionPackArtifactId: 'revision-pack-artifact-1',
+    revisionQuestionArtifactId: 'revision-question-artifact-1',
+    model: 'openai/gpt-4.1-mini'
   };
 }
 
@@ -73,6 +142,27 @@ describe('domain store slices', () => {
     getAuthenticatedHeaders.mockResolvedValue({
       Authorization: 'Bearer token'
     });
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.endsWith('/api/ai/revision-pack')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { request: RevisionPackRequest };
+        return new Response(JSON.stringify(buildMockRevisionPackPayload(body.request)), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+
+      return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   // T5.1a: derived slices return the correct sub-state
@@ -100,7 +190,7 @@ describe('domain store slices', () => {
 });
 
 describe('revision session loop', () => {
-  it('keeps the same question active after a weak answer that needs rechecking', () => {
+  it('keeps the same question active after a weak answer that needs rechecking', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -109,7 +199,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.submitRevisionAnswer('Not sure.', 2);
 
     const state = get(store);
@@ -121,7 +211,7 @@ describe('revision session loop', () => {
     );
   });
 
-  it('starts a revision session in the selected mode', () => {
+  it('starts a revision session in the selected mode', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -130,7 +220,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic, {
+    await store.runRevisionSession(topic, {
       mode: 'teacher_mode',
       source: 'manual',
       recommendationReason: 'Teach it back to lock the idea in'
@@ -143,7 +233,7 @@ describe('revision session loop', () => {
     expect(state.revisionSession?.recommendationReason).toBe('Teach it back to lock the idea in');
   });
 
-  it('updates the topic attached to the active shuffle question instead of always using the primary topic', () => {
+  it('updates the topic attached to the active shuffle question instead of always using the primary topic', async () => {
     const baseState = createInitialState();
     const firstTopic = createRevisionTopic();
     const secondTopic = createRevisionTopic({
@@ -172,7 +262,7 @@ describe('revision session loop', () => {
       revisionTopics: [firstTopic, secondTopic]
     });
 
-    store.runRevisionSession(firstTopic, {
+    await store.runRevisionSession(firstTopic, {
       mode: 'shuffle',
       source: 'do_today',
       recommendationReason: 'Mix the next revision moves',
@@ -195,7 +285,7 @@ describe('revision session loop', () => {
     expect(updatedSecondTopic?.lastReviewedAt).not.toBeNull();
   });
 
-  it('persists calibration changes back onto the revision topic after an answer', () => {
+  it('persists calibration changes back onto the revision topic after an answer', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -204,7 +294,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.submitRevisionAnswer('I am completely sure, but I cannot explain it.', 5);
 
     const state = get(store);
@@ -215,7 +305,7 @@ describe('revision session loop', () => {
     expect(updatedTopic?.calibration.confidenceGap).toBeGreaterThan(0.18);
   });
 
-  it('creates a focused mini-lesson handoff when revision escalates', () => {
+  it('creates a focused mini-lesson handoff when revision escalates', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const originalLessonSession = createLessonSession({
@@ -231,7 +321,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.markRevisionStuck();
     store.escalateToLesson();
     store.startRevisionLessonHandoff();
@@ -247,7 +337,7 @@ describe('revision session loop', () => {
     expect(state.ui.activeLessonSessionId).toBe(handoffSession?.id);
   });
 
-  it('can exit an active revision session back to the regular revision tab', () => {
+  it('can exit an active revision session back to the regular revision tab', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -264,7 +354,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic, {
+    await store.runRevisionSession(topic, {
       mode: 'deep_revision',
       source: 'exam_plan',
       recommendationReason: 'Start revision for Math exam'
@@ -279,7 +369,7 @@ describe('revision session loop', () => {
     expect(state.ui.activeLessonSessionId).toBe(topic.lessonSessionId);
   });
 
-  it('uses repeated misconception signals in the mini-lesson handoff brief', () => {
+  it('uses repeated misconception signals in the mini-lesson handoff brief', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic({
       misconceptionSignals: [{ tag: 'fractions-core-gap', count: 2, lastSeenAt: '2026-03-29T08:00:00.000Z' }]
@@ -297,7 +387,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.markRevisionStuck();
     store.escalateToLesson();
     store.startRevisionLessonHandoff();
@@ -308,7 +398,7 @@ describe('revision session loop', () => {
     expect(handoffSession?.messages.some((message) => /repeated gap|fractions core gap/i.test(message.content))).toBe(true);
   });
 
-  it('keeps the revision session active when the student marks the question as stuck', () => {
+  it('keeps the revision session active when the student marks the question as stuck', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -325,7 +415,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.markRevisionStuck();
 
     const state = get(store);
@@ -335,7 +425,7 @@ describe('revision session loop', () => {
     expect(state.revisionSession?.currentInterventionLevel).toBe('worked_step');
   });
 
-  it('can explicitly escalate to lesson after showing worked steps', () => {
+  it('can explicitly escalate to lesson after showing worked steps', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -352,7 +442,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.markRevisionStuck();
     store.escalateToLesson();
 
@@ -362,7 +452,7 @@ describe('revision session loop', () => {
     expect(state.revisionSession?.currentHelp?.type).toBe('worked_step');
   });
 
-  it('records an answer and waits for an explicit next-step action before advancing', () => {
+  it('records an answer and waits for an explicit next-step action before advancing', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -371,7 +461,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.submitRevisionAnswer('Fractions compare parts of a whole because the denominator is the total and the numerator is the selected part with one example.', 4);
 
     const state = get(store);
@@ -381,7 +471,7 @@ describe('revision session loop', () => {
     expect(state.revisionSession?.lastTurnResult?.sessionDecision).toBe('continue');
   });
 
-  it('force-advances to the next question after a weak answer when the student chooses next', () => {
+  it('force-advances to the next question after a weak answer when the student chooses next', async () => {
     const baseState = createInitialState();
     const topic = createRevisionTopic();
     const store = createAppStore({
@@ -390,7 +480,7 @@ describe('revision session loop', () => {
       revisionTopics: [topic]
     });
 
-    store.runRevisionSession(topic);
+    await store.runRevisionSession(topic);
     store.submitRevisionAnswer('Not sure.', 2);
     store.forceAdvanceRevision();
 
@@ -400,6 +490,31 @@ describe('revision session loop', () => {
     expect(state.revisionSession?.awaitingAdvance).toBe(false);
     expect(state.revisionSession?.skippedQuestionIds).toContain(state.revisionAttempts[0]?.questionId);
   });
+
+  it('records stable revision artifact ids on new attempts', async () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+      revisionTopics: [topic]
+    });
+
+    await store.runRevisionSession(topic);
+    store.submitRevisionAnswer('Fractions compare parts of a whole because the denominator is the total and the numerator is the selected part.', 4);
+
+    const state = get(store);
+
+    expect(state.revisionSession?.revisionPackArtifactId).toBe('revision-pack-artifact-1');
+    expect(state.revisionSession?.revisionQuestionArtifactId).toBe('revision-question-artifact-1');
+    expect(state.revisionAttempts[0]).toEqual(
+      expect.objectContaining({
+        revisionPackArtifactId: 'revision-pack-artifact-1',
+        revisionQuestionArtifactId: 'revision-question-artifact-1',
+        nodeId: 'graph-subtopic-fractions'
+      })
+    );
+  });
 });
 
 describe('revision plans', () => {
@@ -407,14 +522,14 @@ describe('revision plans', () => {
     const baseState = createInitialState();
     const store = createAppStore(baseState);
 
-    store.createRevisionPlan({
+    const first = store.createRevisionPlan({
       subjectId: baseState.curriculum.subjects[0]!.id,
       examName: 'Math mid-term',
       examDate: '2026-04-12',
       mode: 'weak_topics',
       timeBudgetMinutes: 20
     });
-    store.createRevisionPlan({
+    const second = store.createRevisionPlan({
       subjectId: baseState.curriculum.subjects[0]!.id,
       examName: 'Math final',
       examDate: '2026-06-18',
@@ -424,10 +539,13 @@ describe('revision plans', () => {
 
     const state = get(store);
 
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
     expect(state.revisionPlans).toHaveLength(2);
     expect(state.activeRevisionPlanId).toBe(state.revisionPlans[0]?.id);
     expect(state.revisionPlans.map((plan) => plan.examName)).toEqual(['Math final', 'Math mid-term']);
     expect(state.revisionPlan.examName).toBe('Math final');
+    expect(state.revisionPlans.every((plan) => Array.isArray(plan.topicNodeIds) && plan.topicNodeIds.length === plan.topics.length)).toBe(true);
   });
 
   it('can switch the active revision plan and keep revisionPlan in sync as a compatibility alias', () => {
@@ -514,7 +632,7 @@ describe('revision plans', () => {
 
     expect(foreignTopic).toBeDefined();
 
-    store.createRevisionPlan({
+    const result = store.createRevisionPlan({
       subjectId: primarySubject.id,
       examName: 'Broken plan',
       examDate: '2026-05-01',
@@ -525,6 +643,8 @@ describe('revision plans', () => {
 
     const state = get(store);
 
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/does not belong|resolve/i);
     expect(state.revisionPlans).toHaveLength(0);
     expect(state.activeRevisionPlanId).toBeNull();
   });
@@ -919,6 +1039,106 @@ describe('unified lesson launch pipeline', () => {
         lessonArtifactId: 'artifact-lesson-4',
         questionArtifactId: 'artifact-questions-4',
         status: 'active'
+      })
+    );
+  });
+});
+
+describe('lesson artifact ratings', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getAuthenticatedHeaders.mockResolvedValue({
+      Authorization: 'Bearer token'
+    });
+  });
+
+  it('submits learner feedback for the completed lesson artifact and stores the submitted rating on the session', async () => {
+    const baseState = createInitialState();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/lesson-artifacts/rate') {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body)) as {
+          lessonSessionId: string;
+          lessonArtifactId: string;
+          usefulness: number;
+          clarity: number;
+          confidenceGain: number;
+          note: string;
+        };
+
+        expect(body).toEqual(
+          expect.objectContaining({
+            lessonSessionId: 'complete-session-1',
+            lessonArtifactId: 'artifact-lesson-9',
+            usefulness: 5,
+            clarity: 4,
+            confidenceGain: 5,
+            note: 'Best explanation so far.'
+          })
+        );
+
+        return new Response(JSON.stringify({ saved: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [
+        createLessonSession({
+          id: 'complete-session-1',
+          studentId: 'student-1',
+          subjectId: baseState.curriculum.subjects[0]!.id,
+          subject: baseState.curriculum.subjects[0]!.name,
+          lessonId: 'artifact-lesson-runtime-9',
+          nodeId: 'graph-subtopic-equivalent-fractions',
+          lessonArtifactId: 'artifact-lesson-9',
+          questionArtifactId: 'artifact-questions-9',
+          status: 'complete',
+          completedAt: '2026-03-27T08:15:00.000Z'
+        })
+      ],
+      ui: {
+        ...baseState.ui,
+        activeLessonSessionId: 'complete-session-1'
+      }
+    });
+
+    await store.submitLessonRating('complete-session-1', {
+      usefulness: 5,
+      clarity: 4,
+      confidenceGain: 5,
+      note: 'Best explanation so far.'
+    });
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'complete-session-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/lesson-artifacts/rate',
+      expect.objectContaining({
+        method: 'POST'
+      })
+    );
+    expect(session).toBeTruthy();
+    if (!session) {
+      throw new Error('Expected completed session to remain in state after rating submission.');
+    }
+    expect(session.lessonRating).toEqual(
+      expect.objectContaining({
+        usefulness: 5,
+        clarity: 4,
+        confidenceGain: 5,
+        note: 'Best explanation so far.'
       })
     );
   });

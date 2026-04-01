@@ -251,6 +251,28 @@ export interface LessonSelectorResponse {
 }
 
 export type RevisionPlanStyle = 'weak_topics' | 'full_subject' | 'manual';
+export type PlannerTopicResolutionState =
+  | 'resolved'
+  | 'ambiguous'
+  | 'out_of_scope'
+  | 'provisional_created'
+  | 'unresolved';
+
+export interface RevisionPlanTopicSelection {
+  nodeId: string;
+  label: string;
+  confidence: number;
+  resolutionState: Extract<PlannerTopicResolutionState, 'resolved' | 'provisional_created'>;
+}
+
+export interface PlannerTopicResolution {
+  inputLabel: string;
+  label: string;
+  nodeId: string | null;
+  confidence: number;
+  resolutionState: PlannerTopicResolutionState;
+  message: string | null;
+}
 
 export interface RevisionPlan {
   id: string;
@@ -259,6 +281,7 @@ export interface RevisionPlan {
   examName?: string;
   examDate: string;
   topics: string[];
+  topicNodeIds?: Array<string | null>;
   planStyle: RevisionPlanStyle;
   studyMode?: RevisionPlanStyle;
   timeBudgetMinutes?: number;
@@ -286,11 +309,14 @@ export interface UpcomingExam {
 export interface RevisionQuestion {
   id: string;
   revisionTopicId: string;
+  nodeId?: string | null;
   questionType: RevisionQuestionType;
   prompt: string;
   expectedSkills: string[];
   misconceptionTags: string[];
   difficulty: 'foundation' | 'core' | 'stretch';
+  helpLadder?: RevisionHelpLadder;
+  transferPrompt?: string | null;
 }
 
 export interface RevisionTurnScores {
@@ -341,6 +367,14 @@ export interface RevisionIntervention {
   content: string;
 }
 
+export interface RevisionHelpLadder {
+  nudge: string;
+  hint: string;
+  workedStep: string;
+  miniReteach: string;
+  lessonRefer: string;
+}
+
 export interface RevisionTurnResult {
   scores: RevisionTurnScores;
   diagnosis: RevisionDiagnosis;
@@ -362,6 +396,9 @@ export interface RevisionTurnResult {
 export interface RevisionAttemptRecord {
   id: string;
   revisionTopicId: string;
+  nodeId?: string | null;
+  revisionPackArtifactId?: string | null;
+  revisionQuestionArtifactId?: string | null;
   questionId: string;
   answer: string;
   selfConfidence: number;
@@ -375,10 +412,14 @@ export interface ActiveRevisionSession {
   revisionPlanId?: string;
   revisionTopicId: string;
   revisionTopicIds: string[];
+  nodeId?: string | null;
+  revisionPackArtifactId?: string | null;
+  revisionQuestionArtifactId?: string | null;
   mode: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
   source: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
   topicTitle: string;
   recommendationReason: string;
+  sessionRecommendations?: string[];
   questions: RevisionQuestion[];
   questionIndex: number;
   currentInterventionLevel: RevisionInterventionType;
@@ -478,6 +519,14 @@ export interface LessonMessage {
   conceptItems?: ConceptItem[];
 }
 
+export interface LessonRating {
+  usefulness: number;
+  clarity: number;
+  confidenceGain: number;
+  note: string;
+  submittedAt: string;
+}
+
 export interface LessonSession {
   id: string;
   studentId: string;
@@ -504,6 +553,7 @@ export interface LessonSession {
   lastActiveAt: string;
   completedAt: string | null;
   status: LessonSessionStatus;
+  lessonRating?: LessonRating | null;
   profileUpdates: LearnerProfileUpdate[];
 }
 
@@ -548,6 +598,34 @@ export interface LessonPlanResponse {
   error?: string;
 }
 
+export interface RevisionPackRequest {
+  student: UserProfile;
+  learnerProfile: LearnerProfile;
+  topics: RevisionTopic[];
+  recommendationReason: string;
+  mode: ActiveRevisionSession['mode'];
+  source: ActiveRevisionSession['source'];
+  targetQuestionCount?: number;
+  revisionPlanId?: string;
+}
+
+export interface RevisionPackGenerationPayload {
+  sessionTitle: string;
+  sessionRecommendations: string[];
+  questions: RevisionQuestion[];
+}
+
+export interface RevisionPackResponse {
+  session: ActiveRevisionSession;
+  resolvedTopics: Array<Pick<RevisionTopic, 'lessonSessionId' | 'nodeId'>>;
+  provider: string;
+  revisionPackArtifactId: string;
+  revisionQuestionArtifactId: string;
+  modelTier?: import('$lib/ai/model-tiers').ModelTier;
+  model?: string;
+  error?: string;
+}
+
 export interface TopicDiscoveryState {
   selectedSubjectId: string;
   input: string;
@@ -559,6 +637,7 @@ export interface TopicDiscoveryState {
 
 export interface RevisionTopic {
   lessonSessionId: string;
+  nodeId?: string | null;
   subjectId: string;
   subject: string;
   topicTitle: string;

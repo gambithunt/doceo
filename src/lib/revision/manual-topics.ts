@@ -22,11 +22,11 @@ export function appendManualTopic(currentTopics: string[], topic: string): strin
     return currentTopics;
   }
 
-  if (currentTopics.length === 1 && normalize(currentTopics[0] ?? '') === normalize(next)) {
+  if (currentTopics.some((item) => normalize(item) === normalize(next))) {
     return currentTopics;
   }
 
-  return [next];
+  return [...currentTopics, next];
 }
 
 export function resolveMatchedManualTopics(input: {

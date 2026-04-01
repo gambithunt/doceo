@@ -143,8 +143,26 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
     async launchLesson({ request }: { request: LessonPlanRequest }) {
       const scope = buildScope(request.student);
       const node = await resolveNode(dependencies.graphRepository, request);
-      const preferredLesson = await dependencies.artifactRepository.getPreferredLessonArtifact(node.id, scope);
-      const preferredQuestions = await dependencies.artifactRepository.getPreferredQuestionArtifact(node.id, scope);
+      await dependencies.graphRepository.recordNodeObservation({
+        nodeId: node.id,
+        source: 'lesson_launch',
+        successfulResolution: true,
+        reused: true,
+        metadata: {
+          topicTitle: request.topicTitle
+        }
+      });
+      const preferredLesson = await dependencies.artifactRepository.getPreferredLessonArtifact(
+        node.id,
+        scope,
+        {
+          pedagogyVersion: dependencies.pedagogyVersion,
+          promptVersion: dependencies.promptVersion
+        }
+      );
+      const preferredQuestions = preferredLesson
+        ? await dependencies.artifactRepository.getQuestionArtifactForLessonArtifact(preferredLesson.id, scope)
+        : null;
 
       if (preferredLesson && preferredQuestions) {
         return {
@@ -158,6 +176,7 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
         };
       }
 
+      const supersededArtifact = await dependencies.artifactRepository.getLatestLessonArtifact(node.id, scope);
       const generated = alignGeneratedLesson(await dependencies.generateLessonPlan(request), node, request);
       const lessonArtifact = await dependencies.artifactRepository.createLessonArtifact({
         nodeId: node.id,
@@ -168,6 +187,12 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
         provider: generated.provider,
         model: generated.model ?? null,
         status: 'ready',
+        supersedesArtifactId:
+          supersededArtifact && supersededArtifact.status !== 'ready' ? supersededArtifact.id : null,
+        regenerationReason:
+          supersededArtifact && supersededArtifact.status !== 'ready'
+            ? supersededArtifact.regenerationReason
+            : null,
         payload: {
           lesson: generated.lesson
         }
@@ -221,8 +246,8 @@ export async function bridgeLegacySessionArtifacts(
         lessonArtifactId: lessonArtifact.id,
         questionArtifactId: questionArtifact.id
       };
-    }
-  }
+        }
+      }
 
   const existingNode = input.lessonSession.nodeId
     ? await dependencies.graphRepository.getNodeById(input.lessonSession.nodeId)

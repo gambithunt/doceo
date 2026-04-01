@@ -1,4 +1,4 @@
-import type { AppState, RevisionPlan, UpcomingExam } from '$lib/types';
+import type { AppState, RevisionPlan, RevisionPlanTopicSelection, UpcomingExam } from '$lib/types';
 
 export interface RevisionPlanInput {
   subjectId: string;
@@ -7,6 +7,7 @@ export interface RevisionPlanInput {
   examDate: string;
   mode: 'weak_topics' | 'full_subject' | 'manual';
   manualTopics?: string[];
+  manualTopicSelections?: RevisionPlanTopicSelection[];
   timeBudgetMinutes?: number;
 }
 
@@ -16,6 +17,18 @@ function unique(values: string[]): string[] {
 
 function normalizeTopicTitle(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function uniqueSelections(values: Array<{ label: string; nodeId: string | null }>): Array<{ label: string; nodeId: string | null }> {
+  return values.filter(
+    (value, index, all) =>
+      value.label.length > 0 &&
+      all.findIndex(
+        (candidate) =>
+          candidate.label === value.label &&
+          candidate.nodeId === value.nodeId
+      ) === index
+  );
 }
 
 function collectValidTopicTitlesForSubject(state: AppState, subjectId: string): Set<string> {
@@ -62,6 +75,37 @@ function buildExamFocus(subjectName: string, timeBudgetMinutes?: number): string
   ];
 }
 
+function buildWeakTopicSelections(state: AppState, subjectId: string, subjectTopicFallbacks: Array<{ label: string; nodeId: string | null }>) {
+  const weakTopics = state.revisionTopics
+    .filter((topic) => topic.subjectId === subjectId)
+    .sort((left, right) => left.confidenceScore - right.confidenceScore)
+    .filter((topic) => topic.confidenceScore < 0.7)
+    .map((topic) => ({
+      label: topic.topicTitle,
+      nodeId: topic.nodeId ?? null
+    }));
+
+  return uniqueSelections(weakTopics.length > 0 ? weakTopics.slice(0, 5) : subjectTopicFallbacks.slice(0, 5));
+}
+
+function buildFullSubjectSelections(
+  state: AppState,
+  subjectId: string,
+  subjectTopicFallbacks: Array<{ label: string; nodeId: string | null }>
+) {
+  const studiedTopics = uniqueSelections(
+    state.revisionTopics
+      .filter((topic) => topic.subjectId === subjectId)
+      .sort((left, right) => Date.parse(left.nextRevisionAt) - Date.parse(right.nextRevisionAt) || left.confidenceScore - right.confidenceScore)
+      .map((topic) => ({
+        label: topic.topicTitle,
+        nodeId: topic.nodeId ?? null
+      }))
+  );
+
+  return studiedTopics.length > 0 ? studiedTopics : subjectTopicFallbacks;
+}
+
 export function buildRevisionPlanFromInput(
   state: AppState,
   input: RevisionPlanInput,
@@ -71,30 +115,50 @@ export function buildRevisionPlanFromInput(
     state.curriculum.subjects.find((item) => item.id === input.subjectId) ??
     (input.subjectName ? state.curriculum.subjects.find((item) => item.name === input.subjectName) : undefined) ??
     state.curriculum.subjects[0];
-  const subjectTopicNames = subject.topics.map((topic) => topic.name);
-
-  const weakTopics = state.revisionTopics
-    .filter((topic) => topic.subjectId === subject.id)
-    .sort((left, right) => left.confidenceScore - right.confidenceScore)
-    .filter((topic) => topic.confidenceScore < 0.7)
-    .map((topic) => topic.topicTitle);
+  const subjectTopicFallbacks = subject.topics.map((topic) => ({
+    label: topic.name,
+    nodeId: topic.id
+  }));
 
   const validTopicTitles = collectValidTopicTitlesForSubject(state, subject.id);
   const requestedManualTopics = unique(input.manualTopics ?? []);
   const manualTopics = requestedManualTopics.filter((topic) => validTopicTitles.has(normalizeTopicTitle(topic)));
   const invalidManualTopics = requestedManualTopics.filter((topic) => !validTopicTitles.has(normalizeTopicTitle(topic)));
+  const manualTopicSelections = uniqueSelections(
+    (input.manualTopicSelections ?? []).map((selection) => ({
+      label: selection.label.trim(),
+      nodeId: selection.nodeId
+    }))
+  );
 
-  if (input.mode === 'manual' && invalidManualTopics.length > 0) {
+  if (input.mode === 'manual' && input.manualTopicSelections && input.manualTopicSelections.length === 0) {
+    throw new Error(`Add at least one resolved topic for ${subject.name}.`);
+  }
+
+  if (input.mode === 'manual' && !input.manualTopicSelections && invalidManualTopics.length > 0) {
     throw new Error(`Selected topic does not belong to ${subject.name}.`);
   }
 
-  const selectedTopics = unique(
+  const selectedTopicRefs = uniqueSelections(
     input.mode === 'manual'
-      ? manualTopics
+      ? input.manualTopicSelections
+        ? manualTopicSelections
+        : manualTopics.map((topic) => {
+            const curriculumTopic = subject.topics.find((item) => normalizeTopicTitle(item.name) === normalizeTopicTitle(topic));
+            const curriculumSubtopic =
+              curriculumTopic?.subtopics.find((item) => normalizeTopicTitle(item.name) === normalizeTopicTitle(topic)) ??
+              subject.topics.flatMap((item) => item.subtopics).find((item) => normalizeTopicTitle(item.name) === normalizeTopicTitle(topic));
+
+            return {
+              label: topic,
+              nodeId: curriculumSubtopic?.id ?? curriculumTopic?.id ?? null
+            };
+          })
       : input.mode === 'weak_topics'
-        ? weakTopics.length > 0 ? weakTopics.slice(0, 5) : subjectTopicNames.slice(0, 5)
-        : subjectTopicNames
+        ? buildWeakTopicSelections(state, subject.id, subjectTopicFallbacks)
+        : buildFullSubjectSelections(state, subject.id, subjectTopicFallbacks)
   );
+  const selectedTopics = selectedTopicRefs.map((topic) => topic.label);
   const timestamp = now.toISOString();
 
   const plan: RevisionPlan = {
@@ -104,6 +168,7 @@ export function buildRevisionPlanFromInput(
     examName: input.examName,
     examDate: input.examDate,
     topics: selectedTopics,
+    topicNodeIds: selectedTopicRefs.map((topic) => topic.nodeId),
     planStyle: input.mode,
     studyMode: input.mode,
     timeBudgetMinutes: input.timeBudgetMinutes,

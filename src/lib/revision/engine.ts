@@ -1,9 +1,9 @@
 import type {
   ActiveRevisionSession,
+  RevisionHelpLadder,
   RevisionIntervention,
   RevisionInterventionType,
   RevisionQuestion,
-  RevisionQuestionType,
   RevisionTopic,
   RevisionTurnResult
 } from '$lib/types';
@@ -26,85 +26,48 @@ function tokenize(value: string): string[] {
     .filter((item) => item.length > 2);
 }
 
-function buildPrompt(topic: RevisionTopic, type: RevisionQuestionType): string {
-  switch (type) {
-    case 'explain':
-      return `Explain how ${topic.topicTitle} works and name one mistake to avoid.`;
-    case 'apply':
-      return `Apply ${topic.topicTitle} to one short example in ${topic.subject}.`;
-    case 'spot_error':
-      return `Spot one common mistake a student could make in ${topic.topicTitle} and fix it clearly.`;
-    case 'transfer':
-      return `Connect ${topic.topicTitle} to a different situation or new problem in ${topic.subject}.`;
-    case 'teacher_mode':
-      return `Teach ${topic.topicTitle} back to a student who is completely lost.`;
-    default:
-      return `Without looking at notes, what is the key idea in ${topic.topicTitle}?`;
-  }
-}
-
-function buildQuestion(topic: RevisionTopic, type: RevisionQuestionType, index: number): RevisionQuestion {
-  return {
-    id: `${topic.lessonSessionId}-${type}-${index}`,
-    revisionTopicId: topic.lessonSessionId,
-    questionType: type,
-    prompt: buildPrompt(topic, type),
-    expectedSkills:
-      type === 'recall'
-        ? ['state the key idea', 'name one rule']
-        : ['explain clearly', 'give one example', 'name one mistake'],
-    misconceptionTags: [`${normalize(topic.topicTitle)}-core-gap`],
-    difficulty: type === 'apply' || type === 'teacher_mode' ? 'core' : 'foundation'
-  };
-}
-
-export function buildRevisionSession(
-  topicOrTopics: RevisionTopic | RevisionTopic[],
-  recommendationReason: string,
-  mode: ActiveRevisionSession['mode'] = 'deep_revision',
-  source: ActiveRevisionSession['source'] = 'do_today',
-  now = new Date(),
-  targetQuestionCount?: number,
-  revisionPlanId?: string
-): ActiveRevisionSession {
-  const topics = Array.isArray(topicOrTopics) ? topicOrTopics : [topicOrTopics];
+export function buildRevisionSession(input: {
+  topics: RevisionTopic[];
+  recommendationReason: string;
+  mode: ActiveRevisionSession['mode'];
+  source: ActiveRevisionSession['source'];
+  questions: RevisionQuestion[];
+  nodeId?: string | null;
+  revisionPackArtifactId?: string | null;
+  revisionQuestionArtifactId?: string | null;
+  revisionPlanId?: string;
+  sessionTitle?: string;
+  sessionRecommendations?: string[];
+  now?: Date;
+}): ActiveRevisionSession {
+  const topics = input.topics;
   const primaryTopic = topics[0];
 
   if (!primaryTopic) {
     throw new Error('buildRevisionSession requires at least one revision topic');
   }
+  const now = input.now ?? new Date();
+  const questions = input.questions;
 
-  // Type pool ordered from foundational to stretching
-  const typePool: RevisionQuestionType[] =
-    mode === 'quick_fire'
-      ? ['recall']
-      : mode === 'teacher_mode'
-        ? ['teacher_mode', 'recall', 'explain']
-        : mode === 'shuffle'
-          ? ['recall', 'apply', 'transfer']
-        : ['recall', 'explain', 'apply', 'spot_error', 'transfer'];
-
-  // Default count: quick_fire=1, shuffle=one per topic, others=2
-  const defaultCount =
-    targetQuestionCount ??
-    (mode === 'quick_fire' ? 1 : mode === 'shuffle' ? Math.max(topics.length, 3) : 2);
-  const count = Math.max(1, Math.min(20, defaultCount));
-
-  const questions: RevisionQuestion[] = Array.from({ length: count }, (_, i) => {
-    const topic = topics.length > 1 ? topics[i % topics.length]! : primaryTopic;
-    const type = typePool[i % typePool.length]!;
-    return buildQuestion(topic, type, i);
-  });
+  if (questions.length === 0) {
+    throw new Error('buildRevisionSession requires at least one authored revision question');
+  }
 
   return {
-    revisionPlanId,
+    revisionPlanId: input.revisionPlanId,
     id: `revision-session-${crypto.randomUUID()}`,
     revisionTopicId: primaryTopic.lessonSessionId,
     revisionTopicIds: topics.map((topic) => topic.lessonSessionId),
-    mode,
-    source,
-    topicTitle: mode === 'shuffle' && topics.length > 1 ? 'Mixed shuffle session' : primaryTopic.topicTitle,
-    recommendationReason,
+    nodeId: input.nodeId ?? primaryTopic.nodeId ?? null,
+    revisionPackArtifactId: input.revisionPackArtifactId ?? null,
+    revisionQuestionArtifactId: input.revisionQuestionArtifactId ?? null,
+    mode: input.mode,
+    source: input.source,
+    topicTitle:
+      input.sessionTitle ??
+      (input.mode === 'shuffle' && topics.length > 1 ? 'Mixed shuffle session' : primaryTopic.topicTitle),
+    recommendationReason: input.recommendationReason,
+    sessionRecommendations: input.sessionRecommendations ?? [],
     questions,
     questionIndex: 0,
     currentInterventionLevel: 'none',
@@ -131,6 +94,32 @@ export function buildInterventionContent(type: RevisionInterventionType, topic: 
       return `Reset the topic: state the idea, walk through the rule slowly, then connect it to one example in ${topic.subject}.`;
     case 'lesson_refer':
       return `This topic needs a fuller walkthrough. Go back into lesson mode so Doceo can reteach it step by step.`;
+    case 'none':
+    default:
+      return '';
+  }
+}
+
+function getHelpContent(
+  ladder: RevisionHelpLadder | undefined,
+  type: RevisionInterventionType,
+  topic: RevisionTopic
+): string {
+  if (!ladder) {
+    return buildInterventionContent(type, topic);
+  }
+
+  switch (type) {
+    case 'nudge':
+      return ladder.nudge;
+    case 'hint':
+      return ladder.hint;
+    case 'worked_step':
+      return ladder.workedStep;
+    case 'mini_reteach':
+      return ladder.miniReteach;
+    case 'lesson_refer':
+      return ladder.lessonRefer;
     case 'none':
     default:
       return '';
@@ -382,7 +371,7 @@ export function evaluateRevisionAnswer(input: {
     },
     intervention: {
       type: nextIntervention,
-      content: buildInterventionContent(nextIntervention, input.topic)
+      content: getHelpContent(input.question.helpLadder, nextIntervention, input.topic)
     },
     nextQuestion: null,
     topicUpdate: {
@@ -412,7 +401,7 @@ export function getRequestedIntervention(input: {
 
   return {
     type,
-    content: buildInterventionContent(type, input.topic)
+    content: getHelpContent(input.question.helpLadder, type, input.topic)
   };
 }
 

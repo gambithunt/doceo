@@ -577,6 +577,7 @@ export function buildLessonSessionFromTopic(
     lastActiveAt: isoNow(),
     completedAt: null,
     status: 'active',
+    lessonRating: null,
     profileUpdates: []
   };
 }
@@ -975,6 +976,7 @@ export function buildRevisionTopicFromLesson(lessonSession: LessonSession): Revi
 
   return {
     lessonSessionId: lessonSession.id,
+    nodeId: lessonSession.nodeId ?? null,
     subjectId: lessonSession.subjectId,
     subject: lessonSession.subject,
     topicTitle: lessonSession.topicTitle,

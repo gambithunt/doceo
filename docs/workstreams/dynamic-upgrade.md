@@ -685,14 +685,14 @@ Make lesson caching safe, observable, and quality-aware.
 
 ### Tasks
 
-- [ ] Add learner lesson rating capture
-- [ ] Add admin lesson rating / override controls
-- [ ] Rank lesson artifacts per node and scope
-- [ ] Prefer high-rated artifacts
-- [ ] Regenerate on low-rated artifacts
-- [ ] Keep historical artifacts immutable
-- [ ] Add event logging for preferred artifact changes
-- [ ] Add tests for artifact preference and regeneration rules
+- [x] Add learner lesson rating capture
+- [x] Add admin lesson rating / override controls
+- [x] Rank lesson artifacts per node and scope
+- [x] Prefer high-rated artifacts
+- [x] Regenerate on low-rated artifacts
+- [x] Keep historical artifacts immutable
+- [x] Add event logging for preferred artifact changes
+- [x] Add tests for artifact preference and regeneration rules
 
 ### Exit Criteria
 
@@ -708,15 +708,15 @@ Replace deterministic revision prompt templates with generated revision packs.
 
 ### Tasks
 
-- [ ] Create revision pack schema
-- [ ] Create revision question set schema
-- [ ] Add AI generation path for revision packs
-- [ ] Generate question prompts, expected skills, misconception cues, help ladders, and transfer prompts from node ids
-- [ ] Replace local prompt generation in `src/lib/revision/engine.ts`
-- [ ] Persist revision packs as artifacts
-- [ ] Persist revision question sets as artifacts
-- [ ] Update revision sessions to reference revision artifact ids
-- [ ] Add tests proving revision no longer depends on local prompt templates
+- [x] Create revision pack schema
+- [x] Create revision question set schema
+- [x] Add AI generation path for revision packs
+- [x] Generate question prompts, expected skills, misconception cues, help ladders, and transfer prompts from node ids
+- [x] Replace local prompt generation in `src/lib/revision/engine.ts`
+- [x] Persist revision packs as artifacts
+- [x] Persist revision question sets as artifacts
+- [x] Update revision sessions to reference revision artifact ids
+- [x] Add tests proving revision no longer depends on local prompt templates
 
 ### Exit Criteria
 
@@ -732,14 +732,14 @@ Make revision planning fully graph-aware and eliminate string identity bugs.
 
 ### Tasks
 
-- [ ] Change revision plans to store node ids instead of topic title strings
-- [ ] Change planner hint chips to carry resolved node ids
-- [ ] Require chip and typed-topic selection to resolve to nodes before submission
-- [ ] Create provisional nodes when typed topics do not resolve
-- [ ] Generate plan summaries from node ids and learner context
-- [ ] Remove string-only synthetic topic identity assumptions from `src/lib/revision/plans.ts`
-- [ ] Add planner validation UI for unresolved or low-confidence mappings
-- [ ] Add tests for planner canonicalization, provisional creation, and id-based plan creation
+- [x] Change revision plans to store node ids instead of topic title strings
+- [x] Change planner hint chips to carry resolved node ids
+- [x] Require chip and typed-topic selection to resolve to nodes before submission
+- [x] Create provisional nodes when typed topics do not resolve
+- [x] Generate plan summaries from node ids and learner context
+- [x] Remove string-only synthetic topic identity assumptions from `src/lib/revision/plans.ts`
+- [x] Add planner validation UI for unresolved or low-confidence mappings
+- [x] Add tests for planner canonicalization, provisional creation, and id-based plan creation
 
 ### Exit Criteria
 
@@ -755,14 +755,14 @@ Let the graph grow naturally through real usage.
 
 ### Tasks
 
-- [ ] Add provisional node creation during topic resolution misses
-- [ ] Add reuse counters and trust scoring
-- [ ] Add promotion thresholds
-- [ ] Add demotion and review thresholds
-- [ ] Add duplicate detection and alias clustering
-- [ ] Add automatic promotion job or service
-- [ ] Add graph event logging for all automatic transitions
-- [ ] Add tests for auto-promotion, demotion, duplicate detection, and merge suggestions
+- [x] Add provisional node creation during topic resolution misses
+- [x] Add reuse counters and trust scoring
+- [x] Add promotion thresholds
+- [x] Add demotion and review thresholds
+- [x] Add duplicate detection and alias clustering
+- [x] Add automatic promotion job or service
+- [x] Add graph event logging for all automatic transitions
+- [x] Add tests for auto-promotion, demotion, duplicate detection, and merge suggestions
 
 ### Exit Criteria
 
@@ -778,16 +778,16 @@ Make graph evolution inspectable and controllable in admin.
 
 ### Tasks
 
-- [ ] Build graph overview page
-- [ ] Build provisional queue page
-- [ ] Build node detail page
-- [ ] Build merge/reparent/archive/reject controls
-- [ ] Build event timeline view
-- [ ] Build artifact quality panel per node
-- [ ] Build promotion and duplicate candidate views
-- [ ] Add filters by country, curriculum, grade, status, trust, and origin
-- [ ] Add audit history for every admin change
-- [ ] Ensure all admin screens follow `docs/design-langauge.md` and `docs/workstreams/design-color-01.md`
+- [x] Build graph overview page
+- [x] Build provisional queue page
+- [x] Build node detail page
+- [x] Build merge/reparent/archive/reject controls
+- [x] Build event timeline view
+- [x] Build artifact quality panel per node
+- [x] Build promotion and duplicate candidate views
+- [x] Add filters by country, curriculum, grade, status, trust, and origin
+- [x] Add audit history for every admin change
+- [x] Ensure all admin screens follow `docs/design-langauge.md` and `docs/workstreams/design-color-01.md`
 
 ### Exit Criteria
 

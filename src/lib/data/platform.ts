@@ -177,6 +177,45 @@ function findSubjectByRevisionTopicTitle(
   return matches.length === 1 ? matches[0]! : null;
 }
 
+function findNodeIdByPlanTopicLabel(
+  subjects: AppState['curriculum']['subjects'],
+  subjectId: string,
+  topicLabel: string
+): string | null {
+  const normalizedLabel = normalizeTopicTitle(topicLabel);
+  const preferredSubject = subjects.find((subject) => subject.id === subjectId) ?? null;
+
+  const preferredMatches = preferredSubject
+    ? [
+        ...preferredSubject.topics
+          .filter((topic) => normalizeTopicTitle(topic.name) === normalizedLabel)
+          .map((topic) => topic.id),
+        ...preferredSubject.topics
+          .flatMap((topic) => topic.subtopics)
+          .filter((subtopic) => normalizeTopicTitle(subtopic.name) === normalizedLabel)
+          .map((subtopic) => subtopic.id)
+      ]
+    : [];
+
+  if (preferredMatches.length === 1) {
+    return preferredMatches[0]!;
+  }
+
+  const allMatches = [
+    ...subjects
+      .flatMap((subject) => subject.topics)
+      .filter((topic) => normalizeTopicTitle(topic.name) === normalizedLabel)
+      .map((topic) => topic.id),
+    ...subjects
+      .flatMap((subject) => subject.topics)
+      .flatMap((topic) => topic.subtopics)
+      .filter((subtopic) => normalizeTopicTitle(subtopic.name) === normalizedLabel)
+      .map((subtopic) => subtopic.id)
+  ];
+
+  return allMatches.length === 1 ? allMatches[0]! : null;
+}
+
 function repairRevisionPlanSubject(
   plan: RevisionPlan,
   subjects: AppState['curriculum']['subjects']
@@ -208,6 +247,11 @@ function normalizeRevisionPlan(
   const resolvedSubject = repairRevisionPlanSubject(plan, subjects);
   const planStyle = plan.planStyle ?? plan.studyMode ?? 'weak_topics';
   const timestamp = typeof plan.updatedAt === 'string' ? plan.updatedAt : isoNow();
+  const resolvedSubjectId = resolvedSubject?.id ?? plan.subjectId;
+  const topicNodeIds =
+    Array.isArray(plan.topicNodeIds) && plan.topicNodeIds.length > 0
+      ? plan.topicNodeIds
+      : plan.topics.map((topicLabel) => findNodeIdByPlanTopicLabel(subjects, resolvedSubjectId, topicLabel));
 
   return {
     ...plan,
@@ -218,6 +262,7 @@ function normalizeRevisionPlan(
       (typeof plan.subjectName === 'string' && plan.subjectName.length > 0 ? plan.subjectName : fallbackSubjectName),
     planStyle,
     studyMode: plan.studyMode ?? planStyle,
+    topicNodeIds,
     status: plan.status ?? 'active',
     createdAt: typeof plan.createdAt === 'string' ? plan.createdAt : timestamp,
     updatedAt: timestamp
@@ -232,7 +277,11 @@ function normalizeRevisionTopic(
   const matchingPlanIds = Array.from(
     new Set(
       revisionPlans
-        .filter((plan) => plan.topics.some((title) => normalizeTopicTitle(title) === normalizeTopicTitle(topic.topicTitle)))
+        .filter(
+          (plan) =>
+            plan.topicNodeIds?.some((nodeId) => nodeId && nodeId === topic.nodeId) ||
+            plan.topics.some((title) => normalizeTopicTitle(title) === normalizeTopicTitle(topic.topicTitle))
+        )
         .map((plan) => plan.subjectId)
     )
   );
@@ -268,6 +317,7 @@ function buildRevisionPlan(
   subjectId: string,
   subjectName: string,
   selectedTopics: string[],
+  topicNodeIds: Array<string | null> = selectedTopics.map(() => null),
   options?: Partial<
     Pick<
       RevisionPlan,
@@ -285,6 +335,7 @@ function buildRevisionPlan(
     examName: options?.examName,
     examDate: options?.examDate ?? '2026-06-18',
     topics: selectedTopics,
+    topicNodeIds,
     planStyle,
     studyMode: options?.studyMode ?? planStyle,
     timeBudgetMinutes: options?.timeBudgetMinutes,
@@ -510,9 +561,12 @@ export function createInitialState(): AppState {
     revisionPlans: [],
     activeRevisionPlanId: null,
     upcomingExams: [],
-    revisionPlan: buildRevisionPlan(program.curriculum.subjects[0].id, program.curriculum.subjects[0].name, [
-      selectedTopic.name
-    ]),
+    revisionPlan: buildRevisionPlan(
+      program.curriculum.subjects[0].id,
+      program.curriculum.subjects[0].name,
+      [selectedTopic.name],
+      [selectedTopic.id]
+    ),
     askQuestion: createAskQuestionState({
       curriculum: program.curriculum,
       profile: emptyProfile
@@ -740,6 +794,12 @@ export function deriveLearningState(state: AppState): AppState {
           revisionPlanSubject.id,
           revisionPlanSubject.name,
           normalizedPlan.topics.length > 0 ? normalizedPlan.topics : revisionPlanSubject.topics.map((topic) => topic.name),
+          normalizedPlan.topicNodeIds ??
+            (normalizedPlan.topics.length > 0
+              ? normalizedPlan.topics.map((topicLabel) =>
+                  findNodeIdByPlanTopicLabel(program.curriculum.subjects, revisionPlanSubject.id, topicLabel)
+                )
+              : revisionPlanSubject.topics.map((topic) => topic.id)),
           {
             id: normalizedPlan.id,
             examName: normalizedPlan.examName,
@@ -769,6 +829,12 @@ export function deriveLearningState(state: AppState): AppState {
     normalizedLegacyPlan.topics.length > 0
       ? normalizedLegacyPlan.topics
       : fallbackRevisionPlanSubject.topics.map((topic) => topic.name),
+    normalizedLegacyPlan.topicNodeIds ??
+      (normalizedLegacyPlan.topics.length > 0
+        ? normalizedLegacyPlan.topics.map((topicLabel) =>
+            findNodeIdByPlanTopicLabel(program.curriculum.subjects, fallbackRevisionPlanSubject.id, topicLabel)
+          )
+        : fallbackRevisionPlanSubject.topics.map((topic) => topic.id)),
     {
       id: normalizedLegacyPlan.id,
       examName: normalizedLegacyPlan.examName,
@@ -789,7 +855,9 @@ export function deriveLearningState(state: AppState): AppState {
     ? state.lessonSessions.filter(
         (session) =>
           mergedLessons.some((lesson) => lesson.id === session.lessonId) ||
-          session.lessonId.startsWith('generated-')
+          session.lessonId.startsWith('generated-') ||
+          Boolean(session.lessonArtifactId) ||
+          Boolean(session.nodeId)
       )
     : [];
 

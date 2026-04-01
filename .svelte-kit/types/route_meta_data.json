@@ -16,6 +16,14 @@
 		"src/routes/admin/content/+page.server.ts",
 		"src/routes/admin/+layout.server.ts"
 	],
+	"/admin/graph": [
+		"src/routes/admin/graph/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
+	"/admin/graph/[nodeId]": [
+		"src/routes/admin/graph/[nodeId]/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
 	"/admin/learning": [
 		"src/routes/admin/learning/+page.server.ts",
 		"src/routes/admin/+layout.server.ts"
@@ -48,6 +56,9 @@
 		"src/routes/admin/users/[id]/+page.server.ts",
 		"src/routes/admin/+layout.server.ts"
 	],
+	"/api/admin/lesson-artifacts": [
+		"src/routes/api/admin/lesson-artifacts/+server.ts"
+	],
 	"/api/ai/lesson-chat": [
 		"src/routes/api/ai/lesson-chat/+server.ts"
 	],
@@ -56,6 +67,9 @@
 	],
 	"/api/ai/lesson-selector": [
 		"src/routes/api/ai/lesson-selector/+server.ts"
+	],
+	"/api/ai/revision-pack": [
+		"src/routes/api/ai/revision-pack/+server.ts"
 	],
 	"/api/ai/subject-hints": [
 		"src/routes/api/ai/subject-hints/+server.ts"
@@ -69,6 +83,9 @@
 	"/api/curriculum/program": [
 		"src/routes/api/curriculum/program/+server.ts"
 	],
+	"/api/lesson-artifacts/rate": [
+		"src/routes/api/lesson-artifacts/rate/+server.ts"
+	],
 	"/api/onboarding/complete": [
 		"src/routes/api/onboarding/complete/+server.ts"
 	],
@@ -80,6 +97,9 @@
 	],
 	"/api/onboarding/reset": [
 		"src/routes/api/onboarding/reset/+server.ts"
+	],
+	"/api/revision/planner-resolve": [
+		"src/routes/api/revision/planner-resolve/+server.ts"
 	],
 	"/api/state/bootstrap": [
 		"src/routes/api/state/bootstrap/+server.ts"

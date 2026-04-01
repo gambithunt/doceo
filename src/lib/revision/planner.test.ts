@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState } from '$lib/data/platform';
 import { buildRevisionPlanFromInput } from '$lib/revision/planner';
-import type { AppState, RevisionTopic } from '$lib/types';
+import type { AppState, RevisionPlanTopicSelection, RevisionTopic } from '$lib/types';
 
 function createRevisionTopic(overrides: Partial<RevisionTopic>): RevisionTopic {
   return {
@@ -83,6 +83,10 @@ describe('buildRevisionPlanFromInput', () => {
     });
 
     expect(result.plan.topics).toEqual(['Fractions', 'Area']);
+    expect(result.plan.topicNodeIds).toEqual([
+      state.revisionTopics[0]?.nodeId ?? null,
+      state.revisionTopics[1]?.nodeId ?? null
+    ]);
     expect(result.plan.examName).toBe('Math test');
     expect(result.plan.subjectName).toBe(state.curriculum.subjects[0]?.name);
     expect(result.plan.planStyle).toBe('weak_topics');
@@ -106,44 +110,65 @@ describe('buildRevisionPlanFromInput', () => {
 
     expect(result.plan.topics.length).toBeGreaterThan(0);
     expect(result.plan.topics).toEqual(subjectTopics);
+    expect(result.plan.topicNodeIds).toEqual(state.curriculum.subjects[0].topics.map((topic) => topic.id));
     expect(result.plan.studyMode).toBe('full_subject');
     expect(result.plan.planStyle).toBe('full_subject');
   });
 
-  it('honors manually selected topics when mode is manual', () => {
+  it('honors manually selected node-backed topics when mode is manual', () => {
     const state = createState();
     const subjectId = state.curriculum.subjects[0].id;
-    const manualTopics = state.curriculum.subjects[0].topics.slice(0, 2).map((topic) => topic.name);
+    const manualTopicSelections: RevisionPlanTopicSelection[] = state.curriculum.subjects[0].topics.slice(0, 2).map((topic) => ({
+      nodeId: topic.id,
+      label: topic.name,
+      confidence: 1,
+      resolutionState: 'resolved'
+    }));
 
     const result = buildRevisionPlanFromInput(state, {
       subjectId,
       examName: 'Custom prep',
       examDate: '2026-04-18',
       mode: 'manual',
-      manualTopics,
+      manualTopicSelections,
       timeBudgetMinutes: 15
     });
 
-    expect(result.plan.topics).toEqual(manualTopics);
+    expect(result.plan.topics).toEqual(manualTopicSelections.map((topic) => topic.label));
+    expect(result.plan.topicNodeIds).toEqual(manualTopicSelections.map((topic) => topic.nodeId));
     expect(result.plan.studyMode).toBe('manual');
     expect(result.plan.planStyle).toBe('manual');
   });
 
-  it('accepts manually selected subtopic labels from the planner UI', () => {
+  it('accepts provisional manual selections and stores their node ids', () => {
     const state = createState();
     const subject = state.curriculum.subjects.find((item) => item.topics.some((topic) => topic.subtopics.length > 0))!;
-    const manualTopics = subject.topics.slice(0, 2).map((topic) => topic.subtopics[0]!.name);
+    const manualTopicSelections: RevisionPlanTopicSelection[] = [
+      {
+        nodeId: 'graph-topic-bridge-proofs-1',
+        label: 'Bridge proofs',
+        confidence: 0.35,
+        resolutionState: 'provisional_created'
+      },
+      {
+        nodeId: subject.topics[0]!.subtopics[0]!.id,
+        label: subject.topics[0]!.subtopics[0]!.name,
+        confidence: 1,
+        resolutionState: 'resolved'
+      }
+    ];
 
     const result = buildRevisionPlanFromInput(state, {
       subjectId: subject.id,
       examName: 'Subtopic prep',
       examDate: '2026-04-18',
       mode: 'manual',
-      manualTopics,
+      manualTopicSelections,
       timeBudgetMinutes: 15
     });
 
-    expect(result.plan.topics).toEqual(manualTopics);
+    expect(result.plan.topics).toEqual(manualTopicSelections.map((topic) => topic.label));
+    expect(result.plan.topicNodeIds).toEqual(manualTopicSelections.map((topic) => topic.nodeId));
   });
 
   it('rejects manual topics that belong to a different subject', () => {
@@ -182,5 +207,6 @@ describe('buildRevisionPlanFromInput', () => {
     expect(result.plan.updatedAt).toBe('2026-03-31T08:00:00.000Z');
     expect(result.plan.timeBudgetMinutes).toBe(20);
     expect(result.plan.subjectName).toBe(state.curriculum.subjects[0]?.name);
+    expect(result.plan.topicNodeIds?.length).toBe(result.plan.topics.length);
   });
 });

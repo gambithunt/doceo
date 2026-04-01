@@ -20,6 +20,7 @@ function createPlan(overrides: Partial<RevisionPlan> = {}): RevisionPlan {
     examName: 'Math mid-term',
     examDate: '2026-04-12',
     topics: ['Fractions', 'Area', 'Ratio', 'Algebra'],
+    topicNodeIds: ['graph-subtopic-fractions', 'graph-subtopic-area', 'graph-subtopic-ratio', 'graph-subtopic-algebra'],
     planStyle: 'weak_topics',
     studyMode: 'weak_topics',
     timeBudgetMinutes: 20,
@@ -37,6 +38,7 @@ function createPlan(overrides: Partial<RevisionPlan> = {}): RevisionPlan {
 function createTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
   return {
     lessonSessionId: 'session-1',
+    nodeId: 'graph-subtopic-fractions',
     subjectId: 'subject-math',
     subject: 'Mathematics',
     topicTitle: 'Fractions',
@@ -94,11 +96,11 @@ describe('revision plan presentation helpers', () => {
   });
 
   it('picks the most urgent matching topic when starting a plan', () => {
-    const plan = createPlan({ topics: ['Area', 'Fractions'] });
+    const plan = createPlan({ topics: ['Area', 'Fractions'], topicNodeIds: ['graph-subtopic-area', 'graph-subtopic-fractions'] });
     const topic = pickPlanStartTopic(plan, [
-      createTopic({ lessonSessionId: 'session-late', topicTitle: 'Fractions', nextRevisionAt: '2026-04-12T08:00:00.000Z' }),
-      createTopic({ lessonSessionId: 'session-soon', topicTitle: 'Area', nextRevisionAt: '2026-04-02T08:00:00.000Z' }),
-      createTopic({ lessonSessionId: 'session-other', topicTitle: 'Ratio', nextRevisionAt: '2026-04-01T08:00:00.000Z' })
+      createTopic({ lessonSessionId: 'session-late', nodeId: 'graph-subtopic-fractions', topicTitle: 'Fractions', nextRevisionAt: '2026-04-12T08:00:00.000Z' }),
+      createTopic({ lessonSessionId: 'session-soon', nodeId: 'graph-subtopic-area', topicTitle: 'Area', nextRevisionAt: '2026-04-02T08:00:00.000Z' }),
+      createTopic({ lessonSessionId: 'session-other', nodeId: 'graph-subtopic-ratio', topicTitle: 'Ratio', nextRevisionAt: '2026-04-01T08:00:00.000Z' })
     ]);
 
     expect(topic?.lessonSessionId).toBe('session-soon');
@@ -125,10 +127,11 @@ describe('revision plan presentation helpers', () => {
   });
 
   it('uses an inferred subject override when building a synthetic topic for a uniquely matched foreign topic title', () => {
-    const plan = createPlan({ topics: ['Climate change'], subjectId: 'subject-math', subjectName: 'Mathematics' });
+    const plan = createPlan({ topics: ['Climate change'], topicNodeIds: [null], subjectId: 'subject-math', subjectName: 'Mathematics' });
     const topicSet = buildPlanTopicSet(plan, [
       createTopic({
         lessonSessionId: 'session-geography',
+        nodeId: 'graph-topic-climate-change',
         subjectId: 'subject-geography',
         subject: 'Geography',
         topicTitle: 'Climate change'
@@ -138,5 +141,22 @@ describe('revision plan presentation helpers', () => {
     expect(topicSet[0]?.isSynthetic).toBe(true);
     expect(topicSet[0]?.subjectId).toBe('subject-geography');
     expect(topicSet[0]?.subject).toBe('Geography');
+  });
+
+  it('prefers node ids over labels when plan labels have drifted', () => {
+    const plan = createPlan({
+      topics: ['Old fractions label'],
+      topicNodeIds: ['graph-subtopic-fractions']
+    });
+    const topicSet = buildPlanTopicSet(plan, [
+      createTopic({
+        lessonSessionId: 'session-fractions',
+        nodeId: 'graph-subtopic-fractions',
+        topicTitle: 'Equivalent Fractions'
+      })
+    ]);
+
+    expect(topicSet[0]?.lessonSessionId).toBe('session-fractions');
+    expect(topicSet[0]?.topicTitle).toBe('Equivalent Fractions');
   });
 });

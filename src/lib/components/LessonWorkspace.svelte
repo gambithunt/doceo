@@ -19,6 +19,11 @@
   let railExpanded = $state(false);
   let railOpen = $state<'next' | 'mission' | null>(null);
   let railPulse = $state(true);
+  let usefulness = $state<number | null>(null);
+  let clarity = $state<number | null>(null);
+  let confidenceGain = $state<number | null>(null);
+  let ratingNote = $state('');
+  let ratingPending = $state(false);
   const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
 
   function toSentenceCase(str: string): string {
@@ -77,6 +82,10 @@
   const composerPlaceholder = $derived(
     lastAssistantMessage?.content.trim().endsWith('?') ? 'Type your answer...' : 'Reply or ask anything...'
   );
+  const hasLessonRating = $derived(Boolean(lessonSession?.lessonRating));
+  const canSubmitRating = $derived(
+    usefulness !== null && clarity !== null && confidenceGain !== null && !ratingPending
+  );
 
   $effect(() => {
     composer = viewState.ui.composerDraft;
@@ -92,6 +101,21 @@
   $effect(() => {
     const timer = setTimeout(() => { railPulse = false; }, 2500);
     return () => clearTimeout(timer);
+  });
+
+  $effect(() => {
+    if (lessonSession?.lessonRating) {
+      usefulness = lessonSession.lessonRating.usefulness;
+      clarity = lessonSession.lessonRating.clarity;
+      confidenceGain = lessonSession.lessonRating.confidenceGain;
+      ratingNote = lessonSession.lessonRating.note;
+      return;
+    }
+
+    usefulness = null;
+    clarity = null;
+    confidenceGain = null;
+    ratingNote = '';
   });
 
   $effect(() => {
@@ -159,6 +183,24 @@
     composer = reply;
     appState.updateComposerDraft(reply);
     submit();
+  }
+
+  async function submitLessonRating(): Promise<void> {
+    if (!lessonSession || usefulness === null || clarity === null || confidenceGain === null || ratingPending) {
+      return;
+    }
+
+    ratingPending = true;
+    try {
+      await appState.submitLessonRating(lessonSession.id, {
+        usefulness,
+        clarity,
+        confidenceGain,
+        note: ratingNote.trim()
+      });
+    } finally {
+      ratingPending = false;
+    }
   }
 
   function bubbleClass(message: LessonMessage): string {
@@ -545,40 +587,129 @@
 
       <!-- Composer -->
       <div class="input-area">
-        <div class="quick-actions">
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into smaller steps.')}>Slow down 🐢</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me a different example for this part.')}>Different example ✨</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you test me?')}>Test me 🎯</button>
-          <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I want to go deeper on this idea.')}>Go deeper 🔍</button>
-        </div>
-        <div class="composer">
-          <textarea
-            rows={composerFocused || composer.length > 0 ? 2 : 1}
-            bind:value={composer}
-            placeholder={composerPlaceholder}
-            oninput={onInput}
-            onfocus={() => (composerFocused = true)}
-            onblur={() => {
-              if (!composer) composerFocused = false;
-            }}
-            onkeydown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-          ></textarea>
-          <button
-            type="button"
-            class="btn btn-primary send"
-            class:ready={hasInput}
-            onclick={submit}
-            aria-label="Send response"
-          >
-            <span class="send-label">Send</span>
-            <span class="send-icon" aria-hidden="true">→</span>
-          </button>
-        </div>
+        {#if lessonSession.status === 'complete'}
+          <section class="rating-panel">
+            <div class="rating-copy">
+              <p class="rating-kicker">Lesson feedback</p>
+              <h3>How did this lesson land?</h3>
+              <p>Rate the explanation so the next learner gets the strongest version of this lesson.</p>
+            </div>
+
+            <div class="rating-grid">
+              <div class="rating-group">
+                <span>Usefulness</span>
+                <div class="rating-scale">
+                  {#each [1, 2, 3, 4, 5] as score}
+                    <button
+                      type="button"
+                      class="rating-pill"
+                      class:selected={usefulness === score}
+                      onclick={() => (usefulness = score)}
+                      disabled={hasLessonRating}
+                    >
+                      {score}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+
+              <div class="rating-group">
+                <span>Clarity</span>
+                <div class="rating-scale">
+                  {#each [1, 2, 3, 4, 5] as score}
+                    <button
+                      type="button"
+                      class="rating-pill"
+                      class:selected={clarity === score}
+                      onclick={() => (clarity = score)}
+                      disabled={hasLessonRating}
+                    >
+                      {score}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+
+              <div class="rating-group">
+                <span>Confidence gain</span>
+                <div class="rating-scale">
+                  {#each [1, 2, 3, 4, 5] as score}
+                    <button
+                      type="button"
+                      class="rating-pill"
+                      class:selected={confidenceGain === score}
+                      onclick={() => (confidenceGain = score)}
+                      disabled={hasLessonRating}
+                    >
+                      {score}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            </div>
+
+            <label class="rating-note">
+              <span>Optional note</span>
+              <textarea
+                rows="2"
+                bind:value={ratingNote}
+                placeholder="What helped or what still felt weak?"
+                disabled={hasLessonRating}
+              ></textarea>
+            </label>
+
+            {#if hasLessonRating}
+              <div class="rating-confirmed">
+                <strong>Feedback saved.</strong>
+                <span>Thanks. This lesson will now influence future artifact ranking for this node.</span>
+              </div>
+            {:else}
+              <button
+                type="button"
+                class="btn btn-primary rating-submit"
+                onclick={submitLessonRating}
+                disabled={!canSubmitRating}
+              >
+                {ratingPending ? 'Saving feedback...' : 'Submit lesson feedback'}
+              </button>
+            {/if}
+          </section>
+        {:else}
+          <div class="quick-actions">
+            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into smaller steps.')}>Slow down 🐢</button>
+            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me a different example for this part.')}>Different example ✨</button>
+            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you test me?')}>Test me 🎯</button>
+            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I want to go deeper on this idea.')}>Go deeper 🔍</button>
+          </div>
+          <div class="composer">
+            <textarea
+              rows={composerFocused || composer.length > 0 ? 2 : 1}
+              bind:value={composer}
+              placeholder={composerPlaceholder}
+              oninput={onInput}
+              onfocus={() => (composerFocused = true)}
+              onblur={() => {
+                if (!composer) composerFocused = false;
+              }}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+            ></textarea>
+            <button
+              type="button"
+              class="btn btn-primary send"
+              class:ready={hasInput}
+              onclick={submit}
+              aria-label="Send response"
+            >
+              <span class="send-label">Send</span>
+              <span class="send-icon" aria-hidden="true">→</span>
+            </button>
+          </div>
+        {/if}
       </div>
     </section>
   </section>
@@ -658,6 +789,115 @@
     overflow: hidden;
     /* Use dynamic viewport height so virtual keyboard doesn't overlap composer */
     max-height: 100%;
+  }
+
+  .rating-panel {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1rem 1.05rem;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    border-radius: 1.25rem;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, transparent), color-mix(in srgb, var(--surface-soft) 92%, transparent));
+    box-shadow: 0 18px 44px rgba(8, 12, 28, 0.24);
+  }
+
+  .rating-copy h3 {
+    margin: 0.18rem 0 0.3rem;
+    font-size: 1.05rem;
+  }
+
+  .rating-copy p:last-child,
+  .rating-group span,
+  .rating-note span,
+  .rating-confirmed span {
+    color: var(--text-soft);
+  }
+
+  .rating-kicker {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .rating-grid {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .rating-group {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .rating-group span,
+  .rating-note span {
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .rating-scale {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+  }
+
+  .rating-pill {
+    min-width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    color: var(--text);
+    font-weight: 700;
+    transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+  }
+
+  .rating-pill.selected {
+    border-color: color-mix(in srgb, var(--accent) 78%, white 22%);
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface) 82%);
+    color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  .rating-note {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .rating-note textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 4.4rem;
+    border-radius: 1rem;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    color: var(--text);
+    padding: 0.8rem 0.9rem;
+  }
+
+  .rating-confirmed {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  .rating-submit {
+    justify-self: start;
+  }
+
+  .rating-submit:disabled,
+  .rating-pill:disabled,
+  .rating-note textarea:disabled {
+    opacity: 0.7;
+    cursor: default;
   }
 
   :global(:root[data-theme='dark']) .lesson-shell {

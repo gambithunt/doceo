@@ -10,22 +10,24 @@
     buildDeterministicSubjectHints,
     resolveSubjectHints
   } from '$lib/ai/subject-hints';
-  import { buildFallbackTopicShortlist } from '$lib/ai/topic-shortlist';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
   import { formatSavedPlansCount, getRevisionPlansHeader } from '$lib/components/revision-plans';
   import { getRevisionPlanRemovalContent } from '$lib/components/revision-plan-removal';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { renderSimpleMarkdown } from '$lib/markdown';
   import {
+    getPlannerResolutionLabel,
+    getPlannerResolutionTone,
     hasSelectedPlannerSubject,
+    isLowConfidencePlannerResolution,
+    isSelectablePlannerResolution,
     openDateInputPicker,
     shouldClosePlannerOnKey,
     shouldShowPlannerTopics
   } from '$lib/components/revision-planner';
   import {
     appendManualTopic,
-    parseManualTopicDraft,
-    resolveMatchedManualTopics
+    parseManualTopicDraft
   } from '$lib/revision/manual-topics';
   import { deriveRevisionFocusModel, type RevisionFocusTab } from '$lib/revision/focus';
   import { deriveRevisionProgressModel, deriveRevisionTopicHistoryModel } from '$lib/revision/progress';
@@ -44,7 +46,14 @@
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
   import { buildInterventionContent } from '$lib/revision/engine';
   import { appState } from '$lib/stores/app-state';
-  import type { AppState, RevisionQuestionFeedback, RevisionTopic, SchoolTerm, ShortlistedTopic } from '$lib/types';
+  import type {
+    AppState,
+    PlannerTopicResolution,
+    RevisionPlanTopicSelection,
+    RevisionQuestionFeedback,
+    RevisionTopic,
+    SchoolTerm
+  } from '$lib/types';
 
   export let state: AppState;
 
@@ -74,10 +83,12 @@
   let plannerTimeBudgetMinutes = 20;
   let plannerManualTopics = '';
   let plannerSelectedTopics: string[] = [];
+  let plannerSelectedTopicSelections: RevisionPlanTopicSelection[] = [];
   let plannerTopicHintsText = '';
   let plannerTopicHintsLoading = false;
   let plannerTopicHintsError = '';
-  let plannerTopicMatches: ShortlistedTopic[] = [];
+  let plannerHintResolutions: PlannerTopicResolution[] = [];
+  let plannerTopicMatches: PlannerTopicResolution[] = [];
   let plannerTopicMatchStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   let plannerTopicMatchError = '';
   let latestPlannerHintRequest = 0;
@@ -104,9 +115,9 @@
   $: selectedPlannerCurriculumSubject = selectedPlannerSubject
     ? (state.curriculum.subjects.find((s) => s.name === selectedPlannerSubject!.name) ?? { id: selectedPlannerSubject.id, name: selectedPlannerSubject.name, topics: [] })
     : null;
-  $: plannerHintChips = extractHintChipLabels(plannerTopicHintsText).map((label, index) => ({
-    id: `${selectedPlannerSubject?.id ?? 'subject'}:${index}:${label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-    label
+  $: plannerHintChips = plannerHintResolutions.map((resolution, index) => ({
+    ...resolution,
+    id: `${selectedPlannerSubject?.id ?? 'subject'}:${index}:${resolution.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
   }));
   const revisionPlansHeader = getRevisionPlansHeader();
   $: planRemovalContent = getRevisionPlanRemovalContent(pendingPlanRemoval?.name);
@@ -182,7 +193,9 @@
     plannerTimeBudgetMinutes = state.revisionPlan.timeBudgetMinutes ?? 20;
     plannerManualTopics = '';
     plannerSelectedTopics = [];
+    plannerSelectedTopicSelections = [];
     plannerTopicMatches = [];
+    plannerHintResolutions = [];
     plannerTopicMatchStatus = 'idle';
     plannerTopicHintsLoading = false;
     plannerTopicHintsError = '';
@@ -431,23 +444,91 @@
     return headers;
   }
 
-  function buildPlannerTopicOptions(subjectId: string) {
-    const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];
+  function normalizePlannerLabel(value: string): string {
+    return value.trim().toLowerCase();
+  }
 
-    return subject.topics.flatMap((topic) =>
-      topic.subtopics.map((subtopic) => {
-        const lessonId = subtopic.lessonIds[0];
-        const lesson = state.lessons.find((item) => item.id === lessonId) ?? state.lessons[0];
-        return {
-          topicId: topic.id,
-          topicName: topic.name,
-          subtopicId: subtopic.id,
-          subtopicName: subtopic.name,
-          lessonId: lesson.id,
-          lessonTitle: lesson.title
-        };
-      })
+  function dedupePlannerSelections(selections: RevisionPlanTopicSelection[]): RevisionPlanTopicSelection[] {
+    return selections.filter(
+      (selection, index, all) =>
+        selection.label.trim().length > 0 &&
+        all.findIndex(
+          (candidate) =>
+            candidate.nodeId === selection.nodeId ||
+            normalizePlannerLabel(candidate.label) === normalizePlannerLabel(selection.label)
+        ) === index
     );
+  }
+
+  function selectionFromResolution(resolution: PlannerTopicResolution): RevisionPlanTopicSelection | null {
+    if (!isSelectablePlannerResolution(resolution) || !resolution.nodeId) {
+      return null;
+    }
+
+    return {
+      nodeId: resolution.nodeId,
+      label: resolution.label,
+      confidence: resolution.confidence,
+      resolutionState: resolution.resolutionState as RevisionPlanTopicSelection['resolutionState']
+    };
+  }
+
+  function plannerSelectionsFromResolutions(resolutions: PlannerTopicResolution[]): RevisionPlanTopicSelection[] {
+    return dedupePlannerSelections(
+      resolutions
+        .map(selectionFromResolution)
+        .filter((selection): selection is RevisionPlanTopicSelection => selection !== null)
+    );
+  }
+
+  function setPlannerSelectedTopicSelections(selections: RevisionPlanTopicSelection[], syncDraft = true): void {
+    plannerSelectedTopicSelections = dedupePlannerSelections(selections);
+    plannerSelectedTopics = plannerSelectedTopicSelections.map((selection) => selection.label);
+
+    if (syncDraft) {
+      plannerManualTopics = plannerSelectedTopics.join(', ');
+    }
+  }
+
+  async function resolvePlannerTopicLabels(
+    labels: string[],
+    createProvisionals: boolean,
+    recordEvidence = false
+  ): Promise<PlannerTopicResolution[]> {
+    if (!selectedPlannerSubject || labels.length === 0) {
+      return [];
+    }
+
+    const response = await fetch('/api/revision/planner-resolve', {
+      method: 'POST',
+      headers: await getHeaders().then((headers) => ({
+        ...headers,
+        'Content-Type': 'application/json'
+      })),
+      body: JSON.stringify({
+        scope: {
+          countryId: state.profile.countryId || null,
+          curriculumId: state.profile.curriculumId || null,
+          gradeId: state.profile.gradeId || null
+        },
+        subjectId: selectedPlannerSubject.id,
+        subjectName: selectedPlannerSubject.name,
+        labels,
+        createProvisionals,
+        recordEvidence
+      })
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      results?: PlannerTopicResolution[];
+      error?: string;
+    };
+
+    if (!response.ok) {
+      throw new Error(payload.error ?? 'Unable to validate planner topics right now.');
+    }
+
+    return payload.results ?? [];
   }
 
   async function loadPlannerTopicHints(forceRefresh = false): Promise<void> {
@@ -481,11 +562,26 @@
       });
 
       if (requestId !== latestPlannerHintRequest) return;
-      plannerTopicHintsText = result.hints.join('\n');
+      const hintLabels = extractHintChipLabels(result.hints.join('\n'));
+      plannerTopicHintsText = hintLabels.join('\n');
+      plannerHintResolutions = await resolvePlannerTopicLabels(hintLabels, false, false);
     } catch {
       if (requestId !== latestPlannerHintRequest) return;
-      plannerTopicHintsText = buildDeterministicSubjectHints(selectedPlannerCurriculumSubject, state.profile.term as SchoolTerm).join('\n');
-      if (!plannerTopicHintsText) {
+      const fallbackLabels = extractHintChipLabels(
+        buildDeterministicSubjectHints(selectedPlannerCurriculumSubject, state.profile.term as SchoolTerm).join('\n')
+      );
+      plannerTopicHintsText = fallbackLabels.join('\n');
+      plannerHintResolutions = [];
+
+      if (fallbackLabels.length > 0) {
+        try {
+          plannerHintResolutions = await resolvePlannerTopicLabels(fallbackLabels, false, false);
+        } catch (error) {
+          plannerTopicHintsError = error instanceof Error ? error.message : "Couldn't validate topic suggestions right now.";
+        }
+      }
+
+      if (!plannerTopicHintsText || plannerHintResolutions.length === 0) {
         plannerTopicHintsError = "Couldn't load topic suggestions right now.";
       }
     } finally {
@@ -500,9 +596,11 @@
       lastPlannerAssistSubjectId = plannerSubjectId;
       plannerHintSeed = '';
       plannerTopicHintsText = '';
+      plannerHintResolutions = [];
       plannerTopicHintsError = '';
       plannerManualTopics = '';
       plannerSelectedTopics = [];
+      plannerSelectedTopicSelections = [];
       plannerTopicMatches = [];
       plannerTopicMatchStatus = 'idle';
       plannerTopicMatchError = '';
@@ -515,6 +613,7 @@
   function syncSelectedTopicsFromDraft(nextDraft: string): void {
     if (nextDraft.trim().length === 0) {
       plannerSelectedTopics = [];
+      plannerSelectedTopicSelections = [];
       return;
     }
 
@@ -527,19 +626,40 @@
 
     if (!stillExactMatch) {
       plannerSelectedTopics = [];
+      plannerSelectedTopicSelections = [];
     }
   }
 
   function onPlannerManualInput(event: Event): void {
     plannerManualTopics = (event.currentTarget as HTMLInputElement).value;
     plannerTopicMatchError = '';
+    plannerTopicMatches = [];
+    plannerTopicMatchStatus = 'idle';
     plannerErrors = { ...plannerErrors, manualTopics: undefined };
     syncSelectedTopicsFromDraft(plannerManualTopics);
   }
 
-  function choosePlannerTopic(topicTitle: string): void {
-    plannerSelectedTopics = appendManualTopic(plannerSelectedTopics, topicTitle);
-    plannerManualTopics = plannerSelectedTopics.join(', ');
+  function choosePlannerTopic(topic: PlannerTopicResolution): void {
+    const selectedResolution = selectionFromResolution(topic);
+
+    if (!selectedResolution) {
+      plannerTopicMatchError = topic.message ?? 'Choose a topic that maps cleanly into the selected subject.';
+      return;
+    }
+
+    const nextLabels = appendManualTopic(plannerSelectedTopics, topic.label);
+    const nextSelections = nextLabels.map(
+      (label) =>
+        plannerSelectedTopicSelections.find((selection) => normalizePlannerLabel(selection.label) === normalizePlannerLabel(label)) ??
+        {
+          nodeId: selectedResolution.nodeId,
+          label,
+          confidence: selectedResolution.confidence,
+          resolutionState: selectedResolution.resolutionState
+        }
+    );
+
+    setPlannerSelectedTopicSelections(nextSelections);
     plannerTopicMatchError = '';
     plannerErrors = { ...plannerErrors, manualTopics: undefined };
   }
@@ -548,50 +668,11 @@
     return plannerSelectedTopics.some((item) => item.trim().toLowerCase() === topicTitle.trim().toLowerCase());
   }
 
-  async function shortlistPlannerTopics(query: string): Promise<ShortlistedTopic[]> {
-    if (!selectedPlannerSubject || query.trim().length === 0) {
-      return [];
-    }
-
-    const request = {
-      studentId: state.profile.id,
-      studentName: state.profile.fullName,
-      country: state.profile.country,
-      curriculum: state.profile.curriculum,
-      grade: state.profile.grade,
-      subject: selectedPlannerSubject.name,
-      term: state.profile.term,
-      year: state.profile.schoolYear,
-      studentInput: query.trim(),
-      availableTopics: buildPlannerTopicOptions(selectedPlannerCurriculumSubject?.id ?? selectedPlannerSubject.id)
-    };
-
-    try {
-      const response = await fetch('/api/ai/topic-shortlist', {
-        method: 'POST',
-        headers: await getHeaders().then((headers) => ({
-          ...headers,
-          'Content-Type': 'application/json'
-        })),
-        body: JSON.stringify({ request })
-      });
-
-      if (!response.ok) {
-        throw new Error('Unable to match topics right now.');
-      }
-
-      const payload = (await response.json()) as { response?: { subtopics?: ShortlistedTopic[] } };
-      return payload.response?.subtopics ?? [];
-    } catch {
-      return buildFallbackTopicShortlist(request).subtopics;
-    }
-  }
-
-  async function matchPlannerDraftTopics(): Promise<string[]> {
+  async function matchPlannerDraftTopics(): Promise<RevisionPlanTopicSelection[]> {
     const draftTopics = parseManualTopicDraft(plannerManualTopics);
 
-    if (plannerSelectedTopics.length > 0) {
-      return [...plannerSelectedTopics];
+    if (plannerSelectedTopicSelections.length > 0) {
+      return [...plannerSelectedTopicSelections];
     }
 
     if (draftTopics.length === 0) {
@@ -601,30 +682,34 @@
     plannerTopicMatchStatus = 'loading';
     plannerTopicMatchError = '';
 
-    const matches = await Promise.all(
-      draftTopics.map(async (topic) => {
-        const shortlist = await shortlistPlannerTopics(topic);
-        return shortlist[0] ?? null;
-      })
-    );
-
-    const resolvedTopics = resolveMatchedManualTopics({
-      selectedTopics: plannerSelectedTopics,
-      draft: plannerManualTopics,
-      matches
-    });
-
-    plannerTopicMatches = matches.filter((item): item is ShortlistedTopic => item !== null);
-    plannerTopicMatchStatus = plannerTopicMatches.length > 0 ? 'ready' : 'error';
-
-    if (resolvedTopics.length === 0) {
-      plannerTopicMatchError = 'We could not match those topics clearly. Try choosing from the suggestion pills.';
+    try {
+      plannerTopicMatches = await resolvePlannerTopicLabels(draftTopics, true, true);
+      plannerTopicMatchStatus = plannerTopicMatches.length > 0 ? 'ready' : 'error';
+    } catch (error) {
+      plannerTopicMatches = [];
+      plannerTopicMatchStatus = 'error';
+      plannerTopicMatchError = error instanceof Error ? error.message : 'We could not validate those topics right now.';
       return [];
     }
 
-    plannerSelectedTopics = resolvedTopics;
-    plannerManualTopics = resolvedTopics.join(', ');
-    return resolvedTopics;
+    const unresolvedTopics = plannerTopicMatches.filter((topic) => !isSelectablePlannerResolution(topic));
+
+    if (unresolvedTopics.length > 0) {
+      plannerTopicMatchError =
+        unresolvedTopics[0]?.message ??
+        'We could not match those topics clearly. Fix the highlighted topics before creating the plan.';
+      return [];
+    }
+
+    const resolvedSelections = plannerSelectionsFromResolutions(plannerTopicMatches);
+
+    if (resolvedSelections.length === 0) {
+      plannerTopicMatchError = 'We could not match those topics clearly. Fix the highlighted topics before creating the plan.';
+      return [];
+    }
+
+    setPlannerSelectedTopicSelections(resolvedSelections);
+    return resolvedSelections;
   }
 
   function startPlan(planId: string): void {
@@ -646,7 +731,7 @@
     const mode = inferSessionMode(plan);
     const targetQuestionCount = inferQuestionCount(plan.timeBudgetMinutes, topicSet.length);
 
-    appState.runRevisionSession(primaryTopic, {
+    void appState.runRevisionSession(primaryTopic, {
       mode,
       source: 'exam_plan',
       recommendationReason: plan.examName ? `Start revision for ${plan.examName}` : 'Start this revision plan',
@@ -719,7 +804,7 @@
   function review(topic: RevisionTopic, mode: RevisionSessionMode = 'deep_revision'): void {
     console.log('[revision] review() called:', topic.topicTitle, '|', topic.subject, '| mode:', mode);
     const context = getSessionContext(topic);
-    appState.runRevisionSession(topic, {
+    void appState.runRevisionSession(topic, {
       mode,
       source: context.source,
       recommendationReason: context.reason
@@ -742,7 +827,7 @@
       return;
     }
 
-    appState.runRevisionSession(topicSet[0]!, {
+    void appState.runRevisionSession(topicSet[0]!, {
       mode: 'shuffle',
       source: homeModel.nearestExam ? 'exam_plan' : 'do_today',
       recommendationReason: 'Mixed shuffle across the top topics you should revise today.',
@@ -757,23 +842,30 @@
     if (!plannerSubjectSelected) plannerErrors.subject = 'Choose a subject before generating a plan.';
     if (!plannerExamName.trim()) plannerErrors.examName = 'Give your exam a name so you can track it.';
     if (!plannerExamDate) plannerErrors.examDate = 'Pick a date so Doceo can pace the plan.';
-    const manualTopics = plannerMode === 'manual'
+    const manualTopicSelections = plannerMode === 'manual'
       ? await matchPlannerDraftTopics()
       : undefined;
-    if (plannerMode === 'manual' && (!manualTopics || manualTopics.length === 0)) {
+    if (plannerMode === 'manual' && (!manualTopicSelections || manualTopicSelections.length === 0)) {
       plannerErrors.manualTopics = 'Add at least one topic for a manual plan.';
     }
     if (plannerErrors.examName || plannerErrors.examDate || plannerErrors.manualTopics || !plannerSubjectId) return;
 
-    appState.createRevisionPlan({
+    const result = appState.createRevisionPlan({
       subjectId: plannerSubjectId,
       subjectName: selectedPlannerSubject?.name,
       examName: plannerExamName.trim(),
       examDate: plannerExamDate,
       mode: plannerMode,
-      manualTopics,
+      manualTopics: manualTopicSelections?.map((topic) => topic.label),
+      manualTopicSelections,
       timeBudgetMinutes: plannerTimeBudgetMinutes
     });
+
+    if (!result.ok) {
+      plannerErrors.manualTopics = result.error;
+      return;
+    }
+
     plannerErrors = {};
   }
 
@@ -2194,11 +2286,20 @@
                     <button
                       type="button"
                       class:selected={plannerTopicSelected(chip.label)}
+                      class:planner-pill--success={getPlannerResolutionTone(chip) === 'success'}
+                      class:planner-pill--warning={getPlannerResolutionTone(chip) === 'warning'}
+                      class:planner-pill--danger={getPlannerResolutionTone(chip) === 'danger'}
+                      class:planner-pill--disabled={!isSelectablePlannerResolution(chip)}
                       class="planner-pill"
                       aria-pressed={plannerTopicSelected(chip.label)}
-                      onclick={() => choosePlannerTopic(chip.label)}
+                      disabled={!isSelectablePlannerResolution(chip)}
+                      title={chip.message ?? undefined}
+                      onclick={() => choosePlannerTopic(chip)}
                     >
                       {chip.label}
+                      {#if chip.resolutionState !== 'resolved' || isLowConfidencePlannerResolution(chip)}
+                        <span class="planner-pill-status">{getPlannerResolutionLabel(chip)}</span>
+                      {/if}
                     </button>
                   {/each}
                 </div>
@@ -2215,23 +2316,43 @@
               />
 
               <p class="manual-topic-help">
-                Tap a pill to add it quickly. Doceo will match typed topics to the real curriculum before creating the plan.
+                Tap validated pills to add them quickly. Typed topics are checked against the backend graph before the plan is saved.
               </p>
 
-              {#if plannerTopicMatchStatus === 'ready' && plannerTopicMatches.length > 0}
+              {#if plannerTopicMatchStatus === 'loading'}
+                <small class="planner-loading-state">
+                  <LoadingDots size="sm" label="Validating typed topics" />
+                  <span>Checking typed topics...</span>
+                </small>
+              {/if}
+
+              {#if plannerTopicMatches.length > 0}
                 <div class="manual-match-block">
-                  <small>Matched topics</small>
-                  <div class="planner-pill-row">
+                  <small>Resolution check</small>
+                  <div class="planner-resolution-list">
                     {#each plannerTopicMatches as topic}
-                      <button
-                        type="button"
-                        class:selected={plannerTopicSelected(topic.title)}
-                        class="planner-pill planner-pill--matched"
-                        aria-pressed={plannerTopicSelected(topic.title)}
-                        onclick={() => choosePlannerTopic(topic.title)}
-                      >
-                        {topic.title}
-                      </button>
+                      <div class="planner-resolution-item">
+                        <button
+                          type="button"
+                          class:selected={plannerTopicSelected(topic.label)}
+                          class:planner-pill--success={getPlannerResolutionTone(topic) === 'success'}
+                          class:planner-pill--warning={getPlannerResolutionTone(topic) === 'warning'}
+                          class:planner-pill--danger={getPlannerResolutionTone(topic) === 'danger'}
+                          class:planner-pill--disabled={!isSelectablePlannerResolution(topic)}
+                          class="planner-pill planner-pill--matched"
+                          aria-pressed={plannerTopicSelected(topic.label)}
+                          disabled={!isSelectablePlannerResolution(topic)}
+                          onclick={() => choosePlannerTopic(topic)}
+                        >
+                          {topic.label}
+                          <span class="planner-pill-status">{getPlannerResolutionLabel(topic)}</span>
+                        </button>
+                        {#if topic.message}
+                          <small class:planner-resolution-note--warning={getPlannerResolutionTone(topic) === 'warning'} class:planner-resolution-note--danger={getPlannerResolutionTone(topic) === 'danger'} class="planner-resolution-note">
+                            {topic.message}
+                          </small>
+                        {/if}
+                      </div>
                     {/each}
                   </div>
                 </div>
@@ -3988,6 +4109,9 @@
 
   .planner-pill {
     position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     overflow: hidden;
     transition:
       transform 140ms var(--ease-soft),
@@ -4025,6 +4149,12 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
+  .planner-pill:disabled {
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
   .planner-pill.selected {
     border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
     background: var(--accent-dim);
@@ -4032,19 +4162,66 @@
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
+  .planner-pill--success {
+    border-color: color-mix(in srgb, var(--color-green, #34d399) 30%, var(--border-strong));
+    background: color-mix(in srgb, var(--color-green, #34d399) 10%, var(--surface-soft));
+    color: color-mix(in srgb, var(--color-green, #34d399) 70%, var(--text));
+  }
+
+  .planner-pill--warning {
+    border-color: color-mix(in srgb, var(--color-yellow, #fbbf24) 38%, var(--border-strong));
+    background: color-mix(in srgb, var(--color-yellow, #fbbf24) 12%, var(--surface-soft));
+    color: color-mix(in srgb, var(--color-yellow, #fbbf24) 72%, var(--text));
+  }
+
+  .planner-pill--danger {
+    border-color: color-mix(in srgb, var(--color-red, #f87171) 35%, var(--border-strong));
+    background: color-mix(in srgb, var(--color-red, #f87171) 10%, var(--surface-soft));
+    color: color-mix(in srgb, var(--color-red, #f87171) 72%, var(--text));
+  }
+
+  .planner-pill--disabled {
+    opacity: 0.78;
+  }
+
   .planner-pill--matched {
     border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
     background: color-mix(in srgb, var(--accent-dim) 50%, var(--surface-soft));
   }
 
-  .planner-pill--matched:not(.selected)::after {
-    content: 'Matched';
-    margin-left: 0.45rem;
-    opacity: 0.82;
-    font-size: 0.72rem;
+  .planner-pill-status {
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 14%, transparent);
+    padding: 0.16rem 0.42rem;
+    font-size: 0.67rem;
     font-weight: 700;
+    line-height: 1;
     letter-spacing: 0.02em;
-    color: color-mix(in srgb, var(--accent) 56%, var(--text-soft));
+  }
+
+  .planner-resolution-list {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .planner-resolution-item {
+    display: grid;
+    justify-items: start;
+    gap: 0.3rem;
+  }
+
+  .planner-resolution-note {
+    color: var(--text-soft);
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .planner-resolution-note--warning {
+    color: color-mix(in srgb, var(--color-yellow, #fbbf24) 70%, var(--text-soft));
+  }
+
+  .planner-resolution-note--danger {
+    color: color-mix(in srgb, var(--color-red, #f87171) 78%, var(--text-soft));
   }
 
   .field input,

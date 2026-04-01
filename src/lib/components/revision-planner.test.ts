@@ -1,48 +1,33 @@
-import { describe, expect, it, vi } from 'vitest';
-import { hasSelectedPlannerSubject, openDateInputPicker, shouldClosePlannerOnKey, shouldShowPlannerTopics } from './revision-planner';
+import { describe, expect, it } from 'vitest';
+import {
+  getPlannerResolutionLabel,
+  getPlannerResolutionTone,
+  isLowConfidencePlannerResolution,
+  isSelectablePlannerResolution
+} from './revision-planner';
 
-describe('revision planner helpers', () => {
-  it('does not close the planner for space presses inside the modal', () => {
-    expect(shouldClosePlannerOnKey(' ')).toBe(false);
+describe('revision planner resolution helpers', () => {
+  it('marks only resolved and provisional resolutions as selectable', () => {
+    expect(isSelectablePlannerResolution({ resolutionState: 'resolved' })).toBe(true);
+    expect(isSelectablePlannerResolution({ resolutionState: 'provisional_created' })).toBe(true);
+    expect(isSelectablePlannerResolution({ resolutionState: 'ambiguous' })).toBe(false);
+    expect(isSelectablePlannerResolution({ resolutionState: 'out_of_scope' })).toBe(false);
   });
 
-  it('allows escape to close the planner', () => {
-    expect(shouldClosePlannerOnKey('Escape')).toBe(true);
+  it('flags normalized low-confidence matches for review in the UI', () => {
+    expect(isLowConfidencePlannerResolution({ resolutionState: 'resolved', confidence: 0.92 })).toBe(true);
+    expect(getPlannerResolutionLabel({ resolutionState: 'resolved', confidence: 0.92 })).toBe('Checked');
+    expect(getPlannerResolutionTone({ resolutionState: 'resolved', confidence: 0.92 })).toBe('warning');
   });
 
-  it('treats an empty subject selection as unselected', () => {
-    expect(hasSelectedPlannerSubject('')).toBe(false);
-    expect(hasSelectedPlannerSubject('subject-economics')).toBe(true);
-  });
-
-  it('shows manual topic controls only after a subject has been selected', () => {
-    expect(shouldShowPlannerTopics('manual', '')).toBe(false);
-    expect(shouldShowPlannerTopics('full_subject', 'subject-economics')).toBe(false);
-    expect(shouldShowPlannerTopics('manual', 'subject-economics')).toBe(true);
-  });
-
-  it('opens the native date picker when the browser supports showPicker', () => {
-    const input = {
-      showPicker: vi.fn(),
-      focus: vi.fn(),
-      click: vi.fn()
-    } as unknown as HTMLInputElement;
-
-    openDateInputPicker(input);
-
-    expect(input.showPicker).toHaveBeenCalledTimes(1);
-    expect(input.focus).not.toHaveBeenCalled();
-  });
-
-  it('falls back to focus and click when showPicker is unavailable', () => {
-    const input = {
-      focus: vi.fn(),
-      click: vi.fn()
-    } as unknown as HTMLInputElement;
-
-    openDateInputPicker(input);
-
-    expect(input.focus).toHaveBeenCalledTimes(1);
-    expect(input.click).toHaveBeenCalledTimes(1);
+  it('maps explicit validation states into stable labels and tones', () => {
+    expect(getPlannerResolutionLabel({ resolutionState: 'resolved', confidence: 1 })).toBe('Ready');
+    expect(getPlannerResolutionTone({ resolutionState: 'resolved', confidence: 1 })).toBe('success');
+    expect(getPlannerResolutionLabel({ resolutionState: 'provisional_created', confidence: 0.35 })).toBe('Provisional');
+    expect(getPlannerResolutionTone({ resolutionState: 'provisional_created', confidence: 0.35 })).toBe('warning');
+    expect(getPlannerResolutionLabel({ resolutionState: 'ambiguous', confidence: 0 })).toBe('Ambiguous');
+    expect(getPlannerResolutionTone({ resolutionState: 'ambiguous', confidence: 0 })).toBe('danger');
+    expect(getPlannerResolutionLabel({ resolutionState: 'out_of_scope', confidence: 0 })).toBe('Wrong subject');
+    expect(getPlannerResolutionLabel({ resolutionState: 'unresolved', confidence: 0 })).toBe('Needs match');
   });
 });

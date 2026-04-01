@@ -56,18 +56,18 @@ This phase can ship before revision changes. It should improve lesson quality se
 
 ### 4.1 Add lesson rating capture
 
-- [ ] Add learner rating inputs at the end of lesson flow
-- [ ] Capture:
+- [x] Add learner rating inputs at the end of lesson flow
+- [x] Capture:
   - usefulness
   - clarity
   - confidence gain
   - optional freeform note
-- [ ] Persist ratings against lesson artifact id and node id
+- [x] Persist ratings against lesson artifact id and node id
 
 ### 4.2 Add artifact rating summary model
 
-- [ ] Add aggregate rating fields to lesson artifacts or a derived summary table
-- [ ] Track:
+- [x] Add aggregate rating fields to lesson artifacts or a derived summary table
+- [x] Track:
   - rating count
   - weighted average
   - completion rate
@@ -76,8 +76,8 @@ This phase can ship before revision changes. It should improve lesson quality se
 
 ### 4.3 Add preferred artifact resolution
 
-- [ ] Implement `getPreferredLessonArtifact(nodeId, scope)`
-- [ ] Rank by:
+- [x] Implement `getPreferredLessonArtifact(nodeId, scope)`
+- [x] Rank by:
   - active status
   - quality score
   - recency
@@ -86,29 +86,39 @@ This phase can ship before revision changes. It should improve lesson quality se
 
 ### 4.4 Add regeneration rules
 
-- [ ] Mark low-rated artifacts as non-preferred
-- [ ] Trigger regeneration when:
+- [x] Mark low-rated artifacts as non-preferred
+- [x] Trigger regeneration when:
   - rating threshold falls below minimum
   - repeated reteach rate is high
   - completion rate falls materially below baseline
   - admin forces regeneration
-- [ ] Log regeneration reason
+- [x] Log regeneration reason
 
 ### 4.5 Add admin lesson artifact controls
 
-- [ ] Set preferred artifact manually
-- [ ] mark artifact stale
-- [ ] force regenerate
-- [ ] reject artifact
-- [ ] inspect artifact lineage
+- [x] Set preferred artifact manually
+- [x] mark artifact stale
+- [x] force regenerate
+- [x] reject artifact
+- [x] inspect artifact lineage
 
 ## Required Tests
 
-- [ ] learner rating persists against correct artifact
-- [ ] preferred artifact selection honors ratings
-- [ ] low-rated artifact is no longer preferred
-- [ ] regeneration creates new artifact instead of mutating old artifact
-- [ ] admin override changes preference correctly
+- [x] learner rating persists against correct artifact
+- [x] preferred artifact selection honors ratings
+- [x] low-rated artifact is no longer preferred
+- [x] regeneration creates new artifact instead of mutating old artifact
+- [x] admin override changes preference correctly
+
+## Phase 4 Findings
+
+- Learner lesson feedback is now captured at lesson completion in `src/lib/components/LessonWorkspace.svelte` and persisted through `src/routes/api/lesson-artifacts/rate/+server.ts` against the session’s `lessonArtifactId` and `nodeId`.
+- Lesson artifacts now carry rating summary fields, regeneration reason, lineage, and admin preference metadata via `src/lib/server/lesson-artifact-repository.ts` and `supabase/migrations/20260401140000_lesson_artifact_quality_and_rating.sql`.
+- Preferred artifact resolution is now quality-aware instead of recency-only. Ranking order is: manual admin preference, pedagogy/prompt compatibility, computed quality score, then recency.
+- Low-rated artifacts are marked `stale` instead of being overwritten, and the next lesson launch creates a new replacement artifact with `supersedesArtifactId` pointing at the previous weak artifact.
+- Admin artifact controls are currently backend controls exposed through `src/routes/api/admin/lesson-artifacts/+server.ts`. They support prefer, stale, reject, and force-regenerate actions without changing revision flows.
+- Downstream revision outcome linkage remains intentionally deferred because Phase 4 is lesson-only by scope. The rating summary model is ready to absorb that signal later without revising this schema again.
+- Open decisions remain around the exact quality-score weights and whether admin `force_regenerate` should eventually become an immediate background regeneration job instead of the current next-launch regeneration trigger.
 
 ## Exit Criteria
 
@@ -139,9 +149,9 @@ This phase introduces the first generated revision content path. It should ship 
 
 ### 5.1 Define revision artifact schemas
 
-- [ ] Define `revision_pack` artifact
-- [ ] Define `revision_question_set` artifact
-- [ ] Define fields for:
+- [x] Define `revision_pack` artifact
+- [x] Define `revision_question_set` artifact
+- [x] Define fields for:
   - question prompts
   - expected skills
   - misconception cues
@@ -152,51 +162,60 @@ This phase introduces the first generated revision content path. It should ship 
 
 ### 5.2 Build generation service
 
-- [ ] Add AI generation flow for revision packs
-- [ ] Base generation on:
+- [x] Add AI generation flow for revision packs
+- [x] Base generation on:
   - node id
   - subject scope
   - learner profile
   - revision mode
   - pedagogy version
-- [ ] Return structured revision pack payloads
+- [x] Return structured revision pack payloads
 
 ### 5.3 Replace hardcoded engine prompt creation
 
-- [ ] Remove local prompt authoring from `src/lib/revision/engine.ts`
-- [ ] Keep runtime scoring/scheduling mechanics if still valid
-- [ ] Make session builder consume revision artifact content instead of hardcoded prompt templates
+- [x] Remove local prompt authoring from `src/lib/revision/engine.ts`
+- [x] Keep runtime scoring/scheduling mechanics if still valid
+- [x] Make session builder consume revision artifact content instead of hardcoded prompt templates
 
 ### 5.4 Add revision artifact repository
 
-- [ ] `getPreferredRevisionPack(nodeId, scope, mode)`
-- [ ] `createRevisionPackArtifact(input)`
-- [ ] `createRevisionQuestionArtifact(input)`
-- [ ] `markRevisionArtifactStatus(id, status)`
+- [x] `getPreferredRevisionPack(nodeId, scope, mode)`
+- [x] `createRevisionPackArtifact(input)`
+- [x] `createRevisionQuestionArtifact(input)`
+- [x] `markRevisionArtifactStatus(id, status)`
 
 ### 5.5 Refactor revision session model
 
-- [ ] Add `nodeId` to revision session records
-- [ ] Add `revisionPackArtifactId`
-- [ ] Add `revisionQuestionArtifactId` where needed
-- [ ] Ensure attempt history references stable generated content
+- [x] Add `nodeId` to revision session records
+- [x] Add `revisionPackArtifactId`
+- [x] Add `revisionQuestionArtifactId` where needed
+- [x] Ensure attempt history references stable generated content
 
 ### 5.6 Maintain intervention quality
 
-- [ ] Generate inline help tiers:
+- [x] Generate inline help tiers:
   - nudge
   - hint
   - worked step
   - mini reteach
-- [ ] Preserve the current revision UX structure while replacing content source
+- [x] Preserve the current revision UX structure while replacing content source
 
 ## Required Tests
 
-- [ ] revision pack generation returns structured valid artifact
-- [ ] revision session starts from preferred revision artifact
-- [ ] hardcoded prompt builder is no longer required for new sessions
-- [ ] help tiers come from artifact content and remain usable in the UI
-- [ ] revision attempts correctly reference revision artifact ids
+- [x] revision pack generation returns structured valid artifact
+- [x] revision session starts from preferred revision artifact
+- [x] hardcoded prompt builder is no longer required for new sessions
+- [x] help tiers come from artifact content and remain usable in the UI
+- [x] revision attempts correctly reference revision artifact ids
+
+## Phase 5 Findings
+
+- Revision content is now generated through `src/routes/api/ai/revision-pack/+server.ts` and `src/lib/server/revision-generation-service.ts`, which resolve graph nodes before creating or reusing artifacts.
+- Phase 5 adds `revision_pack_artifacts` and `revision_question_artifacts` in `supabase/migrations/20260401150000_revision_artifacts.sql`. Pack artifacts store session-level recommendations and signatures; question artifacts store the immutable authored question set with help ladders.
+- `src/lib/revision/engine.ts` no longer authors prompts for new sessions. It now builds sessions only from authored revision questions and uses per-question help ladders for inline support, while preserving the existing scoring and scheduling logic.
+- `src/lib/stores/app-state.ts` now launches revision through the backend route and writes `nodeId`, `revisionPackArtifactId`, and `revisionQuestionArtifactId` into active sessions and new attempt records.
+- Legacy revision compatibility remains intentionally narrow. Historical revision attempts are left untouched, and old sessions without artifact-authored help still fall back to `buildInterventionContent()` for intervention copy instead of being rewritten in place.
+- String-based revision plans remain active in this phase by design. Phase 5 resolves topic node ids at session launch, but planner persistence is still handled in Phase 6.
 
 ## Exit Criteria
 
@@ -226,24 +245,24 @@ This phase changes planner persistence and submission behavior. It should ship w
 
 ### 6.1 Redefine revision plan shape
 
-- [ ] Replace plan topic string arrays with graph node id arrays
-- [ ] keep display labels as denormalized metadata only where useful
-- [ ] add migration adapter for old string-based plans
+- [x] Replace plan topic string arrays with graph node id arrays
+- [x] keep display labels as denormalized metadata only where useful
+- [x] add migration adapter for old string-based plans
 
 ### 6.2 Rebuild planner selection flow
 
-- [ ] hint chips must carry:
+- [x] hint chips must carry:
   - display label
   - candidate node id
   - confidence
   - resolution state
-- [ ] typed topics must be resolved before submit
-- [ ] unresolved typed topics can create provisional nodes
+- [x] typed topics must be resolved before submit
+- [x] unresolved typed topics can create provisional nodes
 
 ### 6.3 Remove silent rejection paths
 
-- [ ] `createRevisionPlan` must no longer swallow validation failures silently
-- [ ] planner UI must show:
+- [x] `createRevisionPlan` must no longer swallow validation failures silently
+- [x] planner UI must show:
   - unresolved topic
   - ambiguous topic
   - out-of-scope topic
@@ -251,23 +270,30 @@ This phase changes planner persistence and submission behavior. It should ship w
 
 ### 6.4 Refactor plan topic set building
 
-- [ ] replace string matching in `src/lib/revision/plans.ts`
-- [ ] build plan topic sets from node ids
-- [ ] keep compatibility layer for legacy plans until migration is complete
+- [x] replace string matching in `src/lib/revision/plans.ts`
+- [x] build plan topic sets from node ids
+- [x] keep compatibility layer for legacy plans until migration is complete
 
 ### 6.5 Graph-aware planner hints
 
-- [ ] ensure hint chips are validated or canonicalized before display
-- [ ] if an AI hint cannot map to the graph, do not treat it as trusted
-- [ ] surface provisional status where relevant
+- [x] ensure hint chips are validated or canonicalized before display
+- [x] if an AI hint cannot map to the graph, do not treat it as trusted
+- [x] surface provisional status where relevant
 
 ## Required Tests
 
-- [ ] plan stores node ids, not topic strings
-- [ ] chip selection resolves to node id
-- [ ] typed topic creates provisional node when unresolved
-- [ ] planner shows validation error instead of silent no-op
-- [ ] legacy string-based plan can still be read through adapter layer
+- [x] plan stores node ids, not topic strings
+- [x] chip selection resolves to node id
+- [x] typed topic creates provisional node when unresolved
+- [x] planner shows validation error instead of silent no-op
+- [x] legacy string-based plan can still be read through adapter layer
+
+## Phase 6 Findings
+
+- New revision plans now persist `topicNodeIds` while keeping denormalized display labels, and `src/lib/data/platform.ts` repairs legacy label-only plans through a read adapter.
+- `src/routes/api/revision/planner-resolve/+server.ts` resolves planner hint chips and typed topic input against the backend graph, and can create provisional topic nodes under the selected subject when manual entries do not resolve.
+- `src/lib/components/RevisionWorkspace.svelte` now shows explicit planner validation states for ready, checked, ambiguous, wrong-subject, needs-match, and provisional topics instead of silently normalizing or dropping entries.
+- `src/lib/stores/app-state.ts` returns structured plan-creation failures so the planner UI can surface them directly instead of swallowing label-mismatch validation errors.
 
 ## Exit Criteria
 
@@ -403,4 +429,3 @@ This execution plan is complete only when:
 - revision sessions run from generated revision artifacts
 - revision plans are id-based
 - planner resolution is explicit and visible
-

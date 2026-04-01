@@ -97,6 +97,35 @@ describe('normalizeAppState', () => {
     expect(normalized.revisionTopics[0]?.curriculumReference).toBe(`${alternateSubject.name} · ${topicTitle}`);
   });
 
+  it('adds a legacy-plan node-id adapter when saved plans only contain topic labels', () => {
+    const base = createInitialState();
+    const subject = base.curriculum.subjects[0]!;
+    const topic = subject.topics[0]!;
+    const legacyPlan: RevisionPlan = {
+      ...base.revisionPlan,
+      id: 'plan-legacy',
+      subjectId: subject.id,
+      subjectName: subject.name,
+      topics: [topic.name],
+      topicNodeIds: undefined,
+      planStyle: 'manual',
+      studyMode: 'manual',
+      status: 'active',
+      createdAt: '2026-04-01T08:00:00.000Z',
+      updatedAt: '2026-04-01T08:00:00.000Z'
+    };
+
+    const normalized = normalizeAppState({
+      ...base,
+      revisionPlan: legacyPlan,
+      revisionPlans: [legacyPlan],
+      activeRevisionPlanId: legacyPlan.id
+    });
+
+    expect(normalized.revisionPlan.topicNodeIds).toEqual([topic.id]);
+    expect(normalized.revisionPlans[0]?.topicNodeIds).toEqual([topic.id]);
+  });
+
   it('builds local launch stubs instead of authored seeded lessons for bootstrap state', () => {
     const base = createInitialState();
     const lesson = base.lessons[0]!;
