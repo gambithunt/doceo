@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { openDateInputPicker, shouldClosePlannerOnKey } from './revision-planner';
+import { hasSelectedPlannerSubject, openDateInputPicker, shouldClosePlannerOnKey, shouldShowPlannerTopics } from './revision-planner';
 
 describe('revision planner helpers', () => {
   it('does not close the planner for space presses inside the modal', () => {
@@ -8,6 +8,17 @@ describe('revision planner helpers', () => {
 
   it('allows escape to close the planner', () => {
     expect(shouldClosePlannerOnKey('Escape')).toBe(true);
+  });
+
+  it('treats an empty subject selection as unselected', () => {
+    expect(hasSelectedPlannerSubject('')).toBe(false);
+    expect(hasSelectedPlannerSubject('subject-economics')).toBe(true);
+  });
+
+  it('shows manual topic controls only after a subject has been selected', () => {
+    expect(shouldShowPlannerTopics('manual', '')).toBe(false);
+    expect(shouldShowPlannerTopics('full_subject', 'subject-economics')).toBe(false);
+    expect(shouldShowPlannerTopics('manual', 'subject-economics')).toBe(true);
   });
 
   it('opens the native date picker when the browser supports showPicker', () => {

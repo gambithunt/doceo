@@ -109,6 +109,8 @@ export function buildRevisionSession(
     questionIndex: 0,
     currentInterventionLevel: 'none',
     currentHelp: null,
+    awaitingAdvance: false,
+    skippedQuestionIds: [],
     selfConfidenceHistory: [],
     lastTurnResult: null,
     status: 'active',
@@ -117,7 +119,7 @@ export function buildRevisionSession(
   };
 }
 
-function buildInterventionContent(type: RevisionInterventionType, topic: RevisionTopic): string {
+export function buildInterventionContent(type: RevisionInterventionType, topic: RevisionTopic): string {
   switch (type) {
     case 'nudge':
       return `Start with the core rule for ${topic.topicTitle}, then give one concrete example from ${topic.subject}.`;
@@ -400,11 +402,13 @@ export function evaluateRevisionAnswer(input: {
 export function getRequestedIntervention(input: {
   topic: RevisionTopic;
   question: RevisionQuestion;
-  requestedType: 'nudge' | 'hint';
+  requestedType: 'nudge' | 'hint' | 'worked_step';
   currentInterventionLevel: RevisionInterventionType;
 }): RevisionIntervention {
   const type: RevisionInterventionType =
-    input.requestedType === 'hint' && input.currentInterventionLevel === 'none' ? 'nudge' : input.requestedType;
+    input.requestedType === 'hint' && input.currentInterventionLevel === 'none'
+      ? 'nudge'
+      : input.requestedType;
 
   return {
     type,
@@ -415,30 +419,46 @@ export function getRequestedIntervention(input: {
 export function applyRevisionTurn(
   session: ActiveRevisionSession,
   result: RevisionTurnResult,
-  now = new Date()
+  options: { forceAdvance?: boolean; now?: Date } = {}
 ): ActiveRevisionSession {
-  const shouldAdvance = result.sessionDecision === 'continue' && session.questionIndex < session.questions.length - 1;
-  const shouldRepeat = result.sessionDecision === 'reschedule';
+  const now = options.now ?? new Date();
+  const forceAdvance = options.forceAdvance ?? false;
+  const isLastQuestion = session.questionIndex >= session.questions.length - 1;
+  const shouldAdvance = (result.sessionDecision === 'continue' || forceAdvance) && !isLastQuestion;
+  const shouldRepeat = result.sessionDecision === 'reschedule' && !forceAdvance;
   const nextQuestionIndex = shouldAdvance ? session.questionIndex + 1 : session.questionIndex;
+  const skippedQuestionIds =
+    forceAdvance && session.questions[session.questionIndex]
+      ? Array.from(new Set([...session.skippedQuestionIds, session.questions[session.questionIndex]!.id]))
+      : session.skippedQuestionIds;
+  const nextStatus =
+    result.sessionDecision === 'lesson_revisit'
+      ? 'escalated_to_lesson'
+      : shouldRepeat
+        ? 'active'
+        : shouldAdvance
+          ? 'active'
+          : 'completed';
 
   return {
     ...session,
     questionIndex: nextQuestionIndex,
-    currentInterventionLevel: result.intervention.type,
+    currentInterventionLevel: nextStatus === 'active' && !shouldAdvance && !forceAdvance
+      ? result.intervention.type
+      : 'none',
     currentHelp: null,
+    awaitingAdvance: false,
+    skippedQuestionIds,
     lastTurnResult: {
       ...result,
       nextQuestion:
-        shouldRepeat ? session.questions[session.questionIndex] :
-        shouldAdvance ? session.questions[nextQuestionIndex] :
-        null
+        shouldRepeat
+          ? session.questions[session.questionIndex]
+          : shouldAdvance
+            ? session.questions[nextQuestionIndex]
+            : null
     },
-    status:
-      result.sessionDecision === 'lesson_revisit'
-        ? 'escalated_to_lesson'
-        : shouldAdvance || shouldRepeat
-          ? 'active'
-          : 'completed',
+    status: nextStatus,
     lastActiveAt: isoNow(now)
   };
 }

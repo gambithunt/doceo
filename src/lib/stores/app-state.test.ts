@@ -168,6 +168,7 @@ describe('revision session loop', () => {
       'Fractions compare parts of a whole because the denominator is the total and the numerator is the selected part with one example.',
       4
     );
+    store.advanceRevisionTurn();
     store.submitRevisionAnswer('Not sure.', 2);
 
     const state = get(store);
@@ -217,6 +218,7 @@ describe('revision session loop', () => {
 
     store.runRevisionSession(topic);
     store.markRevisionStuck();
+    store.escalateToLesson();
     store.startRevisionLessonHandoff();
 
     const state = get(store);
@@ -282,12 +284,106 @@ describe('revision session loop', () => {
 
     store.runRevisionSession(topic);
     store.markRevisionStuck();
+    store.escalateToLesson();
     store.startRevisionLessonHandoff();
 
     const state = get(store);
     const handoffSession = state.lessonSessions[0];
 
     expect(handoffSession?.messages.some((message) => /repeated gap|fractions core gap/i.test(message.content))).toBe(true);
+  });
+
+  it('keeps the revision session active when the student marks the question as stuck', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [
+        createLessonSession({
+          id: topic.lessonSessionId,
+          subjectId: topic.subjectId,
+          subject: topic.subject,
+          topicTitle: topic.topicTitle,
+          curriculumReference: topic.curriculumReference
+        })
+      ],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic);
+    store.markRevisionStuck();
+
+    const state = get(store);
+
+    expect(state.revisionSession?.status).toBe('active');
+    expect(state.revisionSession?.currentHelp?.type).toBe('worked_step');
+    expect(state.revisionSession?.currentInterventionLevel).toBe('worked_step');
+  });
+
+  it('can explicitly escalate to lesson after showing worked steps', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [
+        createLessonSession({
+          id: topic.lessonSessionId,
+          subjectId: topic.subjectId,
+          subject: topic.subject,
+          topicTitle: topic.topicTitle,
+          curriculumReference: topic.curriculumReference
+        })
+      ],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic);
+    store.markRevisionStuck();
+    store.escalateToLesson();
+
+    const state = get(store);
+
+    expect(state.revisionSession?.status).toBe('escalated_to_lesson');
+    expect(state.revisionSession?.currentHelp?.type).toBe('worked_step');
+  });
+
+  it('records an answer and waits for an explicit next-step action before advancing', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic);
+    store.submitRevisionAnswer('Fractions compare parts of a whole because the denominator is the total and the numerator is the selected part with one example.', 4);
+
+    const state = get(store);
+
+    expect(state.revisionSession?.questionIndex).toBe(0);
+    expect(state.revisionSession?.awaitingAdvance).toBe(true);
+    expect(state.revisionSession?.lastTurnResult?.sessionDecision).toBe('continue');
+  });
+
+  it('force-advances to the next question after a weak answer when the student chooses next', () => {
+    const baseState = createInitialState();
+    const topic = createRevisionTopic();
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+      revisionTopics: [topic]
+    });
+
+    store.runRevisionSession(topic);
+    store.submitRevisionAnswer('Not sure.', 2);
+    store.forceAdvanceRevision();
+
+    const state = get(store);
+
+    expect(state.revisionSession?.questionIndex).toBe(1);
+    expect(state.revisionSession?.awaitingAdvance).toBe(false);
+    expect(state.revisionSession?.skippedQuestionIds).toContain(state.revisionAttempts[0]?.questionId);
   });
 });
 
@@ -361,13 +457,14 @@ describe('revision plans', () => {
   it('removes the active revision plan, promotes the next saved plan, and clears the linked upcoming exam', () => {
     const baseState = createInitialState();
     const store = createAppStore(baseState);
+    const manualTopic = baseState.curriculum.subjects[0]!.topics[0]!.name;
 
     store.createRevisionPlan({
       subjectId: baseState.curriculum.subjects[0]!.id,
       examName: 'Math mid-term',
       examDate: '2026-04-12',
       mode: 'manual',
-      manualTopics: ['Fractions'],
+      manualTopics: [manualTopic],
       timeBudgetMinutes: 20
     });
     store.createRevisionPlan({
@@ -390,6 +487,52 @@ describe('revision plans', () => {
     expect(state.revisionPlan.examName).toBe('Math mid-term');
     expect(state.upcomingExams).toHaveLength(1);
     expect(state.upcomingExams[0]?.examName).toBe('Math mid-term');
+  });
+
+  it('ignores a manual plan request when the selected topics do not belong to the chosen subject', () => {
+    const baseState = createInitialState();
+    const store = createAppStore(baseState);
+    const primarySubject = baseState.curriculum.subjects[0]!;
+    const primaryTopics = new Set(primarySubject.topics.map((topic) => topic.name.toLowerCase()));
+    const alternateSubject = baseState.curriculum.subjects.find((subject) => subject.id !== primarySubject.id)!;
+    const foreignTopic = alternateSubject.topics.find((topic) => !primaryTopics.has(topic.name.toLowerCase()));
+
+    expect(foreignTopic).toBeDefined();
+
+    store.createRevisionPlan({
+      subjectId: primarySubject.id,
+      examName: 'Broken plan',
+      examDate: '2026-05-01',
+      mode: 'manual',
+      manualTopics: [foreignTopic!.name],
+      timeBudgetMinutes: 15
+    });
+
+    const state = get(store);
+
+    expect(state.revisionPlans).toHaveLength(0);
+    expect(state.activeRevisionPlanId).toBeNull();
+  });
+
+  it('creates a manual plan when the selected labels come from subject subtopics', () => {
+    const baseState = createInitialState();
+    const store = createAppStore(baseState);
+    const subject = baseState.curriculum.subjects.find((item) => item.topics.some((topic) => topic.subtopics.length > 0))!;
+    const manualTopics = subject.topics.slice(0, 2).map((topic) => topic.subtopics[0]!.name);
+
+    store.createRevisionPlan({
+      subjectId: subject.id,
+      examName: 'Subtopic test',
+      examDate: '2026-04-12',
+      mode: 'manual',
+      manualTopics,
+      timeBudgetMinutes: 20
+    });
+
+    const state = get(store);
+
+    expect(state.revisionPlans).toHaveLength(1);
+    expect(state.revisionPlans[0]?.topics).toEqual(manualTopics);
   });
 
   it('removes the last saved revision plan and clears the active plan selection', () => {

@@ -14,6 +14,39 @@ function unique(values: string[]): string[] {
   return values.filter((value, index, all) => value.length > 0 && all.indexOf(value) === index);
 }
 
+function normalizeTopicTitle(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function collectValidTopicTitlesForSubject(state: AppState, subjectId: string): Set<string> {
+  const subject = state.curriculum.subjects.find((item) => item.id === subjectId);
+  const titles = new Set<string>();
+
+  for (const topic of subject?.topics ?? []) {
+    titles.add(normalizeTopicTitle(topic.name));
+
+    for (const subtopic of topic.subtopics) {
+      titles.add(normalizeTopicTitle(subtopic.name));
+
+      for (const lessonId of subtopic.lessonIds) {
+        const lesson = state.lessons.find((item) => item.id === lessonId);
+
+        if (lesson?.title) {
+          titles.add(normalizeTopicTitle(lesson.title));
+        }
+      }
+    }
+  }
+
+  for (const topic of state.revisionTopics) {
+    if (topic.subjectId === subjectId) {
+      titles.add(normalizeTopicTitle(topic.topicTitle));
+    }
+  }
+
+  return titles;
+}
+
 function buildSummary(subjectName: string, topics: string[], timeBudgetMinutes?: number): string {
   const budgetText = timeBudgetMinutes ? ` in focused ${timeBudgetMinutes}-minute blocks` : '';
   return `Prioritize ${topics[0] ?? subjectName}${budgetText}, then move through the remaining ${subjectName} topics with active recall and exam-style prompts.`;
@@ -46,9 +79,18 @@ export function buildRevisionPlanFromInput(
     .filter((topic) => topic.confidenceScore < 0.7)
     .map((topic) => topic.topicTitle);
 
+  const validTopicTitles = collectValidTopicTitlesForSubject(state, subject.id);
+  const requestedManualTopics = unique(input.manualTopics ?? []);
+  const manualTopics = requestedManualTopics.filter((topic) => validTopicTitles.has(normalizeTopicTitle(topic)));
+  const invalidManualTopics = requestedManualTopics.filter((topic) => !validTopicTitles.has(normalizeTopicTitle(topic)));
+
+  if (input.mode === 'manual' && invalidManualTopics.length > 0) {
+    throw new Error(`Selected topic does not belong to ${subject.name}.`);
+  }
+
   const selectedTopics = unique(
     input.mode === 'manual'
-      ? input.manualTopics ?? []
+      ? manualTopics
       : input.mode === 'weak_topics'
         ? weakTopics.length > 0 ? weakTopics.slice(0, 5) : subjectTopicNames.slice(0, 5)
         : subjectTopicNames

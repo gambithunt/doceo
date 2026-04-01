@@ -25,8 +25,12 @@ export interface RevisionTopicHistoryEntry {
   createdAt: string;
   label: string;
   summary: string;
+  diagnosisType: RevisionAttemptRecord['result']['diagnosis']['type'];
+  interventionContent: string;
   correctness: number;
   selfConfidence: number;
+  scores: RevisionAttemptRecord['result']['scores'];
+  scheduledAction: RevisionAttemptRecord['result']['sessionDecision'];
 }
 
 export interface RevisionTopicHistoryModel {
@@ -273,8 +277,12 @@ export function deriveRevisionTopicHistoryModel(
       createdAt: attempt.createdAt,
       label: buildActivityLabel(attempt),
       summary: attempt.result.diagnosis.summary,
+      diagnosisType: attempt.result.diagnosis.type,
+      interventionContent: attempt.result.intervention.content,
       correctness: attempt.result.scores.correctness,
-      selfConfidence: attempt.selfConfidence
+      selfConfidence: attempt.selfConfidence,
+      scores: attempt.result.scores,
+      scheduledAction: attempt.result.sessionDecision
     }))
   };
 }

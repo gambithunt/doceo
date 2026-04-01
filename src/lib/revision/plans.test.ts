@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RevisionPlan, RevisionTopic } from '$lib/types';
 import {
+  buildPlanTopicSet,
   describePlanStyle,
   formatPlanDailyLabel,
   formatPlanStyleLabel,
@@ -121,5 +122,21 @@ describe('revision plan presentation helpers', () => {
     ]);
 
     expect(topic?.lessonSessionId).toBe('session-a');
+  });
+
+  it('uses an inferred subject override when building a synthetic topic for a uniquely matched foreign topic title', () => {
+    const plan = createPlan({ topics: ['Climate change'], subjectId: 'subject-math', subjectName: 'Mathematics' });
+    const topicSet = buildPlanTopicSet(plan, [
+      createTopic({
+        lessonSessionId: 'session-geography',
+        subjectId: 'subject-geography',
+        subject: 'Geography',
+        topicTitle: 'Climate change'
+      })
+    ]);
+
+    expect(topicSet[0]?.isSynthetic).toBe(true);
+    expect(topicSet[0]?.subjectId).toBe('subject-geography');
+    expect(topicSet[0]?.subject).toBe('Geography');
   });
 });

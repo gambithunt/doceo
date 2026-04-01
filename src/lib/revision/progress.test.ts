@@ -265,6 +265,9 @@ describe('deriveRevisionTopicHistoryModel', () => {
     expect(model).not.toBeNull();
     expect(model?.entries).toHaveLength(3);
     expect(model?.dominantIssue).toMatch(/explanation/i);
+    expect(model?.entries[0]?.interventionContent).toBe(createAttempt().result.intervention.content);
+    expect(model?.entries[0]?.diagnosisType).toBe('weak_explanation');
+    expect(model?.entries[0]?.scores.correctness).toBeGreaterThan(0);
   });
 
   it('detects when a topic trend is improving', () => {

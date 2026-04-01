@@ -46,6 +46,22 @@ function createState(overrides: Partial<AppState> = {}): AppState {
   };
 }
 
+function findForeignTopic(state: AppState): { primarySubjectId: string; topicTitle: string } {
+  const primarySubject = state.curriculum.subjects[0]!;
+  const primaryTopics = new Set(primarySubject.topics.map((topic) => topic.name.toLowerCase()));
+  const alternateSubject = state.curriculum.subjects.find((subject) => subject.id !== primarySubject.id)!;
+  const alternateTopic = alternateSubject.topics.find((topic) => !primaryTopics.has(topic.name.toLowerCase()));
+
+  if (!alternateTopic) {
+    throw new Error('Expected at least one alternate-subject topic for the planner test.');
+  }
+
+  return {
+    primarySubjectId: primarySubject.id,
+    topicTitle: alternateTopic.name
+  };
+}
+
 describe('buildRevisionPlanFromInput', () => {
   it('builds a weak-topics plan from the weakest matching revision topics', () => {
     const base = createInitialState();
@@ -97,19 +113,53 @@ describe('buildRevisionPlanFromInput', () => {
   it('honors manually selected topics when mode is manual', () => {
     const state = createState();
     const subjectId = state.curriculum.subjects[0].id;
+    const manualTopics = state.curriculum.subjects[0].topics.slice(0, 2).map((topic) => topic.name);
 
     const result = buildRevisionPlanFromInput(state, {
       subjectId,
       examName: 'Custom prep',
       examDate: '2026-04-18',
       mode: 'manual',
-      manualTopics: ['Fractions', 'Area'],
+      manualTopics,
       timeBudgetMinutes: 15
     });
 
-    expect(result.plan.topics).toEqual(['Fractions', 'Area']);
+    expect(result.plan.topics).toEqual(manualTopics);
     expect(result.plan.studyMode).toBe('manual');
     expect(result.plan.planStyle).toBe('manual');
+  });
+
+  it('accepts manually selected subtopic labels from the planner UI', () => {
+    const state = createState();
+    const subject = state.curriculum.subjects.find((item) => item.topics.some((topic) => topic.subtopics.length > 0))!;
+    const manualTopics = subject.topics.slice(0, 2).map((topic) => topic.subtopics[0]!.name);
+
+    const result = buildRevisionPlanFromInput(state, {
+      subjectId: subject.id,
+      examName: 'Subtopic prep',
+      examDate: '2026-04-18',
+      mode: 'manual',
+      manualTopics,
+      timeBudgetMinutes: 15
+    });
+
+    expect(result.plan.topics).toEqual(manualTopics);
+  });
+
+  it('rejects manual topics that belong to a different subject', () => {
+    const state = createState();
+    const { primarySubjectId, topicTitle } = findForeignTopic(state);
+
+    expect(() =>
+      buildRevisionPlanFromInput(state, {
+        subjectId: primarySubjectId,
+        examName: 'Custom prep',
+        examDate: '2026-04-18',
+        mode: 'manual',
+        manualTopics: [topicTitle],
+        timeBudgetMinutes: 15
+      })
+    ).toThrow(/does not belong to/i);
   });
 
   it('returns a saved-plan record with timestamps and display metadata', () => {

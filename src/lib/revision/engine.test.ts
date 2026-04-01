@@ -53,6 +53,8 @@ describe('buildRevisionSession', () => {
     expect(session.questions.length).toBeGreaterThanOrEqual(2);
     expect(session.questions[0]?.questionType).toBe('recall');
     expect(session.status).toBe('active');
+    expect(session.awaitingAdvance).toBe(false);
+    expect(session.skippedQuestionIds).toEqual([]);
   });
 
   it('builds distinct question stacks for quick-fire and teacher mode', () => {
@@ -205,6 +207,18 @@ describe('getRequestedIntervention', () => {
     expect(nudge.type).toBe('nudge');
     expect(hint.type).toBe('hint');
   });
+
+  it('can return worked steps for explicit scaffolding requests', () => {
+    const intervention = getRequestedIntervention({
+      topic: createTopic(),
+      question: createQuestion(),
+      requestedType: 'worked_step',
+      currentInterventionLevel: 'hint'
+    });
+
+    expect(intervention.type).toBe('worked_step');
+    expect(intervention.content).toMatch(/define|structure|example/i);
+  });
 });
 
 describe('applyRevisionTurn', () => {
@@ -243,5 +257,44 @@ describe('applyRevisionTurn', () => {
 
     expect(nextSession.questionIndex).toBe(1);
     expect(nextSession.lastTurnResult?.nextQuestion?.id).toBe(session.questions[1]?.id);
+  });
+
+  it('force-advances after a weak answer and records the skipped question', () => {
+    const session = buildRevisionSession(createTopic(), 'Due today');
+    const result = evaluateRevisionAnswer({
+      topic: createTopic(),
+      question: session.questions[0]!,
+      answer: 'Not sure.',
+      selfConfidence: 2,
+      currentInterventionLevel: 'none',
+      attemptNumber: 1,
+      now: new Date('2026-03-30T10:00:00.000Z')
+    });
+
+    const nextSession = applyRevisionTurn(session, result, { forceAdvance: true, now: new Date('2026-03-30T10:01:00.000Z') });
+
+    expect(nextSession.questionIndex).toBe(1);
+    expect(nextSession.status).toBe('active');
+    expect(nextSession.skippedQuestionIds).toContain(session.questions[0]?.id);
+    expect(nextSession.awaitingAdvance).toBe(false);
+  });
+
+  it('completes the round when force-advance is used on the last question', () => {
+    const session = buildRevisionSession(createTopic(), 'Due today', 'quick_fire');
+    const result = evaluateRevisionAnswer({
+      topic: createTopic(),
+      question: session.questions[0]!,
+      answer: 'Not sure.',
+      selfConfidence: 2,
+      currentInterventionLevel: 'none',
+      attemptNumber: 1,
+      now: new Date('2026-03-30T10:00:00.000Z')
+    });
+
+    const nextSession = applyRevisionTurn(session, result, { forceAdvance: true, now: new Date('2026-03-30T10:01:00.000Z') });
+
+    expect(nextSession.status).toBe('completed');
+    expect(nextSession.questionIndex).toBe(0);
+    expect(nextSession.skippedQuestionIds).toContain(session.questions[0]?.id);
   });
 });

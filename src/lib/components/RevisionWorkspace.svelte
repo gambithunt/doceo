@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { browser } from '$app/environment';
+  import { tick } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
@@ -15,7 +16,12 @@
   import { getRevisionPlanRemovalContent } from '$lib/components/revision-plan-removal';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { renderSimpleMarkdown } from '$lib/markdown';
-  import { openDateInputPicker, shouldClosePlannerOnKey } from '$lib/components/revision-planner';
+  import {
+    hasSelectedPlannerSubject,
+    openDateInputPicker,
+    shouldClosePlannerOnKey,
+    shouldShowPlannerTopics
+  } from '$lib/components/revision-planner';
   import {
     appendManualTopic,
     parseManualTopicDraft,
@@ -36,6 +42,7 @@
     sortRevisionPlans
   } from '$lib/revision/plans';
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
+  import { buildInterventionContent } from '$lib/revision/engine';
   import { appState } from '$lib/stores/app-state';
   import type { AppState, RevisionQuestionFeedback, RevisionTopic, SchoolTerm, ShortlistedTopic } from '$lib/types';
 
@@ -78,9 +85,11 @@
   let lastPlannerAssistSubjectId = '';
   let activeFocusTab: RevisionFocusTab | null = null;
   let cachedHeaders: Record<string, string> | null = null;
-  let plannerErrors: { examName?: string; examDate?: string; manualTopics?: string } = {};
+  let plannerErrors: { subject?: string; examName?: string; examDate?: string; manualTopics?: string } = {};
   let plannerDateInput: HTMLInputElement | null = null;
   let pendingPlanRemoval: { id: string; name: string } | null = null;
+  let answerTextarea: HTMLTextAreaElement | null = null;
+  let historyReviewOpen: Record<string, boolean> = {};
 
   $: homeModel = deriveRevisionHomeModel(state);
   $: focusModel = deriveRevisionFocusModel(state, homeModel, activeRevisionPlan);
@@ -91,7 +100,7 @@
   ).length > 0
     ? (state.onboarding.options?.subjects ?? []).filter((s) => state.onboarding.selectedSubjectIds.includes(s.id))
     : state.curriculum.subjects;
-  $: selectedPlannerSubject = plannerAvailableSubjects.find((subject) => subject.id === plannerSubjectId) ?? plannerAvailableSubjects[0];
+  $: selectedPlannerSubject = plannerAvailableSubjects.find((subject) => subject.id === plannerSubjectId) ?? null;
   $: selectedPlannerCurriculumSubject = selectedPlannerSubject
     ? (state.curriculum.subjects.find((s) => s.name === selectedPlannerSubject!.name) ?? { id: selectedPlannerSubject.id, name: selectedPlannerSubject.name, topics: [] })
     : null;
@@ -123,6 +132,8 @@
     (revisionSession
       ? state.revisionTopics.find((topic) => topic.lessonSessionId === revisionSession.revisionTopicId) ?? null
       : null) ?? displayTopic;
+  $: displaySubject = getDisplaySubject(displayTopic);
+  $: sessionRootSubject = getDisplaySubject(sessionRootTopic);
   $: topicHistory = displayTopic ? deriveRevisionTopicHistoryModel(state, displayTopic.lessonSessionId) : null;
   $: selectedRecommendation =
     homeModel.hero?.topic.lessonSessionId === displayTopic?.lessonSessionId
@@ -154,29 +165,32 @@
   $: calibrationGapCount = state.revisionTopics.filter((topic) => Math.abs(topic.calibration.confidenceGap) >= 0.22).length;
   $: fragileTopicCount = state.revisionTopics.filter((topic) => topic.retentionStability <= 0.5 || topic.forgettingVelocity >= 0.58).length;
   $: hasSessionFocus = Boolean(revisionSession);
-  $: sessionSubjectSlug = getSubjectSlug(sessionRootTopic?.subject ?? displayTopic?.subject);
+  $: sessionSubjectSlug = getSubjectSlug(sessionRootSubject ?? displaySubject);
   $: upcomingExamInfo = getUpcomingExamInfo();
   $: outlookPlans = sortedRevisionPlans.slice(0, 4);
   $: outlookStats = buildRevisionOutlookStats();
+  $: currentHelpVisible = Boolean(revisionSession?.currentHelp);
+  $: pendingTurnResult = revisionSession?.awaitingAdvance ? revisionSession.lastTurnResult : null;
+  $: plannerSubjectSelected = hasSelectedPlannerSubject(plannerSubjectId);
+  $: plannerTopicsVisible = shouldShowPlannerTopics(plannerMode, plannerSubjectId);
 
   function seedPlannerFields(): void {
-    plannerSubjectId = state.ui.selectedSubjectId || plannerAvailableSubjects[0]?.id || '';
+    plannerSubjectId = '';
     plannerExamName = '';
     plannerExamDate = state.revisionPlan.examDate ?? '';
     plannerMode = state.revisionPlan.planStyle ?? state.revisionPlan.studyMode ?? 'weak_topics';
     plannerTimeBudgetMinutes = state.revisionPlan.timeBudgetMinutes ?? 20;
-    plannerManualTopics =
-      (state.revisionPlan.planStyle ?? state.revisionPlan.studyMode) === 'manual'
-        ? state.revisionPlan.topics.join(', ')
-        : '';
-    plannerSelectedTopics =
-      (state.revisionPlan.planStyle ?? state.revisionPlan.studyMode) === 'manual'
-        ? [...state.revisionPlan.topics]
-        : [];
+    plannerManualTopics = '';
+    plannerSelectedTopics = [];
     plannerTopicMatches = [];
     plannerTopicMatchStatus = 'idle';
+    plannerTopicHintsLoading = false;
     plannerTopicHintsError = '';
     plannerTopicMatchError = '';
+    plannerTopicHintsText = '';
+    plannerHintSeed = '';
+    lastPlannerAssistSubjectId = '';
+    plannerErrors = {};
   }
 
   function formatDueLabel(dateValue: string): string {
@@ -740,6 +754,7 @@
 
   async function submitPlanner(): Promise<void> {
     plannerErrors = {};
+    if (!plannerSubjectSelected) plannerErrors.subject = 'Choose a subject before generating a plan.';
     if (!plannerExamName.trim()) plannerErrors.examName = 'Give your exam a name so you can track it.';
     if (!plannerExamDate) plannerErrors.examDate = 'Pick a date so Doceo can pace the plan.';
     const manualTopics = plannerMode === 'manual'
@@ -763,19 +778,10 @@
   }
 
   function submitRecall(): void {
-    if (!selectedTopic || !currentQuestion || recallDraft.trim().length === 0) {
+    if (!selectedTopic || !currentQuestion || recallDraft.trim().length === 0 || pendingTurnResult) {
       return;
     }
-    const answeredQuestionId = currentQuestion.id;
     appState.submitRevisionAnswer(recallDraft.trim(), selfConfidence);
-    recallDraft = '';
-    selfConfidence = 3;
-    // Reset feedback state for the new turn
-    if (feedbackSubmittedForQuestionId !== answeredQuestionId) {
-      feedbackDifficulty = '';
-      feedbackClarity = '';
-      feedbackSubmittedForQuestionId = '';
-    }
   }
 
   function submitQuestionFeedback(questionId: string): void {
@@ -790,7 +796,7 @@
 
   function feedbackMarkdown(): string | null {
     if (revisionSession?.currentHelp) {
-      return [`**${revisionSession.currentHelp.type === 'nudge' ? 'Nudge' : 'Help'}**`, revisionSession.currentHelp.content].join('\n\n');
+      return [`**${getInlineHelpLabel(revisionSession.currentHelp.type)}**`, revisionSession.currentHelp.content].join('\n\n');
     }
 
     if (!revisionSession?.lastTurnResult) {
@@ -798,27 +804,169 @@
     }
 
     const { diagnosis, intervention, sessionDecision, topicUpdate, nextQuestion, scores } = revisionSession.lastTurnResult;
-    const calibrationNote =
-      scores.calibrationGap >= 0.2
-        ? 'You felt more sure than the answer showed. Slow down and test the explanation, not just the feeling.'
-        : scores.calibrationGap <= -0.2
-          ? 'The answer was stronger than your confidence suggested. Trust the structure you do know.'
-          : 'Your confidence and answer quality were fairly well aligned here.';
 
     return [
       `**Diagnosis**`,
       diagnosis.summary,
       '',
       `**Calibration**`,
-      calibrationNote,
+      getCalibrationNote(scores.calibrationGap),
       '',
       `**Next move**`,
       intervention.content || 'Keep going with the next question.',
       '',
-      nextQuestion ? `**Up next**\n${nextQuestion.prompt}` : `**Session status**\n${sessionDecision === 'complete' ? 'This round is complete.' : 'This topic needs another pass soon.'}`,
+      nextQuestion
+        ? `**Up next**\n${nextQuestion.prompt}`
+        : `**Session status**\n${sessionDecision === 'complete' ? 'This round is complete.' : 'This topic needs another pass soon.'}`,
       '',
       `**Next review**\n${new Date(topicUpdate.nextRevisionAt).toLocaleDateString()}`
     ].join('\n');
+  }
+
+  function getDisplaySubject(topic: RevisionTopic | null | undefined): string | null {
+    if (!topic) {
+      return null;
+    }
+
+    const referenceSubject = topic.curriculumReference.split('·')[0]?.trim();
+
+    if (topic.isSynthetic && referenceSubject && referenceSubject !== topic.subject) {
+      return referenceSubject;
+    }
+
+    return topic.subject || referenceSubject || null;
+  }
+
+  function getCalibrationNote(calibrationGap: number): string {
+    if (calibrationGap >= 0.2) {
+      return 'You felt more sure than the answer showed. Slow down and test the explanation, not just the feeling.';
+    }
+
+    if (calibrationGap <= -0.2) {
+      return 'The answer was stronger than your confidence suggested. Trust the structure you do know.';
+    }
+
+    return 'Your confidence and answer quality were fairly well aligned here.';
+  }
+
+  function getInlineHelpLabel(type: string): string {
+    switch (type) {
+      case 'nudge':
+        return 'Quick nudge';
+      case 'hint':
+        return 'Hint';
+      case 'worked_step':
+        return 'Worked steps';
+      case 'mini_reteach':
+        return 'Mini reteach';
+      default:
+        return 'Help';
+    }
+  }
+
+  function getInlineHelpTier(type: string | null | undefined): 'nudge' | 'hint' | 'worked' {
+    if (type === 'nudge') {
+      return 'nudge';
+    }
+
+    if (type === 'hint') {
+      return 'hint';
+    }
+
+    return 'worked';
+  }
+
+  async function tryAgain(): Promise<void> {
+    recallDraft = '';
+    feedbackDifficulty = '';
+    feedbackClarity = '';
+    appState.retryRevisionQuestion();
+    await tick();
+    answerTextarea?.focus();
+  }
+
+  function continueAfterAnswer(): void {
+    if (!pendingTurnResult) {
+      return;
+    }
+
+    const shouldForceAdvance = pendingTurnResult.sessionDecision !== 'continue';
+    recallDraft = '';
+    selfConfidence = 3;
+    feedbackDifficulty = '';
+    feedbackClarity = '';
+    feedbackSubmittedForQuestionId = '';
+
+    if (shouldForceAdvance) {
+      appState.forceAdvanceRevision();
+      return;
+    }
+
+    appState.advanceRevisionTurn();
+  }
+
+  function shouldShowModelAnswer(): boolean {
+    if (!pendingTurnResult) {
+      return false;
+    }
+
+    return pendingTurnResult.scores.correctness < 0.6 || (revisionSession?.currentInterventionLevel ?? 'none') !== 'none';
+  }
+
+  function revealModelAnswer(): void {
+    appState.showRevisionModelAnswer();
+  }
+
+  function getAdvanceButtonLabel(): string {
+    if (!pendingTurnResult || !revisionSession) {
+      return 'Next question';
+    }
+
+    const isLastQuestion = revisionSession.questionIndex >= revisionSession.questions.length - 1;
+    return isLastQuestion ? 'Finish round' : 'Next question';
+  }
+
+  function getSessionDecisionLabel(decision: NonNullable<typeof topicHistory>['entries'][number]['scheduledAction']): string {
+    switch (decision) {
+      case 'continue':
+        return 'Move on to the next question';
+      case 'reschedule':
+        return 'Bring this topic back soon';
+      case 'lesson_revisit':
+        return 'Step back into lesson mode';
+      default:
+        return 'Round complete';
+    }
+  }
+
+  function getDiagnosisTypeSummary(type: NonNullable<typeof topicHistory>['entries'][number]['diagnosisType']): string {
+    switch (type) {
+      case 'false_confidence':
+        return 'Confidence ran ahead of the explanation.';
+      case 'underconfidence':
+        return 'The structure was better than the self-rating suggested.';
+      case 'forgotten_fact':
+        return 'The key idea did not hold in memory yet.';
+      case 'weak_explanation':
+        return 'Pieces were recalled, but the logic still broke down.';
+      case 'misconception':
+        return 'A deeper misunderstanding is still shaping the answer.';
+      case 'procedure_break':
+        return 'The method broke down mid-solution.';
+      default:
+        return 'Transfer into a new situation is still shaky.';
+    }
+  }
+
+  function toggleHistoryReview(entryId: string): void {
+    historyReviewOpen = {
+      ...historyReviewOpen,
+      [entryId]: !historyReviewOpen[entryId]
+    };
+  }
+
+  function historyReviewVisible(entryId: string): boolean {
+    return Boolean(historyReviewOpen[entryId]);
   }
 
   function getCalibrationTone(topic: RevisionTopic): 'overconfident' | 'underconfident' | 'aligned' {
@@ -1532,7 +1680,7 @@
 
         <div class="revision-session-topbar-copy">
           <p class="eyebrow">{revisionWorkspaceMode === 'summary' ? 'Revision Summary' : 'Active Revision'}</p>
-          <h2 class="session-subject-heading">{sessionRootTopic?.subject ?? displayTopic?.subject ?? 'Revision'}</h2>
+          <h2 class="session-subject-heading">{sessionRootSubject ?? displaySubject ?? 'Revision'}</h2>
         </div>
 
         {#if revisionSession}
@@ -1550,14 +1698,14 @@
               ? revisionSession?.status === 'escalated_to_lesson'
                 ? 'Needs Rebuild'
                 : 'Round Complete'
-              : (displayTopic?.subject ?? sessionRootTopic?.subject ?? 'Focused Revision')}
+              : (displaySubject ?? sessionRootSubject ?? 'Focused Revision')}
           </p>
           <h2>{displayTopic?.topicTitle ?? revisionSession?.topicTitle ?? 'Revision session'}</h2>
           <p class="revision-session-summary">{getSessionHeroSummary()}</p>
 
           <div class="revision-session-pill-row">
-            {#if displayTopic?.subject}
-              <span class="plan-chip plan-chip--subject">{displayTopic.subject}</span>
+            {#if displaySubject}
+              <span class="plan-chip plan-chip--subject">{displaySubject}</span>
             {/if}
             {#if revisionSession}
               <span class="plan-chip">{formatSessionModeLabel(revisionSession.mode)}</span>
@@ -1594,22 +1742,48 @@
               <div class="revision-session-card-header">
                 <div>
                   <p class="question-type">{currentQuestion.questionType.replace('_', ' ')}</p>
-                  <h3>{displayTopic?.topicTitle ?? currentQuestion.revisionTopicId}</h3>
                 </div>
                 <span class="hero-pill subdued">{getSessionStatusBadge()}</span>
               </div>
+              <p>{currentQuestion.prompt}</p>
               {#if currentQuestionTopic?.isSynthetic}
                 <p class="synthetic-topic-note">You haven't taken a lesson on this topic yet. Answer from what you already know — Doceo will build from here.</p>
               {/if}
-              <p>{currentQuestion.prompt}</p>
+
+              {#if currentHelpVisible && revisionSession?.currentHelp}
+                <article
+                  class={`inline-help-panel tier-${getInlineHelpTier(revisionSession.currentHelp.type)}`}
+                  transition:fly={{ y: -10, duration: 180, easing: cubicOut }}
+                >
+                  <div class="inline-help-header">
+                    <div>
+                      <p class="eyebrow">{getInlineHelpLabel(revisionSession.currentHelp.type)}</p>
+                      <h3>{displayTopic?.topicTitle ?? 'Keep building the answer'}</h3>
+                    </div>
+                    <span class="hero-pill subdued">{revisionSession.currentHelp.type.replace('_', ' ')}</span>
+                  </div>
+                  <div class="inline-help-copy">
+                    {@html renderSimpleMarkdown(revisionSession.currentHelp.content)}
+                  </div>
+                  {#if revisionSession.currentHelp.type === 'worked_step' || revisionSession.currentHelp.type === 'mini_reteach'}
+                    <div class="inline-help-actions">
+                      <button type="button" class="secondary action-btn" onclick={() => appState.escalateToLesson()}>
+                        Take me back to the lesson
+                      </button>
+                    </div>
+                  {/if}
+                </article>
+              {/if}
             </article>
 
             <label class="field revision-answer-field">
               <span>Your answer</span>
               <textarea
+                bind:this={answerTextarea}
                 bind:value={recallDraft}
                 rows="9"
                 placeholder={`Answer the ${currentQuestion.questionType.replace('_', ' ')} prompt for ${(displayTopic ?? selectedTopic).topicTitle}`}
+                disabled={Boolean(pendingTurnResult)}
               ></textarea>
             </label>
 
@@ -1631,19 +1805,66 @@
             </div>
 
             <div class="revision-session-actions">
-              <button type="button" class="action-btn session-submit-btn" onclick={submitRecall}>Check answer</button>
+              <button type="button" class="action-btn session-submit-btn" onclick={submitRecall} disabled={Boolean(pendingTurnResult)}>Check answer</button>
               <div class="session-secondary-actions">
-                <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionNudge()}>
+                <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionNudge()} disabled={Boolean(pendingTurnResult)}>
                   Nudge
                 </button>
-                <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionHint()}>
+                <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionHint()} disabled={Boolean(pendingTurnResult)}>
                   Hint
                 </button>
-                <button type="button" class="secondary action-btn" onclick={() => appState.markRevisionStuck()}>
+                <button type="button" class="secondary action-btn" onclick={() => appState.markRevisionStuck()} disabled={Boolean(pendingTurnResult)}>
                   I'm stuck
                 </button>
               </div>
             </div>
+
+            {#if pendingTurnResult}
+              <article class="feedback-card revision-diagnosis-card">
+                <div class="panel-header">
+                  <div>
+                    <p class="eyebrow">Answer review</p>
+                    <h3>{pendingTurnResult.diagnosis.summary}</h3>
+                  </div>
+                  <span class="hero-pill subdued">{Math.round(pendingTurnResult.scores.correctness * 100)}% correct</span>
+                </div>
+
+                <div class="revision-diagnosis-metrics">
+                  <article class="mini-stat tone-green">
+                    <strong>{Math.round(pendingTurnResult.scores.reasoning * 100)}%</strong>
+                    <span>Reasoning</span>
+                  </article>
+                  <article class="mini-stat tone-blue">
+                    <strong>{Math.round(pendingTurnResult.scores.completeness * 100)}%</strong>
+                    <span>Completeness</span>
+                  </article>
+                  <article class="mini-stat tone-yellow">
+                    <strong>{Math.round(pendingTurnResult.scores.confidenceAlignment * 100)}%</strong>
+                    <span>Confidence match</span>
+                  </article>
+                </div>
+
+                <div class="revision-diagnosis-copy">
+                  <p><strong>Calibration:</strong> {getCalibrationNote(pendingTurnResult.scores.calibrationGap)}</p>
+                  <p><strong>Next move:</strong> {pendingTurnResult.intervention.content || 'Keep building with the next prompt.'}</p>
+                  <p><strong>Next review:</strong> {new Date(pendingTurnResult.topicUpdate.nextRevisionAt).toLocaleDateString()}</p>
+                </div>
+
+                <div class="revision-diagnosis-actions">
+                  <button type="button" class="action-btn" onclick={continueAfterAnswer}>
+                    {getAdvanceButtonLabel()}
+                  </button>
+                  <button type="button" class="secondary action-btn" onclick={tryAgain}>
+                    Try again
+                  </button>
+                  {#if shouldShowModelAnswer()}
+                    <button type="button" class="secondary action-btn" onclick={revealModelAnswer}>
+                      Show me the model answer
+                    </button>
+                  {/if}
+                </div>
+              </article>
+            {/if}
           {:else}
             <article class="revision-summary-card">
               <div class="revision-session-card-header">
@@ -1676,7 +1897,10 @@
                   </button>
                   {#if sessionRootTopic}
                     <button type="button" class="secondary action-btn" onclick={() => review(sessionRootTopic, 'deep_revision')}>
-                      Try revision again
+                      Practise this topic again
+                    </button>
+                    <button type="button" class="secondary action-btn" onclick={() => review(sessionRootTopic, 'quick_fire')}>
+                      Quick-fire spot check
                     </button>
                   {/if}
                 {:else}
@@ -1690,6 +1914,12 @@
                     </button>
                   {/if}
                   {#if sessionRootTopic}
+                    <button type="button" class="secondary action-btn" onclick={() => review(sessionRootTopic, 'deep_revision')}>
+                      Practise this topic again
+                    </button>
+                    <button type="button" class="secondary action-btn" onclick={() => review(sessionRootTopic, 'quick_fire')}>
+                      Quick-fire spot check
+                    </button>
                     <button type="button" class="secondary action-btn" onclick={() => startRecommendedRevision(sessionRootTopic)}>
                       Revisit this topic
                     </button>
@@ -1699,20 +1929,10 @@
             </article>
           {/if}
 
-          {#if feedbackMarkdown()}
-            <article class="feedback-card revision-session-feedback">
-              <div class="panel-header">
-                <div>
-                  <p class="eyebrow">{revisionWorkspaceMode === 'summary' ? 'Round feedback' : 'Live feedback'}</p>
-                  <h3>{displayTopic?.topicTitle ?? 'Feedback'}</h3>
-                </div>
-              </div>
-              {@html renderSimpleMarkdown(feedbackMarkdown()!)}
-            </article>
-          {/if}
-
-          {#if revisionSession?.lastTurnResult}
-            {@const lastQuestion = revisionSession.questions[Math.max(0, revisionSession.questionIndex - (revisionSession.status === 'active' ? 1 : 0))]}
+          {#if revisionSession?.lastTurnResult && !revisionSession.awaitingAdvance && (revisionWorkspaceMode === 'summary' || revisionSession.questionIndex > 0)}
+            {@const lastQuestion = revisionSession.awaitingAdvance
+              ? revisionSession.questions[revisionSession.questionIndex]
+              : revisionSession.questions[Math.max(0, revisionSession.questionIndex - (revisionSession.status === 'active' ? 1 : 0))]}
             {#if lastQuestion && feedbackSubmittedForQuestionId !== lastQuestion.id}
               <article class="feedback-card student-question-feedback">
                 <p class="eyebrow">Rate this question</p>
@@ -1808,7 +2028,7 @@
               </div>
               <p>Dominant issue: {topicHistory.dominantIssue}.</p>
               <div class="activity-list">
-                {#each topicHistory.entries.slice(0, 3) as entry}
+                {#each topicHistory.entries as entry}
                   <article class="activity-item">
                     <div class="topic-row">
                       <strong>{entry.label}</strong>
@@ -1819,6 +2039,29 @@
                       <span class="hero-pill subdued">Confidence {entry.selfConfidence}/5</span>
                     </div>
                     <p>{entry.summary}</p>
+                    <button type="button" class="ghost-btn history-review-toggle" onclick={() => toggleHistoryReview(entry.id)}>
+                      {historyReviewVisible(entry.id) ? 'Hide review' : 'Review this attempt'}
+                    </button>
+                    {#if historyReviewVisible(entry.id) && displayTopic}
+                      <article class="history-review-card">
+                        <div class="history-review-block">
+                          <span>What you showed</span>
+                          <p>{getDiagnosisTypeSummary(entry.diagnosisType)}</p>
+                        </div>
+                        <div class="history-review-block">
+                          <span>What was missing</span>
+                          <p>{entry.interventionContent || 'This attempt did not need extra scaffolding.'}</p>
+                        </div>
+                        <div class="history-review-block">
+                          <span>Model answer</span>
+                          <p>{buildInterventionContent('worked_step', displayTopic)}</p>
+                        </div>
+                        <div class="history-review-block">
+                          <span>What Doceo scheduled</span>
+                          <p>{getSessionDecisionLabel(entry.scheduledAction)}</p>
+                        </div>
+                      </article>
+                    {/if}
                   </article>
                 {/each}
               </div>
@@ -1832,7 +2075,7 @@
                   <p class="eyebrow">Next best move</p>
                   <h3>{nextRevisionRecommendation.topic.topicTitle}</h3>
                 </div>
-                <span class="hero-pill subdued">{nextRevisionRecommendation.topic.subject}</span>
+                <span class="hero-pill subdued">{getDisplaySubject(nextRevisionRecommendation.topic)}</span>
               </div>
               <p>{nextRevisionRecommendation.reason}</p>
               <p class="revision-next-note">Use the main action to continue straight into this topic, or return to the queue from the header.</p>
@@ -1864,13 +2107,21 @@
         </div>
 
         <div class="planner-grid">
-          <label class="field">
+          <label class="field" class:field-error={plannerErrors.subject}>
             <span>Subject</span>
-            <select bind:value={plannerSubjectId}>
+            <select
+              bind:value={plannerSubjectId}
+              class:placeholder-selected={!plannerSubjectSelected}
+              onchange={() => { if (plannerErrors.subject) plannerErrors = { ...plannerErrors, subject: undefined }; }}
+            >
+              <option value="" disabled>Select subject</option>
               {#each plannerAvailableSubjects as subject}
                 <option value={subject.id}>{subject.name}</option>
               {/each}
             </select>
+            {#if plannerErrors.subject}
+              <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerErrors.subject}</span>
+            {/if}
           </label>
 
           <label class="field" class:field-error={plannerErrors.examName}>
@@ -1919,7 +2170,7 @@
             </select>
           </label>
 
-          {#if plannerMode === 'manual'}
+          {#if plannerTopicsVisible}
             <div class="field field-wide manual-topic-field" class:field-error={plannerErrors.manualTopics}>
               <div class="manual-topic-header">
                 <span>Topics</span>
@@ -1993,6 +2244,13 @@
               {#if plannerTopicMatchError}
                 <span class="field-hint-error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{plannerTopicMatchError}</span>
               {/if}
+            </div>
+          {:else if plannerMode === 'manual'}
+            <div class="field field-wide manual-topic-field manual-topic-empty">
+              <div class="manual-topic-header">
+                <span>Topics</span>
+              </div>
+              <p class="manual-topic-help">Choose a subject first. Topic suggestions will appear here once a subject is selected.</p>
             </div>
           {/if}
         </div>
@@ -2102,6 +2360,12 @@
   .revision-session-hero-side {
     display: grid;
     gap: 1rem;
+  }
+
+  .revision-session-main,
+  .revision-session-side,
+  .revision-session-hero-copy {
+    min-width: 0;
   }
 
   .revision-session-shell {
@@ -2222,7 +2486,7 @@
     position: relative;
     overflow: hidden;
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(15rem, 0.75fr);
+    grid-template-columns: minmax(0, 1.65fr) minmax(14rem, 17rem);
     gap: 1rem;
     padding: 1.35rem;
     border-radius: 1.8rem;
@@ -2254,7 +2518,12 @@
     font-size: clamp(1.7rem, 1.28rem + 1.2vw, 2.45rem);
     line-height: 1.04;
     letter-spacing: -0.03em;
-    max-width: 14ch;
+    max-width: 18ch;
+  }
+
+  .revision-session-hero-side {
+    justify-self: end;
+    width: min(100%, 17rem);
   }
 
   .revision-session-summary {
@@ -2387,8 +2656,16 @@
   }
 
   .revision-answer-field textarea {
+    display: block;
+    width: 100%;
+    min-width: 0;
     min-height: 13rem;
     resize: vertical;
+  }
+
+  .revision-answer-field {
+    min-width: 0;
+    overflow: visible;
   }
 
   /* Confidence pill selector */
@@ -2476,6 +2753,73 @@
   .session-secondary-actions .action-btn {
     flex: 1;
     justify-content: center;
+  }
+
+  .inline-help-panel,
+  .revision-diagnosis-card,
+  .history-review-card {
+    display: grid;
+    gap: 0.75rem;
+    border-radius: 1.15rem;
+  }
+
+  .inline-help-panel {
+    margin-top: 0.25rem;
+    padding: 0.95rem 1rem;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface-callout) 56%, var(--surface-blend-base));
+  }
+
+  .inline-help-panel.tier-nudge {
+    background: color-mix(in srgb, var(--color-blue-dim) 82%, var(--surface-blend-base));
+    border-color: color-mix(in srgb, var(--color-blue) 18%, var(--border));
+  }
+
+  .inline-help-panel.tier-hint {
+    background: color-mix(in srgb, var(--accent-dim) 82%, var(--surface-blend-base));
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  }
+
+  .inline-help-panel.tier-worked {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-yellow-dim) 82%, var(--surface-blend-base)), color-mix(in srgb, var(--surface-callout) 66%, var(--surface-blend-base)));
+    border-color: color-mix(in srgb, var(--color-yellow) 24%, var(--border));
+  }
+
+  .inline-help-header,
+  .inline-help-actions,
+  .revision-diagnosis-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .inline-help-copy :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .revision-diagnosis-card {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 70%, var(--surface-blend-base)), var(--surface));
+  }
+
+  .revision-diagnosis-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .revision-diagnosis-copy {
+    display: grid;
+    gap: 0.45rem;
+    color: var(--text-soft);
+    line-height: 1.55;
+  }
+
+  .revision-diagnosis-copy p {
+    margin: 0;
   }
 
   .revision-session-feedback {
@@ -2568,7 +2912,7 @@
     border: 1px solid color-mix(in srgb, var(--color-yellow) 24%, var(--border));
     border-radius: 0.65rem;
     padding: 0.5rem 0.75rem;
-    margin-bottom: 0.25rem;
+    margin-top: 0.1rem;
   }
 
   .revision-session-context-card {
@@ -3400,6 +3744,7 @@
     border-radius: var(--radius-pill);
     padding: 0.2rem 0.65rem;
     line-height: 1.6;
+    margin-bottom: 0.5rem;
   }
 
   .planner-grid {
@@ -3491,6 +3836,12 @@
   }
   .mini-stat.tone-blue strong { color: var(--color-blue); }
 
+  .mini-stat.tone-green {
+    background: color-mix(in srgb, var(--color-green-dim) 80%, var(--surface-blend-base));
+    border-color: color-mix(in srgb, var(--color-green) 18%, var(--border));
+  }
+  .mini-stat.tone-green strong { color: var(--color-green); }
+
   .mini-stat.tone-surface {
     background: var(--surface-soft);
   }
@@ -3506,6 +3857,37 @@
     border-radius: 1rem;
     border: 1px solid var(--border);
     background: var(--surface-soft);
+  }
+
+  .history-review-toggle {
+    justify-self: start;
+    padding-left: 0;
+  }
+
+  .history-review-card {
+    padding: 0.9rem 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 66%, var(--surface-blend-base)), var(--surface));
+  }
+
+  .history-review-block {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .history-review-block span {
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+
+  .history-review-block p {
+    margin: 0;
+    color: var(--text);
+    line-height: 1.5;
   }
 
   .insight-item.recovery {
@@ -3686,6 +4068,12 @@
     animation: field-shake 0.3s var(--ease-soft) both;
   }
 
+  .field-error select {
+    border-color: var(--color-red, #f87171);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-red, #f87171) 18%, transparent);
+    animation: field-shake 0.3s var(--ease-soft) both;
+  }
+
   @keyframes field-shake {
     0%   { transform: translateX(0); }
     20%  { transform: translateX(-5px); }
@@ -3716,6 +4104,16 @@
     color: var(--text);
     padding: 0.85rem 0.95rem;
     font: inherit;
+  }
+
+  .field select.placeholder-selected {
+    color: var(--text-soft);
+  }
+
+  .manual-topic-empty {
+    min-height: 9.5rem;
+    align-content: start;
+    padding: 0.15rem 0;
   }
 
   .queue-list.compact {
@@ -4120,6 +4518,11 @@
       max-width: 100%;
     }
 
+    .revision-session-hero-side {
+      justify-self: start;
+      width: min(100%, 20rem);
+    }
+
     .hero-stats {
       justify-content: start;
     }
@@ -4131,6 +4534,10 @@
     }
 
     .revision-summary-metrics {
+      grid-template-columns: 1fr;
+    }
+
+    .revision-diagnosis-metrics {
       grid-template-columns: 1fr;
     }
   }

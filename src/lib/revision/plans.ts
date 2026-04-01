@@ -91,13 +91,21 @@ function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-function buildSyntheticTopic(plan: RevisionPlan, topicTitle: string, now: Date): RevisionTopic {
+function buildSyntheticTopic(
+  plan: RevisionPlan,
+  topicTitle: string,
+  now: Date,
+  subjectOverride?: { subjectId: string; subjectName: string }
+): RevisionTopic {
+  const subjectId = subjectOverride?.subjectId ?? plan.subjectId;
+  const subjectName = subjectOverride?.subjectName ?? plan.subjectName;
+
   return {
-    lessonSessionId: `synthetic-${plan.subjectId}-${slugify(topicTitle)}`,
-    subjectId: plan.subjectId,
-    subject: plan.subjectName,
+    lessonSessionId: `synthetic-${subjectId}-${slugify(topicTitle)}`,
+    subjectId,
+    subject: subjectName,
     topicTitle,
-    curriculumReference: `${plan.subjectName} · ${topicTitle}`,
+    curriculumReference: `${subjectName} · ${topicTitle}`,
     confidenceScore: 0,
     previousIntervalDays: 1,
     nextRevisionAt: now.toISOString(),
@@ -115,6 +123,29 @@ const sortByNeed = (left: RevisionTopic, right: RevisionTopic) => {
   const dueDiff = Date.parse(left.nextRevisionAt) - Date.parse(right.nextRevisionAt);
   return dueDiff !== 0 ? dueDiff : left.confidenceScore - right.confidenceScore;
 };
+
+function inferSubjectOverride(
+  plan: RevisionPlan,
+  topicTitle: string,
+  revisionTopics: RevisionTopic[]
+): { subjectId: string; subjectName: string } | undefined {
+  const matches = revisionTopics.filter((topic) => topic.topicTitle.toLowerCase() === topicTitle.toLowerCase());
+
+  if (matches.length !== 1) {
+    return undefined;
+  }
+
+  const match = matches[0]!;
+
+  if (match.subjectId === plan.subjectId) {
+    return undefined;
+  }
+
+  return {
+    subjectId: match.subjectId,
+    subjectName: match.subject
+  };
+}
 
 /**
  * Build the full ordered topic set for a plan session.
@@ -143,7 +174,7 @@ export function buildPlanTopicSet(
       result.push(match);
       seen.add(match.lessonSessionId);
     } else if (!match) {
-      const synthetic = buildSyntheticTopic(plan, topicName, now);
+      const synthetic = buildSyntheticTopic(plan, topicName, now, inferSubjectOverride(plan, topicName, revisionTopics));
       if (!seen.has(synthetic.lessonSessionId)) {
         result.push(synthetic);
         seen.add(synthetic.lessonSessionId);

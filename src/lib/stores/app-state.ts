@@ -2136,51 +2136,55 @@ export function createAppStore(initialState: AppState = readState()) {
       ),
     createRevisionPlan: (input: RevisionPlanInput) =>
       update((state) => {
-        // If the chosen subject isn't yet in the curriculum, add it to selectedSubjectNames
-        // so deriveLearningState (called inside persistAndSync) includes it.
-        const subjectName =
-          input.subjectName ??
-          state.onboarding.options.subjects.find((s) => s.id === input.subjectId)?.name;
-        const alreadyInCurriculum = state.curriculum.subjects.some((s) => s.id === input.subjectId);
+        try {
+          // If the chosen subject isn't yet in the curriculum, add it to selectedSubjectNames
+          // so deriveLearningState (called inside persistAndSync) includes it.
+          const subjectName =
+            input.subjectName ??
+            state.onboarding.options.subjects.find((s) => s.id === input.subjectId)?.name;
+          const alreadyInCurriculum = state.curriculum.subjects.some((s) => s.id === input.subjectId);
 
-        let stateForPlan = state;
-        if (subjectName && !alreadyInCurriculum) {
-          const nextSelectedNames = deduplicateSubjects([...state.onboarding.selectedSubjectNames, subjectName]);
-          const nextSelectedIds = [
-            ...state.onboarding.selectedSubjectIds,
-            ...state.onboarding.options.subjects
-              .filter((s) => s.name === subjectName && !state.onboarding.selectedSubjectIds.includes(s.id))
-              .map((s) => s.id)
-          ];
-          stateForPlan = deriveLearningState({
-            ...state,
-            onboarding: {
-              ...state.onboarding,
-              selectedSubjectNames: nextSelectedNames,
-              selectedSubjectIds: nextSelectedIds
+          let stateForPlan = state;
+          if (subjectName && !alreadyInCurriculum) {
+            const nextSelectedNames = deduplicateSubjects([...state.onboarding.selectedSubjectNames, subjectName]);
+            const nextSelectedIds = [
+              ...state.onboarding.selectedSubjectIds,
+              ...state.onboarding.options.subjects
+                .filter((s) => s.name === subjectName && !state.onboarding.selectedSubjectIds.includes(s.id))
+                .map((s) => s.id)
+            ];
+            stateForPlan = deriveLearningState({
+              ...state,
+              onboarding: {
+                ...state.onboarding,
+                selectedSubjectNames: nextSelectedNames,
+                selectedSubjectIds: nextSelectedIds
+              }
+            });
+          }
+
+          const { plan, exam } = buildRevisionPlanFromInput(stateForPlan, input);
+          const nextUpcomingExams = [exam, ...stateForPlan.upcomingExams]
+            .slice()
+            .sort((left, right) => Date.parse(left.examDate) - Date.parse(right.examDate));
+
+          return persistAndSync({
+            ...stateForPlan,
+            revisionPlan: plan,
+            revisionPlans: [plan, ...stateForPlan.revisionPlans],
+            activeRevisionPlanId: plan.id,
+            upcomingExams: nextUpcomingExams,
+            ui: {
+              ...stateForPlan.ui,
+              currentScreen: 'revision',
+              learningMode: 'revision',
+              selectedSubjectId: plan.subjectId,
+              showRevisionPlanner: false
             }
           });
+        } catch {
+          return state;
         }
-
-        const { plan, exam } = buildRevisionPlanFromInput(stateForPlan, input);
-        const nextUpcomingExams = [exam, ...stateForPlan.upcomingExams]
-          .slice()
-          .sort((left, right) => Date.parse(left.examDate) - Date.parse(right.examDate));
-
-        return persistAndSync({
-          ...stateForPlan,
-          revisionPlan: plan,
-          revisionPlans: [plan, ...stateForPlan.revisionPlans],
-          activeRevisionPlanId: plan.id,
-          upcomingExams: nextUpcomingExams,
-          ui: {
-            ...stateForPlan.ui,
-            currentScreen: 'revision',
-            learningMode: 'revision',
-            selectedSubjectId: plan.subjectId,
-            showRevisionPlanner: false
-          }
-        });
       }),
     setActiveRevisionPlan: (planId: string) =>
       update((state) => {
@@ -2365,7 +2369,6 @@ export function createAppStore(initialState: AppState = readState()) {
           currentInterventionLevel: session.currentInterventionLevel,
           attemptNumber
         });
-        const nextSession = applyRevisionTurn(session, result);
 
         return persistAndSync({
           ...state,
@@ -2397,8 +2400,66 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.revisionAttempts
           ],
           revisionSession: {
-            ...nextSession,
-            selfConfidenceHistory: [...session.selfConfidenceHistory, selfConfidence]
+            ...session,
+            currentInterventionLevel: result.intervention.type,
+            awaitingAdvance: true,
+            selfConfidenceHistory: [...session.selfConfidenceHistory, selfConfidence],
+            lastTurnResult: {
+              ...result,
+              nextQuestion:
+                result.sessionDecision === 'continue' && session.questionIndex < session.questions.length - 1
+                  ? session.questions[session.questionIndex + 1] ?? null
+                  : result.sessionDecision === 'reschedule'
+                    ? session.questions[session.questionIndex] ?? null
+                  : null
+            },
+            lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
+    },
+    advanceRevisionTurn: () => {
+      update((state) => {
+        const session = state.revisionSession;
+
+        if (!session?.lastTurnResult || !session.awaitingAdvance) {
+          return state;
+        }
+
+        return persistAndSync({
+          ...state,
+          revisionSession: applyRevisionTurn(session, session.lastTurnResult)
+        });
+      });
+    },
+    forceAdvanceRevision: () => {
+      update((state) => {
+        const session = state.revisionSession;
+
+        if (!session?.lastTurnResult || !session.awaitingAdvance) {
+          return state;
+        }
+
+        return persistAndSync({
+          ...state,
+          revisionSession: applyRevisionTurn(session, session.lastTurnResult, { forceAdvance: true })
+        });
+      });
+    },
+    retryRevisionQuestion: () => {
+      update((state) => {
+        const session = state.revisionSession;
+
+        if (!session?.awaitingAdvance) {
+          return state;
+        }
+
+        return persistAndSync({
+          ...state,
+          revisionSession: {
+            ...session,
+            awaitingAdvance: false,
+            lastActiveAt: new Date().toISOString()
           }
         });
       });
@@ -2496,19 +2557,67 @@ export function createAppStore(initialState: AppState = readState()) {
         const help = getRequestedIntervention({
           topic,
           question,
-          requestedType: 'hint',
-          currentInterventionLevel: 'mini_reteach'
+          requestedType: 'worked_step',
+          currentInterventionLevel: session.currentInterventionLevel
         });
 
         return persistAndSync({
           ...state,
           revisionSession: {
             ...session,
-            currentInterventionLevel: 'mini_reteach',
-            currentHelp: {
-              type: 'mini_reteach',
-              content: `${help.content} If this still feels muddy, return to lesson mode for a full walkthrough.`
-            },
+            currentInterventionLevel: 'worked_step',
+            currentHelp: help,
+            lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
+    },
+    showRevisionModelAnswer: () => {
+      update((state) => {
+        const session = state.revisionSession;
+        if (!session) {
+          return state;
+        }
+
+        const question = session.questions[session.questionIndex];
+        const topic = question
+          ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+          : null;
+
+        if (!topic || !question) {
+          return state;
+        }
+
+        const help = getRequestedIntervention({
+          topic,
+          question,
+          requestedType: 'worked_step',
+          currentInterventionLevel: session.currentInterventionLevel
+        });
+
+        return persistAndSync({
+          ...state,
+          revisionSession: {
+            ...session,
+            currentInterventionLevel: 'worked_step',
+            currentHelp: help,
+            lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
+    },
+    escalateToLesson: () => {
+      update((state) => {
+        const session = state.revisionSession;
+
+        if (!session) {
+          return state;
+        }
+
+        return persistAndSync({
+          ...state,
+          revisionSession: {
+            ...session,
             status: 'escalated_to_lesson',
             lastActiveAt: new Date().toISOString()
           }

@@ -15,6 +15,8 @@ function createSession(overrides: Partial<ActiveRevisionSession> = {}): ActiveRe
     questionIndex: 0,
     currentInterventionLevel: 'none',
     currentHelp: null,
+    awaitingAdvance: false,
+    skippedQuestionIds: [],
     selfConfidenceHistory: [],
     lastTurnResult: null,
     status: 'active',

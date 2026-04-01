@@ -383,6 +383,8 @@ export interface ActiveRevisionSession {
   questionIndex: number;
   currentInterventionLevel: RevisionInterventionType;
   currentHelp: RevisionIntervention | null;
+  awaitingAdvance: boolean;
+  skippedQuestionIds: string[];
   selfConfidenceHistory: number[];
   lastTurnResult: RevisionTurnResult | null;
   status: 'active' | 'completed' | 'abandoned' | 'escalated_to_lesson';
