@@ -1,4 +1,4 @@
-import { getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade, getRecommendedSubject, getSelectionMode, onboardingCountries, defaultTerm, defaultSchoolYear, onboardingStepOrder } from "./onboarding.js";
+import { getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade, getRecommendedSubject, getSelectionMode, defaultTerm, defaultSchoolYear, onboardingCountries, onboardingStepOrder } from "./onboarding.js";
 import { b as buildLearningProgram } from "./learning-content.js";
 function createDefaultRevisionCalibration$1() {
   return {
@@ -953,8 +953,8 @@ function createInitialState() {
   const availableGrades = getGradesByCurriculum(selectedCurriculumId);
   const selectedGradeId = availableGrades.find((grade) => grade.label === "Grade 6")?.id ?? availableGrades[0]?.id ?? "grade-6";
   const availableSubjects = getSubjectsByCurriculumAndGrade(selectedCurriculumId, selectedGradeId);
-  const selectedStructuredSubjectIds = availableSubjects.filter((subject) => subject.name === "Mathematics").map((subject) => subject.id);
-  const selectedSubjectNames = availableSubjects.filter((subject) => selectedStructuredSubjectIds.includes(subject.id)).map((subject) => subject.name);
+  const selectedStructuredSubjectIds = availableSubjects.map((subject) => subject.id);
+  const selectedSubjectNames = availableSubjects.map((subject) => subject.name);
   const recommendation = getRecommendedSubject(selectedStructuredSubjectIds, [], availableSubjects);
   const program = createDerivedProgram("South Africa", "CAPS", "Grade 6", selectedSubjectNames);
   const selectedLesson = program.lessons[0];
@@ -1193,7 +1193,7 @@ function deriveLearningState(state) {
   const selectedLesson = mergedLessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ?? mergedLessons.find((lesson) => lesson.id === selectedSubtopic?.lessonIds[0]) ?? mergedLessons[0];
   const practiceQuestionId = selectedLesson.practiceQuestionIds.find((questionId) => questionId === state.ui.practiceQuestionId) ?? selectedLesson.practiceQuestionIds[0];
   const revisionPlans = Array.isArray(state.revisionPlans) ? state.revisionPlans.map((plan) => {
-    const revisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === plan.subjectId) ?? selectedSubject;
+    const revisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === plan.subjectId) ?? program.curriculum.subjects.find((subject) => subject.name === plan.subjectName) ?? selectedSubject;
     return buildRevisionPlan(
       revisionPlanSubject.id,
       revisionPlanSubject.name,
@@ -1212,7 +1212,7 @@ function deriveLearningState(state) {
     );
   }) : [];
   const activeRevisionPlanId = state.activeRevisionPlanId && revisionPlans.some((plan) => plan.id === state.activeRevisionPlanId) ? state.activeRevisionPlanId : revisionPlans[0]?.id ?? null;
-  const fallbackRevisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === state.revisionPlan.subjectId) ?? selectedSubject;
+  const fallbackRevisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === state.revisionPlan.subjectId) ?? program.curriculum.subjects.find((subject) => subject.name === state.revisionPlan.subjectName) ?? selectedSubject;
   const legacyRevisionPlan = buildRevisionPlan(
     fallbackRevisionPlanSubject.id,
     fallbackRevisionPlanSubject.name,
@@ -1233,7 +1233,9 @@ function deriveLearningState(state) {
   const lessonSessions = Array.isArray(state.lessonSessions) ? state.lessonSessions.filter(
     (session) => mergedLessons.some((lesson) => lesson.id === session.lessonId) || session.lessonId.startsWith("generated-")
   ) : [];
-  const revisionTopics = Array.isArray(state.revisionTopics) ? state.revisionTopics.filter((topic) => lessonSessions.some((session) => session.id === topic.lessonSessionId)).map(normalizeRevisionTopic) : [];
+  const revisionTopics = Array.isArray(state.revisionTopics) ? state.revisionTopics.filter(
+    (topic) => topic.isSynthetic || lessonSessions.some((session) => session.id === topic.lessonSessionId)
+  ).map(normalizeRevisionTopic) : [];
   return {
     ...state,
     curriculum: program.curriculum,
@@ -1319,9 +1321,6 @@ function getCompletionSummary(state) {
     averageMastery
   };
 }
-function getWeakTopicLabels(state) {
-  return state.lessonSessions.filter((session) => session.confidenceScore < 0.7).map((session) => session.topicTitle).slice(0, 3);
-}
 function upsertRevisionTopicFromSession(revisionTopics, lessonSession) {
   const nextTopic = buildRevisionTopicFromLesson(lessonSession);
   const existing = revisionTopics.find((topic) => topic.lessonSessionId === lessonSession.id);
@@ -1331,7 +1330,6 @@ function upsertRevisionTopicFromSession(revisionTopics, lessonSession) {
   return revisionTopics.map((topic) => topic.lessonSessionId === lessonSession.id ? nextTopic : topic);
 }
 export {
-  deriveLearningState as A,
   LESSON_STAGE_ORDER as L,
   buildDynamicLessonFromTopic as a,
   buildLocalLessonChatResponse as b,
@@ -1342,10 +1340,10 @@ export {
   getStageLabel as g,
   getActiveLessonSession as h,
   getNextStage as i,
-  getWeakTopicLabels as j,
-  getSelectedSubject as k,
-  getSelectedTopic as l,
-  getLessonsForSelectedTopic as m,
+  getSelectedSubject as j,
+  getSelectedTopic as k,
+  getLessonsForSelectedTopic as l,
+  deriveLearningState as m,
   normalizeAppState as n,
   buildRevisionTopics as o,
   buildInitialLessonMessages as p,

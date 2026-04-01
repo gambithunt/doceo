@@ -178,7 +178,7 @@ async function saveAppState(state) {
   } catch {
   }
   await supabase.from("analytics_events").upsert(
-    normalizedState.analytics.slice(0, 10).map((event) => ({
+    normalizedState.analytics.slice(0, 50).map((event) => ({
       id: event.id,
       profile_id: normalizedState.profile.id,
       event_type: event.type,

@@ -38,6 +38,17 @@
       "_app/immutable/assets/AdminPageHeader.CsWYLxGp.css"
     ]
   },
+  "_LoadingDots.Bh817Gg8.css": {
+    "file": "_app/immutable/assets/LoadingDots.Bh817Gg8.css",
+    "src": "_LoadingDots.Bh817Gg8.css"
+  },
+  "_LoadingDots.svelte_svelte_type_style_lang.js": {
+    "file": "chunks/LoadingDots.svelte_svelte_type_style_lang.js",
+    "name": "LoadingDots.svelte_svelte_type_style_lang",
+    "css": [
+      "_app/immutable/assets/LoadingDots.Bh817Gg8.css"
+    ]
+  },
   "_admin-queries.js": {
     "file": "chunks/admin-queries.js",
     "name": "admin-queries",
@@ -106,10 +117,6 @@
     "file": "chunks/learning-content.js",
     "name": "learning-content"
   },
-  "_markdown.js": {
-    "file": "chunks/markdown.js",
-    "name": "markdown"
-  },
   "_onboarding-repository.js": {
     "file": "chunks/onboarding-repository.js",
     "name": "onboarding-repository",
@@ -126,6 +133,10 @@
       "src/lib/data/onboarding.ts",
       "_learning-content.js"
     ]
+  },
+  "_progress.js": {
+    "file": "chunks/progress.js",
+    "name": "progress"
   },
   "_root.js": {
     "file": "chunks/root.js",
@@ -280,11 +291,11 @@
       "_root.js",
       "_state.svelte.js",
       "_platform.js",
-      "_markdown.js",
+      "_LoadingDots.svelte_svelte_type_style_lang.js",
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.BEbGpcrD.css"
+      "_app/immutable/assets/_page.DYfOo8Lw.css"
     ]
   },
   "src/routes/(app)/progress/+page.svelte": {
@@ -295,10 +306,11 @@
     "imports": [
       "_svelte-vendor.js",
       "_platform.js",
+      "_progress.js",
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.58tUEQ9X.css"
+      "_app/immutable/assets/_page.BoUKCUgp.css"
     ]
   },
   "src/routes/(app)/revision/+page.svelte": {
@@ -310,11 +322,12 @@
       "_svelte-vendor.js",
       "_supabase2.js",
       "_dashboard-hints.js",
-      "_markdown.js",
+      "_LoadingDots.svelte_svelte_type_style_lang.js",
+      "_progress.js",
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.W-rTGRuD.css"
+      "_app/immutable/assets/_page.6CVG7U0D.css"
     ]
   },
   "src/routes/(app)/settings/+page.svelte": {
@@ -364,7 +377,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.D_8c3Enm.css"
+      "_app/immutable/assets/_layout.tPwXpEyD.css"
     ]
   },
   "src/routes/+page.svelte": {

@@ -28,6 +28,15 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
+function fallback(value, fallback2, lazy = false) {
+  return value === void 0 ? lazy ? (
+    /** @type {() => V} */
+    fallback2()
+  ) : (
+    /** @type {V} */
+    fallback2
+  ) : value;
+}
 function equals(value) {
   return value === this.v;
 }
@@ -4007,12 +4016,13 @@ export {
   head as h,
   attr_style as i,
   stringify as j,
-  html as k,
-  setContext as l,
-  asClassComponent as m,
-  derived$1 as n,
+  fallback as k,
+  html as l,
+  setContext as m,
+  asClassComponent as n,
   onDestroy as o,
-  noop as p,
+  derived$1 as p,
+  noop as q,
   readable as r,
   store_get as s,
   unsubscribe_stores as u,

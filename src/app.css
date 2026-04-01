@@ -55,6 +55,23 @@
   --color-warning: #d97706;
   --color-error: #dc2626;
 
+  /* Semantic tone surfaces — from design-color-01, light mode uses full pastels */
+  --surface-tone-green:  #CFEED6;
+  --surface-tone-blue:   #D6EEF6;
+  --surface-tone-yellow: #F6E7C9;
+  --surface-tone-purple: #E6D6F6;
+  --surface-tone-pink:   #F6D6E6;
+  --text-tone-green:  #166534;
+  --text-tone-blue:   #1e40af;
+  --text-tone-yellow: #92400e;
+  --text-tone-purple: #5b21b6;
+  --text-tone-pink:   #9f1239;
+  --border-tone-green:  rgba(22, 163, 74, 0.28);
+  --border-tone-blue:   rgba(37, 99, 235, 0.20);
+  --border-tone-yellow: rgba(217, 119, 6, 0.28);
+  --border-tone-purple: rgba(124, 58, 237, 0.20);
+  --border-tone-pink:   rgba(220, 38, 38, 0.20);
+
   /* Shadows — soft, floating */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.07);
@@ -155,6 +172,23 @@
   --color-success: #4ade80;
   --color-warning: #fbbf24;
   --color-error: #f87171;
+
+  /* Semantic tone surfaces — dark mode uses rgba tints (slightly more opaque than dim) */
+  --surface-tone-green:  rgba(20, 184, 166, 0.22);
+  --surface-tone-blue:   rgba(96, 165, 250, 0.20);
+  --surface-tone-yellow: rgba(251, 191, 36, 0.20);
+  --surface-tone-purple: rgba(167, 139, 250, 0.20);
+  --surface-tone-pink:   rgba(251, 113, 133, 0.20);
+  --text-tone-green:  #5eead4;
+  --text-tone-blue:   #93c5fd;
+  --text-tone-yellow: #fde68a;
+  --text-tone-purple: #ddd6fe;
+  --text-tone-pink:   #fecdd3;
+  --border-tone-green:  rgba(20, 184, 166, 0.32);
+  --border-tone-blue:   rgba(96, 165, 250, 0.28);
+  --border-tone-yellow: rgba(251, 191, 36, 0.28);
+  --border-tone-purple: rgba(167, 139, 250, 0.26);
+  --border-tone-pink:   rgba(251, 113, 133, 0.26);
 
   /* Shadows — deeper for dark */
   --shadow-sm: 0 2px 8px rgba(2, 6, 23, 0.30);

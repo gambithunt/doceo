@@ -1613,28 +1613,36 @@
               ></textarea>
             </label>
 
-            <label class="field">
-              <span>How confident do you feel?</span>
-              <select bind:value={selfConfidence}>
-                <option value={1}>1 · Not at all</option>
-                <option value={2}>2 · A bit shaky</option>
-                <option value={3}>3 · Mixed</option>
-                <option value={4}>4 · Mostly sure</option>
-                <option value={5}>5 · Very sure</option>
-              </select>
-            </label>
+            <div class="confidence-field">
+              <span class="confidence-label">How confident do you feel?</span>
+              <div class="confidence-pills">
+                {#each [{v:1,l:'Not at all'},{v:2,l:'Shaky'},{v:3,l:'Mixed'},{v:4,l:'Mostly sure'},{v:5,l:'Very sure'}] as item}
+                  <button
+                    type="button"
+                    class="confidence-pill"
+                    class:active={selfConfidence === item.v}
+                    onclick={() => { selfConfidence = item.v; }}
+                  >
+                    <span class="confidence-num">{item.v}</span>
+                    <span class="confidence-text">{item.l}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
 
-            <div class="actions revision-session-actions">
-              <button type="button" class="action-btn" onclick={submitRecall}>Check answer</button>
-              <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionNudge()}>
-                Nudge
-              </button>
-              <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionHint()}>
-                Hint
-              </button>
-              <button type="button" class="secondary action-btn" onclick={() => appState.markRevisionStuck()}>
-                I'm stuck
-              </button>
+            <div class="revision-session-actions">
+              <button type="button" class="action-btn session-submit-btn" onclick={submitRecall}>Check answer</button>
+              <div class="session-secondary-actions">
+                <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionNudge()}>
+                  Nudge
+                </button>
+                <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionHint()}>
+                  Hint
+                </button>
+                <button type="button" class="secondary action-btn" onclick={() => appState.markRevisionStuck()}>
+                  I'm stuck
+                </button>
+              </div>
             </div>
           {:else}
             <article class="revision-summary-card">
@@ -1763,24 +1771,24 @@
               </div>
               <p>{getCalibrationSummary(displayTopic)}</p>
               <div class="calibration-grid">
-                <article class="mini-stat">
+                <article class="mini-stat tone-teal">
                   <strong>{Math.round(displayTopic.retentionStability * 100)}%</strong>
                   <span>Retention stability</span>
                 </article>
-                <article class="mini-stat">
+                <article class="mini-stat tone-yellow">
                   <strong>{Math.round(displayTopic.forgettingVelocity * 100)}%</strong>
                   <span>Forgetting velocity</span>
                 </article>
-                <article class="mini-stat">
+                <article class="mini-stat tone-purple">
                   <strong>{displayTopic.calibration.averageSelfConfidence.toFixed(1)}</strong>
                   <span>Avg confidence / 5</span>
                 </article>
-                <article class="mini-stat">
+                <article class="mini-stat tone-blue">
                   <strong>{displayTopic.calibration.overconfidenceCount + displayTopic.calibration.underconfidenceCount}</strong>
                   <span>Calibration flags</span>
                 </article>
                 {#if getStrongestMisconceptionLabel(displayTopic)}
-                  <article class="mini-stat wide-stat">
+                  <article class="mini-stat wide-stat tone-surface">
                     <strong>{getStrongestMisconceptionLabel(displayTopic)}</strong>
                     <span>Strongest repeated gap</span>
                   </article>
@@ -2130,56 +2138,56 @@
     margin: 0;
   }
 
-  /* Subject-specific accent colors applied via CSS custom properties on the shell */
+  /* Subject-specific accent colors — use CSS tokens so dark mode resolves correctly */
   .subject-mathematics {
-    --session-subject-color: #3b82f6;
-    --session-hero-a: color-mix(in srgb, #dbeafe 90%, white);
-    --session-hero-b: color-mix(in srgb, #ede9fe 88%, white);
-    --session-hero-c: color-mix(in srgb, #e0f2fe 86%, white);
+    --session-subject-color: var(--color-blue);
+    --session-hero-a: color-mix(in srgb, var(--color-blue-dim) 90%, var(--surface-blend-base));
+    --session-hero-b: color-mix(in srgb, var(--color-purple-dim) 88%, var(--surface-blend-base));
+    --session-hero-c: color-mix(in srgb, var(--color-blue-dim) 85%, var(--surface-blend-base));
   }
 
   .subject-physical-sciences {
-    --session-subject-color: #10b981;
-    --session-hero-a: color-mix(in srgb, #d1fae5 90%, white);
-    --session-hero-b: color-mix(in srgb, #ccfbf1 88%, white);
-    --session-hero-c: color-mix(in srgb, #e0f2fe 86%, white);
+    --session-subject-color: var(--color-green);
+    --session-hero-a: color-mix(in srgb, var(--accent-dim) 90%, var(--surface-blend-base));
+    --session-hero-b: color-mix(in srgb, var(--accent-dim) 88%, var(--surface-blend-base));
+    --session-hero-c: color-mix(in srgb, var(--color-blue-dim) 85%, var(--surface-blend-base));
   }
 
   .subject-life-sciences {
-    --session-subject-color: #22c55e;
-    --session-hero-a: color-mix(in srgb, #dcfce7 90%, white);
-    --session-hero-b: color-mix(in srgb, #d1fae5 88%, white);
-    --session-hero-c: color-mix(in srgb, #fef9c3 86%, white);
+    --session-subject-color: var(--color-green);
+    --session-hero-a: color-mix(in srgb, var(--color-green-dim) 90%, var(--surface-blend-base));
+    --session-hero-b: color-mix(in srgb, var(--accent-dim) 88%, var(--surface-blend-base));
+    --session-hero-c: color-mix(in srgb, var(--color-yellow-dim) 85%, var(--surface-blend-base));
   }
 
   .subject-history {
-    --session-subject-color: #f59e0b;
-    --session-hero-a: color-mix(in srgb, #fef3c7 90%, white);
-    --session-hero-b: color-mix(in srgb, #fde68a 86%, white);
-    --session-hero-c: color-mix(in srgb, #ffe4e6 84%, white);
+    --session-subject-color: var(--color-yellow);
+    --session-hero-a: color-mix(in srgb, var(--color-yellow-dim) 90%, var(--surface-blend-base));
+    --session-hero-b: color-mix(in srgb, var(--color-yellow-dim) 86%, var(--surface-blend-base));
+    --session-hero-c: color-mix(in srgb, var(--color-orange-dim) 84%, var(--surface-blend-base));
   }
 
   .subject-geography {
-    --session-subject-color: #14b8a6;
-    --session-hero-a: color-mix(in srgb, #ccfbf1 90%, white);
-    --session-hero-b: color-mix(in srgb, #d1fae5 88%, white);
-    --session-hero-c: color-mix(in srgb, #e0f7fa 86%, white);
+    --session-subject-color: var(--accent);
+    --session-hero-a: color-mix(in srgb, var(--accent-dim) 90%, var(--surface-blend-base));
+    --session-hero-b: color-mix(in srgb, var(--color-green-dim) 88%, var(--surface-blend-base));
+    --session-hero-c: color-mix(in srgb, var(--color-blue-dim) 85%, var(--surface-blend-base));
   }
 
   .subject-english,
   .subject-english-home-language,
   .subject-english-first-additional-language {
-    --session-subject-color: #8b5cf6;
-    --session-hero-a: color-mix(in srgb, #ede9fe 90%, white);
-    --session-hero-b: color-mix(in srgb, #fce7f3 88%, white);
-    --session-hero-c: color-mix(in srgb, #e0e7ff 86%, white);
+    --session-subject-color: var(--color-purple);
+    --session-hero-a: color-mix(in srgb, var(--color-purple-dim) 90%, var(--surface-blend-base));
+    --session-hero-b: color-mix(in srgb, var(--color-purple-dim) 88%, var(--surface-blend-base));
+    --session-hero-c: color-mix(in srgb, var(--color-blue-dim) 85%, var(--surface-blend-base));
   }
 
   .subject-afrikaans {
-    --session-subject-color: #f97316;
-    --session-hero-a: color-mix(in srgb, #ffedd5 90%, white);
-    --session-hero-b: color-mix(in srgb, #fef3c7 88%, white);
-    --session-hero-c: color-mix(in srgb, #ffe4e6 86%, white);
+    --session-subject-color: var(--color-orange);
+    --session-hero-a: color-mix(in srgb, var(--color-orange-dim) 90%, var(--surface-blend-base));
+    --session-hero-b: color-mix(in srgb, var(--color-yellow-dim) 88%, var(--surface-blend-base));
+    --session-hero-c: color-mix(in srgb, var(--color-orange-dim) 85%, var(--surface-blend-base));
   }
 
   /* Apply the subject colors to the hero banner when they are set */
@@ -2193,10 +2201,10 @@
   .subject-english-first-additional-language .revision-session-hero,
   .subject-afrikaans .revision-session-hero {
     background:
-      radial-gradient(circle at top left, var(--session-hero-a, color-mix(in srgb, var(--color-blue-dim) 92%, white)), transparent 38%),
-      radial-gradient(circle at 82% 18%, var(--session-hero-b, color-mix(in srgb, var(--color-purple-dim) 90%, white)), transparent 34%),
-      radial-gradient(circle at 72% 80%, var(--session-hero-c, color-mix(in srgb, var(--color-yellow-dim) 88%, white)), transparent 40%),
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 38%, white), var(--surface));
+      radial-gradient(circle at top left, var(--session-hero-a, color-mix(in srgb, var(--color-blue-dim) 92%, var(--surface-blend-base))), transparent 38%),
+      radial-gradient(circle at 82% 18%, var(--session-hero-b, color-mix(in srgb, var(--color-purple-dim) 90%, var(--surface-blend-base))), transparent 34%),
+      radial-gradient(circle at 72% 80%, var(--session-hero-c, color-mix(in srgb, var(--color-yellow-dim) 88%, var(--surface-blend-base))), transparent 40%),
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 38%, var(--surface-blend-base)), var(--surface));
     border-color: color-mix(in srgb, var(--session-subject-color) 22%, var(--border));
   }
 
@@ -2220,13 +2228,11 @@
     border-radius: 1.8rem;
     border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
     background:
-      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 92%, white), transparent 38%),
-      radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--color-purple-dim) 90%, white), transparent 34%),
-      radial-gradient(circle at 72% 80%, color-mix(in srgb, var(--color-yellow-dim) 88%, white), transparent 40%),
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 38%, white), var(--surface));
-    box-shadow:
-      0 18px 40px rgba(15, 23, 42, 0.10),
-      0 32px 72px rgba(15, 23, 42, 0.06);
+      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 92%, var(--surface-blend-base)), transparent 38%),
+      radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--color-purple-dim) 90%, var(--surface-blend-base)), transparent 34%),
+      radial-gradient(circle at 72% 80%, color-mix(in srgb, var(--color-yellow-dim) 88%, var(--surface-blend-base)), transparent 40%),
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 38%, var(--surface-blend-base)), var(--surface));
+    box-shadow: var(--shadow-lg);
   }
 
   .revision-session-hero::after {
@@ -2234,7 +2240,7 @@
     position: absolute;
     inset: auto -12% -42% 42%;
     height: 18rem;
-    background: radial-gradient(circle, color-mix(in srgb, var(--accent-dim) 80%, white), transparent 62%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent-dim) 80%, var(--surface-blend-base)), transparent 62%);
     pointer-events: none;
     opacity: 0.8;
   }
@@ -2270,12 +2276,11 @@
     gap: 0.45rem;
     padding: 1rem 1.05rem;
     border-radius: 1.35rem;
-    border: 1px solid color-mix(in srgb, var(--color-blue) 14%, var(--border));
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,255,255,0.58));
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-strong));
+    background: var(--surface-strong);
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.6),
-      0 10px 24px rgba(15, 23, 42, 0.08);
+      var(--glass-inset),
+      var(--shadow-md);
   }
 
   .session-progress-card span {
@@ -2317,19 +2322,19 @@
 
   .session-question-card {
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 34%, white), var(--surface));
+      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 50%, var(--surface-blend-base)), var(--surface));
     box-shadow:
-      0 12px 28px rgba(15, 23, 42, 0.06),
-      inset 0 1px 0 rgba(255,255,255,0.72);
+      var(--shadow-md),
+      var(--glass-inset);
   }
 
   .revision-summary-card {
     background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--color-yellow-dim) 90%, white), transparent 34%),
-      linear-gradient(180deg, color-mix(in srgb, var(--green-soft, var(--accent-dim)) 38%, white), var(--surface));
+      radial-gradient(circle at top right, color-mix(in srgb, var(--color-yellow-dim) 90%, var(--surface-blend-base)), transparent 34%),
+      linear-gradient(180deg, color-mix(in srgb, var(--accent-dim) 60%, var(--surface-blend-base)), var(--surface));
     box-shadow:
-      0 14px 30px rgba(15, 23, 42, 0.08),
-      inset 0 1px 0 rgba(255,255,255,0.7);
+      var(--shadow-md),
+      var(--glass-inset);
   }
 
   .revision-summary-metrics {
@@ -2358,27 +2363,26 @@
   }
 
   .revision-summary-stat.tone-green {
-    background: color-mix(in srgb, var(--green-soft, var(--accent-dim)) 92%, white);
+    background: color-mix(in srgb, var(--accent-dim) 92%, var(--surface-blend-base));
     border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
   }
 
   .revision-summary-stat.tone-blue {
-    background: color-mix(in srgb, var(--color-blue-dim) 92%, white);
+    background: color-mix(in srgb, var(--color-blue-dim) 92%, var(--surface-blend-base));
     border-color: color-mix(in srgb, var(--color-blue) 18%, var(--border));
   }
 
   .revision-summary-stat.tone-yellow {
-    background: color-mix(in srgb, var(--color-yellow-dim) 92%, white);
+    background: color-mix(in srgb, var(--color-yellow-dim) 92%, var(--surface-blend-base));
     border-color: color-mix(in srgb, var(--color-yellow) 20%, var(--border));
   }
 
   .revision-summary-stat.tone-pink {
-    background: color-mix(in srgb, var(--color-purple-dim) 88%, white);
+    background: color-mix(in srgb, var(--color-purple-dim) 88%, var(--surface-blend-base));
     border-color: color-mix(in srgb, var(--color-purple) 20%, var(--border));
   }
 
-  .revision-summary-actions,
-  .revision-session-actions {
+  .revision-summary-actions {
     align-items: center;
   }
 
@@ -2387,8 +2391,95 @@
     resize: vertical;
   }
 
+  /* Confidence pill selector */
+  .confidence-field {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .confidence-label {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--text-soft);
+  }
+
+  .confidence-pills {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .confidence-pill {
+    display: grid;
+    gap: 0.15rem;
+    justify-items: center;
+    flex: 1;
+    min-width: 4.5rem;
+    padding: 0.55rem 0.5rem;
+    border-radius: 0.9rem;
+    border: 1px solid var(--border-strong);
+    background: var(--surface-soft);
+    cursor: pointer;
+    transition: background 140ms var(--ease-soft), border-color 140ms var(--ease-soft), transform 80ms var(--ease-soft);
+    color: var(--text-soft);
+  }
+
+  .confidence-pill:hover {
+    background: var(--surface-strong);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+    color: var(--text);
+  }
+
+  .confidence-pill:active {
+    transform: scale(0.97);
+  }
+
+  .confidence-pill.active {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    color: var(--accent);
+  }
+
+  .confidence-num {
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .confidence-text {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  /* Session action layout */
+  .revision-session-actions {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .session-submit-btn {
+    width: 100%;
+    justify-content: center;
+    font-size: 1rem;
+    padding: 0.85rem 1.5rem;
+  }
+
+  .session-secondary-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .session-secondary-actions .action-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
   .revision-session-feedback {
-    background: color-mix(in srgb, var(--surface-callout) 64%, white);
+    background: color-mix(in srgb, var(--surface-callout) 64%, var(--surface-blend-base));
   }
 
   .student-question-feedback {
@@ -2397,7 +2488,7 @@
     padding: 1rem 1.05rem;
     border-radius: 1.2rem;
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface-soft) 80%, white);
+    background: var(--surface-soft);
   }
 
   .feedback-invite {
@@ -2472,24 +2563,24 @@
 
   .synthetic-topic-note {
     font-size: 0.83rem;
-    color: var(--color-yellow, #d97706);
-    background: color-mix(in srgb, #fef3c7 80%, transparent);
-    border: 1px solid color-mix(in srgb, #fde68a 60%, transparent);
+    color: var(--color-yellow);
+    background: color-mix(in srgb, var(--color-yellow-dim) 80%, var(--surface-blend-base));
+    border: 1px solid color-mix(in srgb, var(--color-yellow) 24%, var(--border));
     border-radius: 0.65rem;
     padding: 0.5rem 0.75rem;
     margin-bottom: 0.25rem;
   }
 
   .revision-session-context-card {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 84%, white), var(--surface));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 84%, var(--surface-blend-base)), var(--surface));
   }
 
   .revision-next-card {
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 44%, white), color-mix(in srgb, var(--accent-dim) 38%, white));
+      linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 60%, var(--surface-blend-base)), color-mix(in srgb, var(--accent-dim) 50%, var(--surface-blend-base)));
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.72),
-      0 10px 24px rgba(15, 23, 42, 0.06);
+      var(--glass-inset),
+      var(--shadow-md);
   }
 
   .revision-next-note {
@@ -2982,8 +3073,8 @@
   .revise-now-card {
     grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 0.9fr);
     background:
-      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 78%, white), transparent 42%),
-      radial-gradient(circle at 70% 25%, color-mix(in srgb, var(--accent-dim) 62%, white), transparent 36%),
+      radial-gradient(circle at top left, color-mix(in srgb, var(--color-blue-dim) 78%, var(--surface-blend-base)), transparent 42%),
+      radial-gradient(circle at 70% 25%, color-mix(in srgb, var(--accent-dim) 62%, var(--surface-blend-base)), transparent 36%),
       linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 18%, var(--surface-strong)), var(--surface));
   }
 
@@ -3274,7 +3365,7 @@
     align-items: center;
     border-radius: 999px;
     padding: 0.35rem 0.7rem;
-    background: color-mix(in srgb, var(--surface-soft) 82%, white);
+    background: var(--surface-soft);
     border: 1px solid var(--border);
     color: var(--text-soft);
     font-size: 0.78rem;
@@ -3298,9 +3389,17 @@
   }
 
   .question-type {
-    font-size: 0.76rem;
-    letter-spacing: 0.04em;
-    color: var(--muted);
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    border-radius: var(--radius-pill);
+    padding: 0.2rem 0.65rem;
+    line-height: 1.6;
   }
 
   .planner-grid {
@@ -3361,6 +3460,39 @@
   .mini-stat span {
     color: var(--text-soft);
     font-size: 0.8rem;
+  }
+
+  .mini-stat strong {
+    font-size: 1.15rem;
+    line-height: 1.1;
+  }
+
+  .mini-stat.tone-teal {
+    background: color-mix(in srgb, var(--accent-dim) 80%, var(--surface-blend-base));
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  }
+  .mini-stat.tone-teal strong { color: var(--accent); }
+
+  .mini-stat.tone-yellow {
+    background: color-mix(in srgb, var(--color-yellow-dim) 80%, var(--surface-blend-base));
+    border-color: color-mix(in srgb, var(--color-yellow) 20%, var(--border));
+  }
+  .mini-stat.tone-yellow strong { color: var(--color-yellow); }
+
+  .mini-stat.tone-purple {
+    background: color-mix(in srgb, var(--color-purple-dim) 80%, var(--surface-blend-base));
+    border-color: color-mix(in srgb, var(--color-purple) 18%, var(--border));
+  }
+  .mini-stat.tone-purple strong { color: var(--color-purple); }
+
+  .mini-stat.tone-blue {
+    background: color-mix(in srgb, var(--color-blue-dim) 80%, var(--surface-blend-base));
+    border-color: color-mix(in srgb, var(--color-blue) 18%, var(--border));
+  }
+  .mini-stat.tone-blue strong { color: var(--color-blue); }
+
+  .mini-stat.tone-surface {
+    background: var(--surface-soft);
   }
 
   .wide-stat {
@@ -3852,8 +3984,8 @@
     max-width: 31rem;
     gap: 1rem;
     background:
-      radial-gradient(circle at top right, color-mix(in srgb, var(--color-error) 12%, white), transparent 34%),
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 32%, white), var(--surface));
+      radial-gradient(circle at top right, color-mix(in srgb, var(--color-error) 12%, var(--surface-blend-base)), transparent 34%),
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-callout) 32%, var(--surface-blend-base)), var(--surface));
     border-color: color-mix(in srgb, var(--color-error) 22%, var(--border-strong));
   }
 
@@ -3894,19 +4026,19 @@
 
   .plan-remove-confirm-btn {
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--color-error) 42%, white), color-mix(in srgb, var(--color-error) 22%, var(--surface)));
+      linear-gradient(180deg, color-mix(in srgb, var(--color-error) 42%, var(--surface-blend-base)), color-mix(in srgb, var(--color-error) 22%, var(--surface)));
     border: 1px solid color-mix(in srgb, var(--color-error) 28%, var(--border));
     color: color-mix(in srgb, var(--color-error) 78%, var(--text));
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.4),
+      var(--glass-inset),
       0 12px 24px color-mix(in srgb, var(--color-error) 14%, transparent);
   }
 
   .plan-remove-confirm-btn:hover {
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--color-error) 50%, white), color-mix(in srgb, var(--color-error) 28%, var(--surface)));
+      linear-gradient(180deg, color-mix(in srgb, var(--color-error) 50%, var(--surface-blend-base)), color-mix(in srgb, var(--color-error) 28%, var(--surface)));
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.44),
+      var(--glass-inset),
       0 16px 28px color-mix(in srgb, var(--color-error) 18%, transparent);
   }
 
@@ -4012,7 +4144,6 @@
     .actions,
     .hero-actions,
     .build-plan-actions,
-    .revision-session-actions,
     .revision-summary-actions {
       flex-direction: column;
       align-items: flex-start;
