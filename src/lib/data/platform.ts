@@ -9,7 +9,6 @@ import {
   onboardingCountries,
   onboardingStepOrder
 } from '$lib/data/onboarding';
-import { buildLearningProgram } from '$lib/data/learning-content';
 import {
   buildRevisionTopicFromLesson,
   createDefaultLearnerProfile
@@ -27,7 +26,6 @@ import type {
   RevisionPlan,
   RevisionPlanStyle,
   RevisionTopic,
-  ShortlistedTopic,
   StudentAnswer,
   Topic
 } from '$lib/types';
@@ -49,6 +47,16 @@ function normalizeTopicTitle(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function slugify(value: string): string {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'lesson'
+  );
+}
+
 function createEvent(type: AnalyticsEvent['type'], detail: string): AnalyticsEvent {
   return {
     id: `${type}-${crypto.randomUUID()}`,
@@ -66,6 +74,94 @@ function createDefaultRevisionCalibration(): RevisionTopic['calibration'] {
     confidenceGap: 0.1,
     overconfidenceCount: 0,
     underconfidenceCount: 0
+  };
+}
+
+function dedupeSubjectNames(values: string[]): string[] {
+  return values.filter((value, index) => value.length > 0 && values.indexOf(value) === index);
+}
+
+function createLocalProgramStub(
+  country: string,
+  curriculumName: string,
+  grade: string,
+  subjectNames: string[]
+): { curriculum: AppState['curriculum']; lessons: Lesson[]; questions: Question[] } {
+  const lessons: Lesson[] = [];
+  const questions: Question[] = [];
+
+  const curriculum = {
+    country,
+    name: curriculumName,
+    grade,
+    subjects: subjectNames.map((subjectName) => {
+      const baseId = slugify(subjectName);
+      const subjectId = `subject-stub-${baseId}`;
+      const topicId = `topic-stub-${baseId}`;
+      const subtopicId = `subtopic-stub-${baseId}`;
+      const lessonId = `lesson-stub-${subtopicId}`;
+      const questionId = `${lessonId}-question`;
+      const placeholderBody =
+        `This lesson is generated when you open **Core ideas in ${subjectName}**. Use the lesson launch flow to load the current artifact-backed lesson.`;
+
+      lessons.push({
+        id: lessonId,
+        topicId,
+        subtopicId,
+        title: `${subjectName}: Core ideas in ${subjectName}`,
+        subjectId,
+        grade,
+        orientation: { title: 'Launch Lesson', body: placeholderBody },
+        mentalModel: { title: 'Launch Lesson', body: placeholderBody },
+        concepts: { title: 'Launch Lesson', body: placeholderBody },
+        guidedConstruction: { title: 'Launch Lesson', body: placeholderBody },
+        workedExample: { title: 'Launch Lesson', body: placeholderBody },
+        practicePrompt: { title: 'Launch Lesson', body: placeholderBody },
+        commonMistakes: { title: 'Launch Lesson', body: placeholderBody },
+        transferChallenge: { title: 'Launch Lesson', body: placeholderBody },
+        summary: { title: 'Launch Lesson', body: placeholderBody },
+        practiceQuestionIds: [questionId],
+        masteryQuestionIds: [questionId]
+      });
+      questions.push({
+        id: questionId,
+        lessonId,
+        type: 'short-answer',
+        prompt: `Open the generated lesson for Core ideas in ${subjectName} to start working through ${subjectName}.`,
+        expectedAnswer: 'Launch lesson first',
+        rubric: 'The learner should launch the lesson to receive a generated question set.',
+        explanation: 'Questions are generated at launch time for this node.',
+        hintLevels: ['Open the lesson from the curriculum tree or dashboard.'],
+        misconceptionTags: [baseId],
+        difficulty: 'foundation',
+        topicId,
+        subtopicId
+      });
+
+      return {
+        id: subjectId,
+        name: subjectName,
+        topics: [
+          {
+            id: topicId,
+            name: `${subjectName} Foundations`,
+            subtopics: [
+              {
+                id: subtopicId,
+                name: `Core ideas in ${subjectName}`,
+                lessonIds: [lessonId]
+              }
+            ]
+          }
+        ]
+      };
+    })
+  };
+
+  return {
+    curriculum,
+    lessons,
+    questions
   };
 }
 
@@ -217,11 +313,9 @@ function createDerivedProgram(
   selectedSubjectNames: string[],
   customSubjects: string[] = []
 ) {
-  const subjectNames = [...selectedSubjectNames, ...customSubjects].filter(
-    (subject, index, allSubjects) => subject.length > 0 && allSubjects.indexOf(subject) === index
-  );
+  const subjectNames = dedupeSubjectNames([...selectedSubjectNames, ...customSubjects]);
 
-  return buildLearningProgram(country, curriculumName, grade, subjectNames);
+  return createLocalProgramStub(country, curriculumName, grade, subjectNames);
 }
 
 function createAskQuestionState(state: Pick<AppState, 'curriculum' | 'profile'>) {
@@ -238,7 +332,7 @@ function createAskQuestionState(state: Pick<AppState, 'curriculum' | 'profile'>)
   return {
     request,
     response: buildAskQuestionResponse(request),
-    provider: 'local-seed',
+    provider: 'local-bootstrap',
     isLoading: false,
     error: null
   };
@@ -300,19 +394,6 @@ function inferResponseStage(request: AskQuestionRequest): ResponseStage {
   }
 
   return 'guided_step';
-}
-
-function buildSeedShortlistedTopic(lesson: Lesson): ShortlistedTopic {
-  return {
-    id: `short-${lesson.id}`,
-    title: lesson.title.replace(/^.*?:\s*/, ''),
-    description: lesson.orientation.body,
-    curriculumReference: `${lesson.grade} · ${lesson.title}`,
-    relevance: 'Recommended starting point from your current curriculum.',
-    topicId: lesson.topicId,
-    subtopicId: lesson.subtopicId,
-    lessonId: lesson.id
-  };
 }
 
 export function buildAskQuestionResponse(request: AskQuestionRequest): AskQuestionResponse {

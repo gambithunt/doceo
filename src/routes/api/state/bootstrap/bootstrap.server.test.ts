@@ -9,6 +9,7 @@ const {
   fetchCurriculums,
   fetchGrades,
   fetchSubjects,
+  loadLearningProgram,
   createServerSupabaseFromRequest,
   isSupabaseConfigured
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   fetchCurriculums: vi.fn(),
   fetchGrades: vi.fn(),
   fetchSubjects: vi.fn(),
+  loadLearningProgram: vi.fn(),
   createServerSupabaseFromRequest: vi.fn(),
   isSupabaseConfigured: vi.fn()
 }));
@@ -36,6 +38,10 @@ vi.mock('$lib/server/onboarding-repository', () => ({
   fetchSubjects
 }));
 
+vi.mock('$lib/server/learning-program-repository', () => ({
+  loadLearningProgram
+}));
+
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseFromRequest,
   isSupabaseConfigured
@@ -48,6 +54,12 @@ describe('state bootstrap route', () => {
     isSupabaseConfigured.mockReturnValue(true);
     loadSignalsForProfile.mockResolvedValue([]);
     loadAppState.mockResolvedValue(createInitialState());
+    loadLearningProgram.mockResolvedValue({
+      curriculum: createInitialState().curriculum,
+      lessons: createInitialState().lessons,
+      questions: createInitialState().questions,
+      source: 'local'
+    });
   });
 
   it('hydrates onboarding options for the saved curriculum and grade', async () => {
@@ -162,5 +174,99 @@ describe('state bootstrap route', () => {
 
     expect(payload.state.auth.status).toBe('signed_in');
     expect(payload.state.ui.currentScreen).toBe('dashboard');
+  });
+
+  it('hydrates the saved curriculum tree from the backend graph-backed program during bootstrap', async () => {
+    const base = createInitialState();
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123'
+            }
+          }
+        })
+      }
+    });
+    loadOnboardingProgress.mockResolvedValue({
+      completed: true,
+      completedAt: null,
+      selectedCountryId: 'za',
+      selectedCurriculumId: 'caps',
+      selectedGradeId: 'grade-6',
+      schoolYear: '2026',
+      term: 'Term 1',
+      selectedSubjectIds: ['graph-subject-mathematics'],
+      selectedSubjectNames: ['Mathematics'],
+      customSubjects: [],
+      selectionMode: 'structured',
+      recommendation: {
+        subjectId: 'graph-subject-mathematics',
+        subjectName: 'Mathematics',
+        reason: 'Recommended by graph-backed onboarding.'
+      }
+    });
+    fetchCountries.mockResolvedValue([{ id: 'za', name: 'South Africa' }]);
+    fetchCurriculums.mockResolvedValue([
+      { id: 'caps', countryId: 'za', name: 'CAPS', description: 'Curriculum and Assessment Policy Statement' }
+    ]);
+    fetchGrades.mockResolvedValue([{ id: 'grade-6', curriculumId: 'caps', label: 'Grade 6', order: 6 }]);
+    fetchSubjects.mockResolvedValue([
+      {
+        id: 'graph-subject-mathematics',
+        curriculumId: 'caps',
+        gradeId: 'grade-6',
+        name: 'Mathematics',
+        category: 'core'
+      }
+    ]);
+    loadLearningProgram.mockResolvedValue({
+      curriculum: {
+        ...base.curriculum,
+        subjects: [
+          {
+            ...base.curriculum.subjects[0]!,
+            id: 'graph-subject-mathematics',
+            topics: [
+              {
+                ...base.curriculum.subjects[0]!.topics[0]!,
+                id: 'graph-topic-patterns',
+                subtopics: [
+                  {
+                    ...base.curriculum.subjects[0]!.topics[0]!.subtopics[0]!,
+                    id: 'graph-subtopic-number-sequences'
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      lessons: base.lessons,
+      questions: base.questions,
+      source: 'supabase'
+    });
+
+    const { GET } = await import('./+server');
+    const response = await GET({
+      request: new Request('http://localhost/api/state/bootstrap', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+    const payload = await response.json();
+
+    expect(loadLearningProgram).toHaveBeenCalledWith(
+      expect.objectContaining({
+        curriculumId: 'caps',
+        gradeId: 'grade-6',
+        selectedSubjectIds: ['graph-subject-mathematics']
+      })
+    );
+    expect(payload.state.curriculum.subjects[0]?.id).toBe('graph-subject-mathematics');
+    expect(payload.state.curriculum.subjects[0]?.topics[0]?.id).toBe('graph-topic-patterns');
+    expect(payload.state.onboarding.selectedSubjectIds).toEqual(['graph-subject-mathematics']);
   });
 });

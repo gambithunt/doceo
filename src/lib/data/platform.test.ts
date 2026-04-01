@@ -96,4 +96,60 @@ describe('normalizeAppState', () => {
     expect(normalized.revisionTopics[0]?.subject).toBe(alternateSubject.name);
     expect(normalized.revisionTopics[0]?.curriculumReference).toBe(`${alternateSubject.name} · ${topicTitle}`);
   });
+
+  it('builds local launch stubs instead of authored seeded lessons for bootstrap state', () => {
+    const base = createInitialState();
+    const lesson = base.lessons[0]!;
+    const question = base.questions[0]!;
+
+    expect(lesson.id).toMatch(/^lesson-stub-/);
+    expect(lesson.orientation.title).toBe('Launch Lesson');
+    expect(lesson.orientation.body).toContain('artifact-backed lesson');
+    expect(question.lessonId).toBe(lesson.id);
+    expect(question.prompt).toContain('Open the generated lesson');
+  });
+
+  it('rebuilds local launch stubs when persisted curriculum data is missing or mismatched', () => {
+    const normalized = normalizeAppState({
+      onboarding: {
+        selectedSubjectNames: ['Mathematics'],
+        customSubjects: [],
+        selectedSubjectIds: [],
+        recommendation: {
+          subjectId: null,
+          subjectName: null,
+          reason: ''
+        }
+      },
+      profile: {
+        country: 'South Africa',
+        curriculum: 'CAPS',
+        grade: 'Grade 6'
+      },
+      curriculum: {
+        country: 'South Africa',
+        name: 'CAPS',
+        grade: 'Grade 6',
+        subjects: []
+      },
+      lessons: [],
+      questions: []
+    });
+
+    expect(normalized.curriculum.subjects).toEqual([
+      expect.objectContaining({
+        name: 'Mathematics',
+        topics: [
+          expect.objectContaining({
+            subtopics: [
+              expect.objectContaining({
+                lessonIds: [expect.stringMatching(/^lesson-stub-/)]
+              })
+            ]
+          })
+        ]
+      })
+    ]);
+    expect(normalized.lessons[0]?.id).toMatch(/^lesson-stub-/);
+  });
 });

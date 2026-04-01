@@ -5,6 +5,9 @@ import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
 import { buildFallbackLessonChatResponse } from '$lib/ai/lesson-chat';
 import { logAiInteraction, logLessonSignal } from '$lib/server/state-repository';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
+import { createServerGraphRepository } from '$lib/server/graph-repository';
+import { createServerLessonArtifactRepository } from '$lib/server/lesson-artifact-repository';
+import { bridgeLegacySessionArtifacts } from '$lib/server/lesson-launch-service';
 import type { LessonChatRequest, LessonChatResponse } from '$lib/types';
 
 const LessonChatBodySchema = z.object({
@@ -38,7 +41,25 @@ export async function POST({ request, fetch }) {
   }
 
   const payload = parsed.data as unknown as LessonChatRequest;
+  const graphRepository = createServerGraphRepository();
+  const artifactRepository = createServerLessonArtifactRepository();
+  const bridgedLesson =
+    graphRepository && artifactRepository
+      ? await bridgeLegacySessionArtifacts(
+          {
+            graphRepository,
+            artifactRepository,
+            pedagogyVersion: 'phase3-v1',
+            promptVersion: 'lesson-plan-v1'
+          },
+          {
+            student: payload.student,
+            lessonSession: payload.lessonSession
+          }
+        ).catch(() => null)
+      : null;
   const lesson =
+    bridgedLesson?.lesson ??
     payload.lesson ??
     buildDynamicLessonFromTopic({
       subjectId: payload.lessonSession.subjectId,

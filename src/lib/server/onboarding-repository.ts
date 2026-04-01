@@ -6,6 +6,7 @@ import {
   getSubjectsByCurriculumAndGrade,
   onboardingCountries
 } from '$lib/data/onboarding';
+import { createServerGraphCatalogRepository } from '$lib/server/graph-catalog-repository';
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
 import { deduplicateSubjects } from '$lib/utils/strings';
 import type {
@@ -16,33 +17,6 @@ import type {
   SubjectSelectionMode,
   SubjectOption
 } from '$lib/types';
-
-interface CountryRow {
-  id: string;
-  name: string;
-}
-
-interface CurriculumRow {
-  id: string;
-  country_id: string;
-  name: string;
-  description: string;
-}
-
-interface GradeRow {
-  id: string;
-  curriculum_id: string;
-  label: string;
-  grade_order: number;
-}
-
-interface SubjectRow {
-  id: string;
-  curriculum_id: string;
-  grade_id: string;
-  name: string;
-  category: 'core' | 'elective' | 'language';
-}
 
 interface StudentOnboardingRow {
   profile_id: string;
@@ -100,99 +74,47 @@ export interface StoredOnboardingProgress {
   };
 }
 
-
-function mapCurriculum(row: CurriculumRow): CurriculumOption {
-  return {
-    id: row.id,
-    countryId: row.country_id,
-    name: row.name,
-    description: row.description
-  };
-}
-
-function mapGrade(row: GradeRow): GradeOption {
-  return {
-    id: row.id,
-    curriculumId: row.curriculum_id,
-    label: row.label,
-    order: row.grade_order
-  };
-}
-
-function mapSubject(row: SubjectRow): SubjectOption {
-  return {
-    id: row.id,
-    curriculumId: row.curriculum_id,
-    gradeId: row.grade_id,
-    name: row.name,
-    category: row.category
-  };
-}
-
 export async function fetchCountries(): Promise<CountryOption[]> {
-  const supabase = createServerSupabaseAdmin();
+  const graphCatalog = createServerGraphCatalogRepository();
 
-  if (!supabase || !isSupabaseConfigured()) {
+  if (!graphCatalog) {
     return onboardingCountries;
   }
 
-  const { data } = await supabase.from('countries').select('id, name').returns<CountryRow[]>();
-
-  return data ?? onboardingCountries;
+  return graphCatalog.fetchCountries();
 }
 
 export async function fetchCurriculums(countryId: string): Promise<CurriculumOption[]> {
-  const supabase = createServerSupabaseAdmin();
+  const graphCatalog = createServerGraphCatalogRepository();
 
-  if (!supabase || !isSupabaseConfigured()) {
+  if (!graphCatalog) {
     return getCurriculumsByCountry(countryId);
   }
 
-  const { data } = await supabase
-    .from('curriculums')
-    .select('id, country_id, name, description')
-    .eq('country_id', countryId)
-    .returns<CurriculumRow[]>();
-
-  return data?.map(mapCurriculum) ?? getCurriculumsByCountry(countryId);
+  return graphCatalog.fetchCurriculums(countryId);
 }
 
 export async function fetchGrades(curriculumId: string): Promise<GradeOption[]> {
-  const supabase = createServerSupabaseAdmin();
+  const graphCatalog = createServerGraphCatalogRepository();
 
-  if (!supabase || !isSupabaseConfigured()) {
+  if (!graphCatalog) {
     return getGradesByCurriculum(curriculumId);
   }
 
-  const { data } = await supabase
-    .from('curriculum_grades')
-    .select('id, curriculum_id, label, grade_order')
-    .eq('curriculum_id', curriculumId)
-    .order('grade_order')
-    .returns<GradeRow[]>();
-
-  return data?.map(mapGrade) ?? getGradesByCurriculum(curriculumId);
+  return graphCatalog.fetchGrades(curriculumId);
 }
 
 export async function fetchSubjects(
   curriculumId: string,
   gradeId: string
 ): Promise<SubjectOption[]> {
-  const supabase = createServerSupabaseAdmin();
+  const graphCatalog = createServerGraphCatalogRepository();
 
-  if (!supabase || !isSupabaseConfigured()) {
+  if (!graphCatalog) {
     return getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
   }
 
-  const { data } = await supabase
-    .from('curriculum_subjects')
-    .select('id, curriculum_id, grade_id, name, category')
-    .eq('curriculum_id', curriculumId)
-    .eq('grade_id', gradeId)
-    .order('name')
-    .returns<SubjectRow[]>();
-
-  return data?.map(mapSubject) ?? getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
+  return graphCatalog.fetchSubjects(curriculumId, gradeId);
 }
 
 async function writeOnboardingProgress(

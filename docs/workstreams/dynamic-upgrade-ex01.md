@@ -72,13 +72,13 @@ Freeze the implementation shape, identify every legacy dependency, and define th
 
 ### 0.1 Inventory legacy lesson and catalog paths
 
-- [ ] List every runtime import/use of:
+- [x] List every runtime import/use of:
   - `src/lib/data/learning-content.ts`
   - `src/lib/data/onboarding.ts`
   - `src/lib/server/learning-program-repository.ts`
   - `buildDynamicLessonFromTopic`
   - `buildLearningProgram`
-- [ ] Classify each usage:
+- [x] Classify each usage:
   - source of truth
   - fallback
   - dev convenience
@@ -86,31 +86,38 @@ Freeze the implementation shape, identify every legacy dependency, and define th
 
 ### 0.2 Inventory string identity paths
 
-- [ ] Audit all places where subject/topic/subtopic identity is held as labels instead of ids
-- [ ] Tag which are:
+- [x] Audit all places where subject/topic/subtopic identity is held as labels instead of ids
+- [x] Tag which are:
   - lesson-launch critical
   - planner critical
   - migration-only
 
 ### 0.3 Define schemas before implementation
 
-- [ ] Draft graph node schema
-- [ ] Draft graph alias schema
-- [ ] Draft graph event schema
-- [ ] Draft lesson artifact schema
-- [ ] Draft lesson artifact rating schema
-- [ ] Draft minimal node resolution contract
+- [x] Draft graph node schema
+- [x] Draft graph alias schema
+- [x] Draft graph event schema
+- [x] Draft lesson artifact schema
+- [x] Draft lesson artifact rating schema
+- [x] Draft minimal node resolution contract
 
 ### 0.4 Compatibility matrix
 
-- [ ] Define which old paths remain temporarily in Phases 1-3
-- [ ] Define cutover conditions for each path
-- [ ] Define rollback boundaries
+- [x] Define which old paths remain temporarily in Phases 1-3
+- [x] Define cutover conditions for each path
+- [x] Define rollback boundaries
 
 ## Required Tests
 
-- [ ] Audit snapshot test or assertions for current lesson-start entry points
-- [ ] Audit tests proving current legacy lesson launch still works before refactor
+- [x] Audit snapshot test or assertions for current lesson-start entry points
+- [x] Audit tests proving current legacy lesson launch still works before refactor
+
+## Phase 0 Findings
+
+- Current lesson launch is split between a seeded catalog path (`/api/curriculum/program`) and a freeform generation path (`/api/ai/lesson-plan`), so Phase 1 must preserve both until graph-backed resolution and artifact reads exist.
+- Several ids already exist in lesson and revision flows, but many are compatibility ids derived from labels rather than persistent backend identity.
+- Revision planning remains heavily label-backed and should stay out of scope until its planned later-phase rebuild.
+- `src/routes/api/subjects/verify/+server.ts` already has a provisional-subject pattern that future graph work should consolidate rather than duplicate.
 
 ## Exit Criteria
 
@@ -142,7 +149,7 @@ This phase can ship with **no visible frontend change** if needed.
 
 ### 1.1 Create graph persistence layer
 
-- [ ] Add storage for:
+- [x] Add storage for:
   - countries
   - curriculums
   - grades
@@ -151,7 +158,7 @@ This phase can ship with **no visible frontend change** if needed.
   - subtopics
   - aliases
   - graph events
-- [ ] Add fields:
+- [x] Add fields:
   - `id`
   - `type`
   - `label`
@@ -170,21 +177,21 @@ This phase can ship with **no visible frontend change** if needed.
 
 ### 1.2 Add graph repository APIs
 
-- [ ] `fetchGraphScope(country, curriculum, grade)`
-- [ ] `getNodeById(id)`
-- [ ] `findNodeByLabel(scope, type, label)`
-- [ ] `createProvisionalNode(input)`
-- [ ] `addAlias(nodeId, alias)`
-- [ ] `mergeNodes(sourceId, targetId)`
-- [ ] `archiveNode(nodeId)`
-- [ ] `rejectNode(nodeId)`
-- [ ] `logGraphEvent(event)`
+- [x] `fetchGraphScope(country, curriculum, grade)`
+- [x] `getNodeById(id)`
+- [x] `findNodeByLabel(scope, type, label)`
+- [x] `createProvisionalNode(input)`
+- [x] `addAlias(nodeId, alias)`
+- [x] `mergeNodes(sourceId, targetId)`
+- [x] `archiveNode(nodeId)`
+- [x] `rejectNode(nodeId)`
+- [x] `logGraphEvent(event)`
 
 ### 1.3 Add initial graph import
 
-- [ ] Build one-time import from existing backend data where available
-- [ ] If backend data is incomplete, allow bootstrapping from current local catalogs for migration only
-- [ ] Mark migration-created nodes with `origin = imported`
+- [x] Build one-time import from existing backend data where available
+- [x] If backend data is incomplete, allow bootstrapping from current local catalogs for migration only
+- [x] Mark migration-created nodes with `origin = imported`
 
 Important:
 
@@ -193,22 +200,29 @@ Important:
 
 ### 1.4 Add graph resolution primitives
 
-- [ ] exact label resolution
-- [ ] normalized label resolution
-- [ ] alias resolution
-- [ ] scoped ambiguity detection
-- [ ] no silent fallback to unrelated nodes
+- [x] exact label resolution
+- [x] normalized label resolution
+- [x] alias resolution
+- [x] scoped ambiguity detection
+- [x] no silent fallback to unrelated nodes
 
 ## Required Tests
 
-- [ ] create node
-- [ ] fetch by id
-- [ ] resolve by label within scope
-- [ ] alias resolution
-- [ ] ambiguity handling
-- [ ] merge behavior
-- [ ] archive/reject behavior
-- [ ] event logging behavior
+- [x] create node
+- [x] fetch by id
+- [x] resolve by label within scope
+- [x] alias resolution
+- [x] ambiguity handling
+- [x] merge behavior
+- [x] archive/reject behavior
+- [x] event logging behavior
+
+## Phase 1 Findings
+
+- The graph layer fits cleanly as a single-node-table model plus alias and event tables, which lets existing country/curriculum/grade/subject tables remain migration sources rather than becoming the long-term graph API.
+- Existing backend curriculum tables already provide usable ids for the import path, so imported graph nodes can keep stable ids without inventing a second identifier scheme.
+- Local onboarding and seeded lesson catalogs are sufficient as a migration-only fallback for graph bootstrap, but they are still runtime truth elsewhere and must not survive later frontend cutovers.
+- Workspace `npm run check` still fails because of unrelated pre-existing type issues in `src/lib/lesson-system.test.ts`, `src/lib/server/ai-providers/adapters.test.ts`, and several admin Svelte files; no remaining `graph-repository.ts` type errors were present in the filtered check output.
 
 ## Exit Criteria
 
@@ -238,7 +252,7 @@ This phase may change onboarding and subject loading behavior, but should still 
 
 ### 2.1 Add graph-backed read endpoints
 
-- [ ] add server endpoints or repository-backed loaders for:
+- [x] add server endpoints or repository-backed loaders for:
   - countries
   - curriculums
   - grades
@@ -247,27 +261,35 @@ This phase may change onboarding and subject loading behavior, but should still 
 
 ### 2.2 Replace onboarding source of truth
 
-- [ ] refactor onboarding fetches to use backend graph data
-- [ ] keep `src/lib/data/onboarding.ts` only as dev/bootstrap fallback if strictly necessary
-- [ ] remove production assumption that local arrays are authoritative
+- [x] refactor onboarding fetches to use backend graph data
+- [x] keep `src/lib/data/onboarding.ts` only as dev/bootstrap fallback if strictly necessary
+- [x] remove production assumption that local arrays are authoritative
 
 ### 2.3 Replace curriculum tree source of truth
 
-- [ ] update app initialization to load graph-backed metadata
-- [ ] update selected subject/topic/subtopic state to reference graph ids
-- [ ] ensure curriculum tree rendering works from graph data only
+- [x] update app initialization to load graph-backed metadata
+- [x] update selected subject/topic/subtopic state to reference graph ids
+- [x] ensure curriculum tree rendering works from graph data only
 
 ### 2.4 Preserve compatibility during cutover
 
-- [ ] keep adapter layer so current lesson-start code still receives enough shape to run
-- [ ] do not yet remove lesson content fallback paths in this phase
+- [x] keep adapter layer so current lesson-start code still receives enough shape to run
+- [x] do not yet remove lesson content fallback paths in this phase
 
 ## Required Tests
 
-- [ ] onboarding loads subjects from backend graph
-- [ ] curriculum tree loads from backend graph
-- [ ] selected subject ids persist correctly
-- [ ] local hardcoded catalog is not used when backend graph is available
+- [x] onboarding loads subjects from backend graph
+- [x] curriculum tree loads from backend graph
+- [x] selected subject ids persist correctly
+- [x] local hardcoded catalog is not used when backend graph is available
+
+## Phase 2 Findings
+
+- Onboarding option reads now resolve from the graph adapter first, so countries, curriculums, grades, and scoped subjects no longer use legacy curriculum tables when graph data is available.
+- Curriculum subject/topic/subtopic trees now come from graph nodes, while lesson bodies and questions still use the existing legacy-table or seeded-content compatibility path until Phase 3 replaces lesson delivery.
+- Bootstrap now rehydrates the saved curriculum tree from the graph-backed learning program and repairs selected subject/topic/subtopic ids onto valid graph ids during initialization.
+- Remaining local fallback paths are intentionally limited to offline/dev/bootstrap cases: `src/lib/data/onboarding.ts` still seeds `createInitialState()` and onboarding fallback when the backend graph is unavailable, and `buildLearningProgram()` remains the emergency lesson-content fallback when graph-backed lesson content is missing.
+- Workspace `npm run check` still fails because of unrelated pre-existing type issues in `src/lib/lesson-system.test.ts`, `src/lib/server/ai-providers/adapters.test.ts`, and existing admin Svelte files; the filtered check output showed no new Phase 2 file errors.
 
 ## Exit Criteria
 
@@ -302,9 +324,9 @@ This is the first major vertical-slice phase. It must ship only when the new les
 
 ### 3.1 Add lesson artifact persistence
 
-- [ ] add storage for generated lesson artifacts
-- [ ] add storage for generated lesson question artifacts
-- [ ] store:
+- [x] add storage for generated lesson artifacts
+- [x] add storage for generated lesson question artifacts
+- [x] store:
   - artifact id
   - node id
   - scope
@@ -316,64 +338,75 @@ This is the first major vertical-slice phase. It must ship only when the new les
 
 ### 3.2 Build lesson artifact repository
 
-- [ ] `getPreferredLessonArtifact(nodeId, scope)`
-- [ ] `createLessonArtifact(input)`
-- [ ] `createLessonQuestionArtifact(input)`
-- [ ] `markArtifactStatus(id, status)`
+- [x] `getPreferredLessonArtifact(nodeId, scope)`
+- [x] `createLessonArtifact(input)`
+- [x] `createLessonQuestionArtifact(input)`
+- [x] `markArtifactStatus(id, status)`
 
 ### 3.3 Refactor lesson launch entry points
 
-- [ ] refactor direct curriculum launch to:
+- [x] refactor direct curriculum launch to:
   1. resolve graph node
   2. fetch preferred lesson artifact
   3. generate if missing
   4. start lesson session with artifact
-- [ ] refactor shortlist launch to use the same path
-- [ ] refactor freeform launch to use the same path
+- [x] refactor shortlist launch to use the same path
+- [x] refactor freeform launch to use the same path
 
 There must be one canonical lesson creation service.
 
 ### 3.4 Refactor app state lesson session model
 
-- [ ] add `nodeId` to lesson session state
-- [ ] add `lessonArtifactId` to lesson session state
-- [ ] preserve existing message/stage runtime behavior
-- [ ] stop depending on seeded lesson ids as the primary source
+- [x] add `nodeId` to lesson session state
+- [x] add `lessonArtifactId` to lesson session state
+- [x] preserve existing message/stage runtime behavior
+- [x] stop depending on seeded lesson ids as the primary source
 
 ### 3.5 Reduce legacy lesson fallback
 
-- [ ] keep `buildDynamicLessonFromTopic` only as a short-term emergency fallback if required
-- [ ] remove seeded lesson-selection path from `learning-program-repository.ts`
-- [ ] stop loading authored lesson bodies from `learning-content.ts`
-- [ ] remove “seeded vs dynamic” split from runtime code and docs in the lesson path
+- [x] keep `buildDynamicLessonFromTopic` only as a short-term emergency fallback if required
+- [x] remove seeded lesson-selection path from `learning-program-repository.ts`
+- [x] stop loading authored lesson bodies from `learning-content.ts`
+- [x] remove “seeded vs dynamic” split from runtime code and docs in the lesson path
 
 ### 3.6 Resume and restart compatibility
 
-- [ ] existing sessions must still reopen
-- [ ] if an old session lacks `artifactId`, bridge using:
+- [x] existing sessions must still reopen
+- [x] if an old session lacks `artifactId`, bridge using:
   - original lesson id if present
   - generated compatibility artifact if needed
-- [ ] do not break old session history
+- [x] do not break old session history
 
 ## Required Tests
 
 ### Unit
 
-- [ ] preferred artifact fetch
-- [ ] lesson generation on cache miss
-- [ ] no duplicate artifact creation when preferred artifact exists
-- [ ] session creation with node id and artifact id
+- [x] preferred artifact fetch
+- [x] lesson generation on cache miss
+- [x] no duplicate artifact creation when preferred artifact exists
+- [x] session creation with node id and artifact id
 
 ### Integration
 
-- [ ] direct curriculum lesson launch uses the same generation path as shortlist launch
-- [ ] freeform lesson launch uses the same generation path as shortlist launch
-- [ ] restart/resume works for new artifact-backed lessons
-- [ ] restart/resume works for legacy sessions
+- [x] direct curriculum lesson launch uses the same generation path as shortlist launch
+- [x] freeform lesson launch uses the same generation path as shortlist launch
+- [x] restart/resume works for new artifact-backed lessons
+- [x] restart/resume works for legacy sessions
 
 ### Regression
 
-- [ ] no runtime path selects seeded authored lesson content when graph/generation path is available
+- [x] no runtime path selects seeded authored lesson content when graph/generation path is available
+
+## Phase 3 Findings
+
+- Curriculum-tree launch, shortlist launch, freeform launch, and restart now converge on one canonical backend lesson creation service via `src/routes/api/ai/lesson-plan/+server.ts` and `src/lib/server/lesson-launch-service.ts`.
+- Generated lesson artifacts and generated question artifacts are now persisted separately, and `lesson_sessions` now records `node_id`, `lesson_artifact_id`, and `question_artifact_id` to keep runtime sessions attached to graph-backed content.
+- Legacy session migration is bridged in `src/routes/api/ai/lesson-chat/+server.ts` and `src/lib/server/lesson-launch-service.ts` by reusing the original lesson id when possible and minting compatibility artifacts only when needed.
+- `src/lib/server/learning-program-repository.ts` now returns graph-backed curriculum trees plus launch stubs instead of serving authored lesson bodies from `learning-content.ts`.
+- `src/lib/stores/app-state.ts` now reads the live store snapshot for lesson launch, restart, and chat flows instead of depending on `localStorage`, which keeps restart/resume behavior stable during the artifact-backed transition.
+- `src/lib/data/platform.ts` now bootstraps local launch stubs instead of authored lessons, so `learning-content.ts` is no longer a runtime lesson source. The remaining `learning-content.ts` import in `src/lib/server/graph-repository.ts` is migration-only bootstrap logic, which remains allowed under the compatibility strategy.
+- Lesson-path terminology no longer keeps a seeded-versus-generated split in runtime code. The remaining broader seeded-architecture cleanup stays in later phases outside the Phase 3 lesson path.
+- Workspace `npm run check` still fails because of unrelated pre-existing issues in `src/lib/lesson-system.test.ts`, `src/lib/server/ai-providers/adapters.test.ts`, and existing admin Svelte files. The filtered check output showed no new Phase 3 file errors.
 
 ## Exit Criteria
 
@@ -525,4 +558,3 @@ This execution plan is complete only when:
 - frontend subject/topic truth is backend-backed
 - local seeded lesson delivery is removed
 - compatibility bridges exist only for legacy sessions, not for new writes
-

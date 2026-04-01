@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { createInitialState } from '$lib/data/platform';
 import type { LessonSession, RevisionTopic } from '$lib/types';
 import { appState, createAppStore, lessonSessionStore, profileStore, uiStore, revisionStore } from './app-state';
+
+const { getAuthenticatedHeaders } = vi.hoisted(() => ({
+  getAuthenticatedHeaders: vi.fn()
+}));
+
+vi.mock('$lib/authenticated-fetch', () => ({
+  getAuthenticatedHeaders
+}));
 
 function createRevisionTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
   return {
@@ -60,6 +68,13 @@ function createLessonSession(overrides: Partial<LessonSession> = {}): LessonSess
 }
 
 describe('domain store slices', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getAuthenticatedHeaders.mockResolvedValue({
+      Authorization: 'Bearer token'
+    });
+  });
+
   // T5.1a: derived slices return the correct sub-state
   it('lessonSessionStore returns active lesson sessions', () => {
     const sessions = get(lessonSessionStore);
@@ -561,15 +576,41 @@ describe('revision plans', () => {
 });
 
 describe('progress analytics instrumentation', () => {
-  it('logs a session_started event when launching a brand new lesson', () => {
+  it('logs a session_started event when launching a brand new lesson', async () => {
     const baseState = createInitialState();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        return new Response(
+          JSON.stringify({
+            provider: 'github-models',
+            nodeId: 'graph-subtopic-1',
+            lessonArtifactId: 'artifact-lesson-1',
+            questionArtifactId: 'artifact-question-1',
+            lesson: {
+              ...baseState.lessons[0]!,
+              id: 'artifact-lesson-runtime-1'
+            },
+            questions: baseState.questions
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
     const store = createAppStore({
       ...baseState,
       lessonSessions: []
     });
     const lessonId = baseState.lessons[0]!.id;
 
-    store.launchLesson(lessonId);
+    await store.launchLesson(lessonId);
 
     const state = get(store);
 
@@ -614,5 +655,271 @@ describe('progress analytics instrumentation', () => {
     const state = get(store);
 
     expect(state.analytics.slice(0, 2).map((event) => event.type)).toEqual(['question_answered', 'mastery_updated']);
+  });
+});
+
+describe('unified lesson launch pipeline', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getAuthenticatedHeaders.mockResolvedValue({
+      Authorization: 'Bearer token'
+    });
+  });
+
+  it('uses the same lesson-plan route for curriculum launches and stores node/artifact ids on the session', async () => {
+    const baseState = createInitialState();
+    const lesson = baseState.lessons[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        return new Response(
+          JSON.stringify({
+            provider: 'github-models',
+            nodeId: 'graph-subtopic-equivalent-fractions',
+            lessonArtifactId: 'artifact-lesson-1',
+            questionArtifactId: 'artifact-questions-1',
+            lesson: {
+              ...lesson,
+              id: 'artifact-lesson-runtime-1'
+            },
+            questions: baseState.questions
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(baseState);
+
+    await store.launchLesson(lesson.id);
+
+    const state = get(store);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/lesson-plan',
+      expect.objectContaining({
+        method: 'POST'
+      })
+    );
+    expect(state.lessonSessions[0]).toEqual(
+      expect.objectContaining({
+        nodeId: 'graph-subtopic-equivalent-fractions',
+        lessonArtifactId: 'artifact-lesson-1',
+        questionArtifactId: 'artifact-questions-1'
+      })
+    );
+  });
+
+  it('uses the same lesson-plan route for shortlist launches', async () => {
+    const baseState = createInitialState();
+    const subject = baseState.curriculum.subjects[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        const body = JSON.parse(String(init?.body)) as { request: { nodeId: string; topicId: string } };
+
+        expect(body.request.nodeId).toBe('graph-subtopic-equivalent-fractions');
+        expect(body.request.topicId).toBe('graph-topic-fractions');
+
+        return new Response(
+          JSON.stringify({
+            provider: 'github-models',
+            nodeId: 'graph-subtopic-equivalent-fractions',
+            lessonArtifactId: 'artifact-lesson-2',
+            questionArtifactId: 'artifact-questions-2',
+            lesson: {
+              ...baseState.lessons[0]!,
+              id: 'artifact-lesson-runtime-2',
+              topicId: 'graph-topic-fractions',
+              subtopicId: 'graph-subtopic-equivalent-fractions'
+            },
+            questions: baseState.questions
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id
+      }
+    });
+
+    await store.startLessonFromShortlist({
+      id: 'short-1',
+      title: 'Equivalent Fractions',
+      description: 'Fractions with the same value.',
+      curriculumReference: 'CAPS · Grade 6 · Mathematics',
+      relevance: 'Recommended topic',
+      topicId: 'graph-topic-fractions',
+      subtopicId: 'graph-subtopic-equivalent-fractions',
+      lessonId: 'generated-equivalent-fractions'
+    });
+
+    const state = get(store);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/lesson-plan',
+      expect.objectContaining({
+        method: 'POST'
+      })
+    );
+    expect(state.lessonSessions[0]).toEqual(
+      expect.objectContaining({
+        nodeId: 'graph-subtopic-equivalent-fractions',
+        lessonArtifactId: 'artifact-lesson-2',
+        questionArtifactId: 'artifact-questions-2'
+      })
+    );
+  });
+
+  it('uses the same lesson-plan route for freeform launches', async () => {
+    const baseState = createInitialState();
+    const subject = baseState.curriculum.subjects[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        const body = JSON.parse(String(init?.body)) as { request: { subjectId: string; topicTitle: string } };
+
+        expect(body.request.subjectId).toBe(subject.id);
+        expect(body.request.topicTitle).toBe('Equivalent Fractions');
+
+        return new Response(
+          JSON.stringify({
+            provider: 'github-models',
+            nodeId: 'custom-subtopic-equivalent-fractions',
+            lessonArtifactId: 'artifact-lesson-3',
+            questionArtifactId: 'artifact-questions-3',
+            lesson: {
+              ...baseState.lessons[0]!,
+              id: 'artifact-lesson-runtime-3',
+              topicId: 'custom-topic-equivalent-fractions',
+              subtopicId: 'custom-subtopic-equivalent-fractions'
+            },
+            questions: baseState.questions
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(baseState);
+
+    await store.startLessonFromSelection(subject.id, 'equivalent fractions');
+
+    const state = get(store);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/lesson-plan',
+      expect.objectContaining({
+        method: 'POST'
+      })
+    );
+    expect(state.lessonSessions[0]).toEqual(
+      expect.objectContaining({
+        nodeId: 'custom-subtopic-equivalent-fractions',
+        lessonArtifactId: 'artifact-lesson-3',
+        questionArtifactId: 'artifact-questions-3'
+      })
+    );
+  });
+
+  it('restarts artifact-backed sessions through the same lesson-plan route and preserves node/artifact ids', async () => {
+    const baseState = createInitialState();
+    const lesson = baseState.lessons[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        const body = JSON.parse(String(init?.body)) as { request: { nodeId: string; topicId: string } };
+
+        expect(body.request.nodeId).toBe('graph-subtopic-equivalent-fractions');
+        expect(body.request.topicId).toBe('graph-topic-fractions');
+
+        return new Response(
+          JSON.stringify({
+            provider: 'github-models',
+            nodeId: 'graph-subtopic-equivalent-fractions',
+            lessonArtifactId: 'artifact-lesson-4',
+            questionArtifactId: 'artifact-questions-4',
+            lesson: {
+              ...lesson,
+              id: 'artifact-lesson-runtime-4',
+              topicId: 'graph-topic-fractions',
+              subtopicId: 'graph-subtopic-equivalent-fractions'
+            },
+            questions: baseState.questions
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [
+        createLessonSession({
+          id: 'artifact-session-1',
+          lessonId: 'artifact-lesson-runtime-1',
+          subjectId: lesson.subjectId,
+          subject: baseState.curriculum.subjects[0]!.name,
+          topicId: 'graph-topic-fractions',
+          topicTitle: 'Equivalent Fractions',
+          topicDescription: 'Fractions with the same value.',
+          curriculumReference: 'CAPS · Grade 6 · Mathematics',
+          nodeId: 'graph-subtopic-equivalent-fractions',
+          lessonArtifactId: 'artifact-lesson-1',
+          questionArtifactId: 'artifact-questions-1',
+          status: 'complete'
+        })
+      ]
+    });
+
+    await store.restartLessonSession('artifact-session-1');
+
+    const state = get(store);
+    const restarted = state.lessonSessions[0]!;
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/ai/lesson-plan',
+      expect.objectContaining({
+        method: 'POST'
+      })
+    );
+    expect(restarted.id).not.toBe('artifact-session-1');
+    expect(restarted).toEqual(
+      expect.objectContaining({
+        nodeId: 'graph-subtopic-equivalent-fractions',
+        lessonArtifactId: 'artifact-lesson-4',
+        questionArtifactId: 'artifact-questions-4',
+        status: 'active'
+      })
+    );
   });
 });

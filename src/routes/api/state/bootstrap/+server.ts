@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { loadLearningProgram } from '$lib/server/learning-program-repository';
 import { loadAppState, loadSignalsForProfile } from '$lib/server/state-repository';
 import {
   fetchCountries,
@@ -9,6 +10,7 @@ import {
 } from '$lib/server/onboarding-repository';
 import { createServerSupabaseFromRequest } from '$lib/server/supabase';
 import { applySignalProfileUpdate, buildLearnerProfileFromSignals } from '$lib/ai/adaptive-signals';
+import type { AppState } from '$lib/types';
 
 async function loadOnboardingOptions(onboardingProgress: NonNullable<Awaited<ReturnType<typeof loadOnboardingProgress>>>) {
   const [countries, curriculums, grades, subjects] = await Promise.all([
@@ -25,6 +27,42 @@ async function loadOnboardingOptions(onboardingProgress: NonNullable<Awaited<Ret
     curriculums,
     grades,
     subjects
+  };
+}
+
+function resolveCurriculumSelection(
+  state: AppState,
+  program: Pick<AppState, 'curriculum' | 'lessons'>,
+  onboardingProgress: NonNullable<Awaited<ReturnType<typeof loadOnboardingProgress>>>
+) {
+  const selectedSubject =
+    program.curriculum.subjects.find((subject) => subject.id === state.ui.selectedSubjectId) ??
+    program.curriculum.subjects.find((subject) => onboardingProgress.selectedSubjectIds.includes(subject.id)) ??
+    program.curriculum.subjects[0] ??
+    null;
+  const selectedTopic =
+    selectedSubject?.topics.find((topic) => topic.id === state.ui.selectedTopicId) ??
+    selectedSubject?.topics[0] ??
+    null;
+  const selectedSubtopic =
+    selectedTopic?.subtopics.find((subtopic) => subtopic.id === state.ui.selectedSubtopicId) ??
+    selectedTopic?.subtopics[0] ??
+    null;
+  const selectedLesson =
+    program.lessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ??
+    program.lessons.find((lesson) => lesson.id === selectedSubtopic?.lessonIds[0]) ??
+    program.lessons[0] ??
+    null;
+
+  return {
+    selectedSubjectId: selectedSubject?.id ?? state.ui.selectedSubjectId,
+    selectedTopicId: selectedTopic?.id ?? state.ui.selectedTopicId,
+    selectedSubtopicId: selectedSubtopic?.id ?? state.ui.selectedSubtopicId,
+    selectedLessonId: selectedLesson?.id ?? state.ui.selectedLessonId,
+    practiceQuestionId:
+      selectedLesson?.practiceQuestionIds.find((questionId) => questionId === state.ui.practiceQuestionId) ??
+      selectedLesson?.practiceQuestionIds[0] ??
+      state.ui.practiceQuestionId
   };
 }
 
@@ -71,6 +109,27 @@ export async function GET({ request }) {
   const gradeLabel =
     onboardingOptions?.grades.find((grade) => grade.id === onboardingProgress?.selectedGradeId)?.label ??
     stateWithProfile.profile.grade;
+  const learningProgram =
+    onboardingProgress &&
+    onboardingProgress.selectedCurriculumId &&
+    onboardingProgress.selectedGradeId &&
+    (onboardingProgress.selectedSubjectIds.length > 0 || onboardingProgress.customSubjects.length > 0)
+      ? await loadLearningProgram({
+          country: countryName || stateWithProfile.profile.country || 'South Africa',
+          curriculumName: curriculumName || stateWithProfile.profile.curriculum || onboardingProgress.selectedCurriculumId,
+          curriculumId: onboardingProgress.selectedCurriculumId,
+          grade: gradeLabel || stateWithProfile.profile.grade || onboardingProgress.selectedGradeId,
+          gradeId: onboardingProgress.selectedGradeId,
+          selectedSubjectIds: onboardingProgress.selectedSubjectIds,
+          selectedSubjectNames:
+            onboardingProgress.selectedSubjectNames.length > 0
+              ? onboardingProgress.selectedSubjectNames
+              : (onboardingOptions?.subjects ?? [])
+                  .filter((subject) => onboardingProgress.selectedSubjectIds.includes(subject.id))
+                  .map((subject) => subject.name),
+          customSubjects: onboardingProgress.customSubjects
+        })
+      : null;
 
   const hydratedState = onboardingProgress
     ? {
@@ -99,7 +158,16 @@ export async function GET({ request }) {
             onboardingProgress.recommendation.subjectId ?? stateWithProfile.profile.recommendedStartSubjectId,
           recommendedStartSubjectName:
             onboardingProgress.recommendation.subjectName ?? stateWithProfile.profile.recommendedStartSubjectName
-        }
+        },
+        curriculum: learningProgram?.curriculum ?? stateWithProfile.curriculum,
+        lessons: learningProgram?.lessons ?? stateWithProfile.lessons,
+        questions: learningProgram?.questions ?? stateWithProfile.questions,
+        ui: learningProgram
+          ? {
+              ...stateWithProfile.ui,
+              ...resolveCurriculumSelection(stateWithProfile, learningProgram, onboardingProgress)
+            }
+          : stateWithProfile.ui
       }
     : stateWithProfile;
 

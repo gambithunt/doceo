@@ -4,6 +4,9 @@ import { buildFallbackLessonPlan } from '$lib/ai/lesson-plan';
 import { logAiInteraction } from '$lib/server/state-repository';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
+import { createServerGraphRepository } from '$lib/server/graph-repository';
+import { createServerLessonArtifactRepository } from '$lib/server/lesson-artifact-repository';
+import { createLessonLaunchService } from '$lib/server/lesson-launch-service';
 import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 const LessonPlanBodySchema = z.object({
@@ -21,7 +24,9 @@ const LessonPlanBodySchema = z.object({
     subject: z.string(),
     topicTitle: z.string().min(1),
     topicDescription: z.string(),
-    curriculumReference: z.string()
+    curriculumReference: z.string(),
+    nodeId: z.string().nullable().optional(),
+    topicId: z.string().optional()
   })
 });
 
@@ -34,47 +39,70 @@ export async function POST({ request, fetch }) {
   }
 
   const lessonRequest = parsed.data.request as unknown as LessonPlanRequest;
+  const graphRepository = createServerGraphRepository();
+  const artifactRepository = createServerLessonArtifactRepository();
 
-  const aiConfig = await getAiConfig();
-  const { model } = resolveAiRoute(aiConfig, 'lesson-plan');
+  const generateLessonPlan = async (launchRequest: LessonPlanRequest): Promise<LessonPlanResponse> => {
+    const aiConfig = await getAiConfig();
+    const { model } = resolveAiRoute(aiConfig, 'lesson-plan');
 
-  const edge = await invokeAuthenticatedAiEdge<LessonPlanResponse>(
-    request,
-    fetch,
-    'lesson-plan',
-    lessonRequest,
-    undefined,
-    model
-  );
+    const edge = await invokeAuthenticatedAiEdge<LessonPlanResponse>(
+      request,
+      fetch,
+      'lesson-plan',
+      launchRequest,
+      undefined,
+      model
+    );
 
-  // Propagate auth/permission errors — do not silently fall back
-  if (!edge.ok && (edge.status === 401 || edge.status === 403)) {
-    return json({ error: edge.error ?? 'Unauthorized' }, { status: edge.status });
-  }
-
-  // When AI edge is unavailable for other reasons, return a graceful local fallback
-  if (!edge.ok || !edge.payload) {
-    return json(buildFallbackLessonPlan(lessonRequest));
-  }
-
-  const functionPayload = edge.payload;
-
-  // Validate the AI response has usable content; fall back if not
-  if (functionPayload.provider !== 'github-models' || !functionPayload.lesson?.orientation?.body) {
-    return json(buildFallbackLessonPlan(lessonRequest));
-  }
-
-  await logAiInteraction(
-    lessonRequest.student.id,
-    JSON.stringify(lessonRequest),
-    JSON.stringify(functionPayload),
-    functionPayload.provider,
-    {
-      mode: 'lesson-plan',
-      modelTier: functionPayload.modelTier,
-      model: functionPayload.model
+    if (!edge.ok && (edge.status === 401 || edge.status === 403)) {
+      throw Object.assign(new Error(edge.error ?? 'Unauthorized'), { status: edge.status });
     }
-  );
 
-  return json(functionPayload);
+    if (!edge.ok || !edge.payload) {
+      return buildFallbackLessonPlan(launchRequest);
+    }
+
+    const functionPayload = edge.payload;
+
+    if (functionPayload.provider !== 'github-models' || !functionPayload.lesson?.orientation?.body) {
+      return buildFallbackLessonPlan(launchRequest);
+    }
+
+    await logAiInteraction(
+      launchRequest.student.id,
+      JSON.stringify(launchRequest),
+      JSON.stringify(functionPayload),
+      functionPayload.provider,
+      {
+        mode: 'lesson-plan',
+        modelTier: functionPayload.modelTier,
+        model: functionPayload.model
+      }
+    );
+
+    return functionPayload;
+  };
+
+  try {
+    if (!graphRepository || !artifactRepository) {
+      return json(await generateLessonPlan(lessonRequest));
+    }
+
+    const service = createLessonLaunchService({
+      graphRepository,
+      artifactRepository,
+      generateLessonPlan,
+      pedagogyVersion: 'phase3-v1',
+      promptVersion: 'lesson-plan-v1'
+    });
+
+    return json(await service.launchLesson({ request: lessonRequest }));
+  } catch (error) {
+    if (error instanceof Error && 'status' in error && typeof error.status === 'number') {
+      return json({ error: error.message }, { status: error.status });
+    }
+
+    throw error;
+  }
 }

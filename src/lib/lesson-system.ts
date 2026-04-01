@@ -543,6 +543,9 @@ export function buildLessonSessionFromTopic(
   subtopic: Subtopic,
   lesson: Lesson,
   overrides?: {
+    nodeId?: string | null;
+    lessonArtifactId?: string | null;
+    questionArtifactId?: string | null;
     topicDescription?: string;
     curriculumReference?: string;
     matchedSection?: string;
@@ -553,6 +556,9 @@ export function buildLessonSessionFromTopic(
     studentId: profile.id,
     subjectId: subject.id,
     subject: subject.name,
+    nodeId: overrides?.nodeId ?? null,
+    lessonArtifactId: overrides?.lessonArtifactId ?? null,
+    questionArtifactId: overrides?.questionArtifactId ?? null,
     topicId: topic.id,
     topicTitle: topic.name,
     topicDescription: overrides?.topicDescription ?? subtopic.name,

@@ -1,55 +1,5 @@
-import { buildLearningProgram } from '$lib/data/learning-content';
-import { fetchSubjects } from '$lib/server/onboarding-repository';
-import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
-import type { CurriculumDefinition, Lesson, Question, QuestionOption } from '$lib/types';
-
-interface TopicRow {
-  id: string;
-  subject_id: string;
-  name: string;
-  topic_order: number;
-}
-
-interface SubtopicRow {
-  id: string;
-  topic_id: string;
-  name: string;
-  subtopic_order: number;
-}
-
-interface LessonRow {
-  id: string;
-  subject_id: string;
-  topic_id: string;
-  subtopic_id: string;
-  title: string;
-  grade_label: string;
-  overview_title: string;
-  overview_body: string;
-  deeper_explanation_title: string;
-  deeper_explanation_body: string;
-  example_title: string;
-  example_body: string;
-  lesson_order: number;
-}
-
-interface QuestionRow {
-  id: string;
-  lesson_id: string;
-  topic_id: string;
-  subtopic_id: string;
-  question_type: Question['type'];
-  prompt: string;
-  expected_answer: string;
-  accepted_answers: string[];
-  rubric: string;
-  explanation: string;
-  hint_levels: string[];
-  misconception_tags: string[];
-  difficulty: Question['difficulty'];
-  option_json: QuestionOption[] | null;
-  question_order: number;
-}
+import { createServerGraphCatalogRepository } from '$lib/server/graph-catalog-repository';
+import type { CurriculumDefinition, Lesson, Question } from '$lib/types';
 
 export interface LearningProgramResult {
   curriculum: CurriculumDefinition;
@@ -73,10 +23,173 @@ function dedupe(values: string[]): string[] {
   return values.filter((value, index) => value.length > 0 && values.indexOf(value) === index);
 }
 
-function mergePrograms(
-  primary: LearningProgramResult,
-  additional: LearningProgramResult[]
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '') || 'lesson';
+}
+
+function createLessonStub(
+  subjectId: string,
+  subjectName: string,
+  topicId: string,
+  topicName: string,
+  subtopicId: string,
+  subtopicName: string,
+  grade: string
+): { lesson: Lesson; question: Question } {
+  const lessonId = `lesson-stub-${subtopicId}`;
+  const questionId = `${lessonId}-question`;
+  const title = `${subjectName}: ${subtopicName}`;
+  const placeholderBody =
+    `This lesson is generated when you open **${subtopicName}**. Use the curriculum tree to launch the artifact-backed lesson.`;
+
+  return {
+    lesson: {
+      id: lessonId,
+      topicId,
+      subtopicId,
+      title,
+      subjectId,
+      grade,
+      orientation: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      mentalModel: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      concepts: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      guidedConstruction: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      workedExample: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      practicePrompt: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      commonMistakes: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      transferChallenge: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      summary: {
+        title: 'Launch Lesson',
+        body: placeholderBody
+      },
+      practiceQuestionIds: [questionId],
+      masteryQuestionIds: [questionId]
+    },
+    question: {
+      id: questionId,
+      lessonId,
+      type: 'short-answer',
+      prompt: `Open the generated lesson for ${subtopicName} to start working through ${topicName}.`,
+      expectedAnswer: 'Launch lesson first',
+      rubric: 'The learner should launch the lesson to receive a generated question set.',
+      explanation: 'Questions are generated at launch time for this node.',
+      hintLevels: ['Open the lesson from the curriculum tree.'],
+      misconceptionTags: [slugify(subjectName), slugify(topicName), slugify(subtopicName)],
+      difficulty: 'foundation',
+      topicId,
+      subtopicId
+    }
+  };
+}
+
+function buildProgramFromCurriculum(
+  curriculum: CurriculumDefinition,
+  source: LearningProgramResult['source']
 ): LearningProgramResult {
+  const lessons: Lesson[] = [];
+  const questions: Question[] = [];
+
+  const normalizedCurriculum: CurriculumDefinition = {
+    ...curriculum,
+    subjects: curriculum.subjects.map((subject) => ({
+      ...subject,
+      topics: subject.topics.map((topic) => ({
+        ...topic,
+        subtopics: topic.subtopics.map((subtopic) => {
+          const stub = createLessonStub(
+            subject.id,
+            subject.name,
+            topic.id,
+            topic.name,
+            subtopic.id,
+            subtopic.name,
+            curriculum.grade
+          );
+          lessons.push(stub.lesson);
+          questions.push(stub.question);
+
+          return {
+            ...subtopic,
+            lessonIds: [stub.lesson.id]
+          };
+        })
+      }))
+    }))
+  };
+
+  return {
+    curriculum: normalizedCurriculum,
+    lessons,
+    questions,
+    source
+  };
+}
+
+function buildLocalSubjectStubProgram(input: ProgramInput): LearningProgramResult {
+  const subjects = dedupe([...input.selectedSubjectNames, ...input.customSubjects]).map((subjectName) => {
+    const subjectId = `subject-stub-${slugify(subjectName)}`;
+    const topicId = `topic-stub-${slugify(subjectName)}`;
+    const subtopicId = `subtopic-stub-${slugify(subjectName)}`;
+
+    return {
+      id: subjectId,
+      name: subjectName,
+      topics: [
+        {
+          id: topicId,
+          name: `${subjectName} Foundations`,
+          subtopics: [
+            {
+              id: subtopicId,
+              name: `Core ideas in ${subjectName}`,
+              lessonIds: []
+            }
+          ]
+        }
+      ]
+    };
+  });
+
+  return buildProgramFromCurriculum(
+    {
+      country: input.country,
+      name: input.curriculumName,
+      grade: input.grade,
+      subjects
+    },
+    'local'
+  );
+}
+
+function mergePrograms(primary: LearningProgramResult, additional: LearningProgramResult[]): LearningProgramResult {
   const programs = [primary, ...additional];
 
   return {
@@ -92,182 +205,25 @@ function mergePrograms(
   };
 }
 
-function buildLocalProgram(input: ProgramInput): LearningProgramResult {
-  const program = buildLearningProgram(
-    input.country,
-    input.curriculumName,
-    input.grade,
-    dedupe([...input.selectedSubjectNames, ...input.customSubjects])
-  );
-
-  return {
-    ...program,
-    source: 'local'
-  };
-}
-
 export async function loadLearningProgram(input: ProgramInput): Promise<LearningProgramResult> {
-  const supabase = createServerSupabaseAdmin();
+  const graphCatalog = createServerGraphCatalogRepository();
 
-  if (!supabase || !isSupabaseConfigured() || input.selectedSubjectIds.length === 0) {
-    return buildLocalProgram(input);
+  if (!graphCatalog || input.selectedSubjectIds.length === 0) {
+    return buildLocalSubjectStubProgram(input);
   }
 
-  const subjects = await fetchSubjects(input.curriculumId, input.gradeId);
-  const selectedSubjects = subjects.filter((subject) => input.selectedSubjectIds.includes(subject.id));
-  const subjectNameById = new Map(selectedSubjects.map((subject) => [subject.id, subject.name]));
-  const selectedSubjectNames = selectedSubjects.map((subject) => subject.name);
-
-  const { data: topicRows } = await supabase
-    .from('curriculum_topics')
-    .select('id, subject_id, name, topic_order')
-    .in('subject_id', input.selectedSubjectIds)
-    .order('topic_order')
-    .returns<TopicRow[]>();
-
-  const { data: subtopicRows } = await supabase
-    .from('curriculum_subtopics')
-    .select('id, topic_id, name, subtopic_order')
-    .in('topic_id', (topicRows ?? []).map((row) => row.id))
-    .order('subtopic_order')
-    .returns<SubtopicRow[]>();
-
-  const { data: lessonRows } = await supabase
-    .from('curriculum_lessons')
-    .select(
-      'id, subject_id, topic_id, subtopic_id, title, grade_label, overview_title, overview_body, deeper_explanation_title, deeper_explanation_body, example_title, example_body, lesson_order'
-    )
-    .in('subject_id', input.selectedSubjectIds)
-    .order('lesson_order')
-    .returns<LessonRow[]>();
-
-  const { data: questionRows } = await supabase
-    .from('curriculum_questions')
-    .select(
-      'id, lesson_id, topic_id, subtopic_id, question_type, prompt, expected_answer, accepted_answers, rubric, explanation, hint_levels, misconception_tags, difficulty, option_json, question_order'
-    )
-    .in('lesson_id', (lessonRows ?? []).map((row) => row.id))
-    .order('question_order')
-    .returns<QuestionRow[]>();
-
-  if (!topicRows?.length || !subtopicRows?.length || !lessonRows?.length || !questionRows?.length) {
-    return buildLocalProgram(input);
-  }
-
-  const lessons: Lesson[] = lessonRows.map((row) => {
-    const topicName = row.title.replace(/^.*?:\s*/, '');
-    return {
-      id: row.id,
-      topicId: row.topic_id,
-      subtopicId: row.subtopic_id,
-      title: row.title,
-      subjectId: row.subject_id,
-      grade: row.grade_label,
-      orientation: {
-        title: row.overview_title,
-        body: row.overview_body
-      },
-      mentalModel: {
-        title: 'Big Picture',
-        body: `Before diving into rules, picture **${topicName}** as one connected idea. Once you have the big picture, the details fall into place.`
-      },
-      concepts: {
-        title: row.deeper_explanation_title,
-        body: row.deeper_explanation_body
-      },
-      guidedConstruction: {
-        title: 'Guided Construction',
-        body: `Let's work through **${topicName}** step by step. Identify what the problem asks, apply the rule, and check your reasoning at each step.`
-      },
-      workedExample: {
-        title: row.example_title,
-        body: row.example_body
-      },
-      practicePrompt: {
-        title: 'Active Practice',
-        body: `Now try it yourself. Apply what you have learned about **${topicName}** to a similar problem. Write out each step and explain your reasoning.`
-      },
-      commonMistakes: {
-        title: 'Common Mistakes',
-        body: `The most common error with **${topicName}** is skipping the reasoning step. Always name the rule first, then apply it.`
-      },
-      transferChallenge: {
-        title: 'Transfer Challenge',
-        body: `Can you apply **${topicName}** in a different context? Identify the same core idea in a new situation.`
-      },
-      summary: {
-        title: 'Summary',
-        body: `**${topicName} — key takeaways:**\n\n${row.deeper_explanation_body.split('\n')[0]}\n\nIf you can explain this to someone else using one example, you've got it.`
-      },
-      practiceQuestionIds: questionRows
-        .filter((question) => question.lesson_id === row.id)
-        .map((question) => question.id),
-      masteryQuestionIds: questionRows
-        .filter((question) => question.lesson_id === row.id)
-        .map((question) => question.id)
-    };
-  });
-
-  const questions: Question[] = questionRows.map((row) => ({
-    id: row.id,
-    lessonId: row.lesson_id,
-    type: row.question_type,
-    prompt: row.prompt,
-    expectedAnswer: row.expected_answer,
-    acceptedAnswers: row.accepted_answers,
-    rubric: row.rubric,
-    explanation: row.explanation,
-    hintLevels: row.hint_levels,
-    misconceptionTags: row.misconception_tags,
-    difficulty: row.difficulty,
-    topicId: row.topic_id,
-    subtopicId: row.subtopic_id,
-    options: row.option_json ?? undefined
-  }));
-
-  const curriculum: CurriculumDefinition = {
+  const graphCurriculum = await graphCatalog.fetchCurriculumTree({
     country: input.country,
-    name: input.curriculumName,
+    curriculumName: input.curriculumName,
     grade: input.grade,
-    subjects: input.selectedSubjectIds.map((subjectId) => {
-      const topicsForSubject = topicRows.filter((topic) => topic.subject_id === subjectId);
-
-      return {
-        id: subjectId,
-        name: subjectNameById.get(subjectId) ?? subjectId,
-        topics: topicsForSubject.map((topic) => ({
-          id: topic.id,
-          name: topic.name,
-          subtopics: subtopicRows
-            .filter((subtopic) => subtopic.topic_id === topic.id)
-            .map((subtopic) => ({
-              id: subtopic.id,
-              name: subtopic.name,
-              lessonIds: lessons
-                .filter((lesson) => lesson.subtopicId === subtopic.id)
-                .map((lesson) => lesson.id)
-            }))
-        }))
-      };
-    })
-  };
-
+    countryId: input.country.toLowerCase(),
+    curriculumId: input.curriculumId,
+    gradeId: input.gradeId,
+    selectedSubjectIds: input.selectedSubjectIds
+  });
   const customPrograms = input.customSubjects.length
-    ? [
-        {
-          ...buildLearningProgram(input.country, input.curriculumName, input.grade, input.customSubjects),
-          source: 'local' as const
-        }
-      ]
+    ? [buildLocalSubjectStubProgram({ ...input, selectedSubjectNames: [], customSubjects: input.customSubjects })]
     : [];
 
-  return mergePrograms(
-    {
-      curriculum,
-      lessons,
-      questions,
-      source: 'supabase'
-    },
-    customPrograms
-  );
+  return mergePrograms(buildProgramFromCurriculum(graphCurriculum, 'supabase'), customPrograms);
 }

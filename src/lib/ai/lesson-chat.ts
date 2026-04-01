@@ -26,7 +26,7 @@ function getLastMessageType(lessonSession: LessonChatRequest['lessonSession']): 
 
 function getCurrentStageContent(request: LessonChatRequest): string {
   const stage = request.lessonSession.currentStage;
-  const lesson = request.lesson;
+  const lesson = request.lesson!;
 
   if (stage === 'orientation') return lesson.orientation.body;
   if (stage === 'concepts') return lesson.concepts.body;
@@ -79,7 +79,7 @@ function buildLearnerInstructions(profile: LessonChatRequest['learnerProfile']):
 
 // buildSystemPrompt is exported for testing
 export function buildSystemPrompt(request: LessonChatRequest): string {
-  const lesson = request.lesson;
+  const lesson = request.lesson!;
 
   const doceoMetaSchema = `After every response, end with this exact block (replace values appropriately):
 <!-- DOCEO_META

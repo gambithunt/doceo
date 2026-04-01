@@ -591,12 +591,12 @@ Lock the target architecture and identify every old seeded path.
 
 ### Tasks
 
-- [ ] Audit every place subjects, topics, subtopics, lessons, lesson questions, and revision prompts are locally authored
-- [ ] Audit every string-based identity path in lesson and revision
-- [ ] Document all existing fallback paths and where they trigger
-- [ ] Define the canonical graph schema
-- [ ] Define the artifact schema
-- [ ] Define graph event schema
+- [x] Audit every place subjects, topics, subtopics, lessons, lesson questions, and revision prompts are locally authored
+- [x] Audit every string-based identity path in lesson and revision
+- [x] Document all existing fallback paths and where they trigger
+- [x] Define the canonical graph schema
+- [x] Define the artifact schema
+- [x] Define graph event schema
 - [ ] Define rating and regeneration rules
 - [ ] Define promotion/demotion thresholds for provisional nodes
 
@@ -616,13 +616,13 @@ Create the adaptable graph as the new backend anchor.
 
 ### Tasks
 
-- [ ] Add persistent graph tables or equivalent storage for countries, curriculums, grades, subjects, topics, subtopics, aliases, and graph events
-- [ ] Add lifecycle fields: `canonical`, `provisional`, `review_needed`, `merged`, `archived`, `rejected`
-- [ ] Add provenance fields and trust scoring
-- [ ] Add alias support and normalized label matching
-- [ ] Add graph repository APIs for fetch, create, update, merge, archive, reject
-- [ ] Add event logging for all graph changes
-- [ ] Add tests for node creation, retrieval, update, merge, archive, reject
+- [x] Add persistent graph tables or equivalent storage for countries, curriculums, grades, subjects, topics, subtopics, aliases, and graph events
+- [x] Add lifecycle fields: `canonical`, `provisional`, `review_needed`, `merged`, `archived`, `rejected`
+- [x] Add provenance fields and trust scoring
+- [x] Add alias support and normalized label matching
+- [x] Add graph repository APIs for fetch, create, update, merge, archive, reject
+- [x] Add event logging for all graph changes
+- [x] Add tests for node creation, retrieval, update, merge, archive, reject
 
 ### Exit Criteria
 
@@ -639,12 +639,12 @@ Stop treating local files as the source of truth for subjects and structure.
 
 ### Tasks
 
-- [ ] Remove runtime dependence on `src/lib/data/onboarding.ts` for subject truth
-- [ ] Replace onboarding subject loading with backend graph-backed fetches
-- [ ] Replace local curriculum subject trees with graph-backed fetches
-- [ ] Preserve local-only fallback only if explicitly required for offline/dev, never as production truth
-- [ ] Update onboarding state so it stores selected node ids from backend graph
-- [ ] Add tests proving onboarding no longer depends on local hardcoded subject catalogs
+- [x] Remove runtime dependence on `src/lib/data/onboarding.ts` for subject truth
+- [x] Replace onboarding subject loading with backend graph-backed fetches
+- [x] Replace local curriculum subject trees with graph-backed fetches
+- [x] Preserve local-only fallback only if explicitly required for offline/dev, never as production truth
+- [x] Update onboarding state so it stores selected node ids from backend graph
+- [x] Add tests proving onboarding no longer depends on local hardcoded subject catalogs
 
 ### Exit Criteria
 
@@ -660,16 +660,16 @@ Remove seeded lesson delivery and use one lesson generation pipeline everywhere.
 
 ### Tasks
 
-- [ ] Remove `src/lib/data/learning-content.ts` as a runtime lesson source
-- [ ] Remove seeded lesson selection paths from repositories and app state
-- [ ] Make curriculum-tree launches use the same lesson generation path as freeform topic discovery
-- [ ] Generate lessons against graph node ids
-- [ ] Persist generated lessons as artifacts
-- [ ] Persist generated lesson question sets as artifacts
-- [ ] Update lesson sessions to reference `nodeId` and `artifactId`
-- [ ] Preserve lesson runtime mechanics in `lesson-system.ts` but remove content authorship responsibility
-- [ ] Remove obsolete “seeded vs dynamic” terminology from code and docs
-- [ ] Add tests proving there is only one lesson creation path
+- [x] Remove `src/lib/data/learning-content.ts` as a runtime lesson source
+- [x] Remove seeded lesson selection paths from repositories and app state
+- [x] Make curriculum-tree launches use the same lesson generation path as freeform topic discovery
+- [x] Generate lessons against graph node ids
+- [x] Persist generated lessons as artifacts
+- [x] Persist generated lesson question sets as artifacts
+- [x] Update lesson sessions to reference `nodeId` and `artifactId`
+- [x] Preserve lesson runtime mechanics in `lesson-system.ts` but remove content authorship responsibility
+- [x] Remove obsolete “seeded vs dynamic” terminology from code and docs
+- [x] Add tests proving there is only one lesson creation path
 
 ### Exit Criteria
 

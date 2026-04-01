@@ -483,6 +483,9 @@ export interface LessonSession {
   studentId: string;
   subjectId: string;
   subject: string;
+  nodeId?: string | null;
+  lessonArtifactId?: string | null;
+  questionArtifactId?: string | null;
   topicId: string;
   topicTitle: string;
   topicDescription: string;
@@ -507,7 +510,7 @@ export interface LessonSession {
 export interface LessonChatRequest {
   student: UserProfile;
   learnerProfile: LearnerProfile;
-  lesson: Lesson;
+  lesson?: Lesson;
   lessonSession: LessonSession;
   message: string;
   messageType: 'question' | 'response';
@@ -529,12 +532,17 @@ export interface LessonPlanRequest {
   topicTitle: string;
   topicDescription: string;
   curriculumReference: string;
+  nodeId?: string | null;
+  topicId?: string;
 }
 
 export interface LessonPlanResponse {
   lesson: Lesson;
   questions: Question[];
   provider: string;
+  nodeId?: string;
+  lessonArtifactId?: string;
+  questionArtifactId?: string;
   modelTier?: import('$lib/ai/model-tiers').ModelTier;
   model?: string;
   error?: string;
