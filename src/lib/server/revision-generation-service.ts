@@ -20,6 +20,15 @@ interface RevisionGenerationDependencies {
   }>;
   pedagogyVersion: string;
   promptVersion: string;
+  onSessionObserved?: (input: {
+    source: 'artifact_reuse' | 'generated';
+    nodeId: string;
+    revisionPackArtifactId: string;
+    revisionQuestionArtifactId: string;
+    provider: string;
+    model: string | null;
+    mode: RevisionPackRequest['mode'];
+  }) => Promise<void> | void;
 }
 
 function buildScope(request: RevisionPackRequest): RevisionArtifactScope {
@@ -141,6 +150,15 @@ export function createRevisionGenerationService(dependencies: RevisionGeneration
         : null;
 
       if (preferredPack && preferredQuestions) {
+        await dependencies.onSessionObserved?.({
+          source: 'artifact_reuse',
+          nodeId: primaryTopic.nodeId,
+          revisionPackArtifactId: preferredPack.id,
+          revisionQuestionArtifactId: preferredQuestions.id,
+          provider: preferredPack.provider,
+          model: preferredPack.model ?? null,
+          mode: request.mode
+        });
         return {
           session: buildRevisionSession({
             topics: resolvedTopics,
@@ -200,6 +218,15 @@ export function createRevisionGenerationService(dependencies: RevisionGeneration
         payload: {
           questions: alignedQuestions
         }
+      });
+      await dependencies.onSessionObserved?.({
+        source: 'generated',
+        nodeId: primaryTopic.nodeId,
+        revisionPackArtifactId: packArtifact.id,
+        revisionQuestionArtifactId: questionArtifact.id,
+        provider: generated.provider,
+        model: generated.model ?? null,
+        mode: request.mode
       });
 
       return {

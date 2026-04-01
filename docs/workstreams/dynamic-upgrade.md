@@ -846,15 +846,15 @@ Make the new system safe to operate at scale.
 
 ### Tasks
 
-- [ ] Add artifact generation success/error monitoring
-- [ ] Add graph growth monitoring
-- [ ] Add duplicate-rate monitoring
-- [ ] Add low-rating regeneration monitoring
-- [ ] Add promotion/demotion dashboards
-- [ ] Add model and prompt version tracking
-- [ ] Add rollback strategy for bad artifact versions
-- [ ] Add alerting for unresolved-topic spikes
-- [ ] Add audit exports for admin graph actions
+- [x] Add artifact generation success/error monitoring
+- [x] Add graph growth monitoring
+- [x] Add duplicate-rate monitoring
+- [x] Add low-rating regeneration monitoring
+- [x] Add promotion/demotion dashboards
+- [x] Add model and prompt version tracking
+- [x] Add rollback strategy for bad artifact versions
+- [x] Add alerting for unresolved-topic spikes
+- [x] Add audit exports for admin graph actions
 
 ### Exit Criteria
 

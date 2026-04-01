@@ -7,6 +7,7 @@ const getAiConfig = vi.fn();
 const resolveAiRoute = vi.fn();
 const createServerGraphRepository = vi.fn();
 const createServerLessonArtifactRepository = vi.fn();
+const createServerDynamicOperationsService = vi.fn();
 
 vi.mock('$app/environment', () => ({
   dev: false
@@ -34,11 +35,18 @@ vi.mock('$lib/server/lesson-artifact-repository', () => ({
   createServerLessonArtifactRepository
 }));
 
+vi.mock('$lib/server/dynamic-operations', () => ({
+  createServerDynamicOperationsService
+}));
+
 describe('ai routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     createServerGraphRepository.mockReturnValue(null);
     createServerLessonArtifactRepository.mockReturnValue(null);
+    createServerDynamicOperationsService.mockReturnValue({
+      recordGenerationEvent: vi.fn()
+    });
     getAiConfig.mockResolvedValue({
       provider: 'github-models',
       tiers: {
@@ -199,6 +207,91 @@ describe('ai routes', () => {
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({
         error: expect.stringMatching(/lesson generation unavailable|edge function failed/i)
+      })
+    );
+    expect(createServerDynamicOperationsService().recordGenerationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: 'lesson-plan',
+        status: 'failure'
+      })
+    );
+  });
+
+  it('lesson plan route records a successful generation metric with prompt/model lineage', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        provider: 'github-models',
+        modelTier: 'thinking',
+        model: 'openai/gpt-4.1-mini',
+        lesson: {
+          id: 'lesson-1',
+          title: 'Biology: Photosynthesis',
+          topicId: 'topic-1',
+          subtopicId: 'subtopic-1',
+          subjectId: 'subject-1',
+          grade: 'Grade 6',
+          orientation: { title: 'Orientation', body: 'Body' },
+          mentalModel: { title: 'Model', body: 'Body' },
+          concepts: { title: 'Concepts', body: 'Body' },
+          guidedConstruction: { title: 'Construction', body: 'Body' },
+          workedExample: { title: 'Example', body: 'Body' },
+          practicePrompt: { title: 'Practice', body: 'Body' },
+          commonMistakes: { title: 'Mistakes', body: 'Body' },
+          transferChallenge: { title: 'Transfer', body: 'Body' },
+          summary: { title: 'Summary', body: 'Body' },
+          practiceQuestionIds: [],
+          masteryQuestionIds: []
+        },
+        questions: []
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Photosynthesis',
+            topicDescription: 'How plants make food',
+            curriculumReference: 'IEB · Grade 6 · Biology'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(createServerDynamicOperationsService().recordGenerationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: 'lesson-plan',
+        status: 'success',
+        promptVersion: 'lesson-plan-v1',
+        model: 'openai/gpt-4.1-mini'
       })
     );
   });

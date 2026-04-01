@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   createServerGraphRepository,
   createServerRevisionArtifactRepository,
-  createRevisionGenerationService
+  createRevisionGenerationService,
+  createServerDynamicOperationsService
 } = vi.hoisted(() => ({
   createServerGraphRepository: vi.fn(),
   createServerRevisionArtifactRepository: vi.fn(),
-  createRevisionGenerationService: vi.fn()
+  createRevisionGenerationService: vi.fn(),
+  createServerDynamicOperationsService: vi.fn()
 }));
 
 vi.mock('$lib/server/graph-repository', () => ({
@@ -22,9 +24,16 @@ vi.mock('$lib/server/revision-generation-service', () => ({
   createRevisionGenerationService
 }));
 
+vi.mock('$lib/server/dynamic-operations', () => ({
+  createServerDynamicOperationsService
+}));
+
 describe('revision pack route', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    createServerDynamicOperationsService.mockReturnValue({
+      recordGenerationEvent: vi.fn()
+    });
   });
 
   it('starts a revision session through the backend generation service', async () => {
@@ -79,7 +88,18 @@ describe('revision pack route', () => {
       revisionQuestionArtifactId: 'revision-question-artifact-1',
       model: 'openai/gpt-4.1-mini'
     });
-    createRevisionGenerationService.mockReturnValue({ startRevisionSession });
+    createRevisionGenerationService.mockImplementation((dependencies) => {
+      void dependencies.onSessionObserved?.({
+        source: 'generated',
+        nodeId: 'graph-subtopic-fractions',
+        revisionPackArtifactId: 'revision-pack-artifact-1',
+        revisionQuestionArtifactId: 'revision-question-artifact-1',
+        provider: 'github-models',
+        model: 'openai/gpt-4.1-mini',
+        mode: 'deep_revision'
+      });
+      return { startRevisionSession };
+    });
 
     const { POST } = await import('../../routes/api/ai/revision-pack/+server');
     const response = await POST({
@@ -138,6 +158,13 @@ describe('revision pack route', () => {
           recommendationReason: 'Due today',
           mode: 'deep_revision'
         })
+      })
+    );
+    expect(createServerDynamicOperationsService().recordGenerationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: 'revision-pack',
+        status: 'success',
+        promptVersion: 'revision-pack-v1'
       })
     );
   });

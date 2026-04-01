@@ -3,6 +3,8 @@ import { runModelScan } from '$lib/server/model-scan';
 import type { AiConfig } from '$lib/server/ai-config';
 import type { ProviderId } from '$lib/ai/providers';
 import type { AiMode } from '$lib/ai/model-tiers';
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
+import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 
 const ROUTE_MODES: AiMode[] = [
   'lesson-chat', 'lesson-plan', 'topic-shortlist', 'lesson-selector', 'subject-hints'
@@ -20,7 +22,9 @@ export async function load() {
 
 export const actions = {
   saveAiConfig: async ({ request }: { request: Request }) => {
+    const adminSession = await requireAdminSession(request);
     const data = await request.formData();
+    const previousConfig = await getAiConfig();
 
     const provider = data.get('provider') as ProviderId;
     const fastModel    = (data.get('tier_fast')     as string) ?? '';
@@ -52,6 +56,15 @@ export const actions = {
     };
 
     await saveAiConfig(config);
+    await createServerDynamicOperationsService()?.recordGovernanceAction({
+      actionType: 'ai_config_updated',
+      actorId: adminSession.profileId,
+      reason: 'Updated AI provider, tier, or route override settings.',
+      payload: {
+        previousConfig,
+        nextConfig: config
+      }
+    });
     return { success: true };
   },
 

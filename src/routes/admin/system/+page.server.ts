@@ -1,4 +1,5 @@
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
+import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 
 interface ServiceStatus {
   name: string;
@@ -6,10 +7,9 @@ interface ServiceStatus {
   detail: string;
 }
 
-export async function load() {
+async function loadServiceStatus(): Promise<ServiceStatus[]> {
   const services: ServiceStatus[] = [];
 
-  // Supabase check
   if (!isSupabaseConfigured()) {
     services.push({ name: 'Supabase', status: 'down', detail: 'Not configured' });
   } else {
@@ -38,13 +38,35 @@ export async function load() {
     detail: 'Serving requests'
   });
 
-  // Route health summary
-  const routeHealth = [
-    { route: 'POST /api/ai/lesson-chat', status: 'unknown' },
-    { route: 'POST /api/ai/topic-shortlist', status: 'unknown' },
-    { route: 'GET /api/state/bootstrap', status: 'unknown' },
-    { route: 'POST /api/state/sync', status: 'unknown' }
-  ];
+  return services;
+}
 
-  return { services, routeHealth };
+export async function load() {
+  const [services, dashboard] = await Promise.all([
+    loadServiceStatus(),
+    createServerDynamicOperationsService()?.getSystemDashboard() ?? Promise.resolve(null)
+  ]);
+
+  return {
+    services,
+    dashboard: dashboard ?? {
+      metrics: {
+        lessonGeneration: { successCount24h: 0, failureCount24h: 0, successRate24h: 0 },
+        revisionGeneration: { successCount24h: 0, failureCount24h: 0, successRate24h: 0 },
+        graph: { nodesCreated7d: 0, promotions7d: 0, reviewFlags7d: 0, duplicateCandidates24h: 0, openDuplicateCandidates: 0 },
+        migration: { unresolvedPending: 0, unresolvedCreated7d: 0 },
+        artifacts: { lowQualityArtifacts7d: 0, regenerationRequests7d: 0 }
+      },
+      routeHealth: [],
+      graphGrowth: [],
+      artifactQuality: [],
+      alerts: [],
+      governanceAudit: [],
+      policy: {
+        thresholds: {},
+        reviewCadence: {},
+        rollback: {}
+      }
+    }
+  };
 }

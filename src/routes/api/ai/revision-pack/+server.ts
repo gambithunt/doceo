@@ -5,6 +5,7 @@ import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 import { createServerGraphRepository } from '$lib/server/graph-repository';
 import { createServerRevisionArtifactRepository } from '$lib/server/revision-artifact-repository';
 import { createRevisionGenerationService } from '$lib/server/revision-generation-service';
+import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 import { logAiInteraction } from '$lib/server/state-repository';
 import type { RevisionPackGenerationPayload, RevisionPackRequest } from '$lib/types';
 
@@ -71,8 +72,22 @@ export async function POST({ request, fetch }) {
   const revisionRequest = parsed.data.request as unknown as RevisionPackRequest;
   const graphRepository = createServerGraphRepository();
   const artifactRepository = createServerRevisionArtifactRepository();
+  const dynamicOperations = createServerDynamicOperationsService();
+  const startedAt = Date.now();
 
   if (!graphRepository || !artifactRepository) {
+    await dynamicOperations?.recordGenerationEvent({
+      route: 'revision-pack',
+      status: 'failure',
+      source: 'generated',
+      profileId: revisionRequest.student.id,
+      promptVersion: 'revision-pack-v1',
+      pedagogyVersion: 'phase5-v1',
+      latencyMs: Date.now() - startedAt,
+      payload: {
+        error: 'Revision generation backend is not configured.'
+      }
+    });
     return json({ error: 'Revision generation backend is not configured.' }, { status: 503 });
   }
 
@@ -126,11 +141,43 @@ export async function POST({ request, fetch }) {
       artifactRepository,
       generateRevisionPack,
       pedagogyVersion: 'phase5-v1',
-      promptVersion: 'revision-pack-v1'
+      promptVersion: 'revision-pack-v1',
+      onSessionObserved: async (event) => {
+        await dynamicOperations?.recordGenerationEvent({
+          route: 'revision-pack',
+          status: 'success',
+          source: event.source,
+          profileId: revisionRequest.student.id,
+          nodeId: event.nodeId,
+          artifactId: event.revisionPackArtifactId,
+          secondaryArtifactId: event.revisionQuestionArtifactId,
+          promptVersion: 'revision-pack-v1',
+          pedagogyVersion: 'phase5-v1',
+          provider: event.provider,
+          model: event.model,
+          latencyMs: Date.now() - startedAt,
+          payload: {
+            mode: event.mode
+          }
+        });
+      }
     });
 
     return json(await service.startRevisionSession({ request: revisionRequest }));
   } catch (error) {
+    await dynamicOperations?.recordGenerationEvent({
+      route: 'revision-pack',
+      status: 'failure',
+      source: 'generated',
+      profileId: revisionRequest.student.id,
+      promptVersion: 'revision-pack-v1',
+      pedagogyVersion: 'phase5-v1',
+      latencyMs: Date.now() - startedAt,
+      payload: {
+        error: error instanceof Error ? error.message : 'Unknown revision generation error'
+      }
+    });
+
     if (error instanceof Error && 'status' in error && typeof error.status === 'number') {
       return json({ error: error.message }, { status: error.status });
     }

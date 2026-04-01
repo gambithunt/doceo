@@ -8,6 +8,14 @@ interface LessonLaunchDependencies {
   generateLessonPlan: (request: LessonPlanRequest) => Promise<LessonPlanResponse>;
   pedagogyVersion: string;
   promptVersion: string;
+  onLaunchObserved?: (input: {
+    source: 'artifact_reuse' | 'generated';
+    nodeId: string;
+    lessonArtifactId: string;
+    questionArtifactId: string;
+    provider: string;
+    model: string | null;
+  }) => Promise<void> | void;
 }
 
 function buildScope(student: UserProfile): LessonArtifactScope {
@@ -137,6 +145,14 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
         : null;
 
       if (preferredLesson && preferredQuestions) {
+        await dependencies.onLaunchObserved?.({
+          source: 'artifact_reuse',
+          nodeId: node.id,
+          lessonArtifactId: preferredLesson.id,
+          questionArtifactId: preferredQuestions.id,
+          provider: preferredLesson.provider,
+          model: preferredLesson.model ?? null
+        });
         return {
           ...preferredLesson.payload,
           questions: preferredQuestions.payload.questions,
@@ -181,6 +197,14 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
         payload: {
           questions: generated.questions
         }
+      });
+      await dependencies.onLaunchObserved?.({
+        source: 'generated',
+        nodeId: node.id,
+        lessonArtifactId: lessonArtifact.id,
+        questionArtifactId: questionArtifact.id,
+        provider: generated.provider,
+        model: generated.model ?? null
       });
 
       return {

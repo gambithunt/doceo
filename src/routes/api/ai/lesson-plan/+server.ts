@@ -8,6 +8,7 @@ import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 import { createServerGraphRepository } from '$lib/server/graph-repository';
 import { createServerLessonArtifactRepository } from '$lib/server/lesson-artifact-repository';
 import { createLessonLaunchService } from '$lib/server/lesson-launch-service';
+import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 const LessonPlanBodySchema = z.object({
@@ -42,6 +43,8 @@ export async function POST({ request, fetch }) {
   const lessonRequest = parsed.data.request as unknown as LessonPlanRequest;
   const graphRepository = createServerGraphRepository();
   const artifactRepository = createServerLessonArtifactRepository();
+  const dynamicOperations = createServerDynamicOperationsService();
+  const startedAt = Date.now();
 
   const generateLessonPlan = async (launchRequest: LessonPlanRequest): Promise<LessonPlanResponse> => {
     const aiConfig = await getAiConfig();
@@ -99,7 +102,20 @@ export async function POST({ request, fetch }) {
 
   try {
     if (!graphRepository || !artifactRepository) {
-      return json(await generateLessonPlan(lessonRequest));
+      const generated = await generateLessonPlan(lessonRequest);
+      await dynamicOperations?.recordGenerationEvent({
+        route: 'lesson-plan',
+        status: 'success',
+        source: 'generated_direct',
+        profileId: lessonRequest.student.id,
+        promptVersion: 'lesson-plan-v1',
+        pedagogyVersion: 'phase3-v1',
+        provider: generated.provider,
+        model: generated.model ?? null,
+        modelTier: generated.modelTier,
+        latencyMs: Date.now() - startedAt
+      });
+      return json(generated);
     }
 
     const service = createLessonLaunchService({
@@ -107,11 +123,40 @@ export async function POST({ request, fetch }) {
       artifactRepository,
       generateLessonPlan,
       pedagogyVersion: 'phase3-v1',
-      promptVersion: 'lesson-plan-v1'
+      promptVersion: 'lesson-plan-v1',
+      onLaunchObserved: async (event) => {
+        await dynamicOperations?.recordGenerationEvent({
+          route: 'lesson-plan',
+          status: 'success',
+          source: event.source,
+          profileId: lessonRequest.student.id,
+          nodeId: event.nodeId,
+          artifactId: event.lessonArtifactId,
+          secondaryArtifactId: event.questionArtifactId,
+          promptVersion: 'lesson-plan-v1',
+          pedagogyVersion: 'phase3-v1',
+          provider: event.provider,
+          model: event.model,
+          latencyMs: Date.now() - startedAt
+        });
+      }
     });
 
     return json(await service.launchLesson({ request: lessonRequest }));
   } catch (error) {
+    await dynamicOperations?.recordGenerationEvent({
+      route: 'lesson-plan',
+      status: 'failure',
+      source: 'generated',
+      profileId: lessonRequest.student.id,
+      promptVersion: 'lesson-plan-v1',
+      pedagogyVersion: 'phase3-v1',
+      latencyMs: Date.now() - startedAt,
+      payload: {
+        error: error instanceof Error ? error.message : 'Unknown lesson generation error'
+      }
+    });
+
     if (error instanceof Error && 'status' in error && typeof error.status === 'number') {
       return json({ error: error.message }, { status: error.status });
     }

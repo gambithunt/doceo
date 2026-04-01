@@ -133,66 +133,74 @@ This phase is required for long-term operation. The dynamic architecture is not 
 
 ### 11.1 Monitoring and health signals
 
-- [ ] generation success/failure metrics for lessons
-- [ ] generation success/failure metrics for revision packs
-- [ ] graph growth metrics
-- [ ] provisional promotion/demotion rates
-- [ ] duplicate candidate rates
-- [ ] unresolved mapping rates
-- [ ] artifact low-rating rates
+- [x] generation success/failure metrics for lessons
+- [x] generation success/failure metrics for revision packs
+- [x] graph growth metrics
+- [x] provisional promotion/demotion rates
+- [x] duplicate candidate rates
+- [x] unresolved mapping rates
+- [x] artifact low-rating rates
 
 ### 11.2 Dashboards
 
-- [ ] artifact quality dashboard
-- [ ] graph growth dashboard
-- [ ] generation cost and volume dashboard
-- [ ] unresolved and duplicate pressure dashboard
-- [ ] admin action audit dashboard
+- [x] artifact quality dashboard
+- [x] graph growth dashboard
+- [x] generation cost and volume dashboard
+- [x] unresolved and duplicate pressure dashboard
+- [x] admin action audit dashboard
 
 ### 11.3 Alerting
 
-- [ ] alert on generation failure spikes
-- [ ] alert on unresolved-topic spikes
-- [ ] alert on duplicate candidate spikes
-- [ ] alert on low-quality artifact clusters
-- [ ] alert on unusual auto-promotion behavior
+- [x] alert on generation failure spikes
+- [x] alert on unresolved-topic spikes
+- [x] alert on duplicate candidate spikes
+- [x] alert on low-quality artifact clusters
+- [x] alert on unusual auto-promotion behavior
 
 ### 11.4 Prompt and model governance
 
-- [ ] store prompt version on all artifacts
-- [ ] store model/provider metadata on all artifacts
-- [ ] add ability to compare artifact quality by prompt version
-- [ ] add ability to compare artifact quality by model/provider
+- [x] store prompt version on all artifacts
+- [x] store model/provider metadata on all artifacts
+- [x] add ability to compare artifact quality by prompt version
+- [x] add ability to compare artifact quality by model/provider
 
 ### 11.5 Rollback and recovery
 
-- [ ] define rollback strategy for bad prompt versions
-- [ ] define rollback strategy for bad model routing
-- [ ] support changing preferred artifact or preferred prompt lineage without rewriting history
-- [ ] keep audit trail of all governance actions
+- [x] define rollback strategy for bad prompt versions
+- [x] define rollback strategy for bad model routing
+- [x] support changing preferred artifact or preferred prompt lineage without rewriting history
+- [x] keep audit trail of all governance actions
 
 ### 11.6 Policy and review loops
 
-- [ ] define operational thresholds for:
+- [x] define operational thresholds for:
   - auto-promotion
   - auto-review-needed
   - regeneration
   - duplicate merge suggestions
-- [ ] define human review cadence for admin graph health
-- [ ] define periodic quality review of lesson and revision artifacts
+- [x] define human review cadence for admin graph health
+- [x] define periodic quality review of lesson and revision artifacts
 
 ## Required Tests
 
-- [ ] metrics emitted on generation events
-- [ ] alert triggers for failure spikes
-- [ ] prompt version stored on artifact creation
-- [ ] governance changes do not mutate historical attempt/session records
+- [x] metrics emitted on generation events
+- [x] alert triggers for failure spikes
+- [x] prompt version stored on artifact creation
+- [x] governance changes do not mutate historical attempt/session records
+
+## Phase 11 Findings
+
+- `src/lib/server/dynamic-operations.ts` adds the new observability layer. Lesson and revision generation routes now emit success/failure events with prompt lineage, provider/model metadata, artifact ids when available, and latency.
+- `src/routes/admin/system/+page.server.ts` and `src/routes/admin/system/+page.svelte` now expose a real dynamic-system operations dashboard instead of placeholders. The screen shows generation reliability, graph pressure, unresolved queue pressure, low-quality artifact clusters, alert banners, and governance audit history.
+- `src/routes/admin/ai/+page.server.ts` and `src/routes/admin/ai/+page.svelte` now combine spend/volume reporting with lesson and revision prompt/model lineage comparisons plus a rollback queue for lesson artifact lineages.
+- `src/routes/admin/settings/+page.server.ts` now logs `ai_config_updated` governance actions so route-override changes are auditable.
+- Rollback remains additive. Preference changes operate on existing lesson artifacts and audit entries without mutating historical attempts or sessions.
 
 ## Exit Criteria
 
-- the dynamic system is observable
-- prompt/model lineage is traceable
-- rollback and governance mechanisms exist
+- [x] the dynamic system is observable
+- [x] prompt/model lineage is traceable
+- [x] rollback and governance mechanisms exist
 
 ---
 

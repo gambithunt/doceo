@@ -1,12 +1,43 @@
 <script lang="ts">
+  import { enhance } from '$app/forms';
   import AdminKpiCard from '$lib/components/admin/AdminKpiCard.svelte';
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
   import type { TimeRange } from '$lib/components/admin/AdminTimeRange.svelte';
 
-  const { data } = $props();
-  const { spendByRoute, totalSpend30d, totalSpend24h, totalRequests30d, recentErrors } = data;
+  type PageData = {
+    spendByRoute: Array<{ route: string; requests: number; estimatedCost: number }>;
+    totalSpend30d: number;
+    totalSpend24h: number;
+    totalRequests30d: number;
+    recentErrors: Array<{ id: string; createdAt: string; detail: string }>;
+    governance: {
+      lessonPromptComparisons: Array<{ promptVersion: string; artifactCount: number; meanQualityScore: number; staleCount: number }>;
+      lessonModelComparisons: Array<{ provider: string; model: string; artifactCount: number; meanQualityScore: number; staleCount: number }>;
+      revisionPromptComparisons: Array<{ promptVersion: string; packCount: number; readyCount: number }>;
+      revisionModelComparisons: Array<{ provider: string; model: string; packCount: number; readyCount: number }>;
+      lessonRollbackCandidates: Array<{
+        nodeId: string;
+        nodeLabel: string;
+        preferredArtifactId: string | null;
+        recommendedArtifactId: string;
+        promptVersion: string;
+        provider: string;
+        model: string | null;
+        qualityDelta: number;
+        reason: string;
+      }>;
+      governanceAudit: Array<{ id: string; actionType: string; createdAt: string; actorId: string | null; reason: string | null }>;
+      rollback: { artifactLineage?: string; modelRouting?: string };
+      policy: { reviewCadence?: { lessonArtifacts?: string; revisionArtifacts?: string } };
+    };
+  };
+
+  const props = $props<{ data: PageData; form: { success?: boolean; action?: string } | null }>();
+  const spendByRoute = $derived(props.data.spendByRoute);
+  const governance = $derived(props.data.governance);
 
   let range = $state<TimeRange>('30d');
+  let rollbackBusy = $state<string | null>(null);
 
   function formatCurrency(n: number): string {
     return `$${n.toFixed(2)}`;
@@ -22,261 +53,346 @@
     return `${Math.floor(hrs / 24)}d ago`;
   }
 
-  const maxRequests = $derived(Math.max(...spendByRoute.map((r) => r.requests), 1));
+  const maxRequests = $derived(Math.max(...spendByRoute.map((row: { requests: number }) => row.requests), 1));
 </script>
 
 <div class="page">
   <AdminPageHeader
-    title="AI & Costs"
-    description="Token usage, spend, and model performance"
+    title="AI & Governance"
+    description="Generation cost, prompt lineage quality, rollback candidates, and governance audit history"
     {range}
-    onrangechange={(r) => (range = r)}
+    onrangechange={(value) => (range = value)}
   />
 
   <div class="page-body">
-    <!-- KPI Row -->
     <section class="kpi-grid" aria-label="AI metrics">
-      <AdminKpiCard label="Estimated Spend (30d)" value={formatCurrency(totalSpend30d)} icon="⬡" color="yellow" invertDelta />
-      <AdminKpiCard label="Estimated Spend (24h)" value={formatCurrency(totalSpend24h)} icon="⬡" color="orange" invertDelta />
-      <AdminKpiCard label="AI Requests (30d)" value={totalRequests30d.toLocaleString()} icon="↗" color="blue" />
-      <AdminKpiCard label="Avg Cost / Request" value={totalRequests30d > 0 ? `$${(totalSpend30d / totalRequests30d).toFixed(4)}` : '$0.00'} icon="◎" color="accent" />
+      <AdminKpiCard label="Estimated spend (30d)" value={formatCurrency(props.data.totalSpend30d)} icon="⬡" color="yellow" invertDelta />
+      <AdminKpiCard label="Estimated spend (24h)" value={formatCurrency(props.data.totalSpend24h)} icon="◐" color="orange" invertDelta />
+      <AdminKpiCard label="AI requests (30d)" value={props.data.totalRequests30d.toLocaleString()} icon="↗" color="blue" />
+      <AdminKpiCard label="Rollback candidates" value={governance.lessonRollbackCandidates.length} icon="◇" color="purple" />
     </section>
 
-    <!-- Budget gauge -->
-    <div class="budget-card">
-      <div class="budget-header">
-        <span class="budget-label">Monthly Spend vs Budget</span>
-        <span class="budget-vals">{formatCurrency(totalSpend30d)} / $50.00 estimated cap</span>
-      </div>
-      <div class="budget-track">
-        <div
-          class="budget-fill"
-          style:width="{Math.min((totalSpend30d / 50) * 100, 100)}%"
-          class:warning={totalSpend30d / 50 > 0.75}
-          class:danger={totalSpend30d / 50 > 0.9}
-        ></div>
-      </div>
-      <p class="budget-note">Budget cap is a local estimate. Configure in Settings for accurate tracking.</p>
-    </div>
-
-    <!-- Requests by route -->
-    <div class="section-card">
-      <h2 class="section-title">Requests by Route (30d)</h2>
-      {#if spendByRoute.length === 0}
-        <p class="empty">No AI interaction data found. Check that Supabase is configured and AI interactions are being logged.</p>
-      {:else}
-        <div class="route-table-wrap">
-          <table class="route-table">
+    <div class="two-up">
+      <section class="section-card">
+        <h2 class="section-title">Requests by Route</h2>
+        <div class="table-wrap">
+          <table>
             <thead>
               <tr>
-                <th>Route / Mode</th>
-                <th>Requests</th>
+                <th>Route</th>
+                <th class="right">Requests</th>
                 <th class="bar-col">Volume</th>
-                <th class="right">Est. Cost</th>
+                <th class="right">Cost</th>
               </tr>
             </thead>
             <tbody>
               {#each spendByRoute as route}
                 <tr>
                   <td class="mono">{route.route}</td>
-                  <td>{route.requests.toLocaleString()}</td>
+                  <td class="right">{route.requests}</td>
                   <td class="bar-col">
-                    <div class="inline-bar-track">
-                      <div class="inline-bar-fill" style:width="{(route.requests / maxRequests) * 100}%"></div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style:width="{(route.requests / maxRequests) * 100}%"></div>
                     </div>
                   </td>
-                  <td class="right soft">{formatCurrency(route.estimatedCost)}</td>
+                  <td class="right">{formatCurrency(route.estimatedCost)}</td>
                 </tr>
               {/each}
-              <tr class="total-row">
-                <td>Total</td>
-                <td>{totalRequests30d.toLocaleString()}</td>
-                <td></td>
-                <td class="right">{formatCurrency(totalSpend30d)}</td>
-              </tr>
             </tbody>
           </table>
         </div>
-        <p class="cost-note">Cost estimates use average pricing per route. Add token tracking for accurate costs.</p>
-      {/if}
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">Rollback Playbooks</h2>
+        <div class="recovery-copy">
+          <p><strong>Artifact lineage:</strong> {governance.rollback.artifactLineage ?? 'Prefer the best surviving lineage without rewriting history.'}</p>
+          <p><strong>Model routing:</strong> {governance.rollback.modelRouting ?? 'Revert route overrides in settings and keep the audit trail.'}</p>
+          <p><strong>Lesson review cadence:</strong> {governance.policy.reviewCadence?.lessonArtifacts ?? 'Every 2 weeks'}</p>
+          <p><strong>Revision review cadence:</strong> {governance.policy.reviewCadence?.revisionArtifacts ?? 'Every 2 weeks'}</p>
+        </div>
+      </section>
     </div>
 
-    <!-- Error log -->
-    <div class="section-card">
-      <h2 class="section-title">Recent AI Errors</h2>
-      {#if recentErrors.length === 0}
-        <p class="empty-green">No errors recorded. All AI routes healthy.</p>
+    <div class="two-up">
+      <section class="section-card">
+        <h2 class="section-title">Lesson Prompt Comparisons</h2>
+        <div class="comparison-list">
+          {#each governance.lessonPromptComparisons as item}
+            <div class="comparison-item">
+              <div>
+                <strong>{item.promptVersion}</strong>
+                <p>{item.artifactCount} artifacts · {item.staleCount} stale</p>
+              </div>
+              <span class="metric-pill">Q {item.meanQualityScore}</span>
+            </div>
+          {/each}
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">Lesson Model Comparisons</h2>
+        <div class="comparison-list">
+          {#each governance.lessonModelComparisons as item}
+            <div class="comparison-item">
+              <div>
+                <strong>{item.provider} / {item.model}</strong>
+                <p>{item.artifactCount} artifacts · {item.staleCount} stale</p>
+              </div>
+              <span class="metric-pill">Q {item.meanQualityScore}</span>
+            </div>
+          {/each}
+        </div>
+      </section>
+    </div>
+
+    <div class="two-up">
+      <section class="section-card">
+        <h2 class="section-title">Revision Prompt Comparisons</h2>
+        <div class="comparison-list">
+          {#each governance.revisionPromptComparisons as item}
+            <div class="comparison-item">
+              <div>
+                <strong>{item.promptVersion}</strong>
+                <p>{item.packCount} packs</p>
+              </div>
+              <span class="metric-pill">{item.readyCount} ready</span>
+            </div>
+          {/each}
+        </div>
+      </section>
+
+      <section class="section-card">
+        <h2 class="section-title">Revision Model Comparisons</h2>
+        <div class="comparison-list">
+          {#each governance.revisionModelComparisons as item}
+            <div class="comparison-item">
+              <div>
+                <strong>{item.provider} / {item.model}</strong>
+                <p>{item.packCount} packs</p>
+              </div>
+              <span class="metric-pill">{item.readyCount} ready</span>
+            </div>
+          {/each}
+        </div>
+      </section>
+    </div>
+
+    <section class="section-card">
+      <h2 class="section-title">Lesson Rollback Candidates</h2>
+      {#if governance.lessonRollbackCandidates.length === 0}
+        <p class="empty-copy">No lesson lineage rollbacks are currently recommended.</p>
       {:else}
-        <div class="error-list">
-          {#each recentErrors as err}
-            <div class="error-row">
-              <span class="error-time">{relativeTime(err.createdAt)}</span>
-              <span class="error-detail">{err.detail}</span>
+        <div class="rollback-list">
+          {#each governance.lessonRollbackCandidates as item}
+            <form
+              method="POST"
+              action="?/preferLineage"
+              use:enhance={() => {
+                rollbackBusy = item.recommendedArtifactId;
+                return async ({ update }) => {
+                  await update();
+                  rollbackBusy = null;
+                };
+              }}
+              class="rollback-item"
+            >
+              <input type="hidden" name="artifactId" value={item.recommendedArtifactId} />
+              <input type="hidden" name="reason" value={item.reason} />
+              <div class="rollback-copy">
+                <strong>{item.nodeLabel}</strong>
+                <p>{item.reason}</p>
+                <p class="rollback-meta">{item.promptVersion} · {item.provider} / {item.model ?? 'unknown'} · Δ {item.qualityDelta}</p>
+              </div>
+              <div class="rollback-actions">
+                <a class="ghost-link" href={`/admin/graph/${item.nodeId}`}>Inspect node</a>
+                <button type="submit" class="rollback-btn" disabled={rollbackBusy === item.recommendedArtifactId}>
+                  {rollbackBusy === item.recommendedArtifactId ? 'Preferring…' : 'Prefer best'}
+                </button>
+              </div>
+            </form>
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    <section class="section-card">
+      <h2 class="section-title">Governance Audit</h2>
+      {#if governance.governanceAudit.length === 0}
+        <p class="empty-copy">No governance actions logged yet.</p>
+      {:else}
+        <div class="audit-list">
+          {#each governance.governanceAudit as entry}
+            <div class="audit-item">
+              <div>
+                <strong>{entry.actionType.replace(/_/g, ' ')}</strong>
+                <p>{entry.reason ?? 'Governance action applied.'}</p>
+              </div>
+              <span>{entry.actorId ?? 'system'} · {relativeTime(entry.createdAt)}</span>
             </div>
           {/each}
         </div>
       {/if}
-    </div>
-
+    </section>
   </div>
 </div>
 
 <style>
   .page { min-height: 100vh; }
-
   .page-body {
-    padding: 1.25rem 1.75rem 2rem;
+    padding: 1.5rem 1.75rem 2.5rem;
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
   }
-
   .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .two-up {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .section-card {
+    background: color-mix(in srgb, var(--surface) 82%, var(--surface-high) 18%);
+    border: 1px solid var(--border-strong);
+    border-radius: 1.4rem;
+    padding: 1.2rem 1.25rem;
+    box-shadow: var(--shadow-sm);
+  }
+  .section-title {
+    margin: 0 0 0.9rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .table-wrap {
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+  }
+  th, td {
+    padding: 0.75rem 0.85rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.72rem;
+    color: var(--text-soft);
+    background: color-mix(in srgb, var(--surface-high) 50%, transparent);
+  }
+  tr:last-child td { border-bottom: none; }
+  .right { text-align: right; }
+  .bar-col { width: 40%; }
+  .bar-track {
+    height: 0.45rem;
+    background: var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--color-blue), var(--accent));
+    border-radius: 999px;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .comparison-list, .audit-list, .rollback-list {
+    display: flex;
+    flex-direction: column;
     gap: 0.75rem;
   }
-
-  @media (max-width: 1000px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
-
-  /* Budget gauge */
-  .budget-card {
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
-    border-radius: 1rem;
-    padding: 1.1rem 1.25rem;
-  }
-
-  .budget-header {
+  .comparison-item, .audit-item, .rollback-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.65rem;
-    font-size: 0.84rem;
-  }
-
-  .budget-label { font-weight: 600; color: var(--text); }
-  .budget-vals { color: var(--text-soft); }
-
-  .budget-track {
-    height: 8px;
-    background: var(--border-strong);
-    border-radius: 999px;
-    overflow: hidden;
-    margin-bottom: 0.5rem;
-  }
-
-  .budget-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--color-blue), var(--accent));
-    border-radius: 999px;
-    transition: width 0.4s ease;
-  }
-
-  .budget-fill.warning { background: linear-gradient(90deg, var(--accent), var(--color-yellow)); }
-  .budget-fill.danger { background: linear-gradient(90deg, var(--color-yellow), var(--color-error)); }
-
-  .budget-note { font-size: 0.75rem; color: var(--muted); margin: 0; }
-
-  /* Section card */
-  .section-card {
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
+    gap: 0.9rem;
+    padding: 0.9rem 1rem;
     border-radius: 1rem;
-    padding: 1.1rem 1.25rem;
-  }
-
-  .section-title {
-    font-size: 0.84rem;
-    font-weight: 600;
-    color: var(--text);
-    margin: 0 0 0.85rem;
-  }
-
-  .empty {
-    font-size: 0.84rem;
-    color: var(--muted);
-    padding: 1.5rem 0;
-    margin: 0;
-    text-align: center;
-  }
-
-  .empty-green {
-    font-size: 0.84rem;
-    color: var(--color-success);
-    padding: 1rem 0;
-    margin: 0;
-    font-weight: 500;
-  }
-
-  /* Route table */
-  .route-table-wrap {
     border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    overflow: hidden;
-    margin-bottom: 0.5rem;
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
   }
-
-  .route-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
-
-  .route-table thead { background: var(--surface-strong); }
-
-  .route-table th {
-    padding: 0.55rem 0.85rem;
-    font-size: 0.7rem;
-    font-weight: 600;
+  .comparison-item p, .audit-item p, .rollback-copy p, .recovery-copy p {
+    margin: 0.2rem 0 0;
     color: var(--text-soft);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid var(--border-strong);
+    font-size: 0.82rem;
+  }
+  .metric-pill {
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    background: var(--color-blue-dim);
+    color: var(--color-blue);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .rollback-item {
+    width: 100%;
+  }
+  .rollback-copy {
+    flex: 1;
     text-align: left;
-    white-space: nowrap;
   }
-
-  .route-table td {
-    padding: 0.6rem 0.85rem;
-    color: var(--text);
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
+  .rollback-meta {
+    color: var(--text-muted);
   }
-
-  .route-table tr:last-child td { border-bottom: none; }
-
-  .total-row { background: var(--surface-strong); font-weight: 700; }
-
-  .mono { font-family: monospace; font-size: 0.8rem; }
-  .right { text-align: right; }
-  .soft { color: var(--text-soft); }
-  .bar-col { width: 40%; }
-
-  .inline-bar-track {
-    height: 5px;
-    background: var(--border-strong);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  .inline-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--color-blue), var(--accent));
-    border-radius: 999px;
-  }
-
-  .cost-note { font-size: 0.72rem; color: var(--muted); margin: 0.5rem 0 0; }
-
-  /* Error list */
-  .error-list { display: flex; flex-direction: column; gap: 0; }
-
-  .error-row {
+  .rollback-actions {
     display: flex;
+    align-items: center;
     gap: 0.75rem;
-    align-items: flex-start;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border);
+  }
+  .ghost-link {
+    color: var(--text-soft);
+    text-decoration: none;
     font-size: 0.8rem;
   }
-
-  .error-row:last-child { border-bottom: none; }
-  .error-time { color: var(--muted); flex-shrink: 0; width: 5rem; }
-  .error-detail { color: var(--color-error); flex: 1; }
+  .rollback-btn {
+    border: none;
+    border-radius: 999px;
+    padding: 0.7rem 1rem;
+    background: linear-gradient(135deg, var(--accent), var(--color-blue));
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+  }
+  .rollback-btn:disabled {
+    opacity: 0.6;
+    cursor: progress;
+  }
+  .audit-item span {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+  }
+  .empty-copy {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.86rem;
+  }
+  .recovery-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  @media (max-width: 980px) {
+    .kpi-grid, .two-up {
+      grid-template-columns: 1fr;
+    }
+    .rollback-item {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .rollback-actions {
+      justify-content: space-between;
+    }
+    .page-body {
+      padding: 1rem 1rem 2rem;
+    }
+  }
 </style>
