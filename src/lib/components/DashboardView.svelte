@@ -199,8 +199,19 @@
     }
   }
 
+  // Derived hint trigger — changes whenever subject or profile fields change.
+  // The $effect below tracks this directly, so any change reliably fires a reload.
+  const hintTrigger = $derived(
+    `${viewState.topicDiscovery.selectedSubjectId}:${viewState.profile.curriculumId}:${viewState.profile.gradeId}:${viewState.profile.term}`
+  );
+
   $effect(() => {
-    if (!selectedSubject) return;
+    const trigger = hintTrigger;
+    const { curriculumId, curriculum, gradeId, grade } = viewState.profile;
+    if (!trigger || !selectedSubject || !curriculumId || !curriculum || !gradeId || !grade) {
+      hintChipsLoading = false;
+      return;
+    }
     void loadSubjectHints();
   });
 
@@ -214,6 +225,7 @@
   function selectSubject(subjectId: string): void {
     lastHintSeed = '';
     promptSuggestionsText = '';
+    hintChipsLoading = true;
     hintRefreshError = '';
     hintChipsRefreshing = false;
     pendingChipId = null;
