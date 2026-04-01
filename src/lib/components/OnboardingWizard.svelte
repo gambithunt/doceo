@@ -254,6 +254,13 @@
     </div>
   </section>
 
+  {#if state.onboarding.error}
+    <div class="wizard-alert card" role="status" aria-live="polite">
+      <strong>Backend unavailable</strong>
+      <p>{state.onboarding.error}</p>
+    </div>
+  {/if}
+
   <div class="content-grid">
     <article class="panel card">
       {#if state.onboarding.currentStep === 'country'}
@@ -1125,6 +1132,20 @@
     border-radius: 1.15rem;
     border: 1px dashed color-mix(in srgb, var(--border-strong) 78%, transparent);
     background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
+  }
+
+  .wizard-alert {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.95rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-orange) 40%, var(--border-strong));
+    background: color-mix(in srgb, var(--color-orange-dim) 36%, var(--surface-soft));
+  }
+
+  .wizard-alert p {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.5;
   }
 
   .link-btn {

@@ -1,4 +1,5 @@
 import { createServerGraphCatalogRepository } from '$lib/server/graph-catalog-repository';
+import { throwBackendUnavailable } from '$lib/server/backend-availability';
 import type { CurriculumDefinition, Lesson, Question } from '$lib/types';
 
 export interface LearningProgramResult {
@@ -208,8 +209,16 @@ function mergePrograms(primary: LearningProgramResult, additional: LearningProgr
 export async function loadLearningProgram(input: ProgramInput): Promise<LearningProgramResult> {
   const graphCatalog = createServerGraphCatalogRepository();
 
-  if (!graphCatalog || input.selectedSubjectIds.length === 0) {
-    return buildLocalSubjectStubProgram(input);
+  if (input.selectedSubjectIds.length === 0) {
+    if (input.customSubjects.length > 0 || input.selectedSubjectNames.length > 0) {
+      return buildLocalSubjectStubProgram(input);
+    }
+
+    throwBackendUnavailable('Learning program backend is unavailable.');
+  }
+
+  if (!graphCatalog) {
+    throwBackendUnavailable('Learning program backend is unavailable.');
   }
 
   const graphCurriculum = await graphCatalog.fetchCurriculumTree({

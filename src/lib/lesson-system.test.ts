@@ -612,7 +612,7 @@ describe('lesson-system', () => {
     const message = '[CONCEPT: Impact on Ecosystems]\n[STUDENT_HAS_READ: How climate affects ecosystems. Detailed explanation.]\nCan you explain this differently?';
 
     const result = buildLocalLessonChatResponse(
-      { student: { id: 's1', fullName: 'Test', grade: 'Grade 10', curriculum: 'CAPS', country: 'ZA', term: '1', schoolYear: '2026' },
+      { student: { id: 's1', fullName: 'Test', email: '', role: 'student', grade: 'Grade 10', gradeId: 'grade-10', curriculum: 'CAPS', curriculumId: 'caps', country: 'ZA', countryId: 'za', term: 'Term 1', schoolYear: '2026', recommendedStartSubjectId: null, recommendedStartSubjectName: null },
         learnerProfile: createDefaultLearnerProfile('s1'),
         lesson, lessonSession: session, message, messageType: 'question' },
       lesson
@@ -636,7 +636,7 @@ describe('lesson-system', () => {
     const message = '[CONCEPT: Impact on Ecosystems and Human Life]\n[STUDENT_HAS_READ: Plants and animals depend on stable climates. Rising sea levels threaten coastal communities.]\nCan you explain this differently?';
 
     const result = buildLocalLessonChatResponse(
-      { student: { id: 's1', fullName: 'Test', grade: 'Grade 10', curriculum: 'CAPS', country: 'ZA', term: '1', schoolYear: '2026' },
+      { student: { id: 's1', fullName: 'Test', email: '', role: 'student', grade: 'Grade 10', gradeId: 'grade-10', curriculum: 'CAPS', curriculumId: 'caps', country: 'ZA', countryId: 'za', term: 'Term 1', schoolYear: '2026', recommendedStartSubjectId: null, recommendedStartSubjectName: null },
         learnerProfile: createDefaultLearnerProfile('s1'),
         lesson, lessonSession: session, message, messageType: 'question' },
       lesson

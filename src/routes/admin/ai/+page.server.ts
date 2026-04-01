@@ -1,36 +1,18 @@
 import { getAiSpendByRoute } from '$lib/server/admin/admin-queries';
 import { requireAdminSession } from '$lib/server/admin/admin-guard';
+import { getAiConfig, saveAiConfig } from '$lib/server/ai-config';
 import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
-import { createServerSupabaseAdmin } from '$lib/server/supabase';
-
-async function getRecentAiErrors(): Promise<Array<{ id: string; createdAt: string; detail: string }>> {
-  const supabase = createServerSupabaseAdmin();
-  if (!supabase) return [];
-
-  const { data } = await supabase
-    .from('analytics_events')
-    .select('id, created_at, detail')
-    .ilike('event_type', '%error%')
-    .order('created_at', { ascending: false })
-    .limit(20);
-
-  return (data ?? []).map((entry) => ({
-    id: entry.id,
-    createdAt: entry.created_at,
-    detail: typeof entry.detail === 'string' ? entry.detail : JSON.stringify(entry.detail ?? '')
-  }));
-}
 
 export async function load() {
   const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const operations = createServerDynamicOperationsService();
 
-  const [spendByRoute30d, spendByRoute24h, recentErrors, governance] = await Promise.all([
+  const [spendByRoute30d, spendByRoute24h, governance, aiConfig] = await Promise.all([
     getAiSpendByRoute(since30d),
     getAiSpendByRoute(since24h),
-    getRecentAiErrors(),
-    operations?.getGovernanceDashboard() ?? Promise.resolve(null)
+    operations?.getGovernanceDashboard() ?? Promise.resolve(null),
+    getAiConfig()
   ]);
 
   const totalSpend30d = spendByRoute30d.reduce((sum, row) => sum + row.estimatedCost, 0);
@@ -42,7 +24,8 @@ export async function load() {
     totalSpend30d: Math.round(totalSpend30d * 100) / 100,
     totalSpend24h: Math.round(totalSpend24h * 100) / 100,
     totalRequests30d,
-    recentErrors,
+    recentIncidents: governance?.recentIncidents ?? [],
+    routeOverrides: aiConfig.routeOverrides,
     governance:
       governance ?? {
         lessonPromptComparisons: [],
@@ -50,6 +33,7 @@ export async function load() {
         revisionPromptComparisons: [],
         revisionModelComparisons: [],
         lessonRollbackCandidates: [],
+        recentIncidents: [],
         governanceAudit: [],
         rollback: {},
         policy: {}
@@ -81,6 +65,54 @@ export const actions = {
     return {
       success: true,
       action: 'preferLineage'
+    };
+  },
+  resetRouteOverride: async ({ request }: { request: Request }) => {
+    const adminSession = await requireAdminSession(request);
+    const data = await request.formData();
+    const mode = String(data.get('mode') ?? '').trim();
+    const reason = String(data.get('reason') ?? '').trim() || null;
+    const operations = createServerDynamicOperationsService();
+
+    if (!mode) {
+      return {
+        success: false,
+        action: 'resetRouteOverride'
+      };
+    }
+
+    const config = await getAiConfig();
+    const previousOverride = config.routeOverrides[mode as keyof typeof config.routeOverrides] ?? null;
+
+    if (!previousOverride) {
+      return {
+        success: true,
+        action: 'resetRouteOverride'
+      };
+    }
+
+    const nextOverrides = { ...config.routeOverrides };
+    delete nextOverrides[mode as keyof typeof nextOverrides];
+
+    await saveAiConfig({
+      ...config,
+      routeOverrides: nextOverrides
+    });
+    await operations?.recordGovernanceAction({
+      actionType: 'ai_route_override_reset',
+      actorId: adminSession.profileId,
+      provider: previousOverride.provider ?? null,
+      model: previousOverride.model ?? null,
+      reason,
+      payload: {
+        mode,
+        previousOverride
+      }
+    });
+
+    return {
+      success: true,
+      action: 'resetRouteOverride'
     };
   }
 };

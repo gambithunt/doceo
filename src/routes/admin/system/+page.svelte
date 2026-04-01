@@ -16,6 +16,7 @@
       routeHealth: Array<{ route: string; requests7d: number; failures7d: number; failureRate7d: number; avgLatencyMs: number; lastFailureAt: string | null }>;
       graphGrowth: Array<{ label: string; count: number }>;
       artifactQuality: Array<{ nodeId: string; nodeLabel: string; staleArtifacts: number; meanQualityScore: number; regenerationRequests: number }>;
+      recentIncidents: Array<{ id: string; route: string; status: string; createdAt: string; detail: string }>;
       alerts: Array<{ id: string; severity: 'warning' | 'error'; message: string }>;
       governanceAudit: Array<{ id: string; actionType: string; createdAt: string; actorId: string | null; reason: string | null }>;
       policy: {
@@ -155,6 +156,28 @@
 
     <div class="two-up">
       <section class="section-card">
+        <div class="section-heading">
+          <h2 class="section-title">Recent Incidents</h2>
+          <a class="section-link" href="/api/admin/audit-export?stream=governance&format=json">Export governance JSON</a>
+        </div>
+        {#if dashboard.recentIncidents.length === 0}
+          <p class="empty-copy">No recent dynamic generation incidents recorded.</p>
+        {:else}
+          <div class="audit-list">
+            {#each dashboard.recentIncidents as incident}
+              <div class="audit-item">
+                <div>
+                  <strong>{incident.route.replace(/-/g, ' ')}</strong>
+                  <p>{incident.detail}</p>
+                </div>
+                <span>{relativeTime(incident.createdAt)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="section-card">
         <h2 class="section-title">Operational Thresholds</h2>
         <div class="metric-stack">
           <div class="stack-row"><span>Generation failure alert</span><strong>{dashboard.policy.thresholds.generationFailureRatePct}%</strong></div>
@@ -178,7 +201,10 @@
     </div>
 
     <section class="section-card">
-      <h2 class="section-title">Governance Audit</h2>
+      <div class="section-heading">
+        <h2 class="section-title">Governance Audit</h2>
+        <a class="section-link" href="/api/admin/audit-export?stream=governance&format=csv">Export CSV</a>
+      </div>
       {#if dashboard.governanceAudit.length === 0}
         <p class="empty-copy">No governance actions have been logged yet.</p>
       {:else}
@@ -226,6 +252,22 @@
     font-size: 0.86rem;
     font-weight: 700;
     color: var(--text);
+  }
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+  }
+  .section-heading .section-title {
+    margin: 0;
+  }
+  .section-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 600;
   }
   .service-list, .quality-list, .audit-list, .metric-stack {
     display: flex;
@@ -324,6 +366,10 @@
     }
     .page-body {
       padding: 1rem 1rem 2rem;
+    }
+    .section-heading {
+      align-items: flex-start;
+      flex-direction: column;
     }
   }
 </style>

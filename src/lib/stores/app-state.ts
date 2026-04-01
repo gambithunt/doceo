@@ -93,6 +93,7 @@ interface LessonPlanPayload extends LessonPlanResponse {}
 
 interface OptionsResponse<TOption> {
   options: TOption[];
+  error?: string;
 }
 
 interface CompleteOnboardingResponse {
@@ -119,6 +120,7 @@ interface LearningProgramResponse {
   lessons: AppState['lessons'];
   questions: AppState['questions'];
   source: 'supabase' | 'local';
+  error?: string;
 }
 
 interface ResetOnboardingResponse {
@@ -172,6 +174,9 @@ function navigate(path: string): void {
 async function fetchOptions<TOption>(query: string): Promise<TOption[]> {
   const response = await fetch(`/api/onboarding/options?${query}`);
   const payload = (await response.json()) as OptionsResponse<TOption>;
+  if (!response.ok) {
+    throw new Error(payload.error ?? 'Curriculum catalog backend unavailable.');
+  }
   return payload.options;
 }
 
@@ -194,12 +199,10 @@ async function fetchLearningProgram(state: AppState): Promise<LearningProgramRes
   });
 
   if (!response.ok) {
-    return {
-      curriculum: state.curriculum,
-      lessons: state.lessons,
-      questions: state.questions,
-      source: 'local'
+    const payload = (await response.json().catch(() => ({ error: 'Learning program backend unavailable.' }))) as {
+      error?: string;
     };
+    throw new Error(payload.error ?? 'Learning program backend unavailable.');
   }
 
   return (await response.json()) as LearningProgramResponse;
@@ -430,7 +433,7 @@ export function createAppStore(initialState: AppState = readState()) {
   }
 
   async function initializeRemoteState(): Promise<void> {
-    if (!browser || hasInitializedRemoteState) {
+    if ((!browser && typeof window === 'undefined') || hasInitializedRemoteState) {
       return;
     }
 
@@ -446,6 +449,12 @@ export function createAppStore(initialState: AppState = readState()) {
       const response = await fetch('/api/state/bootstrap', { headers });
       if (response.status === 401) {
         // Not signed in — stay on landing screen with clean state
+        hasInitializedRemoteState = true;
+        return;
+      }
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({ error: 'Bootstrap backend unavailable.' }))) as { error?: string };
+        update((state) => persistOnboardingError(state, payload.error ?? 'Bootstrap backend unavailable.'));
         hasInitializedRemoteState = true;
         return;
       }
@@ -469,7 +478,9 @@ export function createAppStore(initialState: AppState = readState()) {
         })
       );
       hasInitializedRemoteState = true;
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bootstrap backend unavailable.';
+      update((state) => persistOnboardingError(state, message));
       hasInitializedRemoteState = true;
     }
   }
@@ -600,6 +611,23 @@ export function createAppStore(initialState: AppState = readState()) {
   function persistLessonLaunchError(state: AppState, message: string): AppState {
     return persistAndSync({
       ...state,
+      backend: {
+        ...state.backend,
+        lastSyncAt: new Date().toISOString(),
+        lastSyncStatus: 'error',
+        lastSyncError: message
+      }
+    });
+  }
+
+  function persistOnboardingError(state: AppState, message: string): AppState {
+    return persistAndSync({
+      ...state,
+      onboarding: {
+        ...state.onboarding,
+        isSaving: false,
+        error: message
+      },
       backend: {
         ...state.backend,
         lastSyncAt: new Date().toISOString(),
@@ -1804,15 +1832,27 @@ export function createAppStore(initialState: AppState = readState()) {
       await goto('/');
     },
     selectOnboardingCountry: async (countryId: string) => {
-      const curriculums = await fetchOptions<CurriculumOption>(`type=curriculums&countryId=${countryId}`);
-      const selectedCurriculumId = curriculums[0]?.id ?? '';
-      const grades = selectedCurriculumId
-        ? await fetchOptions<GradeOption>(`type=grades&curriculumId=${selectedCurriculumId}`)
-        : [];
-      const selectedGradeId = grades.find((grade) => grade.label === 'Grade 6')?.id ?? grades[0]?.id ?? '';
-      const subjects = selectedGradeId
-        ? await fetchOptions<SubjectOption>(`type=subjects&curriculumId=${selectedCurriculumId}&gradeId=${selectedGradeId}`)
-        : [];
+      let curriculums: CurriculumOption[] = [];
+      let selectedCurriculumId = '';
+      let grades: GradeOption[] = [];
+      let selectedGradeId = '';
+      let subjects: SubjectOption[] = [];
+
+      try {
+        curriculums = await fetchOptions<CurriculumOption>(`type=curriculums&countryId=${countryId}`);
+        selectedCurriculumId = curriculums[0]?.id ?? '';
+        grades = selectedCurriculumId
+          ? await fetchOptions<GradeOption>(`type=grades&curriculumId=${selectedCurriculumId}`)
+          : [];
+        selectedGradeId = grades.find((grade) => grade.label === 'Grade 6')?.id ?? grades[0]?.id ?? '';
+        subjects = selectedGradeId
+          ? await fetchOptions<SubjectOption>(`type=subjects&curriculumId=${selectedCurriculumId}&gradeId=${selectedGradeId}`)
+          : [];
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Curriculum catalog backend unavailable.';
+        update((state) => persistOnboardingError(state, message));
+        return;
+      }
 
       update((state) => {
         const country = state.onboarding.options.countries.find((item) => item.id === countryId) ?? state.onboarding.options.countries[0];
@@ -1826,6 +1866,7 @@ export function createAppStore(initialState: AppState = readState()) {
           onboarding: {
             ...state.onboarding,
             selectedCountryId: countryId,
+            error: null,
             selectedCurriculumId,
             selectedGradeId,
             selectedSubjectIds: [],
@@ -1842,11 +1883,21 @@ export function createAppStore(initialState: AppState = readState()) {
       });
     },
     selectOnboardingCurriculum: async (curriculumId: string) => {
-      const grades = await fetchOptions<GradeOption>(`type=grades&curriculumId=${curriculumId}`);
-      const selectedGradeId = grades.find((grade) => grade.label === 'Grade 6')?.id ?? grades[0]?.id ?? '';
-      const subjects = selectedGradeId
-        ? await fetchOptions<SubjectOption>(`type=subjects&curriculumId=${curriculumId}&gradeId=${selectedGradeId}`)
-        : [];
+      let grades: GradeOption[] = [];
+      let selectedGradeId = '';
+      let subjects: SubjectOption[] = [];
+
+      try {
+        grades = await fetchOptions<GradeOption>(`type=grades&curriculumId=${curriculumId}`);
+        selectedGradeId = grades.find((grade) => grade.label === 'Grade 6')?.id ?? grades[0]?.id ?? '';
+        subjects = selectedGradeId
+          ? await fetchOptions<SubjectOption>(`type=subjects&curriculumId=${curriculumId}&gradeId=${selectedGradeId}`)
+          : [];
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Curriculum catalog backend unavailable.';
+        update((state) => persistOnboardingError(state, message));
+        return;
+      }
 
       update((state) => {
         const curriculum = state.onboarding.options.curriculums.find((item) => item.id === curriculumId) ?? state.onboarding.options.curriculums[0];
@@ -1860,6 +1911,7 @@ export function createAppStore(initialState: AppState = readState()) {
           onboarding: {
             ...state.onboarding,
             selectedCurriculumId: curriculumId,
+            error: null,
             selectedGradeId,
             selectedSubjectIds: [],
             selectedSubjectNames: [],
@@ -1876,9 +1928,18 @@ export function createAppStore(initialState: AppState = readState()) {
     selectOnboardingGrade: async (gradeId: string) => {
       const state = readState();
       const grade = state.onboarding.options.grades.find((item) => item.id === gradeId) ?? state.onboarding.options.grades[0];
-      const subjects = await fetchOptions<SubjectOption>(
-        `type=subjects&curriculumId=${state.onboarding.selectedCurriculumId}&gradeId=${gradeId}`
-      );
+      let subjects: SubjectOption[] = [];
+
+      try {
+        subjects = await fetchOptions<SubjectOption>(
+          `type=subjects&curriculumId=${state.onboarding.selectedCurriculumId}&gradeId=${gradeId}`
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Curriculum catalog backend unavailable.';
+        update((current) => persistOnboardingError(current, message));
+        return;
+      }
+
       update((current) =>
         persistAndSync({
           ...current,
@@ -1890,6 +1951,7 @@ export function createAppStore(initialState: AppState = readState()) {
           onboarding: {
             ...current.onboarding,
             selectedGradeId: gradeId,
+            error: null,
             selectedSubjectIds: [],
             selectedSubjectNames: [],
             customSubjects: [],
@@ -2227,33 +2289,50 @@ export function createAppStore(initialState: AppState = readState()) {
           ...state,
           onboarding: {
             ...state.onboarding,
-            isSaving: true
+            isSaving: true,
+            error: null
           }
         })
       );
 
       const current = readState();
-      const response = await fetch('/api/onboarding/complete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          profileId: current.profile.id,
-          fullName,
-          countryId: current.onboarding.selectedCountryId,
-          curriculumId: current.onboarding.selectedCurriculumId,
-          gradeId: current.onboarding.selectedGradeId,
-          schoolYear: current.onboarding.schoolYear,
-          term: current.onboarding.term,
-          selectedSubjectIds: current.onboarding.selectedSubjectIds,
-          selectedSubjectNames: current.onboarding.selectedSubjectNames,
-          customSubjects: current.onboarding.customSubjects,
-          isUnsure: current.onboarding.selectionMode === 'unsure'
-        })
-      });
-      const payload = (await response.json()) as CompleteOnboardingResponse;
-      const program = await fetchLearningProgram(current);
+      let payload: CompleteOnboardingResponse;
+      let program: LearningProgramResponse;
+
+      try {
+        const response = await fetch('/api/onboarding/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            profileId: current.profile.id,
+            fullName,
+            countryId: current.onboarding.selectedCountryId,
+            curriculumId: current.onboarding.selectedCurriculumId,
+            gradeId: current.onboarding.selectedGradeId,
+            schoolYear: current.onboarding.schoolYear,
+            term: current.onboarding.term,
+            selectedSubjectIds: current.onboarding.selectedSubjectIds,
+            selectedSubjectNames: current.onboarding.selectedSubjectNames,
+            customSubjects: current.onboarding.customSubjects,
+            isUnsure: current.onboarding.selectionMode === 'unsure'
+          })
+        });
+
+        if (!response.ok) {
+          const errorPayload = (await response.json().catch(() => ({ error: 'Unable to save onboarding.' }))) as { error?: string };
+          throw new Error(errorPayload.error ?? 'Unable to save onboarding.');
+        }
+
+        payload = (await response.json()) as CompleteOnboardingResponse;
+        program = await fetchLearningProgram(current);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to save onboarding.';
+        update((state) => persistOnboardingError(state, message));
+        return;
+      }
+
       update((state) => {
         const selectedSubject = program.curriculum.subjects[0];
         const selectedTopic = selectedSubject.topics[0];
@@ -2268,6 +2347,7 @@ export function createAppStore(initialState: AppState = readState()) {
             completedAt: new Date().toISOString(),
             isSaving: false,
             currentStep: 'review',
+            error: null,
             recommendation: payload.recommendation
           },
           profile: {

@@ -273,6 +273,12 @@ describe('dynamic operations service', () => {
 
     expect(dashboard.metrics.lessonGeneration.failureCount24h).toBe(1);
     expect(dashboard.metrics.revisionGeneration.failureCount24h).toBe(1);
+    expect(dashboard.recentIncidents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ route: 'lesson-plan', status: 'failure' }),
+        expect.objectContaining({ route: 'revision-pack', status: 'failure' })
+      ])
+    );
     expect(dashboard.metrics.graph.openDuplicateCandidates).toBeGreaterThanOrEqual(1);
     expect(dashboard.metrics.migration.unresolvedPending).toBe(1);
     expect(dashboard.metrics.artifacts.lowQualityArtifacts7d).toBeGreaterThanOrEqual(1);
@@ -282,6 +288,16 @@ describe('dynamic operations service', () => {
   });
 
   it('compares artifact quality by prompt version and model/provider and surfaces rollback candidates', async () => {
+    await service.recordGenerationEvent({
+      route: 'lesson-plan',
+      status: 'failure',
+      source: 'generated',
+      profileId: 'student-1',
+      promptVersion: 'lesson-plan-v2',
+      provider: 'openai',
+      model: 'gpt-5.4',
+      payload: { error: 'Prompt output failed validation.' }
+    });
     await lessonArtifactRepository.createLessonArtifact({
       id: 'lesson-v1',
       nodeId: 'topic-fractions',
@@ -393,6 +409,11 @@ describe('dynamic operations service', () => {
 
     const dashboard = await service.getGovernanceDashboard();
 
+    expect(dashboard.recentIncidents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ route: 'lesson-plan', status: 'failure' })
+      ])
+    );
     expect(dashboard.lessonPromptComparisons).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ promptVersion: 'lesson-plan-v1' }),
@@ -506,6 +527,35 @@ describe('dynamic operations service', () => {
           actionType: 'lesson_lineage_preferred',
           actorId: 'admin-2',
           artifactId: 'lesson-new'
+        })
+      ])
+    );
+  });
+
+  it('records a route override reset as a concrete governance action', async () => {
+    await service.recordGovernanceAction({
+      actionType: 'ai_route_override_reset',
+      actorId: 'admin-2',
+      reason: 'Reset lesson-plan to inherited routing',
+      payload: {
+        mode: 'lesson-plan',
+        previousOverride: {
+          provider: 'openai',
+          model: 'gpt-5.4'
+        }
+      }
+    });
+
+    const audit = await service.listGovernanceActions();
+
+    expect(audit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionType: 'ai_route_override_reset',
+          actorId: 'admin-2',
+          payload: expect.objectContaining({
+            mode: 'lesson-plan'
+          })
         })
       ])
     );

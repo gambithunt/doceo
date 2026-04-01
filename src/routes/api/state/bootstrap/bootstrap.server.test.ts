@@ -269,4 +269,53 @@ describe('state bootstrap route', () => {
     expect(payload.state.curriculum.subjects[0]?.topics[0]?.id).toBe('graph-topic-patterns');
     expect(payload.state.onboarding.selectedSubjectIds).toEqual(['graph-subject-mathematics']);
   });
+
+  it('returns an authenticated degraded state with explicit errors when onboarding catalog reads fail', async () => {
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123'
+            }
+          }
+        })
+      }
+    });
+    loadOnboardingProgress.mockResolvedValue({
+      completed: false,
+      completedAt: null,
+      selectedCountryId: 'za',
+      selectedCurriculumId: 'caps',
+      selectedGradeId: 'grade-6',
+      schoolYear: '2026',
+      term: 'Term 1',
+      selectedSubjectIds: ['graph-subject-mathematics'],
+      selectedSubjectNames: ['Mathematics'],
+      customSubjects: [],
+      selectionMode: 'structured',
+      recommendation: {
+        subjectId: 'graph-subject-mathematics',
+        subjectName: 'Mathematics',
+        reason: 'Recommended'
+      }
+    });
+    fetchCountries.mockRejectedValue(Object.assign(new Error('Graph catalog unavailable.'), { code: 'BACKEND_UNAVAILABLE' }));
+
+    const { GET } = await import('./+server');
+    const response = await GET({
+      request: new Request('http://localhost/api/state/bootstrap', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.state.auth.status).toBe('signed_in');
+    expect(payload.state.onboarding.error).toMatch(/catalog/i);
+    expect(payload.state.backend.lastSyncStatus).toBe('error');
+    expect(payload.state.backend.lastSyncError).toMatch(/catalog/i);
+  });
 });

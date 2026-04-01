@@ -49,6 +49,15 @@
   />
 
   <div class="page-body">
+    <section class="card legacy-callout">
+      <div>
+        <p class="eyebrow">Audit Export</p>
+        <h2>Export admin graph actions without scraping the UI.</h2>
+        <p>Use the graph-admin audit export for offline governance review, incident review, or change-control archives.</p>
+      </div>
+      <a class="btn btn-secondary btn-compact" href="/api/admin/audit-export?stream=graph-admin&format=csv">Export graph audit</a>
+    </section>
+
     <section class="filters card" aria-label="Graph filters">
       <form class="filter-form" method="GET">
         <label>

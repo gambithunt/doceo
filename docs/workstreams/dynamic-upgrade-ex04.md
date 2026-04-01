@@ -191,10 +191,12 @@ This phase is required for long-term operation. The dynamic architecture is not 
 ## Phase 11 Findings
 
 - `src/lib/server/dynamic-operations.ts` adds the new observability layer. Lesson and revision generation routes now emit success/failure events with prompt lineage, provider/model metadata, artifact ids when available, and latency.
-- `src/routes/admin/system/+page.server.ts` and `src/routes/admin/system/+page.svelte` now expose a real dynamic-system operations dashboard instead of placeholders. The screen shows generation reliability, graph pressure, unresolved queue pressure, low-quality artifact clusters, alert banners, and governance audit history.
-- `src/routes/admin/ai/+page.server.ts` and `src/routes/admin/ai/+page.svelte` now combine spend/volume reporting with lesson and revision prompt/model lineage comparisons plus a rollback queue for lesson artifact lineages.
-- `src/routes/admin/settings/+page.server.ts` now logs `ai_config_updated` governance actions so route-override changes are auditable.
-- Rollback remains additive. Preference changes operate on existing lesson artifacts and audit entries without mutating historical attempts or sessions.
+- `src/routes/admin/system/+page.server.ts` and `src/routes/admin/system/+page.svelte` now expose a real dynamic-system operations dashboard instead of placeholders. The screen shows generation reliability, route health, recent dynamic incidents from `dynamic_operation_events`, graph pressure, unresolved queue pressure, low-quality artifact clusters, alert banners, and governance audit history.
+- `src/routes/admin/ai/+page.server.ts` and `src/routes/admin/ai/+page.svelte` now combine spend/volume reporting with lesson and revision prompt/model lineage comparisons, recent dynamic incidents, a lesson-lineage rollback queue, and route-override reset controls.
+- `src/routes/admin/settings/+page.server.ts` now logs `ai_config_updated` governance actions so route-override changes are auditable, and the admin AI surface can reset route overrides back to inherited routing with its own audited action type.
+- Governance support is now explicit: lesson artifact lineage preference and AI route override reset are operational actions. Revision governance remains comparison-only in this workstream and does not expose a direct revision-pack rollback action.
+- Audit export is available through `/api/admin/audit-export` for both governance actions and admin graph actions in JSON or CSV, so operational review no longer depends on UI scraping.
+- Rollback remains additive. Preference and route-reset changes operate on existing artifacts and config lineage without mutating historical attempts or sessions.
 
 ## Exit Criteria
 

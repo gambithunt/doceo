@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
+import { isBackendUnavailableError } from '$lib/server/backend-availability';
 import { loadLearningProgram } from '$lib/server/learning-program-repository';
 
 const ProgramBodySchema = z.object({
@@ -19,6 +20,15 @@ export async function POST({ request }) {
   if (!parsed.success) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
-  const result = await loadLearningProgram(parsed.data);
-  return json(result);
+
+  try {
+    const result = await loadLearningProgram(parsed.data);
+    return json(result);
+  } catch (error) {
+    if (isBackendUnavailableError(error)) {
+      return json({ error: 'Learning program backend unavailable.' }, { status: 503 });
+    }
+
+    throw error;
+  }
 }

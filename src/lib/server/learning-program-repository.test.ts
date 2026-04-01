@@ -23,7 +23,26 @@ describe('learning program repository', () => {
     createServerGraphCatalogRepository.mockReturnValue(null);
   });
 
-  it('keeps the legacy local lesson launch working when backend catalog data is unavailable', async () => {
+  it('fails explicitly when backend catalog data is unavailable in production mode', async () => {
+    const { loadLearningProgram } = await import('./learning-program-repository');
+
+    await expect(
+      loadLearningProgram({
+        country: 'South Africa',
+        curriculumName: 'CAPS',
+        curriculumId: 'caps',
+        grade: 'Grade 6',
+        gradeId: 'grade-6',
+        selectedSubjectIds: ['graph-subject-mathematics'],
+        selectedSubjectNames: ['Mathematics'],
+        customSubjects: []
+      })
+    ).rejects.toMatchObject({
+      code: 'BACKEND_UNAVAILABLE'
+    });
+  });
+
+  it('keeps local custom-subject stubs working when the learner only has custom subjects', async () => {
     const { loadLearningProgram } = await import('./learning-program-repository');
 
     const result = await loadLearningProgram({
@@ -33,13 +52,13 @@ describe('learning program repository', () => {
       grade: 'Grade 6',
       gradeId: 'grade-6',
       selectedSubjectIds: [],
-      selectedSubjectNames: ['Mathematics'],
-      customSubjects: []
+      selectedSubjectNames: [],
+      customSubjects: ['Robotics']
     });
 
     expect(result.source).toBe('local');
     expect(result.curriculum.subjects).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: 'Mathematics' })])
+      expect.arrayContaining([expect.objectContaining({ name: 'Robotics' })])
     );
     expect(result.lessons.length).toBeGreaterThan(0);
     expect(result.questions.length).toBeGreaterThan(0);

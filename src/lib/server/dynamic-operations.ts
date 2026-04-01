@@ -36,7 +36,15 @@ export interface DynamicOperationEventRecord {
   createdAt: string;
 }
 
-export type DynamicGovernanceActionType = 'lesson_lineage_preferred' | 'ai_config_updated';
+export interface DynamicOperationIncidentSummary {
+  id: string;
+  route: DynamicOperationRoute;
+  status: DynamicOperationStatus;
+  createdAt: string;
+  detail: string;
+}
+
+export type DynamicGovernanceActionType = 'lesson_lineage_preferred' | 'ai_config_updated' | 'ai_route_override_reset';
 
 export interface DynamicGovernanceActionRecord {
   id: string;
@@ -160,6 +168,7 @@ export interface DynamicSystemDashboard {
     meanQualityScore: number;
     regenerationRequests: number;
   }>;
+  recentIncidents: DynamicOperationIncidentSummary[];
   alerts: DynamicSystemAlert[];
   governanceAudit: DynamicGovernanceActionRecord[];
   policy: DynamicSystemPolicy;
@@ -201,6 +210,7 @@ export interface DynamicGovernanceDashboard {
     qualityDelta: number;
     reason: string;
   }>;
+  recentIncidents: DynamicOperationIncidentSummary[];
   governanceAudit: DynamicGovernanceActionRecord[];
   rollback: DynamicSystemPolicy['rollback'];
   policy: DynamicSystemPolicy;
@@ -354,6 +364,7 @@ function emptySystemDashboard(): DynamicSystemDashboard {
     routeHealth: [],
     graphGrowth: [],
     artifactQuality: [],
+    recentIncidents: [],
     alerts: [],
     governanceAudit: [],
     policy: DYNAMIC_SYSTEM_POLICY
@@ -367,6 +378,7 @@ function emptyGovernanceDashboard(): DynamicGovernanceDashboard {
     revisionPromptComparisons: [],
     revisionModelComparisons: [],
     lessonRollbackCandidates: [],
+    recentIncidents: [],
     governanceAudit: [],
     rollback: DYNAMIC_SYSTEM_POLICY.rollback,
     policy: DYNAMIC_SYSTEM_POLICY
@@ -585,6 +597,34 @@ function top<T>(values: T[], limit: number, score: (value: T) => number): T[] {
   return values.slice().sort((left, right) => score(right) - score(left)).slice(0, limit);
 }
 
+function toIncidentDetail(event: DynamicOperationEventRecord): string {
+  const payloadError =
+    typeof event.payload.error === 'string'
+      ? event.payload.error
+      : typeof event.payload.message === 'string'
+        ? event.payload.message
+        : null;
+
+  if (payloadError) {
+    return payloadError;
+  }
+
+  return `${event.route} ${event.status}`;
+}
+
+function summarizeIncidents(events: DynamicOperationEventRecord[], limit = 12): DynamicOperationIncidentSummary[] {
+  return events
+    .filter((event) => event.status === 'failure')
+    .slice(0, limit)
+    .map((event) => ({
+      id: event.id,
+      route: event.route,
+      status: event.status,
+      createdAt: event.createdAt,
+      detail: toIncidentDetail(event)
+    }));
+}
+
 export function createInMemoryDynamicOperationsStore(): InMemoryDynamicOperationsStore {
   return new InMemoryStore();
 }
@@ -645,6 +685,7 @@ export function createDynamicOperationsService(
       const governanceAudit = await this.listGovernanceActions();
       const lessonGeneration = summarizeGeneration(events, 'lesson-plan');
       const revisionGeneration = summarizeGeneration(events, 'revision-pack');
+      const recentIncidents = summarizeIncidents(events);
 
       const [nodes, graphEvents, duplicates, migrationDashboard] = await Promise.all([
         dependencies.graphRepository.listNodes({ statuses: ['canonical', 'provisional', 'review_needed', 'archived', 'rejected'] }),
@@ -736,6 +777,7 @@ export function createDynamicOperationsService(
           { label: 'Open duplicates', count: graphMetrics.openDuplicateCandidates }
         ],
         artifactQuality,
+        recentIncidents,
         alerts: buildAlerts({
           lessonGeneration,
           revisionGeneration,
@@ -758,6 +800,7 @@ export function createDynamicOperationsService(
       ).flat();
       const nodeMap = new Map(nodes.map((node) => [node.id, node]));
       const governanceAudit = await this.listGovernanceActions();
+      const recentIncidents = summarizeIncidents(await dependencies.operationsStore.listOperationEvents());
 
       const lessonPromptComparisons = Array.from(
         lessonArtifacts.reduce((map, artifact) => {
@@ -867,6 +910,7 @@ export function createDynamicOperationsService(
         revisionPromptComparisons,
         revisionModelComparisons,
         lessonRollbackCandidates: lessonRollbackCandidates.sort((left, right) => right.qualityDelta - left.qualityDelta),
+        recentIncidents,
         governanceAudit,
         rollback: DYNAMIC_SYSTEM_POLICY.rollback,
         policy: DYNAMIC_SYSTEM_POLICY

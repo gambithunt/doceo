@@ -60,6 +60,9 @@
 		"src/routes/admin/users/[id]/+page.server.ts",
 		"src/routes/admin/+layout.server.ts"
 	],
+	"/api/admin/audit-export": [
+		"src/routes/api/admin/audit-export/+server.ts"
+	],
 	"/api/admin/lesson-artifacts": [
 		"src/routes/api/admin/lesson-artifacts/+server.ts"
 	],

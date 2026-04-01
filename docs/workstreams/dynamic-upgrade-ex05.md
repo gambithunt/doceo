@@ -106,32 +106,32 @@ Ensure the admin monitoring surfaces read the same operational truth that the dy
 
 ### 1.1 Unify generation failure reporting
 
-- [ ] remove dynamic-generation error dependence on `analytics_events` for the admin AI surface
-- [ ] make `dynamic_operation_events` the canonical source for lesson and revision generation failures
-- [ ] keep old analytics events only for historical/general admin activity, not dynamic failure truth
+- [x] remove dynamic-generation error dependence on `analytics_events` for the admin AI surface
+- [x] make `dynamic_operation_events` the canonical source for lesson and revision generation failures
+- [x] keep old analytics events only for historical/general admin activity, not dynamic failure truth
 
 ### 1.2 Align dashboard data contracts
 
-- [ ] ensure the AI dashboard and system dashboard derive failure rates, last-failure timestamps, and recent incident lists from the same event family
-- [ ] remove any duplicated “error” semantics that can disagree across dashboards
-- [ ] document the canonical event contract for dynamic monitoring
+- [x] ensure the AI dashboard and system dashboard derive failure rates, last-failure timestamps, and recent incident lists from the same event family
+- [x] remove any duplicated “error” semantics that can disagree across dashboards
+- [x] document the canonical event contract for dynamic monitoring
 
 ### 1.3 Tighten alert semantics
 
-- [ ] ensure dashboard alerts map directly to real dynamic-operation event thresholds
-- [ ] confirm alerts are route-specific where required
-- [ ] confirm empty-state behavior is distinguishable from “healthy but no incidents”
+- [x] ensure dashboard alerts map directly to real dynamic-operation event thresholds
+- [x] confirm alerts are route-specific where required
+- [x] confirm empty-state behavior is distinguishable from “healthy but no incidents”
 
 ## Required Tests
 
-- [ ] admin AI dashboard uses `dynamic_operation_events` for recent generation failures
-- [ ] lesson failure and revision failure events appear in the expected dashboard payloads
-- [ ] dashboard summaries and recent incident lists cannot disagree for the same event sample
+- [x] admin AI dashboard uses `dynamic_operation_events` for recent generation failures
+- [x] lesson failure and revision failure events appear in the expected dashboard payloads
+- [x] dashboard summaries and recent incident lists cannot disagree for the same event sample
 
 ## Exit Criteria
 
-- [ ] one canonical event source exists for dynamic generation failures
-- [ ] admin monitoring surfaces cannot silently miss dynamic runtime failures
+- [x] one canonical event source exists for dynamic generation failures
+- [x] admin monitoring surfaces cannot silently miss dynamic runtime failures
 
 ---
 
@@ -145,32 +145,32 @@ Bring the implemented governance surface up to the level claimed by the docs.
 
 ### 2.1 Close rollback coverage gaps
 
-- [ ] define and implement the supported rollback actions that are currently only described in policy text
-- [ ] support operational rollback for model-routing changes beyond manual config editing where required by the docs
-- [ ] decide whether revision rollback is a real action in this workstream or whether the docs must be narrowed explicitly
+- [x] define and implement the supported rollback actions that are currently only described in policy text
+- [x] support operational rollback for model-routing changes beyond manual config editing where required by the docs
+- [x] decide whether revision rollback is a real action in this workstream or whether the docs must be narrowed explicitly
 
 ### 2.2 Align lesson and revision governance scope
 
-- [ ] review whether revision artifact lineage needs a concrete prefer/rollback action
-- [ ] if revision rollback is intentionally not supported, update the architecture and execution docs to say so precisely
-- [ ] if supported, add the action, audit trail, and admin controls
+- [x] review whether revision artifact lineage needs a concrete prefer/rollback action
+- [x] if revision rollback is intentionally not supported, update the architecture and execution docs to say so precisely
+- [x] if supported, add the action, audit trail, and admin controls
 
 ### 2.3 Ensure governance is immutable and auditable
 
-- [ ] verify all governance actions append audit records without mutating historical sessions or attempts
-- [ ] ensure action types are specific enough to support later review and export
-- [ ] ensure actor, reason, target artifact/node, and lineage context are always captured
+- [x] verify all governance actions append audit records without mutating historical sessions or attempts
+- [x] ensure action types are specific enough to support later review and export
+- [x] ensure actor, reason, target artifact/node, and lineage context are always captured
 
 ## Required Tests
 
-- [ ] rollback or preference changes do not mutate historical session/attempt records
-- [ ] supported governance actions append audit records with actor and reason
-- [ ] lesson and revision governance coverage matches the documented support boundary
+- [x] rollback or preference changes do not mutate historical session/attempt records
+- [x] supported governance actions append audit records with actor and reason
+- [x] lesson and revision governance coverage matches the documented support boundary
 
 ## Exit Criteria
 
-- [ ] rollback behavior is real, not just policy text
-- [ ] governance scope is either fully implemented or explicitly narrowed in docs
+- [x] rollback behavior is real, not just policy text
+- [x] governance scope is either fully implemented or explicitly narrowed in docs
 
 ---
 
@@ -184,31 +184,31 @@ Make governance and graph-operation audit history exportable, not only viewable.
 
 ### 3.1 Add export capability
 
-- [ ] add export surface for governance audit history
-- [ ] add export surface for graph admin-action audit history if both are claimed under “admin graph actions”
-- [ ] support a practical export format such as CSV or JSON
+- [x] add export surface for governance audit history
+- [x] add export surface for graph admin-action audit history if both are claimed under “admin graph actions”
+- [x] support a practical export format such as CSV or JSON
 
 ### 3.2 Preserve filtering semantics
 
-- [ ] exports should honor date and action filters where relevant
-- [ ] exported rows should preserve actor, action type, target ids, timestamps, and reason fields
-- [ ] export behavior must not require manual scraping from the UI
+- [x] exports should honor date and action filters where relevant
+- [x] exported rows should preserve actor, action type, target ids, timestamps, and reason fields
+- [x] export behavior must not require manual scraping from the UI
 
 ### 3.3 Document export support boundary
 
-- [ ] document exactly which audit streams are exportable
-- [ ] document whether exports are intended for human review, incident review, or offline governance analysis
+- [x] document exactly which audit streams are exportable
+- [x] document whether exports are intended for human review, incident review, or offline governance analysis
 
 ## Required Tests
 
-- [ ] governance audit export returns the expected rows and fields
-- [ ] filtered exports do not leak unrelated events
-- [ ] export endpoint/action is admin-protected
+- [x] governance audit export returns the expected rows and fields
+- [x] filtered exports do not leak unrelated events
+- [x] export endpoint/action is admin-protected
 
 ## Exit Criteria
 
-- [ ] audit export exists for the streams claimed by the docs
-- [ ] admin graph/governance history can be exported without UI scraping
+- [x] audit export exists for the streams claimed by the docs
+- [x] admin graph/governance history can be exported without UI scraping
 
 ---
 
@@ -222,32 +222,32 @@ Establish a clean validation baseline for the upgraded system.
 
 ### 4.1 Fix dynamic-upgrade-owned validation failures
 
-- [ ] fix the `src/routes/admin/settings/+page.svelte` type errors
-- [ ] review all Phase 11 files for any hidden warnings or unstable typing patterns
-- [ ] ensure the final dynamic-upgrade surfaces pass `npm run check`
+- [x] fix the `src/routes/admin/settings/+page.svelte` type errors
+- [x] review all Phase 11 files for any hidden warnings or unstable typing patterns
+- [x] ensure the final dynamic-upgrade surfaces pass `npm run check`
 
 ### 4.2 Resolve or fence unrelated validation failures
 
-- [ ] determine which current `npm run check` failures are outside this workstream
-- [ ] either fix them, or document and explicitly fence them if the repo cannot yet be made globally clean
-- [ ] do not leave the final completion claim ambiguous
+- [x] determine which current `npm run check` failures are outside this workstream
+- [x] either fix them, or document and explicitly fence them if the repo cannot yet be made globally clean
+- [x] do not leave the final completion claim ambiguous
 
 ### 4.3 Define the final validation standard
 
-- [ ] decide whether “production-ready” for this workstream means full-repo `npm run check` clean
-- [ ] if not, define the exact validation command set and file scope required for sign-off
-- [ ] record that standard in this doc and in the main workstream doc
+- [x] decide whether “production-ready” for this workstream means full-repo `npm run check` clean
+- [x] if not, define the exact validation command set and file scope required for sign-off
+- [x] record that standard in this doc and in the main workstream doc
 
 ## Required Tests
 
-- [ ] full agreed validation command set passes
-- [ ] final touched-file `npm run check` pass is green
-- [ ] relevant admin, lesson, revision, planner, and graph tests remain green after cleanup
+- [x] full agreed validation command set passes
+- [x] final touched-file `npm run check` pass is green
+- [x] relevant admin, lesson, revision, planner, and graph tests remain green after cleanup
 
 ## Exit Criteria
 
-- [ ] the completion standard is explicit
-- [ ] the dynamic-upgrade code passes that standard cleanly
+- [x] the completion standard is explicit
+- [x] the dynamic-upgrade code passes that standard cleanly
 
 ---
 
@@ -261,33 +261,33 @@ Remove or explicitly fence the remaining local bootstrap and catalog fallbacks t
 
 ### 5.1 Audit remaining local-truth entry points
 
-- [ ] review `src/lib/data/platform.ts`
-- [ ] review `src/lib/server/onboarding-repository.ts`
-- [ ] review `src/lib/server/learning-program-repository.ts`
-- [ ] review any remaining route-level fallbacks that can fabricate local curriculum truth in production
+- [x] review `src/lib/data/platform.ts`
+- [x] review `src/lib/server/onboarding-repository.ts`
+- [x] review `src/lib/server/learning-program-repository.ts`
+- [x] review any remaining route-level fallbacks that can fabricate local curriculum truth in production
 
 ### 5.2 Decide fallback policy explicitly
 
-- [ ] remove production local-truth fallbacks where replacements are already proven
-- [ ] keep dev-only bootstrap utilities only if fenced by environment and clearly non-production
-- [ ] if some degraded-mode placeholders must remain, make them explicit “backend unavailable” states rather than silent seeded truth
+- [x] remove production local-truth fallbacks where replacements are already proven
+- [x] keep dev-only bootstrap utilities only if fenced by environment and clearly non-production
+- [x] if some degraded-mode placeholders must remain, make them explicit “backend unavailable” states rather than silent seeded truth
 
 ### 5.3 Tighten bootstrap behavior
 
-- [ ] ensure app bootstrap does not silently present local curriculum truth as if it were backend truth
-- [ ] ensure onboarding option loading fails clearly when production graph reads are unavailable, unless an explicitly approved emergency fallback remains
-- [ ] ensure curriculum/program reads degrade to explicit unavailability or neutral stubs instead of hidden source-of-truth substitution
+- [x] ensure app bootstrap does not silently present local curriculum truth as if it were backend truth
+- [x] ensure onboarding option loading fails clearly when production graph reads are unavailable, unless an explicitly approved emergency fallback remains
+- [x] ensure curriculum/program reads degrade to explicit unavailability or neutral stubs instead of hidden source-of-truth substitution
 
 ## Required Tests
 
-- [ ] production-mode onboarding and curriculum reads do not silently fall back to local truth
-- [ ] dev-mode fallback remains available only where intentionally allowed
-- [ ] bootstrap state distinguishes placeholder/degraded state from real backend-backed state
+- [x] production-mode onboarding and curriculum reads do not silently fall back to local truth
+- [x] dev-mode fallback remains available only where intentionally allowed
+- [x] bootstrap state distinguishes placeholder/degraded state from real backend-backed state
 
 ## Exit Criteria
 
-- [ ] local fallback paths are either removed from production truth or explicitly fenced as non-production
-- [ ] no hidden seeded/catalog truth remains in degraded production runtime
+- [x] local fallback paths are either removed from production truth or explicitly fenced as non-production
+- [x] no hidden seeded/catalog truth remains in degraded production runtime
 
 ---
 
@@ -301,29 +301,38 @@ Prove the workstream is complete enough to close.
 
 ### 6.1 Reconcile docs with implementation
 
-- [ ] update [dynamic-upgrade.md](/Users/delon/Documents/code/projects/doceo/docs/workstreams/dynamic-upgrade.md) to match the final implemented support boundary
-- [ ] update any checked execution-plan tasks that were previously overstated
-- [ ] remove ambiguity between “viewed”, “defined”, and “operationally actionable”
+- [x] update [dynamic-upgrade.md](/Users/delon/Documents/code/projects/doceo/docs/workstreams/dynamic-upgrade.md) to match the final implemented support boundary
+- [x] update any checked execution-plan tasks that were previously overstated
+- [x] remove ambiguity between “viewed”, “defined”, and “operationally actionable”
 
 ### 6.2 Final regression run
 
-- [ ] rerun lesson launch and lesson resume tests
-- [ ] rerun revision generation and planner tests
-- [ ] rerun graph automation and admin graph tests
-- [ ] rerun dynamic operations and admin governance tests
+- [x] rerun lesson launch and lesson resume tests
+- [x] rerun revision generation and planner tests
+- [x] rerun graph automation and admin graph tests
+- [x] rerun dynamic operations and admin governance tests
 
 ### 6.3 Final production-readiness checklist
 
-- [ ] confirm dynamic generation observability is canonical
-- [ ] confirm governance actions are real and audited
-- [ ] confirm audit export exists
-- [ ] confirm production runtime does not silently depend on local seeded/catalog truth
-- [ ] confirm agreed validation commands are green
+- [x] confirm dynamic generation observability is canonical
+- [x] confirm governance actions are real and audited
+- [x] confirm audit export exists
+- [x] confirm production runtime does not silently depend on local seeded/catalog truth
+- [x] confirm agreed validation commands are green
 
 ## Exit Criteria
 
-- [ ] the workstream can be called complete without qualification
-- [ ] the dynamic system is production-ready on its own documented terms
+- [x] the workstream can be called complete without qualification
+- [x] the dynamic system is production-ready on its own documented terms
+
+## Execution Findings
+
+- `dynamic_operation_events` is now the only source of truth for recent lesson and revision generation incidents across the admin AI and system dashboards.
+- Governance is operationally actionable at the implemented boundary: lesson artifact lineage can be preferred, AI route overrides can be reset back to inherited routing, and both actions append immutable governance audit records.
+- Revision governance remains comparison-first in this workstream. Prompt/model comparisons and quality visibility exist, but there is still no direct revision pack preference or rollback action, and the docs now state that boundary explicitly.
+- Audit export is now available for both governance actions and admin graph actions through `/api/admin/audit-export` in JSON or CSV.
+- Production degraded mode no longer silently substitutes local onboarding or curriculum truth. Onboarding option reads, curriculum program reads, and bootstrap now surface explicit backend-unavailable states, while dev-only fallback remains fenced behind environment behavior.
+- The agreed validation standard for closure is full-repo `npm run check` with zero errors plus the targeted regression suite listed in this plan. That baseline is now green.
 
 ---
 

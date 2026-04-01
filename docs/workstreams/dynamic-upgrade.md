@@ -856,6 +856,13 @@ Make the new system safe to operate at scale.
 - [x] Add alerting for unresolved-topic spikes
 - [x] Add audit exports for admin graph actions
 
+Phase 11 support boundary:
+- lesson artifact lineage preference is an operational rollback action
+- AI route override reset is an operational rollback action
+- revision artifacts have comparison visibility but no direct preference/rollback action in this workstream
+- governance and graph admin audits are exportable through `/api/admin/audit-export`
+- production degraded mode must fail explicitly rather than silently restoring local onboarding or curriculum truth
+
 ### Exit Criteria
 
 - graph and artifact systems are observable and operationally safe

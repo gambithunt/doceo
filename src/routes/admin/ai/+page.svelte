@@ -9,7 +9,8 @@
     totalSpend30d: number;
     totalSpend24h: number;
     totalRequests30d: number;
-    recentErrors: Array<{ id: string; createdAt: string; detail: string }>;
+    recentIncidents: Array<{ id: string; route: string; status: string; createdAt: string; detail: string }>;
+    routeOverrides: Record<string, { provider?: string; model?: string }>;
     governance: {
       lessonPromptComparisons: Array<{ promptVersion: string; artifactCount: number; meanQualityScore: number; staleCount: number }>;
       lessonModelComparisons: Array<{ provider: string; model: string; artifactCount: number; meanQualityScore: number; staleCount: number }>;
@@ -26,6 +27,7 @@
         qualityDelta: number;
         reason: string;
       }>;
+      recentIncidents: Array<{ id: string; route: string; status: string; createdAt: string; detail: string }>;
       governanceAudit: Array<{ id: string; actionType: string; createdAt: string; actorId: string | null; reason: string | null }>;
       rollback: { artifactLineage?: string; modelRouting?: string };
       policy: { reviewCadence?: { lessonArtifacts?: string; revisionArtifacts?: string } };
@@ -35,9 +37,16 @@
   const props = $props<{ data: PageData; form: { success?: boolean; action?: string } | null }>();
   const spendByRoute = $derived(props.data.spendByRoute);
   const governance = $derived(props.data.governance);
+  const routeOverrides = $derived(
+    Object.entries(props.data.routeOverrides) as Array<[string, { provider?: string; model?: string }]>
+  );
+  const recentIncidents = $derived(
+    props.data.recentIncidents.length > 0 ? props.data.recentIncidents : governance.recentIncidents
+  );
 
   let range = $state<TimeRange>('30d');
   let rollbackBusy = $state<string | null>(null);
+  let routeResetBusy = $state<string | null>(null);
 
   function formatCurrency(n: number): string {
     return `$${n.toFixed(2)}`;
@@ -111,6 +120,69 @@
           <p><strong>Lesson review cadence:</strong> {governance.policy.reviewCadence?.lessonArtifacts ?? 'Every 2 weeks'}</p>
           <p><strong>Revision review cadence:</strong> {governance.policy.reviewCadence?.revisionArtifacts ?? 'Every 2 weeks'}</p>
         </div>
+      </section>
+    </div>
+
+    <div class="two-up">
+      <section class="section-card">
+        <div class="section-heading">
+          <h2 class="section-title">Recent Generation Incidents</h2>
+          <a class="section-link" href="/api/admin/audit-export?stream=governance&format=csv">Export governance CSV</a>
+        </div>
+        {#if recentIncidents.length === 0}
+          <p class="empty-copy">No recent lesson or revision generation incidents recorded.</p>
+        {:else}
+          <div class="audit-list">
+            {#each recentIncidents as incident}
+              <div class="audit-item">
+                <div>
+                  <strong>{incident.route.replace(/-/g, ' ')}</strong>
+                  <p>{incident.detail}</p>
+                </div>
+                <span>{relativeTime(incident.createdAt)}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </section>
+
+      <section class="section-card">
+        <div class="section-heading">
+          <h2 class="section-title">Route Override Recovery</h2>
+          <a class="section-link" href="/admin/settings">Open settings</a>
+        </div>
+        {#if routeOverrides.length === 0}
+          <p class="empty-copy">All AI routes currently inherit their provider and model from the shared tier config.</p>
+        {:else}
+          <div class="rollback-list">
+            {#each routeOverrides as [mode, override]}
+              <form
+                method="POST"
+                action="?/resetRouteOverride"
+                use:enhance={() => {
+                  routeResetBusy = mode;
+                  return async ({ update }) => {
+                    await update();
+                    routeResetBusy = null;
+                  };
+                }}
+                class="rollback-item"
+              >
+                <input type="hidden" name="mode" value={mode} />
+                <input type="hidden" name="reason" value={`Reset ${mode} to inherited routing`} />
+                <div class="rollback-copy">
+                  <strong>{mode}</strong>
+                  <p>{override.provider ?? 'inherit provider'} / {override.model ?? 'inherit model'}</p>
+                </div>
+                <div class="rollback-actions">
+                  <button type="submit" class="rollback-btn" disabled={routeResetBusy === mode}>
+                    {routeResetBusy === mode ? 'Resetting…' : 'Reset override'}
+                  </button>
+                </div>
+              </form>
+            {/each}
+          </div>
+        {/if}
       </section>
     </div>
 
@@ -217,7 +289,10 @@
     </section>
 
     <section class="section-card">
-      <h2 class="section-title">Governance Audit</h2>
+      <div class="section-heading">
+        <h2 class="section-title">Governance Audit</h2>
+        <a class="section-link" href="/api/admin/audit-export?stream=governance&format=json">Export JSON</a>
+      </div>
       {#if governance.governanceAudit.length === 0}
         <p class="empty-copy">No governance actions logged yet.</p>
       {:else}
@@ -267,6 +342,22 @@
     font-size: 0.86rem;
     font-weight: 700;
     color: var(--text);
+  }
+  .section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.9rem;
+  }
+  .section-heading .section-title {
+    margin: 0;
+  }
+  .section-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 600;
   }
   .table-wrap {
     overflow: auto;
@@ -393,6 +484,10 @@
     }
     .page-body {
       padding: 1rem 1rem 2rem;
+    }
+    .section-heading {
+      align-items: flex-start;
+      flex-direction: column;
     }
   }
 </style>

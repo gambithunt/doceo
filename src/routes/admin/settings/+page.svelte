@@ -41,7 +41,7 @@
   let scanBanner     = $state<{ pricesUpdated: number; modelsAdded: number; errors: string[] } | null>(null);
 
   const selectedProvider = $derived(
-    data.providers.find((p) => p.id === selectedProviderId) ?? data.providers[0]
+    data.providers.find((provider: ProviderDefinition) => provider.id === selectedProviderId) ?? data.providers[0]
   );
 
   // All tiers show all provider models — the tier tag is just the recommended default,
@@ -49,16 +49,16 @@
   const allModels = $derived(selectedProvider.models);
 
   function onProviderChange() {
-    const provider = data.providers.find((p) => p.id === selectedProviderId)!;
+    const provider = data.providers.find((provider: ProviderDefinition) => provider.id === selectedProviderId) ?? selectedProvider;
     tierModels = {
-      fast:     provider.models.find((m) => m.tier === 'fast')?.id     ?? '',
-      default:  provider.models.find((m) => m.tier === 'default')?.id  ?? '',
-      thinking: provider.models.find((m) => m.tier === 'thinking')?.id ?? ''
+      fast:     provider.models.find((model: ModelOption) => model.tier === 'fast')?.id     ?? '',
+      default:  provider.models.find((model: ModelOption) => model.tier === 'default')?.id  ?? '',
+      thinking: provider.models.find((model: ModelOption) => model.tier === 'thinking')?.id ?? ''
     };
   }
 
   function getModelCost(tier: 'fast' | 'default' | 'thinking'): string {
-    const model = selectedProvider.models.find((m) => m.id === tierModels[tier]);
+    const model = selectedProvider.models.find((item: ModelOption) => item.id === tierModels[tier]);
     if (!model) return '';
     return `$${model.inputPer1M.toFixed(2)} in / $${model.outputPer1M.toFixed(2)} out`;
   }

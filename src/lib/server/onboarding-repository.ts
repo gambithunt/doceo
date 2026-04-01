@@ -6,6 +6,7 @@ import {
   getSubjectsByCurriculumAndGrade,
   onboardingCountries
 } from '$lib/data/onboarding';
+import { allowLocalCatalogFallback, throwBackendUnavailable } from '$lib/server/backend-availability';
 import { createServerGraphCatalogRepository } from '$lib/server/graph-catalog-repository';
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
 import { deduplicateSubjects } from '$lib/utils/strings';
@@ -78,6 +79,9 @@ export async function fetchCountries(): Promise<CountryOption[]> {
   const graphCatalog = createServerGraphCatalogRepository();
 
   if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable('Curriculum catalog backend is unavailable.');
+    }
     return onboardingCountries;
   }
 
@@ -88,6 +92,9 @@ export async function fetchCurriculums(countryId: string): Promise<CurriculumOpt
   const graphCatalog = createServerGraphCatalogRepository();
 
   if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable('Curriculum catalog backend is unavailable.');
+    }
     return getCurriculumsByCountry(countryId);
   }
 
@@ -98,6 +105,9 @@ export async function fetchGrades(curriculumId: string): Promise<GradeOption[]> 
   const graphCatalog = createServerGraphCatalogRepository();
 
   if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable('Curriculum catalog backend is unavailable.');
+    }
     return getGradesByCurriculum(curriculumId);
   }
 
@@ -111,6 +121,9 @@ export async function fetchSubjects(
   const graphCatalog = createServerGraphCatalogRepository();
 
   if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable('Curriculum catalog backend is unavailable.');
+    }
     return getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
   }
 

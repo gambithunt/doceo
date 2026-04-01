@@ -60,6 +60,7 @@ export async function load() {
       routeHealth: [],
       graphGrowth: [],
       artifactQuality: [],
+      recentIncidents: [],
       alerts: [],
       governanceAudit: [],
       policy: {

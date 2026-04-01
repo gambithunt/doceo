@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { isBackendUnavailableError } from '$lib/server/backend-availability';
 import { loadLearningProgram } from '$lib/server/learning-program-repository';
 import { loadAppState, loadSignalsForProfile } from '$lib/server/state-repository';
 import {
@@ -98,7 +99,20 @@ export async function GET({ request }) {
     }
   };
 
-  const onboardingOptions = onboardingProgress ? await loadOnboardingOptions(onboardingProgress) : null;
+  let degradedError: string | null = null;
+  let onboardingOptions = null;
+
+  if (onboardingProgress) {
+    try {
+      onboardingOptions = await loadOnboardingOptions(onboardingProgress);
+    } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        degradedError = 'Curriculum catalog backend unavailable.';
+      } else {
+        throw error;
+      }
+    }
+  }
 
   const countryName =
     onboardingOptions?.countries.find((country) => country.id === onboardingProgress?.selectedCountryId)?.name ??
@@ -109,27 +123,40 @@ export async function GET({ request }) {
   const gradeLabel =
     onboardingOptions?.grades.find((grade) => grade.id === onboardingProgress?.selectedGradeId)?.label ??
     stateWithProfile.profile.grade;
-  const learningProgram =
+  const shouldLoadLearningProgram = Boolean(
     onboardingProgress &&
-    onboardingProgress.selectedCurriculumId &&
-    onboardingProgress.selectedGradeId &&
-    (onboardingProgress.selectedSubjectIds.length > 0 || onboardingProgress.customSubjects.length > 0)
-      ? await loadLearningProgram({
-          country: countryName || stateWithProfile.profile.country || 'South Africa',
-          curriculumName: curriculumName || stateWithProfile.profile.curriculum || onboardingProgress.selectedCurriculumId,
-          curriculumId: onboardingProgress.selectedCurriculumId,
-          grade: gradeLabel || stateWithProfile.profile.grade || onboardingProgress.selectedGradeId,
-          gradeId: onboardingProgress.selectedGradeId,
-          selectedSubjectIds: onboardingProgress.selectedSubjectIds,
-          selectedSubjectNames:
-            onboardingProgress.selectedSubjectNames.length > 0
-              ? onboardingProgress.selectedSubjectNames
-              : (onboardingOptions?.subjects ?? [])
-                  .filter((subject) => onboardingProgress.selectedSubjectIds.includes(subject.id))
-                  .map((subject) => subject.name),
-          customSubjects: onboardingProgress.customSubjects
-        })
-      : null;
+      onboardingProgress.selectedCurriculumId &&
+      onboardingProgress.selectedGradeId &&
+      (onboardingProgress.selectedSubjectIds.length > 0 || onboardingProgress.customSubjects.length > 0)
+  );
+  let learningProgram = null;
+
+  if (shouldLoadLearningProgram && onboardingProgress) {
+    try {
+      learningProgram = await loadLearningProgram({
+        country: countryName || stateWithProfile.profile.country || 'South Africa',
+        curriculumName: curriculumName || stateWithProfile.profile.curriculum || onboardingProgress.selectedCurriculumId,
+        curriculumId: onboardingProgress.selectedCurriculumId,
+        grade: gradeLabel || stateWithProfile.profile.grade || onboardingProgress.selectedGradeId,
+        gradeId: onboardingProgress.selectedGradeId,
+        selectedSubjectIds: onboardingProgress.selectedSubjectIds,
+        selectedSubjectNames:
+          onboardingProgress.selectedSubjectNames.length > 0
+            ? onboardingProgress.selectedSubjectNames
+            : (onboardingOptions?.subjects ?? [])
+                .filter((subject) => onboardingProgress.selectedSubjectIds.includes(subject.id))
+                .map((subject) => subject.name),
+        customSubjects: onboardingProgress.customSubjects
+      });
+    } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        degradedError = degradedError ?? 'Learning program backend unavailable.';
+        learningProgram = null;
+      } else {
+        throw error;
+      }
+    }
+  }
 
   const hydratedState = onboardingProgress
     ? {
@@ -137,6 +164,7 @@ export async function GET({ request }) {
         onboarding: {
           ...stateWithProfile.onboarding,
           ...onboardingProgress,
+          error: degradedError,
           options: onboardingOptions
             ? {
                 ...stateWithProfile.onboarding.options,
@@ -167,7 +195,15 @@ export async function GET({ request }) {
               ...stateWithProfile.ui,
               ...resolveCurriculumSelection(stateWithProfile, learningProgram, onboardingProgress)
             }
-          : stateWithProfile.ui
+          : stateWithProfile.ui,
+        backend: degradedError
+          ? {
+              ...stateWithProfile.backend,
+              lastSyncAt: new Date().toISOString(),
+              lastSyncStatus: 'error',
+              lastSyncError: degradedError
+            }
+          : stateWithProfile.backend
       }
     : stateWithProfile;
 

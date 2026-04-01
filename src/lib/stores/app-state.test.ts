@@ -1176,3 +1176,38 @@ describe('lesson artifact ratings', () => {
     );
   });
 });
+
+describe('degraded runtime handling', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getAuthenticatedHeaders.mockResolvedValue({
+      Authorization: 'Bearer token'
+    });
+  });
+
+  it('marks backend sync as errored when bootstrap fails instead of silently keeping local truth', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/state/bootstrap') {
+        return new Response(JSON.stringify({ error: 'Bootstrap backend unavailable.' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(createInitialState());
+
+    await store.initializeRemoteState();
+
+    const state = get(store);
+    expect(state.backend.lastSyncStatus).toBe('error');
+    expect(state.backend.lastSyncError).toMatch(/bootstrap/i);
+  });
+});
