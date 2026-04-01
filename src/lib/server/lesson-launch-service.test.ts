@@ -9,11 +9,7 @@ import {
   createInMemoryLessonArtifactStore,
   createLessonArtifactRepository
 } from './lesson-artifact-repository';
-import {
-  bridgeLegacySessionArtifacts,
-  createLessonLaunchService
-} from './lesson-launch-service';
-import { buildLessonSessionFromTopic } from '$lib/lesson-system';
+import { createLessonLaunchService } from './lesson-launch-service';
 import type { LessonPlanResponse, UserProfile } from '$lib/types';
 
 function createLegacySnapshot(): LegacyGraphSnapshot {
@@ -213,41 +209,6 @@ describe('lesson launch service', () => {
     expect(generator).toHaveBeenCalledTimes(1);
     expect(second.lessonArtifactId).toBe(first.lessonArtifactId);
     expect(second.questionArtifactId).toBe(first.questionArtifactId);
-  });
-
-  it('bridges a legacy session to node and artifact ids so restart or resume can keep working', async () => {
-    const profile = createProfile();
-    const lesson = createGeneratedLessonResponse().lesson;
-    const session = buildLessonSessionFromTopic(
-      profile,
-      { id: 'graph-subject-mathematics', name: 'Mathematics', topics: [] },
-      { id: 'legacy-topic-id', name: 'Equivalent Fractions', subtopics: [] },
-      { id: 'legacy-subtopic-id', name: 'Equivalent Fractions', lessonIds: [lesson.id] },
-      lesson,
-      {
-        topicDescription: 'Fractions with the same value.',
-        curriculumReference: 'CAPS · Grade 6 · Mathematics',
-        matchedSection: 'Equivalent Fractions'
-      }
-    );
-
-    const bridged = await bridgeLegacySessionArtifacts(
-      {
-        graphRepository: service.graphRepository,
-        artifactRepository,
-        pedagogyVersion: 'v1',
-        promptVersion: 'v1'
-      },
-      {
-        student: profile,
-        lessonSession: session
-      }
-    );
-
-    expect(bridged.nodeId).toBeTruthy();
-    expect(bridged.lessonArtifactId).toBeTruthy();
-    expect(bridged.questionArtifactId).toBeTruthy();
-    expect(bridged.lesson.title).toContain('Equivalent Fractions');
   });
 
   it('creates a new artifact on launch when the previous preferred artifact becomes stale from low ratings', async () => {

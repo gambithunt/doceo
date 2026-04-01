@@ -1,6 +1,4 @@
-import { buildLearningProgram } from '$lib/data/learning-content';
 import {
-  getSubjectsByCurriculumAndGrade,
   onboardingCountries,
   onboardingCurriculums,
   onboardingGrades,
@@ -1961,55 +1959,6 @@ function buildLocalLegacyGraphSnapshot(): LegacyGraphSnapshot {
     onboardingCurriculums.map((curriculum) => [curriculum.id, curriculum])
   );
 
-  const topics = new Map<string, LegacyGraphSnapshot['topics'][number]>();
-  const subtopics = new Map<string, LegacyGraphSnapshot['subtopics'][number]>();
-
-  for (const grade of onboardingGrades) {
-    const curriculum = curriculumById.get(grade.curriculumId);
-    const country = curriculum ? countryById.get(curriculum.countryId) : null;
-
-    if (!curriculum || !country) {
-      continue;
-    }
-
-    const subjects = getSubjectsByCurriculumAndGrade(curriculum.id, grade.id);
-
-    if (subjects.length === 0) {
-      continue;
-    }
-
-    const program = buildLearningProgram(
-      country.name,
-      curriculum.name,
-      grade.label,
-      subjects.map((subject) => subject.name)
-    );
-
-    for (const subject of program.curriculum.subjects) {
-      for (const topic of subject.topics) {
-        topics.set(topic.id, {
-          id: topic.id,
-          label: topic.name,
-          subjectId: subject.id,
-          gradeId: grade.id,
-          curriculumId: curriculum.id,
-          countryId: country.id
-        });
-
-        for (const subtopic of topic.subtopics) {
-          subtopics.set(subtopic.id, {
-            id: subtopic.id,
-            label: subtopic.name,
-            topicId: topic.id,
-            gradeId: grade.id,
-            curriculumId: curriculum.id,
-            countryId: country.id
-          });
-        }
-      }
-    }
-  }
-
   return {
     countries: onboardingCountries.map((country) => ({
       id: country.id,
@@ -2033,8 +1982,8 @@ function buildLocalLegacyGraphSnapshot(): LegacyGraphSnapshot {
       curriculumId: subject.curriculumId,
       countryId: curriculumById.get(subject.curriculumId)?.countryId ?? ''
     })),
-    topics: Array.from(topics.values()),
-    subtopics: Array.from(subtopics.values())
+    topics: [],
+    subtopics: []
   };
 }
 

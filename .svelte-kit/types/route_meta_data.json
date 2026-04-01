@@ -20,6 +20,10 @@
 		"src/routes/admin/graph/+page.server.ts",
 		"src/routes/admin/+layout.server.ts"
 	],
+	"/admin/graph/legacy": [
+		"src/routes/admin/graph/legacy/+page.server.ts",
+		"src/routes/admin/+layout.server.ts"
+	],
 	"/admin/graph/[nodeId]": [
 		"src/routes/admin/graph/[nodeId]/+page.server.ts",
 		"src/routes/admin/+layout.server.ts"

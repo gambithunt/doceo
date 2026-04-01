@@ -12,7 +12,7 @@ type EnsureDefined<T> = T extends null | undefined ? {} : T;
 type OptionalUnion<U extends Record<string, any>, A extends keyof U = U extends U ? keyof U : never> = U extends unknown ? { [P in Exclude<A, keyof U>]?: never } & U : never;
 export type Snapshot<T = any> = Kit.Snapshot<T>;
 type PageParentData = EnsureDefined<LayoutData>;
-type LayoutRouteId = RouteId | "/" | "/(app)/dashboard" | "/(app)/lesson" | "/(app)/lesson/[id]" | "/(app)/progress" | "/(app)/revision" | "/(app)/settings" | "/(app)/subjects/[id]" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/[nodeId]" | "/admin/learning" | "/admin/messages" | "/admin/messages/[session_id]" | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | "/admin/users/[id]" | "/onboarding" | null
+type LayoutRouteId = RouteId | "/" | "/(app)/dashboard" | "/(app)/lesson" | "/(app)/lesson/[id]" | "/(app)/progress" | "/(app)/revision" | "/(app)/settings" | "/(app)/subjects/[id]" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/[nodeId]" | "/admin/graph/legacy" | "/admin/learning" | "/admin/messages" | "/admin/messages/[session_id]" | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | "/admin/users/[id]" | "/onboarding" | null
 type LayoutParams = RouteParams & { id?: string; nodeId?: string; session_id?: string }
 type LayoutParentData = EnsureDefined<{}>;
 

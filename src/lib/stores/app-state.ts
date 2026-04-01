@@ -6,8 +6,6 @@ import { deduplicateSubjects } from '$lib/utils/strings';
 import { getSelectionMode } from '$lib/data/onboarding';
 import {
   applyLessonAssistantResponse,
-  buildDynamicLessonFromTopic,
-  buildDynamicQuestionsForLesson,
   buildInitialLessonMessages,
   buildLessonSessionFromTopic,
   classifyLessonMessage,
@@ -226,18 +224,33 @@ function buildTopicOptions(state: AppState, subjectId: string) {
   );
 }
 
+function buildLessonStateStub(session: LessonSession, grade: string): Lesson {
+  const placeholderBody =
+    `This lesson content is no longer generated locally. Reopen **${session.topicTitle}** to load the latest artifact-backed lesson for this node.`;
+
+  return {
+    id: session.lessonId,
+    topicId: session.topicId,
+    subtopicId: session.nodeId ?? session.topicId,
+    title: `${session.subject}: ${session.topicTitle}`,
+    subjectId: session.subjectId,
+    grade,
+    orientation: { title: 'Reload Lesson', body: placeholderBody },
+    mentalModel: { title: 'Reload Lesson', body: placeholderBody },
+    concepts: { title: 'Reload Lesson', body: placeholderBody },
+    guidedConstruction: { title: 'Reload Lesson', body: placeholderBody },
+    workedExample: { title: 'Reload Lesson', body: placeholderBody },
+    practicePrompt: { title: 'Reload Lesson', body: placeholderBody },
+    commonMistakes: { title: 'Reload Lesson', body: placeholderBody },
+    transferChallenge: { title: 'Reload Lesson', body: placeholderBody },
+    summary: { title: 'Reload Lesson', body: placeholderBody },
+    practiceQuestionIds: [],
+    masteryQuestionIds: []
+  };
+}
+
 function getLessonForSession(state: AppState, session: LessonSession): Lesson {
-  return (
-    state.lessons.find((lesson) => lesson.id === session.lessonId) ??
-    buildDynamicLessonFromTopic({
-      subjectId: session.subjectId,
-      subjectName: session.subject,
-      grade: state.profile.grade,
-      topicTitle: session.topicTitle,
-      topicDescription: session.topicDescription,
-      curriculumReference: session.curriculumReference
-    })
-  );
+  return state.lessons.find((lesson) => lesson.id === session.lessonId) ?? buildLessonStateStub(session, state.profile.grade);
 }
 
 function formatMisconceptionLabel(tag: string): string {
@@ -539,41 +552,6 @@ export function createAppStore(initialState: AppState = readState()) {
     };
   }
 
-  function buildEmergencyLessonPlan(
-    profile: AppState['profile'],
-    subjectId: string,
-    subjectName: string,
-    topic: {
-      title: string;
-      description: string;
-      curriculumReference: string;
-      nodeId?: string | null;
-      topicId?: string;
-    }
-  ): LessonPlanPayload {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId,
-      subjectName,
-      grade: profile.grade,
-      topicTitle: topic.title,
-      topicDescription: topic.description,
-      curriculumReference: topic.curriculumReference
-    });
-
-    return {
-      provider: 'local-fallback',
-      nodeId: topic.nodeId ?? lesson.subtopicId,
-      lessonArtifactId: undefined,
-      questionArtifactId: undefined,
-      lesson: {
-        ...lesson,
-        topicId: topic.topicId ?? lesson.topicId,
-        subtopicId: topic.nodeId ?? lesson.subtopicId
-      },
-      questions: buildDynamicQuestionsForLesson(lesson, subjectName, topic.title)
-    };
-  }
-
   async function requestLessonPlan(
     state: AppState,
     subjectId: string,
@@ -617,6 +595,18 @@ export function createAppStore(initialState: AppState = readState()) {
     }
 
     return payload;
+  }
+
+  function persistLessonLaunchError(state: AppState, message: string): AppState {
+    return persistAndSync({
+      ...state,
+      backend: {
+        ...state.backend,
+        lastSyncAt: new Date().toISOString(),
+        lastSyncStatus: 'error',
+        lastSyncError: message
+      }
+    });
   }
 
   async function requestRevisionPack(
@@ -876,14 +866,10 @@ export function createAppStore(initialState: AppState = readState()) {
           nodeId: subtopic?.id ?? lesson.subtopicId,
           topicId: topic?.id ?? lesson.topicId
         });
-      } catch {
-        launched = buildEmergencyLessonPlan(snapshot.profile, subject.id, subject.name, {
-          title: topicName,
-          description: lesson.orientation.body,
-          curriculumReference,
-          nodeId: subtopic?.id ?? lesson.subtopicId,
-          topicId: topic?.id ?? lesson.topicId
-        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to open the lesson right now.';
+        update((state) => persistLessonLaunchError(state, message));
+        return;
       }
 
       let nextSessionId = '';
@@ -1387,7 +1373,7 @@ export function createAppStore(initialState: AppState = readState()) {
           student: latest.profile,
           learnerProfile: latest.learnerProfile,
           lesson:
-            currentSession.lessonArtifactId || currentSession.nodeId
+            currentSession.lessonArtifactId
               ? undefined
               : currentLesson,
           lessonSession: currentSession,
@@ -1687,14 +1673,10 @@ export function createAppStore(initialState: AppState = readState()) {
           nodeId: existing.nodeId ?? null,
           topicId: existing.topicId
         });
-      } catch {
-        launched = buildEmergencyLessonPlan(snapshot.profile, existing.subjectId, existing.subject, {
-          title: existing.topicTitle,
-          description: existing.topicDescription,
-          curriculumReference: existing.curriculumReference,
-          nodeId: existing.nodeId ?? existing.topicId,
-          topicId: existing.topicId
-        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to restart the lesson right now.';
+        update((state) => persistLessonLaunchError(state, message));
+        return;
       }
 
       update((state) => {

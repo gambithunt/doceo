@@ -1,3 +1,4 @@
+import { dev } from '$app/environment';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { buildFallbackLessonPlan } from '$lib/ai/lesson-plan';
@@ -60,13 +61,25 @@ export async function POST({ request, fetch }) {
     }
 
     if (!edge.ok || !edge.payload) {
-      return buildFallbackLessonPlan(launchRequest);
+      if (dev) {
+        return buildFallbackLessonPlan(launchRequest);
+      }
+
+      throw Object.assign(new Error(edge.error ?? 'Lesson generation unavailable.'), {
+        status: edge.status && edge.status >= 400 ? edge.status : 502
+      });
     }
 
     const functionPayload = edge.payload;
 
     if (functionPayload.provider !== 'github-models' || !functionPayload.lesson?.orientation?.body) {
-      return buildFallbackLessonPlan(launchRequest);
+      if (dev) {
+        return buildFallbackLessonPlan(launchRequest);
+      }
+
+      throw Object.assign(new Error('Lesson generation returned an invalid payload.'), {
+        status: 502
+      });
     }
 
     await logAiInteraction(

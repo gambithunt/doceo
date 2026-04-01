@@ -1042,6 +1042,39 @@ describe('unified lesson launch pipeline', () => {
       })
     );
   });
+
+  it('does not synthesize a local lesson when the lesson-plan route fails', async () => {
+    const baseState = createInitialState();
+    const lesson = baseState.lessons[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        return new Response(JSON.stringify({ error: 'Lesson generation unavailable.' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: []
+    });
+
+    await store.launchLesson(lesson.id);
+
+    const state = get(store);
+
+    expect(state.lessonSessions).toHaveLength(0);
+    expect(state.backend.lastSyncStatus).toBe('error');
+    expect(state.backend.lastSyncError).toMatch(/lesson/i);
+  });
 });
 
 describe('lesson artifact ratings', () => {

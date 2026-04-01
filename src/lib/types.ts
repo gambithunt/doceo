@@ -85,7 +85,7 @@ export interface SubjectOption {
   gradeId: string;
   name: string;
   category: 'core' | 'elective' | 'language';
-  source?: 'seeded' | 'user_contributed';
+  source?: 'catalog' | 'user_contributed';
 }
 
 export type SubjectVerificationStatus = 'idle' | 'loading' | 'verified' | 'invalid' | 'provisional' | 'error';

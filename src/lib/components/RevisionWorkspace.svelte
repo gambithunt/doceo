@@ -44,7 +44,6 @@
     sortRevisionPlans
   } from '$lib/revision/plans';
   import { deriveRevisionHomeModel } from '$lib/revision/ranking';
-  import { buildInterventionContent } from '$lib/revision/engine';
   import { appState } from '$lib/stores/app-state';
   import type {
     AppState,
@@ -2146,7 +2145,7 @@
                         </div>
                         <div class="history-review-block">
                           <span>Model answer</span>
-                          <p>{buildInterventionContent('worked_step', displayTopic)}</p>
+                          <p>{entry.interventionContent || 'No authored worked step was stored for this attempt.'}</p>
                         </div>
                         <div class="history-review-block">
                           <span>What Doceo scheduled</span>

@@ -247,36 +247,44 @@ This phase should be run with migration tooling, observability, and admin suppor
 
 ### 9.1 Legacy session mapping
 
-- [ ] map historical lesson sessions to graph nodes where confidence is high
-- [ ] create compatibility artifact references where old sessions lack artifact ids
-- [ ] mark unresolved sessions explicitly
+- [x] map historical lesson sessions to graph nodes where confidence is high
+- [x] create compatibility artifact references where old sessions lack artifact ids
+- [x] mark unresolved sessions explicitly
 
 ### 9.2 Legacy revision mapping
 
-- [ ] map historical revision topics to graph nodes where safe
-- [ ] map historical revision plans to graph nodes where safe
-- [ ] preserve original text for auditability
-- [ ] mark ambiguous mappings unresolved
+- [x] map historical revision topics to graph nodes where safe
+- [x] map historical revision plans to graph nodes where safe
+- [x] preserve original text for auditability
+- [x] mark ambiguous mappings unresolved
 
 ### 9.3 Unresolved queue
 
-- [ ] create admin queue for unresolved historical mappings
-- [ ] allow manual resolution
-- [ ] log every resolution event
+- [x] create admin queue for unresolved historical mappings
+- [x] allow manual resolution
+- [x] log every resolution event
 
 ### 9.4 Migration validation
 
-- [ ] compare pre/post counts
-- [ ] verify no session loss
-- [ ] verify no attempt loss
-- [ ] verify unresolved rate stays within acceptable threshold
+- [x] compare pre/post counts
+- [x] verify no session loss
+- [x] verify no attempt loss
+- [x] verify unresolved rate stays within acceptable threshold
 
 ## Required Tests
 
-- [ ] high-confidence legacy lesson mapping works
-- [ ] ambiguous mapping becomes unresolved, not guessed
-- [ ] legacy revision plan mapping preserves original data
-- [ ] manual resolution updates records correctly
+- [x] high-confidence legacy lesson mapping works
+- [x] ambiguous mapping becomes unresolved, not guessed
+- [x] legacy revision plan mapping preserves original data
+- [x] manual resolution updates records correctly
+
+## Phase 9 Findings
+
+- `src/lib/server/legacy-migration-service.ts` now runs a non-destructive batch backfill over `lesson_sessions`, `revision_topics`, and snapshot-stored revision plans, only applying graph ids when resolution is unique inside the learner scope and preserving original labels for auditability.
+- `supabase/migrations/20260401170000_legacy_migration_queue.sql` adds explicit `migration_status` columns plus `legacy_migration_queue` and `legacy_migration_events`, so unresolved history is first-class and every manual repair remains observable.
+- `src/routes/admin/graph/legacy/+page.server.ts` and `src/routes/admin/graph/legacy/+page.svelte` add the admin repair surface for running batches, inspecting unresolved counts, and manually resolving queued records without mutating ambiguous history silently.
+- Legacy lesson sessions now create compatibility lesson/question artifact ids only after a safe node mapping exists, using the existing bridge path instead of inventing synthetic mappings.
+- The remaining compatibility cleanup plan is now explicit: unresolved queue + compatibility artifact bridges stay allowed through Phase 9, while deleting those bridges remains Phase 10 work once the queue is drained.
 
 ## Exit Criteria
 

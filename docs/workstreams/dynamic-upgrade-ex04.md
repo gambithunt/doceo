@@ -59,44 +59,54 @@ This phase should only begin after prior batches are stable. It is a codebase si
 
 ### 10.1 Remove old lesson content paths
 
-- [ ] remove runtime usage of `src/lib/data/learning-content.ts`
-- [ ] remove dead imports and helper calls tied to seeded lesson content
-- [ ] remove local lesson-selection logic no longer needed
+- [x] remove runtime usage of `src/lib/data/learning-content.ts`
+- [x] remove dead imports and helper calls tied to seeded lesson content
+- [x] remove local lesson-selection logic no longer needed
 
 ### 10.2 Remove old catalog fallback paths
 
-- [ ] remove production reliance on hardcoded onboarding subject catalogs
-- [ ] remove dead fallback catalog logic from app state and repositories
-- [ ] keep dev-only bootstrap utilities only if explicitly justified
+- [x] remove production reliance on hardcoded onboarding subject catalogs
+- [x] remove dead fallback catalog logic from app state and repositories
+- [x] keep dev-only bootstrap utilities only if explicitly justified
 
 ### 10.3 Remove old revision content paths
 
-- [ ] remove runtime dependence on hardcoded revision prompt builders
-- [ ] remove dead string-only plan topic helpers
-- [ ] remove legacy synthetic topic assumptions that exist only because of string identity
+- [x] remove runtime dependence on hardcoded revision prompt builders
+- [x] remove dead string-only plan topic helpers
+- [x] remove legacy synthetic topic assumptions that exist only because of string identity
 
 ### 10.4 Remove compatibility layers
 
-- [ ] remove legacy lesson-launch adapters no longer needed
-- [ ] remove legacy plan writer paths
-- [ ] remove obsolete migration-only bridges after data verification
+- [x] remove legacy lesson-launch adapters no longer needed
+- [x] remove legacy plan writer paths
+- [x] remove obsolete migration-only bridges after data verification
 
 ### 10.5 Update docs and admin wording
 
-- [ ] update architecture docs to remove “seeded vs dynamic” language
-- [ ] update admin content dashboards to reference graph and artifact health
-- [ ] remove obsolete seeded coverage language from admin surfaces
+- [x] update architecture docs to remove “seeded vs dynamic” language
+- [x] update admin content dashboards to reference graph and artifact health
+- [x] remove obsolete seeded coverage language from admin surfaces
 
 ## Required Tests
 
-- [ ] codebase-level grep or tests proving old seeded runtime paths are not used
-- [ ] regression tests for current lesson, revision, and planner flows after cleanup
-- [ ] documentation snapshot or assertions where applicable for updated architecture wording
+- [x] codebase-level grep or tests proving old seeded runtime paths are not used
+- [x] regression tests for current lesson, revision, and planner flows after cleanup
+- [x] documentation snapshot or assertions where applicable for updated architecture wording
+
+## Phase 10 Findings
+
+- `src/routes/api/ai/lesson-plan/+server.ts` no longer fabricates local lesson plans in production. When AI generation fails, production now returns an explicit backend error while the dev-only fallback remains available for local workflow testing.
+- `src/lib/stores/app-state.ts` no longer synthesizes emergency local lesson launches. Curriculum launch and restart failures now surface through `backend.lastSyncError`, and missing local lesson bodies fall back to a neutral reload stub instead of rebuilding authored content from topic labels.
+- `src/routes/api/ai/lesson-chat/+server.ts` no longer rebuilds lesson bodies from local topic builders in production. It now requires the stored lesson artifact or the lesson payload already attached to the session request.
+- `src/routes/admin/content/+page.server.ts` and `src/routes/admin/content/+page.svelte` now report graph/artifact health with `stable`, `attention`, and `emerging` states rather than seeded-coverage labels.
+- `src/lib/server/graph-repository.ts` now keeps only a legacy migration-only snapshot fallback for country, curriculum, grade, and subject scaffolding. Topics and subtopics are no longer synthesized from `src/lib/data/learning-content.ts`.
+- `src/lib/server/lesson-launch-service.ts` no longer carries `bridgeLegacySessionArtifacts()`. Historical lesson sessions now resume only through stored artifact ids or already-persisted lesson payloads.
+- `src/lib/revision/engine.ts` no longer fabricates hardcoded help-ladder text. Revision review surfaces now show stored authored intervention content when available and otherwise make the missing authored step explicit.
 
 ## Exit Criteria
 
-- no production runtime dependency on old seeded architecture remains
-- codebase is materially simpler
+- [x] no production runtime dependency on old seeded architecture remains
+- [x] codebase is materially simpler
 
 ---
 
@@ -279,4 +289,3 @@ This execution plan is complete only when:
 - old architecture has been removed
 - the new dynamic architecture is observable and governable
 - the codebase and operations model match the final target state from [dynamic-upgrade.md](/Users/delon/Documents/code/projects/doceo/docs/workstreams/dynamic-upgrade.md)
-

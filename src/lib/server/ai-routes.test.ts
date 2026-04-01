@@ -5,6 +5,12 @@ const logAiInteraction = vi.fn();
 const logLessonSignal = vi.fn();
 const getAiConfig = vi.fn();
 const resolveAiRoute = vi.fn();
+const createServerGraphRepository = vi.fn();
+const createServerLessonArtifactRepository = vi.fn();
+
+vi.mock('$app/environment', () => ({
+  dev: false
+}));
 
 vi.mock('$lib/server/ai-edge', () => ({
   invokeAuthenticatedAiEdge
@@ -20,9 +26,19 @@ vi.mock('$lib/server/state-repository', () => ({
   logLessonSignal
 }));
 
+vi.mock('$lib/server/graph-repository', () => ({
+  createServerGraphRepository
+}));
+
+vi.mock('$lib/server/lesson-artifact-repository', () => ({
+  createServerLessonArtifactRepository
+}));
+
 describe('ai routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    createServerGraphRepository.mockReturnValue(null);
+    createServerLessonArtifactRepository.mockReturnValue(null);
     getAiConfig.mockResolvedValue({
       provider: 'github-models',
       tiers: {
@@ -134,6 +150,149 @@ describe('ai routes', () => {
     } as never);
 
     expect(response.status).toBe(401);
+  });
+
+  it('lesson plan route returns 502 instead of a local lesson fallback when generation fails in production', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: false,
+      status: 502,
+      error: 'AI edge function failed with 500.'
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Photosynthesis',
+            topicDescription: 'How plants make food',
+            curriculumReference: 'IEB · Grade 6 · Biology'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.stringMatching(/lesson generation unavailable|edge function failed/i)
+      })
+    );
+  });
+
+  it('lesson chat route resolves the stored lesson artifact directly without a legacy bridge', async () => {
+    createServerLessonArtifactRepository.mockReturnValue({
+      getLessonArtifactById: vi.fn().mockResolvedValue({
+        id: 'artifact-lesson-1',
+        nodeId: 'graph-subtopic-fractions',
+        payload: {
+          lesson: {
+            id: 'artifact-lesson-1',
+            title: 'Mathematics: Equivalent Fractions',
+            topicId: 'graph-topic-fractions',
+            subtopicId: 'graph-subtopic-fractions',
+            subjectId: 'subject-1',
+            grade: 'Grade 6',
+            orientation: { title: 'Orientation', body: 'Artifact orientation' },
+            mentalModel: { title: 'Mental model', body: 'Artifact mental model' },
+            concepts: { title: 'Concepts', body: 'Artifact concepts' },
+            guidedConstruction: { title: 'Construction', body: 'Artifact construction' },
+            workedExample: { title: 'Example', body: 'Artifact example' },
+            practicePrompt: { title: 'Practice', body: 'Artifact practice' },
+            commonMistakes: { title: 'Mistakes', body: 'Artifact mistakes' },
+            transferChallenge: { title: 'Transfer', body: 'Artifact transfer' },
+            summary: { title: 'Summary', body: 'Artifact summary' },
+            practiceQuestionIds: ['question-1'],
+            masteryQuestionIds: ['question-1']
+          }
+        }
+      })
+    });
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        displayContent: 'Keep going.',
+        metadata: {
+          action: 'stay',
+          next_stage: null,
+          reteach_style: null,
+          reteach_count: 0,
+          confidence_assessment: 0.6,
+          profile_update: {}
+        },
+        provider: 'github-models'
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-chat/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-chat', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          student: {
+            id: 'student-1',
+            fullName: 'Student',
+            grade: 'Grade 6',
+            curriculum: 'CAPS',
+            country: 'South Africa',
+            term: 'Term 1',
+            schoolYear: '2026'
+          },
+          learnerProfile: {
+            studentId: 'student-1'
+          },
+          lessonSession: {
+            id: 'lesson-session-1',
+            currentStage: 'orientation',
+            lessonArtifactId: 'artifact-lesson-1'
+          },
+          message: 'Can you explain that again?',
+          messageType: 'question'
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(invokeAuthenticatedAiEdge).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.any(Function),
+      'lesson-chat',
+      expect.objectContaining({
+        lesson: expect.objectContaining({
+          id: 'artifact-lesson-1',
+          title: 'Mathematics: Equivalent Fractions'
+        })
+      })
+    );
   });
 
   it('subject hints route returns 502 when the edge function fails', async () => {

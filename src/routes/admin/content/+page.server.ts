@@ -1,40 +1,57 @@
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
 import { getSubjectStats } from '$lib/server/admin/admin-queries';
 
-interface CoverageNode {
+type SubjectHealthStatus = 'stable' | 'attention' | 'emerging';
+
+interface SubjectHealthNode {
   id: string;
   name: string;
-  type: 'subject' | 'topic' | 'subtopic' | 'lesson';
-  status: 'seeded' | 'partial' | 'dynamic';
-  children?: CoverageNode[];
+  health: SubjectHealthStatus;
+  totalSessions: number;
+  completionRate: number;
   reteachRate?: number;
+}
+
+function resolveHealth(totalSessions: number, reteachRate: number, completionRate: number): SubjectHealthStatus {
+  if (totalSessions === 0) {
+    return 'emerging';
+  }
+
+  if (reteachRate > 20 || completionRate < 50) {
+    return 'attention';
+  }
+
+  return 'stable';
 }
 
 export async function load() {
   const supabase = createServerSupabaseAdmin();
   if (!supabase) {
-    return { coverageTree: [], needsWorkQueue: [], dynamicStats: { total: 0, dynamic: 0, pct: 0 } };
+    return {
+      subjectHealth: [],
+      needsWorkQueue: [],
+      artifactStats: {
+        totalSessions: 0,
+        activeSubjects: 0,
+        stableSubjects: 0,
+        attentionSubjects: 0,
+        emergingSubjects: 0
+      }
+    };
   }
 
-  const [subjectStats, lessonsResult, topicsResult] = await Promise.all([
-    getSubjectStats(),
-    supabase.from('lessons').select('id, title, subtopic_id, subject_id').limit(500).maybeSingle(),
-    supabase.from('curriculum_topics').select('id, title, subject_id').limit(200)
-  ]);
+  const subjectStats = await getSubjectStats();
+  const subjectHealth: SubjectHealthNode[] = subjectStats
+    .map((subject) => ({
+      id: subject.subject,
+      name: subject.subject,
+      health: resolveHealth(subject.totalSessions, subject.reteachRate, subject.completionRate),
+      totalSessions: subject.totalSessions,
+      completionRate: subject.completionRate,
+      reteachRate: subject.reteachRate
+    }))
+    .sort((left, right) => right.totalSessions - left.totalSessions || left.name.localeCompare(right.name));
 
-  // Build a simplified coverage report from what we have
-  const reteachBySubject = new Map(subjectStats.map((s) => [s.subject, s.reteachRate]));
-
-  // For now, build coverage from lesson_sessions data grouped by subject
-  const coverageTree: CoverageNode[] = subjectStats.map((s) => ({
-    id: s.subject,
-    name: s.subject,
-    type: 'subject' as const,
-    status: s.totalSessions > 0 ? 'partial' : 'dynamic',
-    reteachRate: s.reteachRate
-  }));
-
-  // Needs-work queue: subjects/topics with high reteach rate
   const needsWorkQueue = subjectStats
     .filter((s) => s.reteachRate > 20 || s.completionRate < 50)
     .map((s) => ({
@@ -47,13 +64,13 @@ export async function load() {
     }))
     .sort((a, b) => b.reteachRate - a.reteachRate);
 
-  const dynamicStats = {
-    total: subjectStats.reduce((s, r) => s + r.totalSessions, 0),
-    dynamic: subjectStats.filter((s) => s.subject !== 'Mathematics').reduce((s, r) => s + r.totalSessions, 0),
-    pct: subjectStats.length > 0 ? Math.round(
-      (subjectStats.filter((s) => s.subject !== 'Mathematics').length / subjectStats.length) * 100
-    ) : 0
+  const artifactStats = {
+    totalSessions: subjectStats.reduce((sum, subject) => sum + subject.totalSessions, 0),
+    activeSubjects: subjectHealth.filter((subject) => subject.totalSessions > 0).length,
+    stableSubjects: subjectHealth.filter((subject) => subject.health === 'stable').length,
+    attentionSubjects: subjectHealth.filter((subject) => subject.health === 'attention').length,
+    emergingSubjects: subjectHealth.filter((subject) => subject.health === 'emerging').length
   };
 
-  return { coverageTree, needsWorkQueue, dynamicStats };
+  return { subjectHealth, needsWorkQueue, artifactStats };
 }

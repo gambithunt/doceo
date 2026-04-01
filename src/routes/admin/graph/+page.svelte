@@ -155,6 +155,15 @@
       </form>
     </section>
 
+    <section class="card legacy-callout">
+      <div>
+        <p class="eyebrow">Legacy Repair</p>
+        <h2>Historical records still need their own queue.</h2>
+        <p>Run safe backfills and manually resolve only the lesson sessions, revision topics, and plan topics that remain ambiguous after Phase 8 graph tooling.</p>
+      </div>
+      <a class="btn btn-secondary btn-compact" href="/admin/graph/legacy">Open legacy queue</a>
+    </section>
+
     <section class="hero-grid" aria-label="Graph overview">
       <article class="card stat-card stat-card--teal">
         <p class="eyebrow">Shape</p>
@@ -356,6 +365,26 @@
 
   .filters {
     padding: 1rem 1.1rem;
+  }
+
+  .legacy-callout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+  }
+
+  .legacy-callout h2 {
+    font-size: 1.1rem;
+    letter-spacing: -0.03em;
+    margin: 0.25rem 0 0.3rem;
+  }
+
+  .legacy-callout p:last-child {
+    color: var(--text-soft);
+    line-height: 1.5;
+    max-width: 42rem;
   }
 
     .filter-form {
@@ -617,6 +646,11 @@
 
     .queue-grid {
       grid-template-columns: 1fr;
+    }
+
+    .legacy-callout {
+      flex-direction: column;
+      align-items: flex-start;
     }
 
     .filter-form {

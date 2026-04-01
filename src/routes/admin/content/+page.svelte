@@ -1,20 +1,36 @@
 <script lang="ts">
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
 
-  const { data } = $props();
-  const { coverageTree, needsWorkQueue, dynamicStats } = data as {
-    coverageTree: Array<{ id: string; name: string; type: string; status: string; reteachRate?: number }>;
+  type ContentDashboardData = {
+    subjectHealth: Array<{
+      id: string;
+      name: string;
+      health: 'stable' | 'attention' | 'emerging';
+      totalSessions: number;
+      completionRate: number;
+      reteachRate?: number;
+    }>;
     needsWorkQueue: Array<{ id: string; name: string; reteachRate: number; completionRate: number; totalSessions: number; reason: string }>;
-    dynamicStats: { total: number; dynamic: number; pct: number };
+    artifactStats: {
+      totalSessions: number;
+      activeSubjects: number;
+      stableSubjects: number;
+      attentionSubjects: number;
+      emergingSubjects: number;
+    };
   };
+  const props = $props<{ data: ContentDashboardData }>();
+  const subjectHealth = $derived(props.data.subjectHealth);
+  const needsWorkQueue = $derived(props.data.needsWorkQueue);
+  const artifactStats = $derived(props.data.artifactStats);
 
-  let activeTab = $state<'coverage' | 'queue'>('queue');
+  let activeTab = $state<'health' | 'queue'>('queue');
 </script>
 
 <div class="page">
   <AdminPageHeader
     title="Content & Curriculum"
-    description="Coverage map, dynamic generation stats, and content quality queue"
+    description="Graph-backed subject health, artifact quality signals, and review queues"
     showTimeRange={false}
   />
 
@@ -22,17 +38,21 @@
     <!-- Stats banner -->
     <div class="stat-banner">
       <div class="banner-stat">
-        <span class="banner-val">{dynamicStats.pct}%</span>
-        <span class="banner-label">using dynamic generation</span>
+        <span class="banner-val">{artifactStats.activeSubjects}</span>
+        <span class="banner-label">subjects with live usage</span>
       </div>
       <div class="banner-divider" aria-hidden="true"></div>
       <div class="banner-stat">
-        <span class="banner-val">{dynamicStats.total.toLocaleString()}</span>
+        <span class="banner-val">{artifactStats.totalSessions.toLocaleString()}</span>
         <span class="banner-label">total sessions served</span>
       </div>
+      <div class="banner-divider" aria-hidden="true"></div>
+      <div class="banner-stat">
+        <span class="banner-val">{artifactStats.attentionSubjects}</span>
+        <span class="banner-label">subjects needing review</span>
+      </div>
       <p class="banner-note">
-        Only Mathematics is fully seeded. All other subjects use the dynamic lesson generator.
-        Seed the highest-demand subjects to improve quality and reduce AI costs.
+        Use this view to spot weak artifact outcomes, low completion, and subjects that have not seen enough graph-backed activity yet.
       </p>
     </div>
 
@@ -52,12 +72,12 @@
       </button>
       <button
         class="tab-btn"
-        class:active={activeTab === 'coverage'}
-        onclick={() => (activeTab = 'coverage')}
+        class:active={activeTab === 'health'}
+        onclick={() => (activeTab = 'health')}
         role="tab"
-        aria-selected={activeTab === 'coverage'}
+        aria-selected={activeTab === 'health'}
       >
-        Coverage Map
+        Subject Health
       </button>
     </div>
 
@@ -98,34 +118,40 @@
     {/if}
 
     <!-- Coverage map -->
-    {#if activeTab === 'coverage'}
-      {#if coverageTree.length === 0}
+    {#if activeTab === 'health'}
+      {#if subjectHealth.length === 0}
         <div class="empty-state">
-          <p class="empty-title">No coverage data yet.</p>
-          <p class="empty-sub">Start some lesson sessions to see coverage by subject.</p>
+          <p class="empty-title">No subject health data yet.</p>
+          <p class="empty-sub">Start some lesson sessions to see artifact health by subject.</p>
         </div>
       {:else}
         <div class="coverage-grid">
-          {#each coverageTree as node}
-            <div class="coverage-card status-{node.status}">
+          {#each subjectHealth as node}
+            <div class="coverage-card status-{node.health}">
               <div class="coverage-header">
-                <span class="status-dot status-dot-{node.status}" aria-label={node.status}></span>
+                <span class="status-dot status-dot-{node.health}" aria-label={node.health}></span>
                 <span class="coverage-name">{node.name}</span>
-                <span class="coverage-chip chip-{node.status}">{node.status}</span>
+                <span class="coverage-chip chip-{node.health}">{node.health}</span>
               </div>
               {#if node.reteachRate !== undefined}
                 <div class="coverage-reteach">
                   Reteach rate: <strong class:bad={node.reteachRate > 20}>{node.reteachRate}%</strong>
                 </div>
               {/if}
+              <div class="coverage-reteach">
+                Completion: <strong class:bad={node.completionRate < 50}>{node.completionRate}%</strong>
+              </div>
+              <div class="coverage-reteach">
+                Sessions served: <strong>{node.totalSessions}</strong>
+              </div>
             </div>
           {/each}
         </div>
 
         <div class="legend">
-          <span class="legend-item"><span class="status-dot status-dot-seeded"></span>Fully seeded</span>
-          <span class="legend-item"><span class="status-dot status-dot-partial"></span>Partial</span>
-          <span class="legend-item"><span class="status-dot status-dot-dynamic"></span>Dynamic only</span>
+          <span class="legend-item"><span class="status-dot status-dot-stable"></span>Stable</span>
+          <span class="legend-item"><span class="status-dot status-dot-attention"></span>Needs review</span>
+          <span class="legend-item"><span class="status-dot status-dot-emerging"></span>Emerging usage</span>
         </div>
       {/if}
     {/if}
@@ -355,9 +381,9 @@
     letter-spacing: 0.04em;
   }
 
-  .chip-seeded  { background: var(--accent-dim);         color: var(--accent); }
-  .chip-partial { background: var(--color-yellow-dim);   color: var(--color-yellow); }
-  .chip-dynamic { background: var(--border-strong);      color: var(--muted); }
+  .chip-stable    { background: var(--accent-dim);         color: var(--accent); }
+  .chip-attention { background: var(--color-yellow-dim);   color: var(--color-yellow); }
+  .chip-emerging  { background: var(--color-blue-dim);     color: var(--color-blue); }
 
   .coverage-reteach {
     font-size: 0.78rem;
@@ -375,9 +401,9 @@
     flex-shrink: 0;
   }
 
-  .status-dot-seeded  { background: var(--accent); }
-  .status-dot-partial { background: var(--color-yellow); }
-  .status-dot-dynamic { background: var(--muted); }
+  .status-dot-stable    { background: var(--accent); }
+  .status-dot-attention { background: var(--color-yellow); }
+  .status-dot-emerging  { background: var(--color-blue); }
 
   /* Legend */
   .legend {

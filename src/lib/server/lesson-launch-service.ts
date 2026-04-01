@@ -1,23 +1,11 @@
-import { buildDynamicLessonFromTopic, buildDynamicQuestionsForLesson } from '$lib/lesson-system';
-import type { LessonPlanRequest, LessonPlanResponse, LessonSession, UserProfile } from '$lib/types';
+import type { LessonPlanRequest, LessonPlanResponse, UserProfile } from '$lib/types';
 import type { GraphNodeRecord, GraphRepository } from './graph-repository';
-import type {
-  LessonArtifactRepository,
-  LessonArtifactScope,
-  QuestionArtifactRecord
-} from './lesson-artifact-repository';
+import type { LessonArtifactRepository, LessonArtifactScope } from './lesson-artifact-repository';
 
 interface LessonLaunchDependencies {
   graphRepository: GraphRepository;
   artifactRepository: LessonArtifactRepository;
   generateLessonPlan: (request: LessonPlanRequest) => Promise<LessonPlanResponse>;
-  pedagogyVersion: string;
-  promptVersion: string;
-}
-
-interface LegacySessionBridgeDependencies {
-  graphRepository: GraphRepository;
-  artifactRepository: LessonArtifactRepository;
   pedagogyVersion: string;
   promptVersion: string;
 }
@@ -120,22 +108,6 @@ async function resolveNode(
   });
 }
 
-function buildCompatibilityLesson(session: LessonSession, student: UserProfile) {
-  const lesson = buildDynamicLessonFromTopic({
-    subjectId: session.subjectId,
-    subjectName: session.subject,
-    grade: student.grade,
-    topicTitle: session.topicTitle,
-    topicDescription: session.topicDescription,
-    curriculumReference: session.curriculumReference
-  });
-
-  return {
-    ...lesson,
-    id: session.lessonId || lesson.id
-  };
-}
-
 export function createLessonLaunchService(dependencies: LessonLaunchDependencies) {
   const service = {
     graphRepository: dependencies.graphRepository,
@@ -221,104 +193,4 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
   };
 
   return service;
-}
-
-export async function bridgeLegacySessionArtifacts(
-  dependencies: LegacySessionBridgeDependencies,
-  input: {
-    student: UserProfile;
-    lessonSession: LessonSession;
-  }
-) {
-  const scope = buildScope(input.student);
-
-  if (input.lessonSession.lessonArtifactId && input.lessonSession.questionArtifactId) {
-    const [lessonArtifact, questionArtifact] = await Promise.all([
-      dependencies.artifactRepository.getLessonArtifactById(input.lessonSession.lessonArtifactId),
-      dependencies.artifactRepository.getQuestionArtifactById(input.lessonSession.questionArtifactId)
-    ]);
-
-    if (lessonArtifact && questionArtifact) {
-      return {
-        lesson: lessonArtifact.payload.lesson,
-        questions: questionArtifact.payload.questions,
-        nodeId: lessonArtifact.nodeId,
-        lessonArtifactId: lessonArtifact.id,
-        questionArtifactId: questionArtifact.id
-      };
-        }
-      }
-
-  const existingNode = input.lessonSession.nodeId
-    ? await dependencies.graphRepository.getNodeById(input.lessonSession.nodeId)
-    : null;
-  const node =
-    existingNode ??
-    (await resolveNode(dependencies.graphRepository, {
-      student: input.student,
-      subjectId: input.lessonSession.subjectId,
-      subject: input.lessonSession.subject,
-      topicTitle: input.lessonSession.topicTitle,
-      topicDescription: input.lessonSession.topicDescription,
-      curriculumReference: input.lessonSession.curriculumReference
-    }));
-
-  const [legacyLessonArtifact, legacyQuestionArtifact] = input.lessonSession.lessonId
-    ? await Promise.all([
-        dependencies.artifactRepository.findLessonArtifactByLegacyLessonId(input.lessonSession.lessonId, scope),
-        dependencies.artifactRepository.findQuestionArtifactByLegacyLessonId(input.lessonSession.lessonId, scope)
-      ])
-    : [null, null];
-
-  if (legacyLessonArtifact && legacyQuestionArtifact) {
-    return {
-      lesson: legacyLessonArtifact.payload.lesson,
-      questions: legacyQuestionArtifact.payload.questions,
-      nodeId: node.id,
-      lessonArtifactId: legacyLessonArtifact.id,
-      questionArtifactId: legacyQuestionArtifact.id
-    };
-  }
-
-  const compatibilityLesson = buildCompatibilityLesson(input.lessonSession, input.student);
-  const compatibilityQuestions = buildDynamicQuestionsForLesson(
-    compatibilityLesson,
-    input.lessonSession.subject,
-    input.lessonSession.topicTitle
-  );
-  const lessonArtifact = await dependencies.artifactRepository.createLessonArtifact({
-    nodeId: node.id,
-    legacyLessonId: input.lessonSession.lessonId,
-    scope,
-    pedagogyVersion: dependencies.pedagogyVersion,
-    promptVersion: dependencies.promptVersion,
-    provider: 'legacy-bridge',
-    model: null,
-    status: 'ready',
-    payload: {
-      lesson: compatibilityLesson
-    }
-  });
-  const questionArtifact: QuestionArtifactRecord =
-    await dependencies.artifactRepository.createLessonQuestionArtifact({
-      nodeId: node.id,
-      legacyLessonId: input.lessonSession.lessonId,
-      scope,
-      pedagogyVersion: dependencies.pedagogyVersion,
-      promptVersion: dependencies.promptVersion,
-      provider: 'legacy-bridge',
-      model: null,
-      status: 'ready',
-      payload: {
-        questions: compatibilityQuestions
-      }
-    });
-
-  return {
-    lesson: compatibilityLesson,
-    questions: compatibilityQuestions,
-    nodeId: node.id,
-    lessonArtifactId: lessonArtifact.id,
-    questionArtifactId: questionArtifact.id
-  };
 }

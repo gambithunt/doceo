@@ -27,7 +27,7 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/(app)" | "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/[nodeId]" | "/admin/learning" | "/admin/messages" | "/admin/messages/[session_id]" | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | "/admin/users/[id]" | "/api" | "/api/admin" | "/api/admin/lesson-artifacts" | "/api/ai" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum" | "/api/curriculum/program" | "/api/lesson-artifacts" | "/api/lesson-artifacts/rate" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision" | "/api/revision/planner-resolve" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects" | "/api/subjects/verify" | "/(app)/dashboard" | "/(app)/lesson" | "/(app)/lesson/[id]" | "/onboarding" | "/(app)/progress" | "/(app)/revision" | "/(app)/settings" | "/(app)/subjects" | "/(app)/subjects/[id]";
+		RouteId(): "/(app)" | "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/legacy" | "/admin/graph/[nodeId]" | "/admin/learning" | "/admin/messages" | "/admin/messages/[session_id]" | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | "/admin/users/[id]" | "/api" | "/api/admin" | "/api/admin/lesson-artifacts" | "/api/ai" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum" | "/api/curriculum/program" | "/api/lesson-artifacts" | "/api/lesson-artifacts/rate" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision" | "/api/revision/planner-resolve" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects" | "/api/subjects/verify" | "/(app)/dashboard" | "/(app)/lesson" | "/(app)/lesson/[id]" | "/onboarding" | "/(app)/progress" | "/(app)/revision" | "/(app)/settings" | "/(app)/subjects" | "/(app)/subjects/[id]";
 		RouteParams(): {
 			"/admin/graph/[nodeId]": { nodeId: string };
 			"/admin/messages/[session_id]": { session_id: string };
@@ -42,6 +42,7 @@ declare module "$app/types" {
 			"/admin/ai": Record<string, never>;
 			"/admin/content": Record<string, never>;
 			"/admin/graph": { nodeId?: string };
+			"/admin/graph/legacy": Record<string, never>;
 			"/admin/graph/[nodeId]": { nodeId: string };
 			"/admin/learning": Record<string, never>;
 			"/admin/messages": { session_id?: string };
@@ -88,7 +89,7 @@ declare module "$app/types" {
 			"/(app)/subjects": { id?: string };
 			"/(app)/subjects/[id]": { id: string }
 		};
-		Pathname(): "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | `/admin/graph/${string}` & {} | "/admin/learning" | "/admin/messages" | `/admin/messages/${string}` & {} | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | `/admin/users/${string}` & {} | "/api/admin/lesson-artifacts" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum/program" | "/api/lesson-artifacts/rate" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision/planner-resolve" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects/verify" | "/dashboard" | "/lesson" | `/lesson/${string}` & {} | "/onboarding" | "/progress" | "/revision" | "/settings" | `/subjects/${string}` & {};
+		Pathname(): "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/legacy" | `/admin/graph/${string}` & {} | "/admin/learning" | "/admin/messages" | `/admin/messages/${string}` & {} | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | `/admin/users/${string}` & {} | "/api/admin/lesson-artifacts" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/curriculum/program" | "/api/lesson-artifacts/rate" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision/planner-resolve" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects/verify" | "/dashboard" | "/lesson" | `/lesson/${string}` & {} | "/onboarding" | "/progress" | "/revision" | "/settings" | `/subjects/${string}` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

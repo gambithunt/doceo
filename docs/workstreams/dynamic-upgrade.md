@@ -803,12 +803,12 @@ Bring old lesson and revision history forward without data loss.
 
 ### Tasks
 
-- [ ] Add migration/backfill scripts for legacy subject/topic labels
-- [ ] Backfill graph ids onto historical lesson sessions where possible
-- [ ] Backfill graph ids onto historical revision topics and plans where possible
-- [ ] Mark ambiguous legacy records as unresolved instead of guessing silently
-- [ ] Add admin tooling for unresolved legacy mappings
-- [ ] Add tests for migration correctness and non-destructive behavior
+- [x] Add migration/backfill scripts for legacy subject/topic labels
+- [x] Backfill graph ids onto historical lesson sessions where possible
+- [x] Backfill graph ids onto historical revision topics and plans where possible
+- [x] Mark ambiguous legacy records as unresolved instead of guessing silently
+- [x] Add admin tooling for unresolved legacy mappings
+- [x] Add tests for migration correctness and non-destructive behavior
 
 ### Exit Criteria
 
@@ -825,12 +825,12 @@ Remove obsolete seeded architecture completely.
 
 ### Tasks
 
-- [ ] Delete `src/lib/data/learning-content.ts` runtime usage
-- [ ] Delete remaining seeded lesson/revision fallback terminology
-- [ ] Delete old local authored revision prompt generation
-- [ ] Delete unused seeded content repository paths
-- [ ] Update docs to reflect the single dynamic pipeline
-- [ ] Update admin content dashboards to reflect graph/artifact health rather than seeded coverage
+- [x] Delete `src/lib/data/learning-content.ts` runtime usage
+- [x] Delete remaining seeded lesson/revision fallback terminology
+- [x] Delete old local authored revision prompt generation
+- [x] Delete unused seeded content repository paths
+- [x] Update docs to reflect the single dynamic pipeline
+- [x] Update admin content dashboards to reflect graph/artifact health rather than seeded coverage
 
 ### Exit Criteria
 

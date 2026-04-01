@@ -82,31 +82,12 @@ export function buildRevisionSession(input: {
   };
 }
 
-export function buildInterventionContent(type: RevisionInterventionType, topic: RevisionTopic): string {
-  switch (type) {
-    case 'nudge':
-      return `Start with the core rule for ${topic.topicTitle}, then give one concrete example from ${topic.subject}.`;
-    case 'hint':
-      return `Define ${topic.topicTitle}, explain how it works, then name one mistake to avoid.`;
-    case 'worked_step':
-      return `Use this structure: 1. define the idea, 2. explain the rule, 3. give one worked example.`;
-    case 'mini_reteach':
-      return `Reset the topic: state the idea, walk through the rule slowly, then connect it to one example in ${topic.subject}.`;
-    case 'lesson_refer':
-      return `This topic needs a fuller walkthrough. Go back into lesson mode so Doceo can reteach it step by step.`;
-    case 'none':
-    default:
-      return '';
-  }
-}
-
 function getHelpContent(
   ladder: RevisionHelpLadder | undefined,
-  type: RevisionInterventionType,
-  topic: RevisionTopic
+  type: RevisionInterventionType
 ): string {
   if (!ladder) {
-    return buildInterventionContent(type, topic);
+    return '';
   }
 
   switch (type) {
@@ -371,7 +352,7 @@ export function evaluateRevisionAnswer(input: {
     },
     intervention: {
       type: nextIntervention,
-      content: getHelpContent(input.question.helpLadder, nextIntervention, input.topic)
+      content: getHelpContent(input.question.helpLadder, nextIntervention)
     },
     nextQuestion: null,
     topicUpdate: {
@@ -401,7 +382,7 @@ export function getRequestedIntervention(input: {
 
   return {
     type,
-    content: getHelpContent(input.question.helpLadder, type, input.topic)
+    content: getHelpContent(input.question.helpLadder, type)
   };
 }
 

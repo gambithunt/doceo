@@ -247,6 +247,18 @@ describe('getRequestedIntervention', () => {
     expect(intervention.type).toBe('worked_step');
     expect(intervention.content).toMatch(/1\. Define the fraction/);
   });
+
+  it('does not fall back to hardcoded legacy scaffolding when an authored help ladder is missing', () => {
+    const intervention = getRequestedIntervention({
+      topic: createTopic(),
+      question: createQuestion({ helpLadder: undefined as never }),
+      requestedType: 'worked_step',
+      currentInterventionLevel: 'hint'
+    });
+
+    expect(intervention.type).toBe('worked_step');
+    expect(intervention.content).toBe('');
+  });
 });
 
 describe('applyRevisionTurn', () => {
