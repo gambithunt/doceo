@@ -574,10 +574,23 @@ export function createInitialState(): AppState {
     topicDiscovery: {
       selectedSubjectId: program.curriculum.subjects[0].id,
       input: '',
-      status: 'idle',
-      shortlist: null,
-      provider: null,
-      error: null
+      discovery: {
+        status: 'idle',
+        subjectId: program.curriculum.subjects[0].id,
+        topics: [],
+        provider: null,
+        model: null,
+        requestId: null,
+        error: null,
+        lastLoadedAt: null,
+        refreshed: false
+      },
+      shortlist: {
+        status: 'idle',
+        shortlist: null,
+        provider: null,
+        error: null
+      }
     },
     backend: {
       isConfigured: false,
@@ -623,6 +636,14 @@ export function normalizeAppState(value: unknown): AppState {
   }
 
   const input = value as Partial<AppState>;
+  const legacyTopicDiscovery = input.topicDiscovery as
+    | (Partial<AppState['topicDiscovery']> & {
+        status?: 'idle' | 'loading' | 'ready' | 'error';
+        shortlist?: import('$lib/types').TopicShortlistResponse | null;
+        provider?: string | null;
+        error?: string | null;
+      })
+    | undefined;
   const curriculum = input.curriculum ?? base.curriculum;
   const legacyRevisionPlan = input.revisionPlan
     ? normalizeRevisionPlan(input.revisionPlan, base.revisionPlan.subjectName, curriculum.subjects)
@@ -719,7 +740,22 @@ export function normalizeAppState(value: unknown): AppState {
     },
     topicDiscovery: {
       ...base.topicDiscovery,
-      ...(input.topicDiscovery ?? {})
+      ...(input.topicDiscovery ?? {}),
+      discovery: {
+        ...base.topicDiscovery.discovery,
+        ...(input.topicDiscovery?.discovery ?? {})
+      },
+      shortlist: {
+        ...base.topicDiscovery.shortlist,
+        ...(legacyTopicDiscovery?.shortlist && 'matchedSection' in legacyTopicDiscovery.shortlist
+          ? {
+              status: legacyTopicDiscovery.status ?? base.topicDiscovery.shortlist.status,
+              shortlist: legacyTopicDiscovery.shortlist,
+              provider: legacyTopicDiscovery.provider ?? base.topicDiscovery.shortlist.provider,
+              error: legacyTopicDiscovery.error ?? base.topicDiscovery.shortlist.error
+            }
+          : input.topicDiscovery?.shortlist ?? {})
+      }
     },
     backend: {
       ...base.backend,
@@ -895,7 +931,11 @@ export function deriveLearningState(state: AppState): AppState {
     upcomingExams: Array.isArray(state.upcomingExams) ? state.upcomingExams : [],
     topicDiscovery: {
       ...state.topicDiscovery,
-      selectedSubjectId: state.topicDiscovery.selectedSubjectId || selectedSubject.id
+      selectedSubjectId: state.topicDiscovery.selectedSubjectId || selectedSubject.id,
+      discovery: {
+        ...state.topicDiscovery.discovery,
+        subjectId: state.topicDiscovery.discovery.subjectId || state.topicDiscovery.selectedSubjectId || selectedSubject.id
+      }
     },
     ui: {
       ...state.ui,

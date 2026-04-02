@@ -8,6 +8,7 @@ const resolveAiRoute = vi.fn();
 const createServerGraphRepository = vi.fn();
 const createServerLessonArtifactRepository = vi.fn();
 const createServerDynamicOperationsService = vi.fn();
+const createServerTopicDiscoveryRepository = vi.fn();
 
 vi.mock('$app/environment', () => ({
   dev: false
@@ -27,16 +28,28 @@ vi.mock('$lib/server/state-repository', () => ({
   logLessonSignal
 }));
 
-vi.mock('$lib/server/graph-repository', () => ({
-  createServerGraphRepository
-}));
+vi.mock('$lib/server/graph-repository', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('$lib/server/graph-repository')>();
+  return {
+    ...actual,
+    createServerGraphRepository
+  };
+});
 
-vi.mock('$lib/server/lesson-artifact-repository', () => ({
-  createServerLessonArtifactRepository
-}));
+vi.mock('$lib/server/lesson-artifact-repository', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('$lib/server/lesson-artifact-repository')>();
+  return {
+    ...actual,
+    createServerLessonArtifactRepository
+  };
+});
 
 vi.mock('$lib/server/dynamic-operations', () => ({
   createServerDynamicOperationsService
+}));
+
+vi.mock('$lib/server/topic-discovery-repository', () => ({
+  createServerTopicDiscoveryRepository
 }));
 
 describe('ai routes', () => {
@@ -47,6 +60,7 @@ describe('ai routes', () => {
     createServerDynamicOperationsService.mockReturnValue({
       recordGenerationEvent: vi.fn()
     });
+    createServerTopicDiscoveryRepository.mockReturnValue(null);
     getAiConfig.mockResolvedValue({
       provider: 'github-models',
       tiers: {
@@ -294,6 +308,311 @@ describe('ai routes', () => {
         model: 'openai/gpt-4.1-mini'
       })
     );
+  });
+
+  it('lesson plan route keeps the current launch path unchanged when no topic discovery metadata is provided', async () => {
+    const topicDiscoveryRepository = {
+      recordEvent: vi.fn(),
+      reconcileSignatureToNode: vi.fn()
+    };
+
+    createServerTopicDiscoveryRepository.mockReturnValue(topicDiscoveryRepository);
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        provider: 'github-models',
+        modelTier: 'thinking',
+        model: 'openai/gpt-4.1-mini',
+        lesson: {
+          id: 'lesson-existing-1',
+          title: 'Biology: Photosynthesis',
+          topicId: 'topic-1',
+          subtopicId: 'topic-1',
+          subjectId: 'subject-1',
+          grade: 'Grade 6',
+          orientation: { title: 'Orientation', body: 'Body' },
+          mentalModel: { title: 'Model', body: 'Body' },
+          concepts: { title: 'Concepts', body: 'Body' },
+          guidedConstruction: { title: 'Construction', body: 'Body' },
+          workedExample: { title: 'Example', body: 'Body' },
+          practicePrompt: { title: 'Practice', body: 'Body' },
+          commonMistakes: { title: 'Mistakes', body: 'Body' },
+          transferChallenge: { title: 'Transfer', body: 'Body' },
+          summary: { title: 'Summary', body: 'Body' },
+          practiceQuestionIds: [],
+          masteryQuestionIds: []
+        },
+        questions: []
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Photosynthesis',
+            topicDescription: 'How plants make food',
+            curriculumReference: 'IEB · Grade 6 · Biology'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(topicDiscoveryRepository.recordEvent).not.toHaveBeenCalled();
+    expect(topicDiscoveryRepository.reconcileSignatureToNode).not.toHaveBeenCalled();
+  });
+
+  it('lesson plan route records a lesson_started discovery event for an existing graph-backed suggestion', async () => {
+    const { createGraphRepository, createInMemoryGraphStore, bootstrapGraphFromLegacyData } = await import('../../lib/server/graph-repository');
+    const { createLessonArtifactRepository, createInMemoryLessonArtifactStore } = await import('../../lib/server/lesson-artifact-repository');
+
+    const graphRepository = createGraphRepository(createInMemoryGraphStore());
+    await bootstrapGraphFromLegacyData(graphRepository, {
+      countries: [{ id: 'za', label: 'South Africa' }],
+      curriculums: [{ id: 'ieb', label: 'IEB', countryId: 'za' }],
+      grades: [{ id: 'grade-6', label: 'Grade 6', curriculumId: 'ieb', countryId: 'za' }],
+      subjects: [{ id: 'subject-1', label: 'Biology', gradeId: 'grade-6', curriculumId: 'ieb', countryId: 'za' }],
+      topics: [{ id: 'topic-1', label: 'Photosynthesis', subjectId: 'subject-1', gradeId: 'grade-6', curriculumId: 'ieb', countryId: 'za' }],
+      subtopics: []
+    });
+    const artifactRepository = createLessonArtifactRepository(createInMemoryLessonArtifactStore());
+    const topicDiscoveryRepository = {
+      recordEvent: vi.fn().mockResolvedValue({ id: 'event-1' }),
+      reconcileSignatureToNode: vi.fn().mockResolvedValue({ updatedCount: 0 })
+    };
+
+    createServerGraphRepository.mockReturnValue(graphRepository);
+    createServerLessonArtifactRepository.mockReturnValue(artifactRepository);
+    createServerTopicDiscoveryRepository.mockReturnValue(topicDiscoveryRepository);
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        provider: 'github-models',
+        modelTier: 'thinking',
+        model: 'openai/gpt-4.1-mini',
+        lesson: {
+          id: 'lesson-1',
+          title: 'Biology: Photosynthesis',
+          topicId: 'topic-1',
+          subtopicId: 'topic-1',
+          subjectId: 'subject-1',
+          grade: 'Grade 6',
+          orientation: { title: 'Orientation', body: 'Body' },
+          mentalModel: { title: 'Model', body: 'Body' },
+          concepts: { title: 'Concepts', body: 'Body' },
+          guidedConstruction: { title: 'Construction', body: 'Body' },
+          workedExample: { title: 'Example', body: 'Body' },
+          practicePrompt: { title: 'Practice', body: 'Body' },
+          commonMistakes: { title: 'Mistakes', body: 'Body' },
+          transferChallenge: { title: 'Transfer', body: 'Body' },
+          summary: { title: 'Summary', body: 'Body' },
+          practiceQuestionIds: [],
+          masteryQuestionIds: []
+        },
+        questions: []
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Photosynthesis',
+            topicDescription: 'How plants make food',
+            curriculumReference: 'IEB · Grade 6 · Biology',
+            nodeId: 'topic-1',
+            topicDiscovery: {
+              topicSignature: 'subject-1::ieb::grade-6::photosynthesis',
+              topicLabel: 'Photosynthesis',
+              source: 'graph_existing',
+              requestId: 'discovery-request-1',
+              rankPosition: 1
+            }
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(topicDiscoveryRepository.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'lesson_started',
+        nodeId: 'topic-1',
+        source: 'graph_existing',
+        topicSignature: 'subject-1::ieb::grade-6::photosynthesis'
+      })
+    );
+    expect(topicDiscoveryRepository.reconcileSignatureToNode).not.toHaveBeenCalled();
+  });
+
+  it('lesson plan route reconciles discovery history when a model candidate creates a provisional topic', async () => {
+    const { createGraphRepository, createInMemoryGraphStore, bootstrapGraphFromLegacyData } = await import('../../lib/server/graph-repository');
+    const { createLessonArtifactRepository, createInMemoryLessonArtifactStore } = await import('../../lib/server/lesson-artifact-repository');
+
+    const graphRepository = createGraphRepository(createInMemoryGraphStore());
+    await bootstrapGraphFromLegacyData(graphRepository, {
+      countries: [{ id: 'za', label: 'South Africa' }],
+      curriculums: [{ id: 'ieb', label: 'IEB', countryId: 'za' }],
+      grades: [{ id: 'grade-6', label: 'Grade 6', curriculumId: 'ieb', countryId: 'za' }],
+      subjects: [{ id: 'subject-1', label: 'Biology', gradeId: 'grade-6', curriculumId: 'ieb', countryId: 'za' }],
+      topics: [],
+      subtopics: []
+    });
+    const artifactRepository = createLessonArtifactRepository(createInMemoryLessonArtifactStore());
+    const topicDiscoveryRepository = {
+      recordEvent: vi.fn().mockResolvedValue({ id: 'event-2' }),
+      reconcileSignatureToNode: vi.fn().mockResolvedValue({ updatedCount: 2 })
+    };
+
+    createServerGraphRepository.mockReturnValue(graphRepository);
+    createServerLessonArtifactRepository.mockReturnValue(artifactRepository);
+    createServerTopicDiscoveryRepository.mockReturnValue(topicDiscoveryRepository);
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        provider: 'github-models',
+        modelTier: 'thinking',
+        model: 'openai/gpt-4.1-mini',
+        lesson: {
+          id: 'lesson-2',
+          title: 'Biology: Cell Respiration',
+          topicId: 'generated-topic',
+          subtopicId: 'generated-topic',
+          subjectId: 'subject-1',
+          grade: 'Grade 6',
+          orientation: { title: 'Orientation', body: 'Body' },
+          mentalModel: { title: 'Model', body: 'Body' },
+          concepts: { title: 'Concepts', body: 'Body' },
+          guidedConstruction: { title: 'Construction', body: 'Body' },
+          workedExample: { title: 'Example', body: 'Body' },
+          practicePrompt: { title: 'Practice', body: 'Body' },
+          commonMistakes: { title: 'Mistakes', body: 'Body' },
+          transferChallenge: { title: 'Transfer', body: 'Body' },
+          summary: { title: 'Summary', body: 'Body' },
+          practiceQuestionIds: [],
+          masteryQuestionIds: []
+        },
+        questions: []
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Cell Respiration',
+            topicDescription: 'How cells release energy.',
+            curriculumReference: 'IEB · Grade 6 · Biology',
+            topicDiscovery: {
+              topicSignature: 'subject-1::ieb::grade-6::cell respiration',
+              topicLabel: 'Cell Respiration',
+              source: 'model_candidate',
+              requestId: 'discovery-request-2',
+              rankPosition: 4
+            }
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.nodeId).toBeTruthy();
+    expect(topicDiscoveryRepository.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'lesson_started',
+        nodeId: payload.nodeId,
+        source: 'model_candidate',
+        topicSignature: 'subject-1::ieb::grade-6::cell respiration'
+      })
+    );
+    expect(topicDiscoveryRepository.reconcileSignatureToNode).toHaveBeenCalledWith({
+      subjectId: 'subject-1',
+      curriculumId: 'ieb',
+      gradeId: 'grade-6',
+      topicSignature: 'subject-1::ieb::grade-6::cell respiration',
+      nodeId: payload.nodeId,
+      topicLabel: 'Cell Respiration'
+    });
   });
 
   it('lesson chat route resolves the stored lesson artifact directly without a legacy bridge', async () => {

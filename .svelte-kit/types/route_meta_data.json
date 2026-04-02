@@ -93,6 +93,21 @@
 	"/api/curriculum/subject-topics": [
 		"src/routes/api/curriculum/subject-topics/+server.ts"
 	],
+	"/api/curriculum/topic-discovery": [
+		"src/routes/api/curriculum/topic-discovery/+server.ts"
+	],
+	"/api/curriculum/topic-discovery/click": [
+		"src/routes/api/curriculum/topic-discovery/click/+server.ts"
+	],
+	"/api/curriculum/topic-discovery/complete": [
+		"src/routes/api/curriculum/topic-discovery/complete/+server.ts"
+	],
+	"/api/curriculum/topic-discovery/feedback": [
+		"src/routes/api/curriculum/topic-discovery/feedback/+server.ts"
+	],
+	"/api/curriculum/topic-discovery/refresh": [
+		"src/routes/api/curriculum/topic-discovery/refresh/+server.ts"
+	],
 	"/api/lesson-artifacts/rate": [
 		"src/routes/api/lesson-artifacts/rate/+server.ts"
 	],

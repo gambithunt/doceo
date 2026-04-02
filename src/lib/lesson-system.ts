@@ -549,6 +549,7 @@ export function buildLessonSessionFromTopic(
     topicDescription?: string;
     curriculumReference?: string;
     matchedSection?: string;
+    topicDiscovery?: LessonSession['topicDiscovery'];
   }
 ): LessonSession {
   return {
@@ -578,6 +579,7 @@ export function buildLessonSessionFromTopic(
     completedAt: null,
     status: 'active',
     lessonRating: null,
+    topicDiscovery: overrides?.topicDiscovery,
     profileUpdates: []
   };
 }
@@ -957,6 +959,7 @@ export function applyLessonAssistantResponse(
       ...next,
       currentStage: 'complete',
       stagesCompleted: completed,
+      reteachCount: metadata.reteach_count,
       status: 'complete',
       completedAt: next.lastActiveAt,
       profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]

@@ -469,6 +469,44 @@ export interface TopicShortlistResponse {
   subtopics: ShortlistedTopic[];
 }
 
+export interface TopicDiscoverySuggestion {
+  topicSignature: string;
+  topicLabel: string;
+  nodeId: string | null;
+  source: 'graph_existing' | 'model_candidate';
+  rank: number;
+  reason: string;
+  sampleSize: number;
+  thumbsUpCount: number;
+  thumbsDownCount: number;
+  completionRate: number | null;
+  freshness: 'new' | 'rising' | 'stable';
+}
+
+export interface DashboardTopicDiscoverySuggestion extends TopicDiscoverySuggestion {
+  feedback: 'up' | 'down' | null;
+  feedbackPending: boolean;
+}
+
+export interface TopicDiscoveryResultState {
+  status: 'idle' | 'loading' | 'refreshing' | 'ready' | 'empty' | 'error' | 'stale';
+  subjectId: string;
+  topics: DashboardTopicDiscoverySuggestion[];
+  provider: string | null;
+  model: string | null;
+  requestId: string | null;
+  error: string | null;
+  lastLoadedAt: string | null;
+  refreshed: boolean;
+}
+
+export interface TopicShortlistState {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  shortlist: TopicShortlistResponse | null;
+  provider: string | null;
+  error: string | null;
+}
+
 export interface LearnerProfileSignals {
   analogies_preference: number;
   step_by_step: number;
@@ -554,6 +592,13 @@ export interface LessonSession {
   completedAt: string | null;
   status: LessonSessionStatus;
   lessonRating?: LessonRating | null;
+  topicDiscovery?: {
+    topicSignature: string;
+    topicLabel: string;
+    source: 'graph_existing' | 'model_candidate';
+    requestId?: string;
+    rankPosition?: number;
+  };
   profileUpdates: LearnerProfileUpdate[];
 }
 
@@ -584,6 +629,15 @@ export interface LessonPlanRequest {
   curriculumReference: string;
   nodeId?: string | null;
   topicId?: string;
+  topicDiscovery?: {
+    topicSignature: string;
+    topicLabel: string;
+    source: 'graph_existing' | 'model_candidate';
+    requestId?: string;
+    rankPosition?: number;
+    sessionId?: string;
+    metadata?: Record<string, unknown>;
+  };
 }
 
 export interface LessonPlanResponse {
@@ -629,10 +683,8 @@ export interface RevisionPackResponse {
 export interface TopicDiscoveryState {
   selectedSubjectId: string;
   input: string;
-  status: 'idle' | 'loading' | 'ready' | 'error';
-  shortlist: TopicShortlistResponse | null;
-  provider: string | null;
-  error: string | null;
+  discovery: TopicDiscoveryResultState;
+  shortlist: TopicShortlistState;
 }
 
 export interface RevisionTopic {

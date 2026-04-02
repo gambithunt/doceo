@@ -12,6 +12,7 @@ Use the smallest relevant document for the task.
 - `what-makes-a-good-lesson.md` — lesson quality bar and lesson-content requirements
 - `model-tier-plan.md` — AI tier-routing architecture
 - `supabbase-intergration-flow.md` — current Supabase persistence flow
+- `topic-discovery.md` — dashboard topic discovery contracts, event semantics, ranking knobs, refresh behavior, and rollout guards
 
 ## Workstreams
 

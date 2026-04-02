@@ -9,6 +9,7 @@ import { createServerGraphRepository } from '$lib/server/graph-repository';
 import { createServerLessonArtifactRepository } from '$lib/server/lesson-artifact-repository';
 import { createLessonLaunchService } from '$lib/server/lesson-launch-service';
 import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
+import { createServerTopicDiscoveryRepository } from '$lib/server/topic-discovery-repository';
 import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 const LessonPlanBodySchema = z.object({
@@ -28,9 +29,72 @@ const LessonPlanBodySchema = z.object({
     topicDescription: z.string(),
     curriculumReference: z.string(),
     nodeId: z.string().nullable().optional(),
-    topicId: z.string().optional()
+    topicId: z.string().optional(),
+    topicDiscovery: z.object({
+      topicSignature: z.string().min(1),
+      topicLabel: z.string().min(1),
+      source: z.enum(['graph_existing', 'model_candidate']),
+      requestId: z.string().min(1).optional(),
+      rankPosition: z.number().int().positive().optional(),
+      sessionId: z.string().min(1).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional()
+    }).optional()
   })
 });
+
+async function recordTopicDiscoveryLaunch(input: {
+  lessonRequest: LessonPlanRequest;
+  nodeId: string | null;
+  topicNodeCreated: boolean;
+}) {
+  const topicDiscovery = input.lessonRequest.topicDiscovery;
+
+  if (!topicDiscovery) {
+    return;
+  }
+
+  const repository = createServerTopicDiscoveryRepository();
+
+  if (!repository) {
+    return;
+  }
+
+  try {
+    await repository.recordEvent({
+      subjectId: input.lessonRequest.subjectId,
+      curriculumId: input.lessonRequest.student.curriculumId,
+      gradeId: input.lessonRequest.student.gradeId,
+      profileId: input.lessonRequest.student.id,
+      topicSignature: topicDiscovery.topicSignature,
+      topicLabel: topicDiscovery.topicLabel,
+      nodeId: input.nodeId,
+      source: topicDiscovery.source,
+      eventType: 'lesson_started',
+      sessionId: topicDiscovery.sessionId ?? null,
+      metadata: {
+        ...(topicDiscovery.requestId ? { requestId: topicDiscovery.requestId } : {}),
+        ...(topicDiscovery.rankPosition ? { rankPosition: topicDiscovery.rankPosition } : {}),
+        ...(topicDiscovery.metadata ?? {})
+      }
+    });
+
+    if (input.topicNodeCreated && input.nodeId) {
+      await repository.reconcileSignatureToNode({
+        subjectId: input.lessonRequest.subjectId,
+        curriculumId: input.lessonRequest.student.curriculumId,
+        gradeId: input.lessonRequest.student.gradeId,
+        topicSignature: topicDiscovery.topicSignature,
+        nodeId: input.nodeId,
+        topicLabel: topicDiscovery.topicLabel
+      });
+    }
+  } catch (error) {
+    console.warn(
+      '[lesson-plan] topic discovery launch tracking failed',
+      error instanceof Error ? error.message : error
+    );
+  }
+}
 
 export async function POST({ request, fetch }) {
   const raw = await request.json();
@@ -103,6 +167,11 @@ export async function POST({ request, fetch }) {
   try {
     if (!graphRepository || !artifactRepository) {
       const generated = await generateLessonPlan(lessonRequest);
+      await recordTopicDiscoveryLaunch({
+        lessonRequest,
+        nodeId: generated.nodeId ?? lessonRequest.nodeId ?? null,
+        topicNodeCreated: false
+      });
       await dynamicOperations?.recordGenerationEvent({
         route: 'lesson-plan',
         status: 'success',
@@ -125,6 +194,11 @@ export async function POST({ request, fetch }) {
       pedagogyVersion: 'phase3-v1',
       promptVersion: 'lesson-plan-v1',
       onLaunchObserved: async (event) => {
+        await recordTopicDiscoveryLaunch({
+          lessonRequest,
+          nodeId: event.nodeId,
+          topicNodeCreated: event.topicNodeCreated
+        });
         await dynamicOperations?.recordGenerationEvent({
           route: 'lesson-plan',
           status: 'success',

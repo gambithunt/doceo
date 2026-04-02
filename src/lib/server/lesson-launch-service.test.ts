@@ -112,6 +112,7 @@ function createGeneratedLessonResponse(): LessonPlanResponse {
 
 describe('lesson launch service', () => {
   const generator = vi.fn<() => Promise<LessonPlanResponse>>();
+  const onLaunchObserved = vi.fn();
   let service: ReturnType<typeof createLessonLaunchService>;
   let artifactRepository: ReturnType<typeof createLessonArtifactRepository>;
   let graphStore: ReturnType<typeof createInMemoryGraphStore>;
@@ -123,13 +124,15 @@ describe('lesson launch service', () => {
     await bootstrapGraphFromLegacyData(graphRepository, createLegacySnapshot());
     artifactRepository = createLessonArtifactRepository(createInMemoryLessonArtifactStore());
     generator.mockReset();
+    onLaunchObserved.mockReset();
     generator.mockResolvedValue(createGeneratedLessonResponse());
     service = createLessonLaunchService({
       graphRepository,
       artifactRepository,
       generateLessonPlan: generator,
       pedagogyVersion: 'v1',
-      promptVersion: 'v1'
+      promptVersion: 'v1',
+      onLaunchObserved
     });
   });
 
@@ -179,6 +182,12 @@ describe('lesson launch service', () => {
     expect(launched.lessonArtifactId).toBeTruthy();
     expect(launched.questionArtifactId).toBeTruthy();
     expect(launched.lesson.title).toBe('Mathematics: Equivalent Fractions');
+    expect(onLaunchObserved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeId: 'graph-subtopic-equivalent-fractions',
+        topicNodeCreated: false
+      })
+    );
   });
 
   it('reuses the preferred artifact instead of generating a duplicate lesson', async () => {
@@ -267,5 +276,26 @@ describe('lesson launch service', () => {
     expect(replacementArtifact?.supersedesArtifactId).toBe(first.lessonArtifactId);
     expect(originalArtifact?.payload.lesson.orientation.body).toBe('Generated orientation');
     expect(replacementArtifact?.payload.lesson.orientation.body).toBe('Replacement orientation');
+  });
+
+  it('reports when a launch creates a new provisional topic node for a model candidate', async () => {
+    const launched = await service.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Ratio Tables',
+        topicDescription: 'Use ratio tables to compare quantities.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics'
+      }
+    });
+
+    expect(launched.nodeId).toBeTruthy();
+    expect(onLaunchObserved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeId: launched.nodeId,
+        topicNodeCreated: true
+      })
+    );
   });
 });

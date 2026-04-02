@@ -11,6 +11,7 @@ interface LessonLaunchDependencies {
   onLaunchObserved?: (input: {
     source: 'artifact_reuse' | 'generated';
     nodeId: string;
+    topicNodeCreated: boolean;
     lessonArtifactId: string;
     questionArtifactId: string;
     provider: string;
@@ -73,18 +74,24 @@ function alignGeneratedLesson(
 async function resolveNode(
   graphRepository: GraphRepository,
   request: LessonPlanRequest
-): Promise<GraphNodeRecord> {
+): Promise<{ node: GraphNodeRecord; topicNodeCreated: boolean }> {
   if (request.nodeId) {
     const existing = await graphRepository.getNodeById(request.nodeId);
     if (existing) {
-      return existing;
+      return {
+        node: existing,
+        topicNodeCreated: false
+      };
     }
   }
 
   if (request.topicId) {
     const existing = await graphRepository.getNodeById(request.topicId);
     if (existing) {
-      return existing;
+      return {
+        node: existing,
+        topicNodeCreated: false
+      };
     }
   }
 
@@ -96,24 +103,33 @@ async function resolveNode(
   const subtopicMatch = await graphRepository.findNodeByLabel(scope, 'subtopic', request.topicTitle);
 
   if (subtopicMatch.node) {
-    return subtopicMatch.node;
+    return {
+      node: subtopicMatch.node,
+      topicNodeCreated: false
+    };
   }
 
   const topicMatch = await graphRepository.findNodeByLabel(scope, 'topic', request.topicTitle);
 
   if (topicMatch.node) {
-    return topicMatch.node;
+    return {
+      node: topicMatch.node,
+      topicNodeCreated: false
+    };
   }
 
-  return graphRepository.createProvisionalNode({
-    type: 'topic',
-    label: request.topicTitle,
-    parentId: request.subjectId || null,
-    scope,
-    description: request.topicDescription,
-    origin: 'learner_discovered',
-    trustScore: 0.4
-  });
+  return {
+    node: await graphRepository.createProvisionalNode({
+      type: 'topic',
+      label: request.topicTitle,
+      parentId: request.subjectId || null,
+      scope,
+      description: request.topicDescription,
+      origin: 'learner_discovered',
+      trustScore: 0.4
+    }),
+    topicNodeCreated: true
+  };
 }
 
 export function createLessonLaunchService(dependencies: LessonLaunchDependencies) {
@@ -122,7 +138,7 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
     artifactRepository: dependencies.artifactRepository,
     async launchLesson({ request }: { request: LessonPlanRequest }) {
       const scope = buildScope(request.student);
-      const node = await resolveNode(dependencies.graphRepository, request);
+      const { node, topicNodeCreated } = await resolveNode(dependencies.graphRepository, request);
       await dependencies.graphRepository.recordNodeObservation({
         nodeId: node.id,
         source: 'lesson_launch',
@@ -148,6 +164,7 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
         await dependencies.onLaunchObserved?.({
           source: 'artifact_reuse',
           nodeId: node.id,
+          topicNodeCreated,
           lessonArtifactId: preferredLesson.id,
           questionArtifactId: preferredQuestions.id,
           provider: preferredLesson.provider,
@@ -201,6 +218,7 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
       await dependencies.onLaunchObserved?.({
         source: 'generated',
         nodeId: node.id,
+        topicNodeCreated,
         lessonArtifactId: lessonArtifact.id,
         questionArtifactId: questionArtifact.id,
         provider: generated.provider,

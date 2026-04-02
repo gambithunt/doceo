@@ -5,6 +5,7 @@
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
   import { extractHintChipLabels, groupHintChips } from '$lib/components/dashboard-hints';
+  import TopicSuggestionRail from '$lib/components/topic-discovery/TopicSuggestionRail.svelte';
   import { resolveSubjectHints } from '$lib/ai/subject-hints';
   import { getCompletionSummary } from '$lib/data/platform';
   import { getStageLabel } from '$lib/lesson-system';
@@ -21,6 +22,8 @@
   let hintChipsRefreshing = $state(false);
   let hintRefreshError = $state('');
   let pendingChipId = $state<string | null>(null);
+  let pendingDiscoverySignature = $state<string | null>(null);
+  let hasRequestedInitialDiscovery = $state(false);
   let latestHintRequest = 0;
   let hintAbortController: AbortController | undefined;
   let lastHintSeed = $state('');
@@ -36,6 +39,8 @@
   const selectedSubject = $derived(
     availableSubjects.find((s) => s.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
   );
+  const discoveryState = $derived(viewState.topicDiscovery.discovery);
+  const discoveryTopics = $derived(discoveryState.topics);
 
   const promptSuggestionChips = $derived(
     extractHintChipLabels(promptSuggestionsText).map((label, index) => ({
@@ -223,6 +228,14 @@
     void loadSubjectHints();
   });
 
+  $effect(() => {
+    if (!browser || !selectedSubject || hasRequestedInitialDiscovery) return;
+    if (!viewState.profile.curriculumId || !viewState.profile.gradeId) return;
+    if (discoveryState.status !== 'idle' || discoveryTopics.length > 0) return;
+    hasRequestedInitialDiscovery = true;
+    void appState.loadTopicDiscovery(selectedSubject.id);
+  });
+
   function onInput(event: Event): void {
     appState.setTopicDiscoveryInput((event.currentTarget as HTMLTextAreaElement).value);
   }
@@ -244,6 +257,7 @@
   function resetTopicDiscovery(): void {
     lastHintSeed = '';
     pendingChipId = null;
+    pendingDiscoverySignature = null;
     hintRefreshError = '';
     appState.resetTopicDiscovery();
   }
@@ -259,8 +273,30 @@
     void appState.shortlistTopics(selectedSubject.id, viewState.topicDiscovery.input.trim());
   }
 
+  function refreshTopicDiscovery(): void {
+    if (!selectedSubject) return;
+    if (discoveryState.status === 'loading' || discoveryState.status === 'refreshing') return;
+    void appState.refreshTopicDiscovery(selectedSubject.id);
+  }
+
   function startTopic(topic: ShortlistedTopic): void {
     void appState.startLessonFromShortlist(topic);
+  }
+
+  function startDiscoveredTopic(topic: AppState['topicDiscovery']['discovery']['topics'][number]): void {
+    if (pendingDiscoverySignature) return;
+    pendingDiscoverySignature = topic.topicSignature;
+    void (async () => {
+      try {
+        await appState.startLessonFromTopicDiscovery(topic.topicSignature);
+      } finally {
+        pendingDiscoverySignature = null;
+      }
+    })();
+  }
+
+  function sendDiscoveryFeedback(topicSignature: string, feedback: 'up' | 'down'): void {
+    void appState.recordTopicFeedback(topicSignature, feedback);
   }
 
   function startFromSuggestion(chipId: string, hint: string): void {
@@ -415,9 +451,31 @@
     <div class="section-header section-header--simple">
       <h3 class="section-title">Your Path</h3>
       <p class="section-desc">
-        {viewState.topicDiscovery.shortlist ? 'Pick a topic to begin your lesson' : 'Or describe exactly what you want to learn'}
+        {viewState.topicDiscovery.shortlist.shortlist
+          ? 'Pick a topic to begin your lesson'
+          : discoveryTopics.length > 0
+            ? 'Start with a suggested topic or describe your own'
+            : 'Or describe exactly what you want to learn'}
       </p>
     </div>
+
+    <TopicSuggestionRail
+      title="Suggested topics"
+      subtitle={`More ideas for ${selectedSubject?.name ?? 'this subject'}`}
+      status={discoveryState.status}
+      suggestions={discoveryTopics}
+      refreshed={discoveryState.refreshed}
+      error={discoveryState.error}
+      launchingSignature={pendingDiscoverySignature}
+      onRefresh={refreshTopicDiscovery}
+      onLaunch={(topicSignature) => {
+        const topic = discoveryTopics.find((item) => item.topicSignature === topicSignature);
+        if (topic) {
+          startDiscoveredTopic(topic);
+        }
+      }}
+      onFeedback={sendDiscoveryFeedback}
+    />
 
     <div class="search-launcher" class:focused={topicInputFocused}>
       <textarea
@@ -433,30 +491,30 @@
         <button
           type="button"
           class="btn btn-primary"
-          aria-busy={viewState.topicDiscovery.status === 'loading'}
-          disabled={viewState.topicDiscovery.status === 'loading' || Boolean(pendingChipId)}
+          aria-busy={viewState.topicDiscovery.shortlist.status === 'loading'}
+          disabled={viewState.topicDiscovery.shortlist.status === 'loading' || Boolean(pendingChipId) || Boolean(pendingDiscoverySignature)}
           onclick={runShortlist}
         >
-          {viewState.topicDiscovery.status === 'loading' ? 'Finding matches...' : "Let's go →"}
+          {viewState.topicDiscovery.shortlist.status === 'loading' ? 'Finding matches...' : "Let's go →"}
         </button>
-        {#if viewState.topicDiscovery.shortlist}
+        {#if viewState.topicDiscovery.shortlist.shortlist}
           <button type="button" class="btn btn-secondary" onclick={resetTopicDiscovery}>Start over</button>
         {/if}
       </div>
     </div>
 
-    {#if viewState.topicDiscovery.error}
-      <p class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{viewState.topicDiscovery.error}</p>
+    {#if viewState.topicDiscovery.shortlist.error}
+      <p class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{viewState.topicDiscovery.shortlist.error}</p>
     {/if}
 
-    {#if viewState.topicDiscovery.shortlist}
+    {#if viewState.topicDiscovery.shortlist.shortlist}
       <div class="shortlist">
         <div class="shortlist-header">
-          <h4>Found in: {viewState.topicDiscovery.shortlist.matchedSection}</h4>
+          <h4>Found in: {viewState.topicDiscovery.shortlist.shortlist.matchedSection}</h4>
           <p>{viewState.profile.curriculum} · {viewState.profile.grade} · {selectedSubject?.name}</p>
         </div>
         <div class="topic-grid">
-          {#each viewState.topicDiscovery.shortlist.subtopics as topic, i}
+          {#each viewState.topicDiscovery.shortlist.shortlist.subtopics as topic, i}
             <button type="button" class="topic-tile" onclick={() => startTopic(topic)}>
               <span class="topic-index">{String(i + 1).padStart(2, '0')}</span>
               <div class="topic-tile-body">
@@ -1038,113 +1096,14 @@
     animation: section-enter 0.3s var(--ease-soft) both;
   }
 
-  .path-tile {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    justify-self: stretch;
-    gap: 0.7rem;
-    width: 100%;
-    min-height: 7rem;
-    padding: 0.85rem 0.95rem;
-    background: var(--glass-bg-tile);
-    backdrop-filter: var(--glass-blur-tile);
-    -webkit-backdrop-filter: var(--glass-blur-tile);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-lg);
-    color: var(--text);
-    text-align: left;
-    font: inherit;
-    cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    transition:
-      transform 200ms var(--ease-spring),
-      box-shadow 200ms var(--ease-soft),
-      border-color var(--motion-fast) var(--ease-soft);
-  }
-
-  .path-tile--recommended {
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border-strong));
-  }
-
-  .path-tile--recommended::after {
-    content: 'Next up';
-    position: absolute;
-    top: 0.55rem;
-    right: 0.7rem;
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 0.02em;
-  }
-
-  /* need position: relative for ::after */
-  .path-tile--recommended {
-    position: relative;
-  }
-
   @keyframes chip-enter {
     from { opacity: 0; transform: translateY(10px) scale(0.96); }
     to   { opacity: 1; transform: translateY(0)    scale(1);    }
   }
 
-  .path-tile:not(.path-tile--skeleton) {
-    animation: chip-enter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-    animation-delay: calc(var(--i, 0) * 0.04s);
-  }
-
-  .path-tile:hover:not(:disabled):not([aria-disabled='true']) {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-md);
-    border-color: var(--accent);
-  }
-
-  .path-tile:active:not(:disabled) {
-    transform: translateY(-1px) scale(0.99);
-    box-shadow: var(--shadow-sm);
-    transition:
-      transform 80ms ease-in,
-      box-shadow 80ms ease-in;
-  }
-
-  .path-tile.selected {
-    background: var(--accent-dim);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border-color: var(--accent);
-    box-shadow: none;
-  }
-
-  .path-tile[aria-disabled='true'] {
-    pointer-events: none;
-    opacity: 0.45;
-  }
-
-  /* Skeleton */
-  .path-tile--skeleton {
-    width: 100%;
-    min-height: 7rem;
-    background: var(--surface-soft);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    animation: skeleton-pulse 1.2s ease-in-out infinite;
-  }
-
   @keyframes skeleton-pulse {
     0%, 100% { opacity: 0.5; }
     50% { opacity: 0.9; }
-  }
-
-  /* Icon block inside tile — per design system */
-  .path-tile-icon {
-    width: 2.4rem;
-    height: 2.4rem;
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
   }
 
   .icon-block--blue   { background: var(--color-blue-dim); }
@@ -1153,27 +1112,6 @@
   .icon-block--orange { background: var(--color-orange-dim); }
   .icon-block--red    { background: var(--color-red-dim); }
   .icon-block--yellow { background: var(--color-yellow-dim); }
-
-  .path-tile-name {
-    min-width: 0;
-    font-size: 0.88rem;
-    font-weight: 600;
-    line-height: 1.3;
-  }
-
-  /* Arrow — visible only on hover */
-  .path-tile-arrow {
-    font-size: 0.9rem;
-    color: var(--accent);
-    opacity: 0;
-    transform: translateX(-4px);
-    transition: opacity var(--motion-fast) var(--ease-soft), transform var(--motion-fast) var(--ease-soft);
-  }
-
-  .path-tile:hover:not(:disabled) .path-tile-arrow {
-    opacity: 1;
-    transform: translateX(0);
-  }
 
   .path-tile-indicator {
     display: flex;

@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { createInitialState } from '$lib/data/platform';
 import { buildRevisionSession } from '$lib/revision/engine';
-import type { LessonSession, RevisionPackRequest, RevisionPackResponse, RevisionQuestion, RevisionTopic } from '$lib/types';
+import type {
+  DashboardTopicDiscoverySuggestion,
+  LessonSession,
+  RevisionPackRequest,
+  RevisionPackResponse,
+  RevisionQuestion,
+  RevisionTopic
+} from '$lib/types';
 import { appState, createAppStore, lessonSessionStore, profileStore, uiStore, revisionStore } from './app-state';
 
 const { getAuthenticatedHeaders, fetchMock } = vi.hoisted(() => ({
@@ -134,6 +141,44 @@ function createLessonSession(overrides: Partial<LessonSession> = {}): LessonSess
     profileUpdates: [],
     ...overrides
   };
+}
+
+function createDiscoverySuggestion(
+  overrides: Partial<DashboardTopicDiscoverySuggestion> = {}
+): DashboardTopicDiscoverySuggestion {
+  return {
+    topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+    topicLabel: 'Equivalent Fractions',
+    nodeId: 'graph-topic-fractions',
+    source: 'graph_existing',
+    rank: 1,
+    reason: 'Strong graph match',
+    sampleSize: 3,
+    thumbsUpCount: 2,
+    thumbsDownCount: 0,
+    completionRate: 0.8,
+    freshness: 'stable',
+    feedback: null,
+    feedbackPending: false,
+    ...overrides
+  };
+}
+
+function createDeferredResponse() {
+  let resolve!: (value: Response) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<Response>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('domain store slices', () => {
@@ -778,6 +823,357 @@ describe('progress analytics instrumentation', () => {
   });
 });
 
+describe('topic discovery dashboard state', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getAuthenticatedHeaders.mockResolvedValue({
+      Authorization: 'Bearer token'
+    });
+  });
+
+  it('loads topic discovery for the selected subject and ignores stale responses from a previous subject', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    expect(baseState.curriculum.subjects.length).toBeGreaterThan(1);
+    const firstSubject = baseState.curriculum.subjects[0]!;
+    const secondSubject = baseState.curriculum.subjects[1]!;
+    const firstRequest = createDeferredResponse();
+    const secondRequest = createDeferredResponse();
+
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.endsWith('/api/curriculum/topic-discovery')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { subjectId: string };
+
+        if (body.subjectId === firstSubject.id) {
+          return firstRequest.promise;
+        }
+
+        if (body.subjectId === secondSubject.id) {
+          return secondRequest.promise;
+        }
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(baseState);
+
+    store.selectSubject(firstSubject.id);
+    store.selectSubject(secondSubject.id);
+    await flushAsyncWork();
+
+    expect(get(store).topicDiscovery.discovery.status).toBe('loading');
+
+    firstRequest.resolve(
+      new Response(
+        JSON.stringify({
+          topics: [createDiscoverySuggestion({ topicLabel: 'Algebra Basics', topicSignature: `${firstSubject.id}::caps::grade-6::algebra basics` })],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          refreshed: false
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    await flushAsyncWork();
+
+    expect(get(store).topicDiscovery.discovery.topics).toEqual([]);
+
+    secondRequest.resolve(
+      new Response(
+        JSON.stringify({
+          topics: [createDiscoverySuggestion({ topicLabel: 'Cells', topicSignature: `${secondSubject.id}::caps::grade-6::cells`, nodeId: 'graph-topic-cells' })],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          refreshed: false
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    await flushAsyncWork();
+
+    const state = get(store);
+
+    expect(state.topicDiscovery.selectedSubjectId).toBe(secondSubject.id);
+    expect(state.topicDiscovery.discovery.status).toBe('ready');
+    expect(state.topicDiscovery.discovery.topics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          topicLabel: 'Cells'
+        })
+      ])
+    );
+    expect(state.topicDiscovery.discovery.topics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          topicLabel: 'Algebra Basics'
+        })
+      ])
+    );
+  });
+
+  it('lets refresh supersede an in-flight initial discovery load', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+    const initialRequest = createDeferredResponse();
+    const refreshRequest = createDeferredResponse();
+    let discoveryCallCount = 0;
+
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.endsWith('/api/curriculum/topic-discovery')) {
+        discoveryCallCount += 1;
+        const body = JSON.parse(String(init?.body ?? '{}')) as { forceRefresh?: boolean };
+        expect(Boolean(body.forceRefresh)).toBe(discoveryCallCount === 2);
+        return discoveryCallCount === 1 ? initialRequest.promise : refreshRequest.promise;
+      }
+
+      if (url.endsWith('/api/curriculum/topic-discovery/refresh')) {
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(baseState);
+
+    const initialLoad = store.loadTopicDiscovery(subject.id);
+    await flushAsyncWork();
+    const refreshLoad = store.refreshTopicDiscovery(subject.id);
+    await flushAsyncWork();
+
+    expect(get(store).topicDiscovery.discovery.status).toBe('refreshing');
+
+    refreshRequest.resolve(
+      new Response(
+        JSON.stringify({
+          topics: [createDiscoverySuggestion({ topicLabel: 'Ratios', topicSignature: `${subject.id}::caps::grade-6::ratios` })],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          refreshed: true
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    await flushAsyncWork();
+
+    initialRequest.resolve(
+      new Response(
+        JSON.stringify({
+          topics: [createDiscoverySuggestion({ topicLabel: 'Old Load', topicSignature: `${subject.id}::caps::grade-6::old load` })],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          refreshed: false
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+
+    await Promise.all([initialLoad, refreshLoad]);
+
+    const state = get(store);
+
+    expect(state.topicDiscovery.discovery.status).toBe('ready');
+    expect(state.topicDiscovery.discovery.topics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          topicLabel: 'Ratios'
+        })
+      ])
+    );
+    expect(state.topicDiscovery.discovery.topics).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          topicLabel: 'Old Load'
+        })
+      ])
+    );
+  });
+
+  it('records click and thumbs feedback with the active discovery request metadata', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+    const discoveryTopic = createDiscoverySuggestion();
+
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.endsWith('/api/curriculum/topic-discovery/click')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { requestId?: string; rankPosition?: number };
+        expect(body.requestId).toBe('request-123');
+        expect(body.rankPosition).toBe(1);
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (url.endsWith('/api/curriculum/topic-discovery/feedback')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { feedback?: string; requestId?: string };
+        expect(body.feedback).toBe('up');
+        expect(body.requestId).toBe('request-123');
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id,
+        discovery: {
+          status: 'ready',
+          topics: [discoveryTopic],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          requestId: 'request-123',
+          error: null,
+          lastLoadedAt: '2026-04-02T12:00:00.000Z',
+          refreshed: false,
+          subjectId: subject.id
+        }
+      }
+    });
+
+    await store.recordTopicSuggestionClick(discoveryTopic.topicSignature);
+    await store.recordTopicFeedback(discoveryTopic.topicSignature, 'up');
+
+    const state = get(store);
+
+    expect(state.topicDiscovery.discovery.topics[0]).toEqual(
+      expect.objectContaining({
+        feedback: 'up',
+        feedbackPending: false
+      })
+    );
+  });
+
+  it('surfaces an error state when discovery fails before any topics have loaded', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Discovery temporarily unavailable.' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(baseState);
+
+    await store.loadTopicDiscovery(subject.id);
+
+    const state = get(store);
+
+    expect(state.topicDiscovery.discovery.status).toBe('error');
+    expect(state.topicDiscovery.discovery.topics).toEqual([]);
+    expect(state.topicDiscovery.discovery.error).toMatch(/discovery temporarily unavailable/i);
+  });
+
+  it('keeps the previous topics visible as stale when a refresh fails', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+    const existingTopic = createDiscoverySuggestion({
+      topicLabel: 'Fractions',
+      topicSignature: `${subject.id}::caps::grade-6::fractions`
+    });
+
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Refresh timed out.' }), {
+        status: 504,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id,
+        discovery: {
+          status: 'ready',
+          subjectId: subject.id,
+          topics: [existingTopic],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          requestId: 'request-existing-1',
+          error: null,
+          lastLoadedAt: '2026-04-02T12:00:00.000Z',
+          refreshed: false
+        }
+      }
+    });
+
+    await store.refreshTopicDiscovery(subject.id);
+
+    const state = get(store);
+
+    expect(state.topicDiscovery.discovery.status).toBe('stale');
+    expect(state.topicDiscovery.discovery.topics).toEqual([existingTopic]);
+    expect(state.topicDiscovery.discovery.error).toMatch(/refresh timed out/i);
+  });
+});
+
 describe('unified lesson launch pipeline', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -961,6 +1357,213 @@ describe('unified lesson launch pipeline', () => {
         nodeId: 'custom-subtopic-equivalent-fractions',
         lessonArtifactId: 'artifact-lesson-3',
         questionArtifactId: 'artifact-questions-3'
+      })
+    );
+  });
+
+  it('uses the same lesson-plan route for graph-backed discovery launches and includes discovery metadata', async () => {
+    const baseState = createInitialState();
+    const subject = baseState.curriculum.subjects[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        const body = JSON.parse(String(init?.body)) as {
+          request: {
+            nodeId: string;
+            topicDiscovery: {
+              topicSignature: string;
+              topicLabel: string;
+              source: string;
+              requestId: string;
+              rankPosition: number;
+            };
+          };
+        };
+
+        expect(body.request.nodeId).toBe('graph-topic-fractions');
+        expect(body.request.topicDiscovery).toEqual(
+          expect.objectContaining({
+            topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+            topicLabel: 'Equivalent Fractions',
+            source: 'graph_existing',
+            requestId: 'request-graph-1',
+            rankPosition: 1
+          })
+        );
+
+        return new Response(
+          JSON.stringify({
+            provider: 'github-models',
+            nodeId: 'graph-topic-fractions',
+            lessonArtifactId: 'artifact-lesson-discovery-1',
+            questionArtifactId: 'artifact-questions-discovery-1',
+            lesson: {
+              ...baseState.lessons[0]!,
+              id: 'artifact-lesson-runtime-discovery-1',
+              topicId: 'graph-topic-fractions',
+              subtopicId: 'graph-topic-fractions'
+            },
+            questions: baseState.questions
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (url === '/api/curriculum/topic-discovery/click') {
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id,
+        discovery: {
+          status: 'ready',
+          topics: [
+            createDiscoverySuggestion({
+              topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+              topicLabel: 'Equivalent Fractions',
+              nodeId: 'graph-topic-fractions',
+              source: 'graph_existing',
+              rank: 1
+            })
+          ],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          requestId: 'request-graph-1',
+          error: null,
+          lastLoadedAt: '2026-04-02T12:00:00.000Z',
+          refreshed: false,
+          subjectId: subject.id
+        }
+      }
+    });
+
+    await store.startLessonFromTopicDiscovery('subject-1::caps::grade-6::equivalent fractions');
+
+    const state = get(store);
+
+    expect(state.lessonSessions[0]).toEqual(
+      expect.objectContaining({
+        nodeId: 'graph-topic-fractions',
+        lessonArtifactId: 'artifact-lesson-discovery-1',
+        questionArtifactId: 'artifact-questions-discovery-1'
+      })
+    );
+  });
+
+  it('uses the same lesson-plan route for model-candidate discovery launches and omits node ids', async () => {
+    const baseState = createInitialState();
+    const subject = baseState.curriculum.subjects[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        const body = JSON.parse(String(init?.body)) as {
+          request: {
+            nodeId: string | null;
+            topicTitle: string;
+            topicDiscovery: {
+              topicSignature: string;
+              topicLabel: string;
+              source: string;
+              requestId: string;
+              rankPosition: number;
+            };
+          };
+        };
+
+        expect(body.request.nodeId).toBeNull();
+        expect(body.request.topicTitle).toBe('Ratio Tables');
+        expect(body.request.topicDiscovery).toEqual(
+          expect.objectContaining({
+            topicSignature: 'subject-1::caps::grade-6::ratio tables',
+            topicLabel: 'Ratio Tables',
+            source: 'model_candidate',
+            requestId: 'request-model-1',
+            rankPosition: 2
+          })
+        );
+
+        return new Response(
+          JSON.stringify({
+            provider: 'github-models',
+            nodeId: 'graph-topic-ratio-tables',
+            lessonArtifactId: 'artifact-lesson-discovery-2',
+            questionArtifactId: 'artifact-questions-discovery-2',
+            lesson: {
+              ...baseState.lessons[0]!,
+              id: 'artifact-lesson-runtime-discovery-2',
+              topicId: 'graph-topic-ratio-tables',
+              subtopicId: 'graph-topic-ratio-tables'
+            },
+            questions: baseState.questions
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (url === '/api/curriculum/topic-discovery/click') {
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id,
+        discovery: {
+          status: 'ready',
+          topics: [
+            createDiscoverySuggestion({
+              topicSignature: 'subject-1::caps::grade-6::ratio tables',
+              topicLabel: 'Ratio Tables',
+              nodeId: null,
+              source: 'model_candidate',
+              rank: 2,
+              reason: 'High-interest adjacent candidate'
+            })
+          ],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          requestId: 'request-model-1',
+          error: null,
+          lastLoadedAt: '2026-04-02T12:00:00.000Z',
+          refreshed: false,
+          subjectId: subject.id
+        }
+      }
+    });
+
+    await store.startLessonFromTopicDiscovery('subject-1::caps::grade-6::ratio tables');
+
+    const state = get(store);
+
+    expect(state.lessonSessions[0]).toEqual(
+      expect.objectContaining({
+        nodeId: 'graph-topic-ratio-tables',
+        lessonArtifactId: 'artifact-lesson-discovery-2',
+        questionArtifactId: 'artifact-questions-discovery-2'
       })
     );
   });
@@ -1174,6 +1777,243 @@ describe('lesson artifact ratings', () => {
         note: 'Best explanation so far.'
       })
     );
+  });
+});
+
+describe('topic discovery completion linkage', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getAuthenticatedHeaders.mockResolvedValue({
+      Authorization: 'Bearer token'
+    });
+  });
+
+  it('records a lesson_completed discovery event when a graph-backed suggestion lesson completes', async () => {
+    const baseState = createInitialState();
+    const subject = baseState.curriculum.subjects[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat') {
+        return new Response(
+          JSON.stringify({
+            displayContent: 'You completed this lesson well.',
+            metadata: {
+              action: 'complete',
+              next_stage: null,
+              reteach_style: null,
+              reteach_count: 0,
+              confidence_assessment: 0.84,
+              profile_update: {
+                engagement_level: 'high'
+              }
+            }
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (url === '/api/curriculum/topic-discovery/complete') {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+        expect(body).toEqual(
+          expect.objectContaining({
+            subjectId: subject.id,
+            curriculumId: baseState.profile.curriculumId,
+            gradeId: baseState.profile.gradeId,
+            topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+            topicLabel: 'Equivalent Fractions',
+            nodeId: 'graph-topic-fractions',
+            source: 'graph_existing',
+            lessonSessionId: 'discovery-session-1',
+            requestId: 'request-graph-complete-1',
+            rankPosition: 1,
+            reteachCount: 0,
+            questionCount: 2
+          })
+        );
+        expect(body.completedAt).toEqual(expect.any(String));
+
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      profile: {
+        ...baseState.profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      },
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'discovery-session-1'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'discovery-session-1',
+          status: 'active',
+          currentStage: 'check',
+          stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice'],
+          completedAt: null,
+          lastActiveAt: '2026-04-02T11:30:00.000Z',
+          questionCount: 2,
+          topicId: 'graph-topic-fractions',
+          topicTitle: 'Equivalent Fractions',
+          topicDescription: 'Reason about fraction equivalence.',
+          lessonId: baseState.lessons[0]!.id,
+          nodeId: 'graph-topic-fractions',
+          lessonArtifactId: 'artifact-lesson-discovery-11',
+          questionArtifactId: 'artifact-questions-discovery-11',
+          topicDiscovery: {
+            topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+            topicLabel: 'Equivalent Fractions',
+            source: 'graph_existing',
+            requestId: 'request-graph-complete-1',
+            rankPosition: 1
+          }
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('I think I have it now.');
+
+    const state = get(store);
+    const requestedUrls = fetchMock.mock.calls.map(([input]) =>
+      typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+    );
+
+    expect(state.lessonSessions[0]?.status).toBe('complete');
+    expect(requestedUrls).toContain('/api/curriculum/topic-discovery/complete');
+    expect(requestedUrls).not.toContain('/api/lesson-artifacts/rate');
+  });
+
+  it('records a lesson_completed discovery event for model candidates and includes reteach pressure only as recommendation metadata', async () => {
+    const baseState = createInitialState();
+    const subject = baseState.curriculum.subjects[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat') {
+        return new Response(
+          JSON.stringify({
+            displayContent: 'You made it through, but this took a few retries.',
+            metadata: {
+              action: 'complete',
+              next_stage: null,
+              reteach_style: null,
+              reteach_count: 3,
+              confidence_assessment: 0.58,
+              profile_update: {
+                engagement_level: 'medium',
+                struggled_with: ['ratio tables']
+              }
+            }
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (url === '/api/curriculum/topic-discovery/complete') {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+        expect(body).toEqual(
+          expect.objectContaining({
+            subjectId: subject.id,
+            curriculumId: baseState.profile.curriculumId,
+            gradeId: baseState.profile.gradeId,
+            topicSignature: 'subject-1::caps::grade-6::ratio tables',
+            topicLabel: 'Ratio Tables',
+            nodeId: 'graph-topic-ratio-tables',
+            source: 'model_candidate',
+            lessonSessionId: 'discovery-session-2',
+            requestId: 'request-model-complete-1',
+            rankPosition: 2,
+            reteachCount: 3,
+            questionCount: 4
+          })
+        );
+
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      profile: {
+        ...baseState.profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      },
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'discovery-session-2'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'discovery-session-2',
+          status: 'active',
+          currentStage: 'check',
+          stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice'],
+          completedAt: null,
+          lastActiveAt: '2026-04-02T12:05:00.000Z',
+          questionCount: 4,
+          reteachCount: 2,
+          topicId: 'graph-topic-ratio-tables',
+          topicTitle: 'Ratio Tables',
+          topicDescription: 'Use ratio tables to compare equivalent quantities.',
+          lessonId: baseState.lessons[0]!.id,
+          nodeId: 'graph-topic-ratio-tables',
+          lessonArtifactId: 'artifact-lesson-discovery-12',
+          questionArtifactId: 'artifact-questions-discovery-12',
+          topicDiscovery: {
+            topicSignature: 'subject-1::caps::grade-6::ratio tables',
+            topicLabel: 'Ratio Tables',
+            source: 'model_candidate',
+            requestId: 'request-model-complete-1',
+            rankPosition: 2
+          }
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('I got there eventually.');
+
+    const state = get(store);
+    const requestedUrls = fetchMock.mock.calls.map(([input]) =>
+      typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+    );
+
+    expect(state.lessonSessions[0]).toEqual(
+      expect.objectContaining({
+        status: 'complete',
+        nodeId: 'graph-topic-ratio-tables'
+      })
+    );
+    expect(requestedUrls).toContain('/api/curriculum/topic-discovery/complete');
+    expect(requestedUrls).not.toContain('/api/lesson-artifacts/rate');
   });
 });
 

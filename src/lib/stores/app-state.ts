@@ -49,6 +49,7 @@ import type {
   AskQuestionRequest,
   CountryOption,
   CurriculumOption,
+  DashboardTopicDiscoverySuggestion,
   GradeOption,
   Lesson,
   LearnerProfile,
@@ -68,6 +69,7 @@ import type {
   SubjectOption,
   SubjectVerificationState,
   ThemeMode,
+  TopicDiscoverySuggestion,
   TopicShortlistResponse
 } from '$lib/types';
 
@@ -87,6 +89,13 @@ interface TopicShortlistPayload {
   response: TopicShortlistResponse;
   provider: string;
   error?: string;
+}
+
+interface TopicDiscoveryPayload {
+  topics: TopicDiscoverySuggestion[];
+  provider: string;
+  model: string;
+  refreshed: boolean;
 }
 
 interface LessonPlanPayload extends LessonPlanResponse {}
@@ -130,6 +139,18 @@ interface ResetOnboardingResponse {
 
 interface LessonArtifactRatingResponse {
   saved: boolean;
+}
+
+type TopicDiscoveryFeedback = 'up' | 'down';
+
+function toDashboardTopicSuggestion(
+  topic: TopicDiscoverySuggestion
+): DashboardTopicDiscoverySuggestion {
+  return {
+    ...topic,
+    feedback: null,
+    feedbackPending: false
+  };
 }
 
 function readState(): AppState {
@@ -373,6 +394,8 @@ export function createAppStore(initialState: AppState = readState()) {
   const { subscribe, update, set } = writable<AppState>(initialState);
   let hasInitializedRemoteState = false;
   let syncTimer: ReturnType<typeof setTimeout> | null = null;
+  let topicDiscoveryRequestSequence = 0;
+  let activeTopicDiscoveryController: AbortController | null = null;
 
   function currentState(): AppState {
     return get({ subscribe });
@@ -573,6 +596,13 @@ export function createAppStore(initialState: AppState = readState()) {
       curriculumReference: string;
       nodeId?: string | null;
       topicId?: string;
+      topicDiscovery?: {
+        topicSignature: string;
+        topicLabel: string;
+        source: 'graph_existing' | 'model_candidate';
+        requestId?: string | null;
+        rankPosition?: number;
+      };
     }
   ) {
     const response = await fetch('/api/ai/lesson-plan', {
@@ -589,7 +619,18 @@ export function createAppStore(initialState: AppState = readState()) {
           topicDescription: topic.description,
           curriculumReference: topic.curriculumReference,
           nodeId: topic.nodeId ?? null,
-          topicId: topic.topicId
+          topicId: topic.topicId,
+          ...(topic.topicDiscovery
+            ? {
+                topicDiscovery: {
+                  topicSignature: topic.topicDiscovery.topicSignature,
+                  topicLabel: topic.topicDiscovery.topicLabel,
+                  source: topic.topicDiscovery.source,
+                  ...(topic.topicDiscovery.requestId ? { requestId: topic.topicDiscovery.requestId } : {}),
+                  ...(topic.topicDiscovery.rankPosition ? { rankPosition: topic.topicDiscovery.rankPosition } : {})
+                }
+              }
+            : {})
         }
       })
     });
@@ -706,6 +747,7 @@ export function createAppStore(initialState: AppState = readState()) {
       topicId?: string;
       subtopicId?: string;
       subtopicName?: string;
+      topicDiscovery?: LessonSession['topicDiscovery'];
     }
   ) {
     const topicStub =
@@ -731,8 +773,391 @@ export function createAppStore(initialState: AppState = readState()) {
       questionArtifactId: launched.questionArtifactId ?? null,
       topicDescription: launchContext.topicDescription,
       curriculumReference: launchContext.curriculumReference,
-      matchedSection: launchContext.matchedSection
+      matchedSection: launchContext.matchedSection,
+      topicDiscovery: launchContext.topicDiscovery
     });
+  }
+
+  function buildTopicDiscoveryEventPayload(
+    state: AppState,
+    topic: DashboardTopicDiscoverySuggestion
+  ) {
+    return {
+      subjectId: state.topicDiscovery.selectedSubjectId,
+      curriculumId: state.profile.curriculumId,
+      gradeId: state.profile.gradeId,
+      topicSignature: topic.topicSignature,
+      topicLabel: topic.topicLabel,
+      nodeId: topic.nodeId,
+      source: topic.source,
+      requestId: state.topicDiscovery.discovery.requestId ?? undefined,
+      rankPosition: topic.rank
+    };
+  }
+
+  async function postTopicDiscoveryEvent(
+    path:
+      | '/api/curriculum/topic-discovery/click'
+      | '/api/curriculum/topic-discovery/feedback'
+      | '/api/curriculum/topic-discovery/refresh'
+      | '/api/curriculum/topic-discovery/complete',
+    body: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      await fetch(path, {
+        method: 'POST',
+        headers: await getAuthenticatedHeaders({
+          'Content-Type': 'application/json'
+        }),
+        body: JSON.stringify(body)
+      });
+    } catch {
+      // Discovery interaction tracking must never break dashboard flows.
+    }
+  }
+
+  async function recordTopicDiscoveryLessonCompleted(session: LessonSession): Promise<void> {
+    const snapshot = currentState();
+
+    if (
+      !session.topicDiscovery ||
+      !snapshot.profile.curriculumId ||
+      !snapshot.profile.gradeId ||
+      !session.completedAt
+    ) {
+      return;
+    }
+
+    await postTopicDiscoveryEvent('/api/curriculum/topic-discovery/complete', {
+      subjectId: session.subjectId,
+      curriculumId: snapshot.profile.curriculumId,
+      gradeId: snapshot.profile.gradeId,
+      topicSignature: session.topicDiscovery.topicSignature,
+      topicLabel: session.topicDiscovery.topicLabel,
+      nodeId: session.nodeId ?? null,
+      source: session.topicDiscovery.source,
+      lessonSessionId: session.id,
+      ...(session.topicDiscovery.requestId ? { requestId: session.topicDiscovery.requestId } : {}),
+      ...(session.topicDiscovery.rankPosition ? { rankPosition: session.topicDiscovery.rankPosition } : {}),
+      reteachCount: session.reteachCount,
+      questionCount: session.questionCount,
+      completedAt: session.completedAt
+    });
+  }
+
+  function updateDiscoveryFeedback(
+    topics: DashboardTopicDiscoverySuggestion[],
+    topicSignature: string,
+    updater: (topic: DashboardTopicDiscoverySuggestion) => DashboardTopicDiscoverySuggestion
+  ): DashboardTopicDiscoverySuggestion[] {
+    return topics.map((topic) => (topic.topicSignature === topicSignature ? updater(topic) : topic));
+  }
+
+  async function loadTopicDiscovery(
+    subjectId: string,
+    options: {
+      forceRefresh?: boolean;
+    } = {}
+  ): Promise<void> {
+    const snapshot = currentState();
+    const subject = snapshot.curriculum.subjects.find((item) => item.id === subjectId) ?? snapshot.curriculum.subjects[0];
+
+    if (!subject || !snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
+      return;
+    }
+
+    topicDiscoveryRequestSequence += 1;
+    const requestSequence = topicDiscoveryRequestSequence;
+    const requestId = crypto.randomUUID();
+
+    activeTopicDiscoveryController?.abort();
+    activeTopicDiscoveryController = typeof AbortController === 'undefined' ? null : new AbortController();
+    const signal = activeTopicDiscoveryController?.signal;
+    const previousTopics =
+      snapshot.topicDiscovery.discovery.subjectId === subject.id
+        ? snapshot.topicDiscovery.discovery.topics
+        : [];
+
+    update((state) =>
+      persistAndSync({
+        ...state,
+        topicDiscovery: {
+          ...state.topicDiscovery,
+          selectedSubjectId: subject.id,
+          discovery: {
+            ...state.topicDiscovery.discovery,
+            status: options.forceRefresh ? 'refreshing' : previousTopics.length > 0 ? 'stale' : 'loading',
+            subjectId: subject.id,
+            topics: previousTopics,
+            provider: previousTopics.length > 0 ? state.topicDiscovery.discovery.provider : null,
+            model: previousTopics.length > 0 ? state.topicDiscovery.discovery.model : null,
+            requestId,
+            error: null,
+            refreshed: false
+          }
+        }
+      })
+    );
+
+    try {
+      const response = await fetch('/api/curriculum/topic-discovery', {
+        method: 'POST',
+        headers: await getAuthenticatedHeaders({
+          'Content-Type': 'application/json'
+        }),
+        body: JSON.stringify({
+          subjectId: subject.id,
+          curriculumId: snapshot.profile.curriculumId,
+          gradeId: snapshot.profile.gradeId,
+          forceRefresh: options.forceRefresh ?? false
+        }),
+        ...(signal ? { signal } : {})
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({ error: 'Unable to load topic suggestions right now.' }))) as {
+          error?: string;
+        };
+        throw new Error(payload.error ?? 'Unable to load topic suggestions right now.');
+      }
+
+      const payload = (await response.json()) as TopicDiscoveryPayload;
+
+      if (!Array.isArray(payload.topics) || !payload.provider || !payload.model) {
+        throw new Error('Topic discovery response was invalid.');
+      }
+
+      if (requestSequence !== topicDiscoveryRequestSequence || signal?.aborted) {
+        return;
+      }
+
+      const topics = payload.topics.map(toDashboardTopicSuggestion);
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            selectedSubjectId: subject.id,
+            discovery: {
+              ...state.topicDiscovery.discovery,
+              status: topics.length > 0 ? 'ready' : 'empty',
+              subjectId: subject.id,
+              topics,
+              provider: payload.provider,
+              model: payload.model,
+              requestId,
+              error: null,
+              lastLoadedAt: new Date().toISOString(),
+              refreshed: options.forceRefresh ?? false
+            }
+          }
+        })
+      );
+
+      if (options.forceRefresh && topics.length > 0) {
+        void Promise.allSettled(
+          topics.map((topic) =>
+            postTopicDiscoveryEvent('/api/curriculum/topic-discovery/refresh', buildTopicDiscoveryEventPayload(currentState(), topic))
+          )
+        );
+      }
+    } catch (error) {
+      if (signal?.aborted || requestSequence !== topicDiscoveryRequestSequence) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : 'Unable to load topic suggestions right now.';
+      update((state) =>
+        persistAndSync({
+          ...state,
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            selectedSubjectId: subject.id,
+            discovery: {
+              ...state.topicDiscovery.discovery,
+              status: state.topicDiscovery.discovery.topics.length > 0 ? 'stale' : 'error',
+              subjectId: subject.id,
+              error: message,
+              requestId
+            }
+          }
+        })
+      );
+    }
+  }
+
+  async function refreshTopicDiscovery(subjectId: string): Promise<void> {
+    await loadTopicDiscovery(subjectId, { forceRefresh: true });
+  }
+
+  async function recordTopicSuggestionClick(topicSignature: string): Promise<void> {
+    const snapshot = currentState();
+    const topic = snapshot.topicDiscovery.discovery.topics.find((item) => item.topicSignature === topicSignature);
+
+    if (!topic || !snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
+      return;
+    }
+
+    await postTopicDiscoveryEvent(
+      '/api/curriculum/topic-discovery/click',
+      buildTopicDiscoveryEventPayload(snapshot, topic)
+    );
+  }
+
+  async function recordTopicFeedback(topicSignature: string, feedback: TopicDiscoveryFeedback): Promise<void> {
+    const snapshot = currentState();
+    const topic = snapshot.topicDiscovery.discovery.topics.find((item) => item.topicSignature === topicSignature);
+
+    if (!topic || !snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
+      return;
+    }
+
+    update((state) =>
+      persistAndSync({
+        ...state,
+        topicDiscovery: {
+          ...state.topicDiscovery,
+          discovery: {
+            ...state.topicDiscovery.discovery,
+            topics: updateDiscoveryFeedback(state.topicDiscovery.discovery.topics, topicSignature, (item) => ({
+              ...item,
+              feedback,
+              feedbackPending: true
+            }))
+          }
+        }
+      })
+    );
+
+    await postTopicDiscoveryEvent('/api/curriculum/topic-discovery/feedback', {
+      ...buildTopicDiscoveryEventPayload(snapshot, topic),
+      feedback
+    });
+
+    update((state) =>
+      persistAndSync({
+        ...state,
+        topicDiscovery: {
+          ...state.topicDiscovery,
+          discovery: {
+            ...state.topicDiscovery.discovery,
+            topics: updateDiscoveryFeedback(state.topicDiscovery.discovery.topics, topicSignature, (item) => ({
+              ...item,
+              feedback,
+              feedbackPending: false
+            }))
+          }
+        }
+      })
+    );
+  }
+
+  async function startLessonFromTopicDiscovery(topicSignature: string): Promise<void> {
+    const snapshot = currentState();
+    const subject =
+      snapshot.curriculum.subjects.find((item) => item.id === snapshot.topicDiscovery.selectedSubjectId) ??
+      snapshot.curriculum.subjects.find((item) => item.id === snapshot.ui.selectedSubjectId) ??
+      snapshot.curriculum.subjects[0];
+    const topic = snapshot.topicDiscovery.discovery.topics.find((item) => item.topicSignature === topicSignature);
+
+    if (!subject || !topic) {
+      return;
+    }
+
+    void recordTopicSuggestionClick(topicSignature);
+
+    let lessonPlan: LessonPlanPayload;
+
+    try {
+      lessonPlan = await requestLessonPlan(snapshot, subject.id, subject.name, {
+        title: topic.topicLabel,
+        description: topic.reason,
+        curriculumReference: `${snapshot.profile.curriculum} · ${snapshot.profile.grade} · ${subject.name}`,
+        nodeId: topic.source === 'graph_existing' ? topic.nodeId : null,
+        topicDiscovery: {
+          topicSignature: topic.topicSignature,
+          topicLabel: topic.topicLabel,
+          source: topic.source,
+          requestId: snapshot.topicDiscovery.discovery.requestId,
+          rankPosition: topic.rank
+        }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create lesson plan right now.';
+      update((state) =>
+        persistAndSync({
+          ...state,
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            discovery: {
+              ...state.topicDiscovery.discovery,
+              error: message,
+              status: state.topicDiscovery.discovery.topics.length > 0 ? 'stale' : 'error'
+            }
+          }
+        })
+      );
+      return;
+    }
+
+    let nextSessionId = '';
+
+    update((state) => {
+      const session = buildLaunchedLessonSession(state, subject, lessonPlan, {
+        topicName: topic.topicLabel,
+        subtopicName: topic.topicLabel,
+        topicDescription: topic.reason,
+        curriculumReference: `${state.profile.curriculum} · ${state.profile.grade} · ${subject.name}`,
+        matchedSection: topic.topicLabel,
+        topicId: lessonPlan.lesson.topicId,
+        subtopicId: lessonPlan.lesson.subtopicId,
+        topicDiscovery: {
+          topicSignature: topic.topicSignature,
+          topicLabel: topic.topicLabel,
+          source: topic.source,
+          requestId: snapshot.topicDiscovery.discovery.requestId ?? undefined,
+          rankPosition: topic.rank
+        }
+      });
+      nextSessionId = session.id;
+      const artifacts = upsertLessonArtifacts(state, lessonPlan);
+
+      return persistAndSync({
+        ...state,
+        ...artifacts,
+        learnerProfile: {
+          ...state.learnerProfile,
+          total_sessions: state.learnerProfile.total_sessions + 1
+        },
+        analytics: [createAnalyticsEvent('session_started', `Started ${session.topicTitle}`), ...state.analytics],
+        lessonSessions: upsertLessonSession(state.lessonSessions, session),
+        topicDiscovery: {
+          ...state.topicDiscovery,
+          discovery: {
+            ...state.topicDiscovery.discovery,
+            status: state.topicDiscovery.discovery.topics.length > 0 ? 'ready' : state.topicDiscovery.discovery.status,
+            error: null
+          }
+        },
+        ui: {
+          ...state.ui,
+          currentScreen: 'lesson',
+          learningMode: 'learn',
+          selectedSubjectId: subject.id,
+          selectedTopicId: lessonPlan.lesson.topicId,
+          selectedSubtopicId: lessonPlan.lesson.subtopicId,
+          selectedLessonId: lessonPlan.lesson.id,
+          activeLessonSessionId: session.id,
+          composerDraft: '',
+          showTopicDiscoveryComposer: false
+        }
+      });
+    });
+
+    if (nextSessionId) {
+      navigate(lessonPath(nextSessionId));
+    }
   }
 
   return {
@@ -776,11 +1201,33 @@ export function createAppStore(initialState: AppState = readState()) {
         const topic = subject.topics[0];
         const subtopic = topic.subtopics[0];
         const lesson = state.lessons.find((item) => item.id === subtopic.lessonIds[0]) ?? state.lessons[0];
-        return persistAndSync({
+        const next = persistAndSync({
           ...state,
           topicDiscovery: {
             ...state.topicDiscovery,
-            selectedSubjectId: subject.id
+            selectedSubjectId: subject.id,
+            discovery: {
+              ...state.topicDiscovery.discovery,
+              status:
+                state.topicDiscovery.discovery.subjectId === subject.id &&
+                state.topicDiscovery.discovery.topics.length > 0
+                  ? 'stale'
+                  : 'loading',
+              subjectId: subject.id,
+              topics:
+                state.topicDiscovery.discovery.subjectId === subject.id
+                  ? state.topicDiscovery.discovery.topics
+                  : [],
+              error: null,
+              refreshed: false
+            },
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              status: 'idle',
+              shortlist: null,
+              provider: null,
+              error: null
+            }
           },
           ui: {
             ...state.ui,
@@ -791,6 +1238,10 @@ export function createAppStore(initialState: AppState = readState()) {
             practiceQuestionId: lesson.practiceQuestionIds[0]
           }
         });
+        queueMicrotask(() => {
+          void loadTopicDiscovery(subject.id);
+        });
+        return next;
       }),
     selectTopic: (topicId: string) =>
       update((state) => {
@@ -1052,10 +1503,17 @@ export function createAppStore(initialState: AppState = readState()) {
           topicDiscovery: {
             ...state.topicDiscovery,
             input: '',
-            status: 'idle',
-            shortlist: null,
-            provider: null,
-            error: null
+            discovery: {
+              ...state.topicDiscovery.discovery,
+              refreshed: false
+            },
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              status: 'idle',
+              shortlist: null,
+              provider: null,
+              error: null
+            }
           },
           ui: {
             ...state.ui,
@@ -1063,6 +1521,10 @@ export function createAppStore(initialState: AppState = readState()) {
           }
         })
       ),
+    loadTopicDiscovery,
+    refreshTopicDiscovery,
+    recordTopicSuggestionClick,
+    recordTopicFeedback,
     shortlistTopics: async (subjectId: string, studentInput: string) => {
       update((state) =>
         persistAndSync({
@@ -1071,9 +1533,13 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.topicDiscovery,
             selectedSubjectId: subjectId,
             input: studentInput,
-            status: 'loading',
-            shortlist: null,
-            error: null
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              status: 'loading',
+              shortlist: null,
+              provider: null,
+              error: null
+            }
           },
           ui: {
             ...state.ui,
@@ -1082,7 +1548,7 @@ export function createAppStore(initialState: AppState = readState()) {
         })
       );
 
-      const state = readState();
+      const state = currentState();
       const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];
 
       try {
@@ -1129,10 +1595,13 @@ export function createAppStore(initialState: AppState = readState()) {
               ...current.topicDiscovery,
               selectedSubjectId: subject.id,
               input: studentInput,
-              status: 'ready',
-              shortlist,
-              provider: payload.provider,
-              error: payload.error ?? null
+              shortlist: {
+                ...current.topicDiscovery.shortlist,
+                status: 'ready',
+                shortlist,
+                provider: payload.provider,
+                error: payload.error ?? null
+              }
             }
           })
         );
@@ -1145,10 +1614,13 @@ export function createAppStore(initialState: AppState = readState()) {
               ...current.topicDiscovery,
               selectedSubjectId: subject.id,
               input: studentInput,
-              status: 'error',
-              shortlist: null,
-              provider: null,
-              error: message
+              shortlist: {
+                ...current.topicDiscovery.shortlist,
+                status: 'error',
+                shortlist: null,
+                provider: null,
+                error: message
+              }
             }
           })
         );
@@ -1177,8 +1649,11 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state,
             topicDiscovery: {
               ...state.topicDiscovery,
-              error: message,
-              status: 'error'
+              shortlist: {
+                ...state.topicDiscovery.shortlist,
+                error: message,
+                status: 'error'
+              }
             }
           })
         );
@@ -1211,8 +1686,10 @@ export function createAppStore(initialState: AppState = readState()) {
           lessonSessions: upsertLessonSession(state.lessonSessions, session),
           topicDiscovery: {
             ...state.topicDiscovery,
-            shortlist: state.topicDiscovery.shortlist,
-            status: 'ready'
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              status: 'ready'
+            }
           },
           ui: {
             ...state.ui,
@@ -1233,6 +1710,7 @@ export function createAppStore(initialState: AppState = readState()) {
         navigate(lessonPath(nextSessionId));
       }
     },
+    startLessonFromTopicDiscovery,
     startLessonFromSelection: async (subjectId: string, sectionName: string) => {
       const snapshot = currentState();
       const subject = snapshot.curriculum.subjects.find((item) => item.id === subjectId) ?? snapshot.curriculum.subjects[0];
@@ -1251,7 +1729,10 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.topicDiscovery,
             selectedSubjectId: subject.id,
             input: sectionName,
-            error: null
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              error: null
+            }
           }
         })
       );
@@ -1275,8 +1756,11 @@ export function createAppStore(initialState: AppState = readState()) {
               ...state.topicDiscovery,
               selectedSubjectId: subject.id,
               input: sectionName,
-              error: message,
-              status: 'error'
+              shortlist: {
+                ...state.topicDiscovery.shortlist,
+                error: message,
+                status: 'error'
+              }
             }
           })
         );
@@ -1311,8 +1795,11 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.topicDiscovery,
             selectedSubjectId: subject.id,
             input: sectionName,
-            status: 'ready',
-            error: null
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              status: 'ready',
+              error: null
+            }
           },
           ui: {
             ...state.ui,
@@ -1441,6 +1928,7 @@ export function createAppStore(initialState: AppState = readState()) {
         if (pendingTimer) {
           clearTimeout(pendingTimer);
         }
+        let completedDiscoverySession: LessonSession | null = null;
         update((state) => {
           const current = state.lessonSessions.find((item) => item.id === lessonSession.id) ?? currentSession;
           const assistantMessage = {
@@ -1458,6 +1946,13 @@ export function createAppStore(initialState: AppState = readState()) {
             metadata: localPayload.metadata
           };
           let nextSession = applyLessonAssistantResponse(current, assistantMessage);
+
+          if (!nextSession.topicDiscovery && current.topicDiscovery) {
+            nextSession = {
+              ...nextSession,
+              topicDiscovery: current.topicDiscovery
+            };
+          }
 
           if (localPayload.metadata?.action === 'advance' && nextSession.currentStage !== 'complete') {
             const sessionLesson = getLessonForSession(state, nextSession);
@@ -1494,6 +1989,10 @@ export function createAppStore(initialState: AppState = readState()) {
             }
           };
 
+          if (current.status !== 'complete' && nextSession.status === 'complete' && nextSession.topicDiscovery) {
+            completedDiscoverySession = nextSession;
+          }
+
           if (nextSession.status === 'complete') {
             return persistAndSync({
               ...nextState,
@@ -1503,6 +2002,10 @@ export function createAppStore(initialState: AppState = readState()) {
 
           return persistAndSync(nextState);
         });
+
+        if (completedDiscoverySession) {
+          await recordTopicDiscoveryLessonCompleted(completedDiscoverySession);
+        }
       } catch {
         resolved = true;
         if (pendingTimer) {
