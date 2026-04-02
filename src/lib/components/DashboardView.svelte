@@ -13,6 +13,8 @@
   import type { AppState, LessonSession, ShortlistedTopic } from '$lib/types';
 
   const { state: viewState }: { state: AppState } = $props();
+  type SubjectTopic = { id: string; name: string; subtopics: { id: string; name: string }[] };
+
   let topicInputFocused = $state(false);
   let promptSuggestionsText = $state('');
   let hintChipsLoading = $state(true);
@@ -20,8 +22,8 @@
   let hintRefreshError = $state('');
   let pendingChipId = $state<string | null>(null);
   let latestHintRequest = 0;
+  let hintAbortController: AbortController | undefined;
   let lastHintSeed = $state('');
-  let showAllTiles = $state(false);
   let cachedHeaders = $state<Record<string, string> | null>(null);
 
   const summary = $derived(getCompletionSummary(viewState));
@@ -34,6 +36,7 @@
   const selectedSubject = $derived(
     availableSubjects.find((s) => s.id === viewState.topicDiscovery.selectedSubjectId) ?? availableSubjects[0]
   );
+
   const promptSuggestionChips = $derived(
     extractHintChipLabels(promptSuggestionsText).map((label, index) => ({
       id: `${selectedSubject?.id ?? 'subject'}:${index}:${label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
@@ -43,16 +46,14 @@
 
   const groupedHintChips = $derived(groupHintChips(promptSuggestionChips, selectedSubject));
 
-  const totalChips = $derived(groupedHintChips.reduce((sum, g) => sum + g.chips.length, 0));
-  const hasMoreTiles = $derived(!showAllTiles && totalChips > 6);
-
-  const displayedHintChips = $derived.by(() => {
-    if (showAllTiles) return groupedHintChips;
-    let count = 0;
-    return groupedHintChips
-      .map((group) => ({ ...group, chips: group.chips.filter(() => count++ < 6) }))
-      .filter((group) => group.chips.length > 0);
-  });
+  // Topic cards are the AI-generated hints displayed as structured cards
+  const subjectTopics = $derived<SubjectTopic[]>(
+    groupedHintChips.flatMap((g) => g.chips).map((chip) => ({
+      id: chip.id,
+      name: chip.label,
+      subtopics: []
+    }))
+  );
 
   const greeting = $derived.by(() => {
     const hour = new Date().getHours();
@@ -162,6 +163,10 @@
     lastHintSeed = hintSeed;
     hintRefreshError = '';
 
+    hintAbortController?.abort();
+    hintAbortController = new AbortController();
+    const { signal } = hintAbortController;
+
     if (forceRefresh) {
       hintChipsRefreshing = true;
     } else {
@@ -182,17 +187,19 @@
         term: viewState.profile.term,
         forceRefresh,
         fetcher: browser ? window.fetch.bind(window) : undefined,
-        headers
+        headers,
+        signal
       });
 
-      if (requestId !== latestHintRequest) return;
+      if (requestId !== latestHintRequest || signal.aborted) return;
       promptSuggestionsText = result.hints.join('\n');
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       if (requestId !== latestHintRequest) return;
       if (forceRefresh) hintRefreshError = "Couldn't refresh suggestions right now.";
       else promptSuggestionsText = '';
     } finally {
-      if (requestId === latestHintRequest) {
+      if (requestId === latestHintRequest && !signal.aborted) {
         hintChipsLoading = false;
         hintChipsRefreshing = false;
       }
@@ -206,6 +213,7 @@
   );
 
   $effect(() => {
+    if (!browser) { hintChipsLoading = false; return; }
     const trigger = hintTrigger;
     const { curriculumId, curriculum, gradeId, grade } = viewState.profile;
     if (!trigger || !selectedSubject || !curriculumId || !curriculum || !gradeId || !grade) {
@@ -229,7 +237,6 @@
     hintRefreshError = '';
     hintChipsRefreshing = false;
     pendingChipId = null;
-    showAllTiles = false;
     appState.setTopicDiscoveryInput('');
     appState.selectSubject(subjectId);
   }
@@ -240,6 +247,7 @@
     hintRefreshError = '';
     appState.resetTopicDiscovery();
   }
+
 
   function refreshSubjectHints(): void {
     if (!selectedSubject || hintChipsLoading || hintChipsRefreshing) return;
@@ -352,70 +360,64 @@
     </section>
   {/if}
 
+  <!-- ── SUBJECT TOPICS ── -->
+  {#if hintChipsLoading || subjectTopics.length > 0}
+    <section class="section-block topics-section">
+      <div class="section-header section-header--simple">
+        <h3 class="section-title">Topics · {selectedSubject?.name ?? ''}</h3>
+        {#if !hintChipsLoading && subjectTopics.length > 0}
+          <button type="button" class="btn btn-ghost topics-shuffle-btn" disabled={hintChipsRefreshing} onclick={refreshSubjectHints}>
+            {hintChipsRefreshing ? '↻' : '⇄'}
+          </button>
+        {/if}
+      </div>
+      <div class="topics-grid" aria-live="polite" aria-busy={hintChipsLoading}>
+        {#if hintChipsLoading}
+          {#each Array.from({ length: 8 }) as _, i}
+            <div class="topic-card topic-card--skeleton" style="--i: {i};"></div>
+          {/each}
+        {:else}
+          {#each subjectTopics as topic, i (topic.id)}
+            <button
+              type="button"
+              class="topic-card"
+              class:selected={pendingChipId === topic.id}
+              aria-busy={pendingChipId === topic.id}
+              aria-disabled={Boolean(pendingChipId) && pendingChipId !== topic.id}
+              style="--i: {i};"
+              onclick={() => startFromSuggestion(topic.id, topic.name)}
+            >
+              <div class="topic-card-icon icon-block icon-block--{selectedSubjectColor}" aria-hidden="true">
+                {selectedSubjectEmoji}
+              </div>
+              <div class="topic-card-body">
+                <span class="topic-card-name">{topic.name}</span>
+              </div>
+              {#if pendingChipId === topic.id}
+                <span class="path-tile-indicator" aria-hidden="true">
+                  <span class="busy-dot"></span><span class="busy-dot"></span><span class="busy-dot"></span>
+                </span>
+              {:else}
+                <span class="topic-card-arrow" aria-hidden="true">→</span>
+              {/if}
+            </button>
+          {/each}
+        {/if}
+      </div>
+      {#if hintRefreshError}
+        <span class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{hintRefreshError}</span>
+      {/if}
+    </section>
+  {/if}
+
   <!-- ── YOUR PATH ── -->
   <section class="section-block" bind:this={pathSectionEl}>
     <div class="section-header section-header--simple">
       <h3 class="section-title">Your Path</h3>
       <p class="section-desc">
-        {viewState.topicDiscovery.shortlist ? 'Pick a topic to begin your lesson' : `Recommended for ${selectedSubject?.name ?? 'your subjects'}`}
+        {viewState.topicDiscovery.shortlist ? 'Pick a topic to begin your lesson' : 'Or describe exactly what you want to learn'}
       </p>
     </div>
-
-    {#key selectedSubject?.id}
-      <div class="path-grid" aria-live="polite">
-        {#if hintChipsLoading}
-          {#each Array.from({ length: 6 }) as _, i}
-            <div class="path-tile path-tile--skeleton" style="--i: {i};"></div>
-          {/each}
-        {:else if displayedHintChips.length > 0}
-          {#each displayedHintChips as group, gi}
-            {#if displayedHintChips.length > 1 && group.groupLabel}
-              <p class="chip-group-label">{group.groupLabel}</p>
-            {/if}
-            {#each group.chips as chip, i (chip.id)}
-              {@const isFirst = gi === 0 && i === 0}
-              <button
-                type="button"
-                class="path-tile"
-                class:selected={pendingChipId === chip.id}
-                class:path-tile--recommended={isFirst}
-                aria-busy={pendingChipId === chip.id}
-                aria-disabled={Boolean(pendingChipId) && pendingChipId !== chip.id}
-                style="--i: {gi * 10 + i};"
-                onclick={() => startFromSuggestion(chip.id, chip.label)}
-              >
-                <div class="path-tile-icon icon-block icon-block--{selectedSubjectColor}" aria-hidden="true">
-                  {selectedSubjectEmoji}
-                </div>
-                <span class="path-tile-name">{chip.label}</span>
-                {#if pendingChipId === chip.id}
-                  <span class="path-tile-indicator" aria-hidden="true">
-                    <span class="busy-dot"></span><span class="busy-dot"></span><span class="busy-dot"></span>
-                  </span>
-                {:else}
-                  <span class="path-tile-arrow" aria-hidden="true">→</span>
-                {/if}
-              </button>
-            {/each}
-          {/each}
-        {/if}
-      </div>
-    {/key}
-
-    {#if hasMoreTiles}
-      <button type="button" class="btn btn-ghost see-all-btn" onclick={() => (showAllTiles = true)}>
-        See {totalChips - 6} more topics ↓
-      </button>
-    {/if}
-
-    {#if !hintChipsLoading && groupedHintChips.length > 0}
-      <div class="refresh-row">
-        <button type="button" class="btn btn-secondary shuffle-btn" disabled={hintChipsRefreshing} onclick={refreshSubjectHints}>
-          {hintChipsRefreshing ? '↻ Shuffling...' : '⇄ Shuffle topics'}
-        </button>
-        {#if hintRefreshError}<span class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{hintRefreshError}</span>{/if}
-      </div>
-    {/if}
 
     <div class="search-launcher" class:focused={topicInputFocused}>
       <textarea
@@ -792,6 +794,140 @@
   /* ── Your Subjects strip ── */
   .subjects-section {
     animation-delay: 0.04s;
+  }
+
+  /* ── Subject Topics ── */
+  .topics-section {
+    animation-delay: 0.06s;
+  }
+
+  .topics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+  }
+
+  @media (min-width: 600px) {
+    .topics-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (min-width: 900px) {
+    .topics-grid {
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+  }
+
+  .topic-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.8rem 0.9rem;
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    color: var(--text);
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    animation: chip-enter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: calc(var(--i, 0) * 0.04s);
+    transition:
+      transform 200ms var(--ease-spring),
+      box-shadow 200ms var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
+  }
+
+  .topic-card.selected {
+    background: var(--accent-dim);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--accent);
+    box-shadow: none;
+  }
+
+  .topic-card[aria-disabled='true'] {
+    pointer-events: none;
+    opacity: 0.45;
+  }
+
+  .topic-card:hover:not(:disabled):not([aria-disabled='true']) {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--accent);
+  }
+
+  .topic-card:active:not(:disabled) {
+    transform: translateY(-1px) scale(0.99);
+    transition-duration: 80ms;
+  }
+
+.topic-card-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+
+  .topic-card--skeleton {
+    min-height: 4.5rem;
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    animation: skeleton-pulse 1.2s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * 0.07s);
+  }
+
+  .topics-shuffle-btn {
+    font-size: 1rem;
+    padding: 0.2rem 0.5rem;
+    color: var(--text-soft);
+    margin-left: auto;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+  }
+
+  .topic-card-body {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .topic-card-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--text);
+  }
+
+  .topic-card-meta {
+    font-size: 0.75rem;
+    color: var(--text-soft);
+  }
+
+  .topic-card-arrow {
+    font-size: 0.9rem;
+    color: var(--accent);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity var(--motion-fast) var(--ease-soft), transform var(--motion-fast) var(--ease-soft);
+  }
+
+  .topic-card:hover:not(:disabled) .topic-card-arrow {
+    opacity: 1;
+    transform: translateX(0);
   }
 
   .subject-count {

@@ -30,3 +30,6 @@ backend = "postgres"
 
 [functions.github-models-tutor]
 verify_jwt = false
+
+[functions.subject-topics]
+verify_jwt = false

@@ -4,7 +4,7 @@ import type { SchoolTerm, Subject } from '$lib/types';
 export const SUBJECT_HINT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SUBJECT_HINT_CACHE_PREFIX = 'doceo-subject-hints:v2';
 const MIN_HINTS = 5;
-const MAX_HINTS = 8;
+const MAX_HINTS = 10;
 const STOP_WORDS = new Set([
   'about',
   'after',
@@ -74,6 +74,9 @@ interface CachedSubjectHintPack {
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?: (key: string) => void;
+  readonly length?: number;
+  key?: (index: number) => string | null;
 }
 
 type StorageAdapter = StorageLike | Map<string, string> | undefined;
@@ -95,6 +98,7 @@ interface ResolveSubjectHintsInput {
   forceRefresh?: boolean;
   fetcher?: typeof fetch;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
   storage?: StorageAdapter;
   now?: number;
   ttlMs?: number;
@@ -280,6 +284,26 @@ function readSubjectHintCache(
   }
 }
 
+export function clearStaleSubjectHintCaches(subjectId: string, activeKey: string, storage: StorageAdapter): void {
+  if (!storage || storage instanceof Map) return;
+  const realStorage = storage as { getItem: (k: string) => string | null; removeItem?: (k: string) => void; length?: number; key?: (i: number) => string | null };
+  if (typeof realStorage.length !== 'number' || typeof realStorage.key !== 'function' || typeof realStorage.removeItem !== 'function') return;
+
+  const suffix = `:${subjectId}`;
+  const keysToDelete: string[] = [];
+
+  for (let i = 0; i < realStorage.length; i++) {
+    const k = realStorage.key(i);
+    if (k && k.startsWith(SUBJECT_HINT_CACHE_PREFIX) && k.endsWith(suffix) && k !== activeKey) {
+      keysToDelete.push(k);
+    }
+  }
+
+  for (const k of keysToDelete) {
+    realStorage.removeItem(k);
+  }
+}
+
 function writeSubjectHintCache(
   subject: Subject,
   curriculumId: string,
@@ -290,15 +314,17 @@ function writeSubjectHintCache(
   now: number,
   ttlMs: number
 ): void {
+  const activeKey = getSubjectHintCacheKey(curriculumId, gradeId, term, subject.id);
   setStorageValue(
     storage,
-    getSubjectHintCacheKey(curriculumId, gradeId, term, subject.id),
+    activeKey,
     JSON.stringify({
       hints,
       createdAt: now,
       expiresAt: now + ttlMs
     } satisfies CachedSubjectHintPack)
   );
+  clearStaleSubjectHintCaches(subject.id, activeKey, storage);
 }
 
 export function createSubjectHintsSystemPrompt(): string {
@@ -306,7 +332,7 @@ export function createSubjectHintsSystemPrompt(): string {
     'You create short learning prompt hints for school students.',
     'Use the supplied curriculum, subject, grade, term, topic, and subtopic names.',
     'Return JSON only with exactly this key: hints.',
-    'Return 5 to 8 concrete curriculum topic names.',
+    'Return 7 to 10 concrete curriculum topic names.',
     'Each hint must be a short topic-like phrase with 1 to 6 words, not a full sentence.',
     'Do not start hints with verbs like define, explain, apply, connect, or analyze.',
     'Do not return generic study phrases like applying knowledge, real-world examples, or key concepts.',
@@ -389,6 +415,7 @@ export async function resolveSubjectHints(input: ResolveSubjectHintsInput): Prom
       'Content-Type': 'application/json',
       ...(input.headers ?? {})
     },
+    signal: input.signal,
     body: JSON.stringify({
       request: {
         curriculumId: input.curriculumId,

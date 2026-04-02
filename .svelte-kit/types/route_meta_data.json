@@ -90,6 +90,9 @@
 	"/api/curriculum/program": [
 		"src/routes/api/curriculum/program/+server.ts"
 	],
+	"/api/curriculum/subject-topics": [
+		"src/routes/api/curriculum/subject-topics/+server.ts"
+	],
 	"/api/lesson-artifacts/rate": [
 		"src/routes/api/lesson-artifacts/rate/+server.ts"
 	],
