@@ -1,62 +1,46 @@
 import { getRecommendedSubject, getSelectionMode, onboardingCountries, getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade } from "./onboarding.js";
-import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
+import { c as createServerGraphCatalogRepository, a as allowLocalCatalogFallback, t as throwBackendUnavailable } from "./graph-catalog-repository.js";
+import { a as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
 import { deduplicateSubjects } from "./strings.js";
-function mapCurriculum(row) {
-  return {
-    id: row.id,
-    countryId: row.country_id,
-    name: row.name,
-    description: row.description
-  };
-}
-function mapGrade(row) {
-  return {
-    id: row.id,
-    curriculumId: row.curriculum_id,
-    label: row.label,
-    order: row.grade_order
-  };
-}
-function mapSubject(row) {
-  return {
-    id: row.id,
-    curriculumId: row.curriculum_id,
-    gradeId: row.grade_id,
-    name: row.name,
-    category: row.category
-  };
-}
 async function fetchCountries() {
-  const supabase = createServerSupabaseAdmin();
-  if (!supabase || !isSupabaseConfigured()) {
+  const graphCatalog = createServerGraphCatalogRepository();
+  if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable("Curriculum catalog backend is unavailable.");
+    }
     return onboardingCountries;
   }
-  const { data } = await supabase.from("countries").select("id, name").returns();
-  return data ?? onboardingCountries;
+  return graphCatalog.fetchCountries();
 }
 async function fetchCurriculums(countryId) {
-  const supabase = createServerSupabaseAdmin();
-  if (!supabase || !isSupabaseConfigured()) {
+  const graphCatalog = createServerGraphCatalogRepository();
+  if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable("Curriculum catalog backend is unavailable.");
+    }
     return getCurriculumsByCountry(countryId);
   }
-  const { data } = await supabase.from("curriculums").select("id, country_id, name, description").eq("country_id", countryId).returns();
-  return data?.map(mapCurriculum) ?? getCurriculumsByCountry(countryId);
+  return graphCatalog.fetchCurriculums(countryId);
 }
 async function fetchGrades(curriculumId) {
-  const supabase = createServerSupabaseAdmin();
-  if (!supabase || !isSupabaseConfigured()) {
+  const graphCatalog = createServerGraphCatalogRepository();
+  if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable("Curriculum catalog backend is unavailable.");
+    }
     return getGradesByCurriculum(curriculumId);
   }
-  const { data } = await supabase.from("curriculum_grades").select("id, curriculum_id, label, grade_order").eq("curriculum_id", curriculumId).order("grade_order").returns();
-  return data?.map(mapGrade) ?? getGradesByCurriculum(curriculumId);
+  return graphCatalog.fetchGrades(curriculumId);
 }
 async function fetchSubjects(curriculumId, gradeId) {
-  const supabase = createServerSupabaseAdmin();
-  if (!supabase || !isSupabaseConfigured()) {
+  const graphCatalog = createServerGraphCatalogRepository();
+  if (!graphCatalog) {
+    if (!allowLocalCatalogFallback()) {
+      throwBackendUnavailable("Curriculum catalog backend is unavailable.");
+    }
     return getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
   }
-  const { data } = await supabase.from("curriculum_subjects").select("id, curriculum_id, grade_id, name, category").eq("curriculum_id", curriculumId).eq("grade_id", gradeId).order("name").returns();
-  return data?.map(mapSubject) ?? getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
+  return graphCatalog.fetchSubjects(curriculumId, gradeId);
 }
 async function writeOnboardingProgress(input, selectionMode, recommendation, isCompleted) {
   const supabase = createServerSupabaseAdmin();
@@ -201,11 +185,11 @@ async function resetOnboarding(profileId) {
   }).eq("id", profileId);
 }
 export {
-  fetchCountries as a,
-  fetchCurriculums as b,
+  fetchCurriculums as a,
+  fetchGrades as b,
   completeOnboarding as c,
-  fetchGrades as d,
-  fetchSubjects as f,
+  fetchSubjects as d,
+  fetchCountries as f,
   loadOnboardingProgress as l,
   resetOnboarding as r,
   saveOnboardingProgress as s

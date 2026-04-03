@@ -147,6 +147,68 @@ describe('curriculum topic discovery route', () => {
     expect(payload.refreshed).toBe(true);
   });
 
+  it('forwards excluded topic signatures to the edge for force-refresh requests', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          topics: [
+            {
+              topicSignature: 'caps-grade-6-mathematics::caps::grade-6::ratios',
+              topicLabel: 'Ratios',
+              nodeId: null,
+              source: 'model_candidate',
+              rank: 1,
+              reason: 'Fresh candidate',
+              sampleSize: 0,
+              thumbsUpCount: 0,
+              thumbsDownCount: 0,
+              completionRate: null,
+              freshness: 'new'
+            }
+          ],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          refreshed: true
+        })
+      )
+    );
+
+    const { POST } = await import('../../routes/api/curriculum/topic-discovery/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/curriculum/topic-discovery', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subjectId: 'caps-grade-6-mathematics',
+          curriculumId: 'caps',
+          gradeId: 'grade-6',
+          forceRefresh: true,
+          excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions']
+        })
+      }),
+      fetch: fetcher
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledWith(
+      'http://127.0.0.1:54321/functions/v1/dashboard-topic-discovery',
+      expect.objectContaining({
+        body: JSON.stringify({
+          subjectId: 'caps-grade-6-mathematics',
+          curriculumId: 'caps',
+          gradeId: 'grade-6',
+          forceRefresh: true,
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions']
+        })
+      })
+    );
+  });
+
   it('does not abort a successful edge response before the payload body is read', async () => {
     const fetcher = vi.fn(async (_input: string, init?: RequestInit) => {
       const signal = init?.signal as AbortSignal | undefined;

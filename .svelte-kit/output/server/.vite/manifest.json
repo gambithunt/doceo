@@ -10,6 +10,20 @@
       "_internal.js"
     ]
   },
+  "_AdminAlertBanner.BGEJfl-E.css": {
+    "file": "_app/immutable/assets/AdminAlertBanner.BGEJfl-E.css",
+    "src": "_AdminAlertBanner.BGEJfl-E.css"
+  },
+  "_AdminAlertBanner.js": {
+    "file": "chunks/AdminAlertBanner.js",
+    "name": "AdminAlertBanner",
+    "imports": [
+      "_svelte-vendor.js"
+    ],
+    "css": [
+      "_app/immutable/assets/AdminAlertBanner.BGEJfl-E.css"
+    ]
+  },
   "_AdminKpiCard.88uGtUEF.css": {
     "file": "_app/immutable/assets/AdminKpiCard.88uGtUEF.css",
     "src": "_AdminKpiCard.88uGtUEF.css"
@@ -49,6 +63,17 @@
       "_app/immutable/assets/LoadingDots.Bh817Gg8.css"
     ]
   },
+  "_admin-graph.js": {
+    "file": "chunks/admin-graph.js",
+    "name": "admin-graph"
+  },
+  "_admin-guard.js": {
+    "file": "chunks/admin-guard.js",
+    "name": "admin-guard",
+    "imports": [
+      "_supabase.js"
+    ]
+  },
   "_admin-queries.js": {
     "file": "chunks/admin-queries.js",
     "name": "admin-queries",
@@ -79,7 +104,8 @@
       "_supabase2.js",
       "src/lib/utils/strings.ts",
       "src/lib/data/onboarding.ts",
-      "_platform.js"
+      "_platform.js",
+      "_engine.js"
     ]
   },
   "_client.js": {
@@ -93,9 +119,20 @@
       "_state.svelte.js"
     ]
   },
-  "_dashboard-hints.js": {
-    "file": "chunks/dashboard-hints.js",
-    "name": "dashboard-hints"
+  "_dynamic-operations.js": {
+    "file": "chunks/dynamic-operations.js",
+    "name": "dynamic-operations",
+    "imports": [
+      "_supabase.js",
+      "_graph-repository.js",
+      "_legacy-migration-service.js",
+      "_lesson-artifact-repository.js",
+      "_revision-artifact-repository.js"
+    ]
+  },
+  "_engine.js": {
+    "file": "chunks/engine.js",
+    "name": "engine"
   },
   "_environment.js": {
     "file": "chunks/environment.js",
@@ -105,6 +142,21 @@
     "file": "chunks/exports.js",
     "name": "exports"
   },
+  "_graph-catalog-repository.js": {
+    "file": "chunks/graph-catalog-repository.js",
+    "name": "graph-catalog-repository",
+    "imports": [
+      "_graph-repository.js"
+    ]
+  },
+  "_graph-repository.js": {
+    "file": "chunks/graph-repository.js",
+    "name": "graph-repository",
+    "imports": [
+      "src/lib/data/onboarding.ts",
+      "_supabase.js"
+    ]
+  },
   "_internal.js": {
     "file": "chunks/internal.js",
     "name": "internal",
@@ -113,15 +165,35 @@
       "_environment.js"
     ]
   },
-  "_learning-content.js": {
-    "file": "chunks/learning-content.js",
-    "name": "learning-content"
+  "_learning-program-repository.js": {
+    "file": "chunks/learning-program-repository.js",
+    "name": "learning-program-repository",
+    "imports": [
+      "_graph-catalog-repository.js"
+    ]
+  },
+  "_legacy-migration-service.js": {
+    "file": "chunks/legacy-migration-service.js",
+    "name": "legacy-migration-service",
+    "imports": [
+      "_supabase.js",
+      "_graph-repository.js",
+      "_lesson-artifact-repository.js"
+    ]
+  },
+  "_lesson-artifact-repository.js": {
+    "file": "chunks/lesson-artifact-repository.js",
+    "name": "lesson-artifact-repository",
+    "imports": [
+      "_supabase.js"
+    ]
   },
   "_onboarding-repository.js": {
     "file": "chunks/onboarding-repository.js",
     "name": "onboarding-repository",
     "imports": [
       "src/lib/data/onboarding.ts",
+      "_graph-catalog-repository.js",
       "_supabase.js",
       "src/lib/utils/strings.ts"
     ]
@@ -130,13 +202,19 @@
     "file": "chunks/platform.js",
     "name": "platform",
     "imports": [
-      "src/lib/data/onboarding.ts",
-      "_learning-content.js"
+      "src/lib/data/onboarding.ts"
     ]
   },
   "_progress.js": {
     "file": "chunks/progress.js",
     "name": "progress"
+  },
+  "_revision-artifact-repository.js": {
+    "file": "chunks/revision-artifact-repository.js",
+    "name": "revision-artifact-repository",
+    "imports": [
+      "_supabase.js"
+    ]
   },
   "_root.js": {
     "file": "chunks/root.js",
@@ -180,6 +258,26 @@
   "_svelte-vendor.js": {
     "file": "chunks/svelte-vendor.js",
     "name": "svelte-vendor"
+  },
+  "_topic-discovery-event-routes.js": {
+    "file": "chunks/topic-discovery-event-routes.js",
+    "name": "topic-discovery-event-routes",
+    "imports": [
+      "_supabase.js",
+      "_topic-discovery-repository.js"
+    ]
+  },
+  "_topic-discovery-ranking.js": {
+    "file": "chunks/topic-discovery-ranking.js",
+    "name": "topic-discovery-ranking"
+  },
+  "_topic-discovery-repository.js": {
+    "file": "chunks/topic-discovery-repository.js",
+    "name": "topic-discovery-repository",
+    "imports": [
+      "_supabase.js",
+      "_topic-discovery-ranking.js"
+    ]
   },
   "_utils.js": {
     "file": "chunks/utils.js",
@@ -258,12 +356,11 @@
     "imports": [
       "_svelte-vendor.js",
       "_supabase2.js",
-      "_dashboard-hints.js",
       "_platform.js",
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.DWfnKa79.css"
+      "_app/immutable/assets/_page.CdqujjaJ.css"
     ]
   },
   "src/routes/(app)/lesson/+page.svelte": {
@@ -295,7 +392,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.DYfOo8Lw.css"
+      "_app/immutable/assets/_page.9ft8y-8k.css"
     ]
   },
   "src/routes/(app)/progress/+page.svelte": {
@@ -321,13 +418,12 @@
     "imports": [
       "_svelte-vendor.js",
       "_supabase2.js",
-      "_dashboard-hints.js",
       "_LoadingDots.svelte_svelte_type_style_lang.js",
       "_progress.js",
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.6CVG7U0D.css"
+      "_app/immutable/assets/_page.Kl2laAfb.css"
     ]
   },
   "src/routes/(app)/settings/+page.svelte": {
@@ -377,7 +473,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.tPwXpEyD.css"
+      "_app/immutable/assets/_layout.Cs9V_cQU.css"
     ]
   },
   "src/routes/+page.svelte": {
@@ -422,7 +518,7 @@
       "_supabase2.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.B6hveVSg.css"
+      "_app/immutable/assets/_layout.DJcwEaHb.css"
     ]
   },
   "src/routes/admin/+page.server.ts": {
@@ -442,10 +538,11 @@
     "imports": [
       "_svelte-vendor.js",
       "_AdminKpiCard.js",
+      "_AdminAlertBanner.js",
       "_AdminPageHeader.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.D-LfB_PC.css"
+      "_app/immutable/assets/_page.C6-62xTL.css"
     ]
   },
   "src/routes/admin/ai/+page.server.ts": {
@@ -455,7 +552,9 @@
     "isEntry": true,
     "imports": [
       "_admin-queries.js",
-      "_supabase.js"
+      "_admin-guard.js",
+      "_ai-config.js",
+      "_dynamic-operations.js"
     ]
   },
   "src/routes/admin/ai/+page.svelte": {
@@ -465,11 +564,15 @@
     "isEntry": true,
     "imports": [
       "_svelte-vendor.js",
+      "_exports.js",
+      "_utils.js",
+      "_root.js",
+      "_state.svelte.js",
       "_AdminKpiCard.js",
       "_AdminPageHeader.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.BBT73vUP.css"
+      "_app/immutable/assets/_page.DKIFLLdz.css"
     ]
   },
   "src/routes/admin/content/+page.server.ts": {
@@ -492,7 +595,82 @@
       "_AdminPageHeader.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.DkbNf9vP.css"
+      "_app/immutable/assets/_page.uBFzLV8V.css"
+    ]
+  },
+  "src/routes/admin/graph/+page.server.ts": {
+    "file": "entries/pages/admin/graph/_page.server.ts.js",
+    "name": "entries/pages/admin/graph/_page.server.ts",
+    "src": "src/routes/admin/graph/+page.server.ts",
+    "isEntry": true,
+    "imports": [
+      "_admin-guard.js",
+      "_admin-graph.js",
+      "_graph-repository.js",
+      "_lesson-artifact-repository.js",
+      "_revision-artifact-repository.js"
+    ]
+  },
+  "src/routes/admin/graph/+page.svelte": {
+    "file": "entries/pages/admin/graph/_page.svelte.js",
+    "name": "entries/pages/admin/graph/_page.svelte",
+    "src": "src/routes/admin/graph/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_svelte-vendor.js",
+      "_AdminPageHeader.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.C0CooTL2.css"
+    ]
+  },
+  "src/routes/admin/graph/[nodeId]/+page.server.ts": {
+    "file": "entries/pages/admin/graph/_nodeId_/_page.server.ts.js",
+    "name": "entries/pages/admin/graph/_nodeId_/_page.server.ts",
+    "src": "src/routes/admin/graph/[nodeId]/+page.server.ts",
+    "isEntry": true,
+    "imports": [
+      "_admin-guard.js",
+      "_admin-graph.js",
+      "_graph-repository.js",
+      "_lesson-artifact-repository.js",
+      "_revision-artifact-repository.js"
+    ]
+  },
+  "src/routes/admin/graph/[nodeId]/+page.svelte": {
+    "file": "entries/pages/admin/graph/_nodeId_/_page.svelte.js",
+    "name": "entries/pages/admin/graph/_nodeId_/_page.svelte",
+    "src": "src/routes/admin/graph/[nodeId]/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_svelte-vendor.js",
+      "_AdminPageHeader.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.fsBluqMs.css"
+    ]
+  },
+  "src/routes/admin/graph/legacy/+page.server.ts": {
+    "file": "entries/pages/admin/graph/legacy/_page.server.ts.js",
+    "name": "entries/pages/admin/graph/legacy/_page.server.ts",
+    "src": "src/routes/admin/graph/legacy/+page.server.ts",
+    "isEntry": true,
+    "imports": [
+      "_admin-guard.js",
+      "_legacy-migration-service.js"
+    ]
+  },
+  "src/routes/admin/graph/legacy/+page.svelte": {
+    "file": "entries/pages/admin/graph/legacy/_page.svelte.js",
+    "name": "entries/pages/admin/graph/legacy/_page.svelte",
+    "src": "src/routes/admin/graph/legacy/+page.svelte",
+    "isEntry": true,
+    "imports": [
+      "_svelte-vendor.js",
+      "_AdminPageHeader.js"
+    ],
+    "css": [
+      "_app/immutable/assets/_page.JBkegp0o.css"
     ]
   },
   "src/routes/admin/learning/+page.server.ts": {
@@ -597,7 +775,9 @@
     "src": "src/routes/admin/settings/+page.server.ts",
     "isEntry": true,
     "imports": [
-      "_ai-config.js"
+      "_ai-config.js",
+      "_admin-guard.js",
+      "_dynamic-operations.js"
     ]
   },
   "src/routes/admin/settings/+page.svelte": {
@@ -623,7 +803,8 @@
     "src": "src/routes/admin/system/+page.server.ts",
     "isEntry": true,
     "imports": [
-      "_supabase.js"
+      "_supabase.js",
+      "_dynamic-operations.js"
     ]
   },
   "src/routes/admin/system/+page.svelte": {
@@ -633,10 +814,12 @@
     "isEntry": true,
     "imports": [
       "_svelte-vendor.js",
+      "_AdminAlertBanner.js",
+      "_AdminKpiCard.js",
       "_AdminPageHeader.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.DKIxs_It.css"
+      "_app/immutable/assets/_page.InwbGX8a.css"
     ]
   },
   "src/routes/admin/users/+page.server.ts": {
@@ -692,15 +875,37 @@
       "_app/immutable/assets/AdminPageHeader.CsWYLxGp.css"
     ]
   },
+  "src/routes/api/admin/audit-export/+server.ts": {
+    "file": "entries/endpoints/api/admin/audit-export/_server.ts.js",
+    "name": "entries/endpoints/api/admin/audit-export/_server.ts",
+    "src": "src/routes/api/admin/audit-export/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_admin-guard.js",
+      "_dynamic-operations.js",
+      "_graph-repository.js"
+    ]
+  },
+  "src/routes/api/admin/lesson-artifacts/+server.ts": {
+    "file": "entries/endpoints/api/admin/lesson-artifacts/_server.ts.js",
+    "name": "entries/endpoints/api/admin/lesson-artifacts/_server.ts",
+    "src": "src/routes/api/admin/lesson-artifacts/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_admin-guard.js",
+      "_lesson-artifact-repository.js",
+      "_graph-repository.js"
+    ]
+  },
   "src/routes/api/ai/lesson-chat/+server.ts": {
     "file": "entries/endpoints/api/ai/lesson-chat/_server.ts.js",
     "name": "entries/endpoints/api/ai/lesson-chat/_server.ts",
     "src": "src/routes/api/ai/lesson-chat/+server.ts",
     "isEntry": true,
     "imports": [
-      "_platform.js",
       "_state-repository.js",
-      "_ai-edge.js"
+      "_ai-edge.js",
+      "_lesson-artifact-repository.js"
     ]
   },
   "src/routes/api/ai/lesson-plan/+server.ts": {
@@ -709,10 +914,13 @@
     "src": "src/routes/api/ai/lesson-plan/+server.ts",
     "isEntry": true,
     "imports": [
-      "_platform.js",
       "_state-repository.js",
       "_ai-edge.js",
-      "_ai-config.js"
+      "_ai-config.js",
+      "_graph-repository.js",
+      "_lesson-artifact-repository.js",
+      "_dynamic-operations.js",
+      "_topic-discovery-repository.js"
     ]
   },
   "src/routes/api/ai/lesson-selector/+server.ts": {
@@ -723,6 +931,21 @@
     "imports": [
       "_ai-edge.js",
       "_ai-config.js"
+    ]
+  },
+  "src/routes/api/ai/revision-pack/+server.ts": {
+    "file": "entries/endpoints/api/ai/revision-pack/_server.ts.js",
+    "name": "entries/endpoints/api/ai/revision-pack/_server.ts",
+    "src": "src/routes/api/ai/revision-pack/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_ai-edge.js",
+      "_ai-config.js",
+      "_graph-repository.js",
+      "_revision-artifact-repository.js",
+      "_engine.js",
+      "_dynamic-operations.js",
+      "_state-repository.js"
     ]
   },
   "src/routes/api/ai/subject-hints/+server.ts": {
@@ -761,9 +984,76 @@
     "src": "src/routes/api/curriculum/program/+server.ts",
     "isEntry": true,
     "imports": [
-      "_learning-content.js",
-      "_onboarding-repository.js",
-      "_supabase.js"
+      "_graph-catalog-repository.js",
+      "_learning-program-repository.js"
+    ]
+  },
+  "src/routes/api/curriculum/subject-topics/+server.ts": {
+    "file": "entries/endpoints/api/curriculum/subject-topics/_server.ts.js",
+    "name": "entries/endpoints/api/curriculum/subject-topics/_server.ts",
+    "src": "src/routes/api/curriculum/subject-topics/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_ai-edge.js"
+    ]
+  },
+  "src/routes/api/curriculum/topic-discovery/+server.ts": {
+    "file": "entries/endpoints/api/curriculum/topic-discovery/_server.ts.js",
+    "name": "entries/endpoints/api/curriculum/topic-discovery/_server.ts",
+    "src": "src/routes/api/curriculum/topic-discovery/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_ai-edge.js",
+      "_ai-config.js",
+      "_topic-discovery-ranking.js",
+      "_graph-repository.js"
+    ]
+  },
+  "src/routes/api/curriculum/topic-discovery/click/+server.ts": {
+    "file": "entries/endpoints/api/curriculum/topic-discovery/click/_server.ts.js",
+    "name": "entries/endpoints/api/curriculum/topic-discovery/click/_server.ts",
+    "src": "src/routes/api/curriculum/topic-discovery/click/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_topic-discovery-event-routes.js"
+    ]
+  },
+  "src/routes/api/curriculum/topic-discovery/complete/+server.ts": {
+    "file": "entries/endpoints/api/curriculum/topic-discovery/complete/_server.ts.js",
+    "name": "entries/endpoints/api/curriculum/topic-discovery/complete/_server.ts",
+    "src": "src/routes/api/curriculum/topic-discovery/complete/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_topic-discovery-event-routes.js"
+    ]
+  },
+  "src/routes/api/curriculum/topic-discovery/feedback/+server.ts": {
+    "file": "entries/endpoints/api/curriculum/topic-discovery/feedback/_server.ts.js",
+    "name": "entries/endpoints/api/curriculum/topic-discovery/feedback/_server.ts",
+    "src": "src/routes/api/curriculum/topic-discovery/feedback/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_topic-discovery-event-routes.js"
+    ]
+  },
+  "src/routes/api/curriculum/topic-discovery/refresh/+server.ts": {
+    "file": "entries/endpoints/api/curriculum/topic-discovery/refresh/_server.ts.js",
+    "name": "entries/endpoints/api/curriculum/topic-discovery/refresh/_server.ts",
+    "src": "src/routes/api/curriculum/topic-discovery/refresh/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_topic-discovery-event-routes.js"
+    ]
+  },
+  "src/routes/api/lesson-artifacts/rate/+server.ts": {
+    "file": "entries/endpoints/api/lesson-artifacts/rate/_server.ts.js",
+    "name": "entries/endpoints/api/lesson-artifacts/rate/_server.ts",
+    "src": "src/routes/api/lesson-artifacts/rate/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_supabase.js",
+      "_lesson-artifact-repository.js",
+      "_graph-repository.js"
     ]
   },
   "src/routes/api/onboarding/complete/+server.ts": {
@@ -785,6 +1075,7 @@
     "src": "src/routes/api/onboarding/options/+server.ts",
     "isEntry": true,
     "imports": [
+      "_graph-catalog-repository.js",
       "_onboarding-repository.js"
     ]
   },
@@ -806,12 +1097,23 @@
       "_onboarding-repository.js"
     ]
   },
+  "src/routes/api/revision/planner-resolve/+server.ts": {
+    "file": "entries/endpoints/api/revision/planner-resolve/_server.ts.js",
+    "name": "entries/endpoints/api/revision/planner-resolve/_server.ts",
+    "src": "src/routes/api/revision/planner-resolve/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_graph-repository.js"
+    ]
+  },
   "src/routes/api/state/bootstrap/+server.ts": {
     "file": "entries/endpoints/api/state/bootstrap/_server.ts.js",
     "name": "entries/endpoints/api/state/bootstrap/_server.ts",
     "src": "src/routes/api/state/bootstrap/+server.ts",
     "isEntry": true,
     "imports": [
+      "_graph-catalog-repository.js",
+      "_learning-program-repository.js",
       "_state-repository.js",
       "_onboarding-repository.js",
       "_supabase.js"
@@ -851,7 +1153,7 @@
       "src/lib/data/onboarding.ts"
     ],
     "css": [
-      "_app/immutable/assets/_page.DX7_tA4w.css"
+      "_app/immutable/assets/_page.D-1ieZ0B.css"
     ]
   }
 }

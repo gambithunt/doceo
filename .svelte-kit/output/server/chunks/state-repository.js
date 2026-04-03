@@ -1,5 +1,5 @@
-import { d as createInitialState, n as normalizeAppState } from "./platform.js";
-import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
+import { c as createInitialState, n as normalizeAppState } from "./platform.js";
+import { a as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
 const MODEL_PRICING = {
   "openai/gpt-4.1-nano": { inputPer1M: 0.1, outputPer1M: 0.4 },
   "openai/gpt-4o-mini": { inputPer1M: 0.15, outputPer1M: 0.6 },
@@ -136,6 +136,9 @@ async function saveAppState(state) {
         id: session.id,
         profile_id: normalizedState.profile.id,
         lesson_id: session.lessonId,
+        node_id: session.nodeId ?? null,
+        lesson_artifact_id: session.lessonArtifactId ?? null,
+        question_artifact_id: session.questionArtifactId ?? null,
         status: session.status,
         current_stage: session.currentStage,
         confidence_score: session.confidenceScore,

@@ -19,7 +19,8 @@ const TopicDiscoveryBodySchema = z.object({
   subjectId: z.string().min(1),
   curriculumId: z.string().min(1),
   gradeId: z.string().min(1),
-  forceRefresh: z.boolean().optional()
+  forceRefresh: z.boolean().optional(),
+  excludeTopicSignatures: z.array(z.string().min(1)).max(MAX_TOPIC_DISCOVERY_RESULTS).optional()
 });
 
 const TopicDiscoveryTopicSchema = z.object({
@@ -266,7 +267,10 @@ export async function POST({ request, fetch }) {
           gradeId: parsed.data.gradeId,
           forceRefresh: refreshed,
           provider: resolvedProvider,
-          model: resolvedModel
+          model: resolvedModel,
+          ...(parsed.data.excludeTopicSignatures?.length
+            ? { excludeTopicSignatures: parsed.data.excludeTopicSignatures }
+            : {})
         })
       },
       getTopicDiscoveryEdgeTimeoutMs()

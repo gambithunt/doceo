@@ -8,6 +8,7 @@ export interface DashboardTopicDiscoveryRequest {
   forceRefresh: boolean;
   provider?: string;
   model?: string;
+  excludeTopicSignatures: string[];
   limit: number;
 }
 
@@ -76,6 +77,14 @@ export function parseDashboardTopicDiscoveryRequest(
     return { success: false, error: 'model must be a string when provided.' };
   }
 
+  if (
+    body.excludeTopicSignatures !== undefined &&
+    (!Array.isArray(body.excludeTopicSignatures) ||
+      body.excludeTopicSignatures.some((item) => typeof item !== 'string' || item.trim().length === 0))
+  ) {
+    return { success: false, error: 'excludeTopicSignatures must be a string array when provided.' };
+  }
+
   const rawLimit = typeof body.limit === 'number' && Number.isFinite(body.limit) ? Math.floor(body.limit) : MAX_TOPIC_DISCOVERY_RESULTS;
 
   return {
@@ -87,6 +96,12 @@ export function parseDashboardTopicDiscoveryRequest(
       forceRefresh: Boolean(body.forceRefresh),
       provider: typeof body.provider === 'string' ? body.provider : undefined,
       model: typeof body.model === 'string' ? body.model : undefined,
+      excludeTopicSignatures: Array.isArray(body.excludeTopicSignatures)
+        ? body.excludeTopicSignatures
+            .map((item) => cleanLabel(String(item)))
+            .filter((item) => item.length > 0)
+            .slice(0, MAX_TOPIC_DISCOVERY_RESULTS)
+        : [],
       limit: Math.max(1, Math.min(MAX_TOPIC_DISCOVERY_RESULTS, rawLimit))
     }
   };

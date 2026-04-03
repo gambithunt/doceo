@@ -1,5 +1,4 @@
 import { getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade, getRecommendedSubject, getSelectionMode, defaultTerm, defaultSchoolYear, onboardingCountries, onboardingStepOrder } from "./onboarding.js";
-import { b as buildLearningProgram } from "./learning-content.js";
 function createDefaultRevisionCalibration$1() {
   return {
     attempts: 0,
@@ -36,160 +35,6 @@ const LESSON_STAGE_LABELS = {
   check: "Check Understanding",
   complete: "Complete"
 };
-function slugify(value) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-}
-function toTopicLabel(value) {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return "Core Ideas";
-  }
-  return trimmed.replace(/\s+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-function getGradeBand(grade) {
-  const match = grade.match(/\d+/);
-  const num = match ? parseInt(match[0], 10) : 8;
-  if (num <= 6) return "foundation";
-  if (num <= 9) return "intermediate";
-  return "senior";
-}
-function getSubjectLens(subjectName, grade) {
-  const lower = subjectName.toLowerCase();
-  const band = grade ? getGradeBand(grade) : "intermediate";
-  if (lower.includes("math")) {
-    if (band === "foundation") {
-      return {
-        conceptWord: "rule or number relationship",
-        actionWord: "work through it step by step using whole numbers",
-        evidenceWord: "worked steps using concrete numbers",
-        example: 'Use a short sequence of whole numbers, name the rule (e.g. "add 4 each time"), then apply it.',
-        misconception: "writing only the answer without showing the steps or naming the rule"
-      };
-    }
-    if (band === "intermediate") {
-      return {
-        conceptWord: "rule or algebraic relationship",
-        actionWord: "set up the equation or expression and solve step by step",
-        evidenceWord: "worked solution with each step labelled",
-        example: "Use a simple equation, identify what operation to undo, apply it to both sides, and check by substitution.",
-        misconception: "jumping to the answer without showing inverse operations or checking the solution"
-      };
-    }
-    return {
-      conceptWord: "theorem, function, or formal relationship",
-      actionWord: "state the definition, apply it formally, and verify with justification",
-      evidenceWord: "full worked solution with each step justified",
-      example: "State the theorem or formula first, substitute values clearly, simplify step by step, and confirm the answer satisfies the original equation or domain.",
-      misconception: "substituting values without understanding which theorem or function applies, or skipping the verification step"
-    };
-  }
-  if (lower.includes("language") || lower.includes("english") || lower.includes("afrikaans") || lower.includes("isizulu") || lower.includes("isixhosa") || lower.includes("sesotho")) {
-    if (band === "foundation") {
-      return {
-        conceptWord: "language feature",
-        actionWord: "find it in the sentence and explain in simple terms what it does",
-        evidenceWord: "a short sentence from everyday writing",
-        example: "Point to the exact word or phrase, name the feature, and say what it tells the reader.",
-        misconception: "naming the term without showing where it appears in the sentence or what it does"
-      };
-    }
-    if (band === "intermediate") {
-      return {
-        conceptWord: "language or literary device",
-        actionWord: "identify it in the text, name it, and explain the effect it creates",
-        evidenceWord: "a short passage or direct quote from a text",
-        example: "Quote the relevant words, name the device, and explain in one sentence how it affects the reader or meaning.",
-        misconception: "identifying the device without explaining why the author used it or what effect it creates"
-      };
-    }
-    return {
-      conceptWord: "rhetorical or literary technique",
-      actionWord: "analyse how it is used deliberately to achieve a purpose in context",
-      evidenceWord: "a specific passage and its effect on meaning, tone, or audience",
-      example: "Quote the technique, identify the author's purpose, and analyse how word choice or structure creates that effect for the specific audience.",
-      misconception: "describing what the technique is without analysing why it achieves that particular effect in this specific context"
-    };
-  }
-  if (lower.includes("life science") || lower.includes("biology")) {
-    return {
-      conceptWord: "biological process or structure",
-      actionWord: "name the structure, describe the process, and connect it to a function in the organism",
-      evidenceWord: "a diagram reference, organism example, or experimental observation",
-      example: "Name the structure, describe what it does at a cellular or organ level, and connect it to how the whole organism benefits.",
-      misconception: "naming the structure without explaining what it does or why the organism needs it"
-    };
-  }
-  if (lower.includes("physical science") || lower.includes("physics") || lower.includes("chemistry")) {
-    return {
-      conceptWord: "law, formula, or physical principle",
-      actionWord: "state the law, identify the variables with units, and apply the formula step by step",
-      evidenceWord: "a worked calculation with SI units clearly shown at every step",
-      example: "Write the formula, substitute values with units, simplify, and state the final answer with its unit.",
-      misconception: "substituting numbers into a formula without understanding what each variable represents or omitting units"
-    };
-  }
-  if (lower.includes("history")) {
-    return {
-      conceptWord: "historical cause, event, or consequence",
-      actionWord: "identify the event, explain why it happened, and connect it to its consequence",
-      evidenceWord: "a primary source, dated event, or historian's argument",
-      example: "State the event with its date, explain the cause (political, economic, or social), and trace one direct consequence.",
-      misconception: "describing what happened without explaining why, or listing facts without connecting cause to effect"
-    };
-  }
-  if (lower.includes("geography")) {
-    return {
-      conceptWord: "spatial pattern or physical/human process",
-      actionWord: "name the process, describe where it occurs, and explain what causes it",
-      evidenceWord: "a map reference, data set, or field observation",
-      example: "Identify the location, describe the pattern using directional or spatial language, and link it to a physical or human process.",
-      misconception: "describing a location without explaining the process that created the pattern or why it occurs there"
-    };
-  }
-  if (lower.includes("account") || lower.includes("business") || lower.includes("economics") || lower.includes("ems") || lower.includes("economic and management")) {
-    return {
-      conceptWord: "financial concept or economic principle",
-      actionWord: "define the concept, apply it to a transaction or scenario, and show the calculation or effect",
-      evidenceWord: "a transaction record, financial statement, or worked example with figures",
-      example: "Name the concept, show a real transaction or calculation with actual figures, and explain what the result tells the decision-maker.",
-      misconception: "using the term correctly in a definition but failing to apply it to a real calculation or scenario"
-    };
-  }
-  if (lower.includes("technology") || lower.includes("computer") || lower.includes("information technology") || lower.includes("cat")) {
-    return {
-      conceptWord: "system component or algorithm step",
-      actionWord: "name the component, describe its function, and trace the data or information flow through the system",
-      evidenceWord: "an input-process-output diagram, data trace, or annotated code example",
-      example: "Draw or describe the system boundary, label each component, and follow one piece of data from input through processing to output.",
-      misconception: "describing hardware or software in isolation without showing how it connects to and depends on other parts of the system"
-    };
-  }
-  if (lower.includes("creative") || lower.includes("visual art") || lower.includes("music") || lower.includes("drama") || lower.includes("dance")) {
-    return {
-      conceptWord: "design element or compositional technique",
-      actionWord: "identify the element, describe how the artist used it, and explain the effect it creates",
-      evidenceWord: "a specific artwork, composition, or performance example with direct reference",
-      example: "Name the element (e.g. line, rhythm, contrast), show exactly where it appears in the work, and explain what mood or meaning it creates for the audience.",
-      misconception: "naming the design element without explaining how the artist used it intentionally to create a specific effect"
-    };
-  }
-  if (lower.includes("social") || lower.includes("life orientation") || lower.includes("lo")) {
-    return {
-      conceptWord: "social concept or personal development principle",
-      actionWord: "define the concept, connect it to a real-life example, and explain why it matters",
-      evidenceWord: "a current event, case study, or relatable personal scenario",
-      example: "Define the concept, give one real-world or personal scenario where it applies, and explain the consequence of ignoring it.",
-      misconception: "listing facts or definitions without connecting them to real causes, consequences, or personal relevance"
-    };
-  }
-  return {
-    conceptWord: "core idea",
-    actionWord: "identify the idea, explain it clearly, and apply it to one concrete example",
-    evidenceWord: "one concrete, worked example",
-    example: "Use a familiar example from the subject, apply the idea step by step, and explain why each step is correct.",
-    misconception: "repeating a keyword or definition without demonstrating understanding through an example or explanation"
-  };
-}
 function isoNow$1() {
   return (/* @__PURE__ */ new Date()).toISOString();
 }
@@ -399,6 +244,9 @@ function buildLessonSessionFromTopic(profile, subject, topic, subtopic, lesson, 
     studentId: profile.id,
     subjectId: subject.id,
     subject: subject.name,
+    nodeId: overrides?.nodeId ?? null,
+    lessonArtifactId: overrides?.lessonArtifactId ?? null,
+    questionArtifactId: overrides?.questionArtifactId ?? null,
     topicId: topic.id,
     topicTitle: topic.name,
     topicDescription: overrides?.topicDescription ?? subtopic.name,
@@ -417,301 +265,10 @@ function buildLessonSessionFromTopic(profile, subject, topic, subtopic, lesson, 
     lastActiveAt: isoNow$1(),
     completedAt: null,
     status: "active",
+    lessonRating: null,
+    topicDiscovery: overrides?.topicDiscovery,
     profileUpdates: []
   };
-}
-function buildDynamicLessonFromTopic(input) {
-  const topicTitle = toTopicLabel(input.topicTitle);
-  const lens = getSubjectLens(input.subjectName, input.grade);
-  const rootId = `generated-${input.subjectId}-${slugify(topicTitle)}`;
-  const topicId = `${rootId}-topic`;
-  const subtopicId = `${rootId}-subtopic`;
-  return {
-    id: `${rootId}-lesson`,
-    topicId,
-    subtopicId,
-    subjectId: input.subjectId,
-    grade: input.grade,
-    title: `${input.subjectName}: ${topicTitle}`,
-    orientation: {
-      title: "Orientation",
-      body: `In this lesson you're exploring **${topicTitle}** in ${input.subjectName} (${input.grade}). By the end you should be able to name the key ${lens.conceptWord}, explain how it works, and apply it to a real example. This topic matters because it unlocks a core pattern you'll use again and again.`
-    },
-    mentalModel: {
-      title: "Big Picture",
-      body: `Think of **${topicTitle}** as a lens that helps you see patterns in ${input.subjectName}. Before diving into rules, picture the overall shape of the idea: there is a ${lens.conceptWord} at the centre, a process that connects things, and a way to check if you've applied it correctly. Hold that picture in mind as we build the details.`
-    },
-    concepts: {
-      title: "Key Concepts",
-      body: `The main ${lens.conceptWord} in **${topicTitle}** is what holds the idea together. To understand ${topicTitle} in ${input.subjectName}, you need to ${lens.actionWord}. Focus on no more than three core ideas at once: (1) what ${topicTitle} is, (2) why the rule works, and (3) when to apply it. Avoid ${lens.misconception}.`
-    },
-    guidedConstruction: {
-      title: "Guided Construction",
-      body: `Here is how to think through **${topicTitle}** step by step:
-
-**Step 1.** Read the problem and identify the ${lens.conceptWord} you are working with.
-
-**Step 2.** Write down what you know and what you need to find.
-
-**Step 3.** Apply the rule: ${lens.actionWord}.
-
-**Step 4.** Check your reasoning — does your answer match the ${lens.evidenceWord}? Have you avoided ${lens.misconception}?
-
-Narrate each decision as you go. The goal is to make your thinking visible.`
-    },
-    workedExample: {
-      title: "Worked Example",
-      body: `**Example — ${topicTitle} in ${input.subjectName}:**
-
-${lens.example}
-
-Notice how each step stays connected to the rule for ${topicTitle}. The key move is to name the ${lens.conceptWord} first, then apply it. Avoid ${lens.misconception} — always justify each step before writing the answer.`
-    },
-    practicePrompt: {
-      title: "Active Practice",
-      body: `Now it's your turn. Try applying **${topicTitle}** to a similar problem. Attempt it first before checking. Write out each step and explain why you made each move. If you get stuck, name the exact step where you lost the thread — that is usually where the ${lens.conceptWord} needs revisiting.`
-    },
-    commonMistakes: {
-      title: "Common Mistakes",
-      body: `The most common error with **${topicTitle}** is ${lens.misconception}. When this happens, students often get the right process but wrong result — or skip a step that looks obvious but isn't. Fix: always name the ${lens.conceptWord} before applying it, and check each step against the ${lens.evidenceWord}.`
-    },
-    transferChallenge: {
-      title: "Transfer Challenge",
-      body: `Can you apply **${topicTitle}** in a slightly different context? Think about a situation in ${input.subjectName} where the same ${lens.conceptWord} shows up but looks different on the surface. Identify the pattern, adapt the rule, and explain why it still applies. This is how you move from knowing to understanding.`
-    },
-    summary: {
-      title: "Summary",
-      body: [
-        `**${topicTitle} — key takeaways:**`,
-        ``,
-        `**Core rule:** The central ${lens.conceptWord} is what defines this topic. Apply it by: ${lens.actionWord}.`,
-        ``,
-        `**Watch out for:** ${lens.misconception}. Always confirm your answer with ${lens.evidenceWord}.`,
-        ``,
-        `**Transfer:** If you can ${lens.actionWord.split(" and ")[0]} on a problem you haven't seen before, you're ready for exam questions on ${topicTitle}.`
-      ].join("\n")
-    },
-    keyConcepts: buildDynamicConceptItems(topicTitle, input.subjectName, lens),
-    practiceQuestionIds: [`${rootId}-q-1`],
-    masteryQuestionIds: [`${rootId}-q-2`]
-  };
-}
-function buildDynamicConceptItems(topicTitle, subjectName, lens) {
-  return [
-    {
-      name: `What ${topicTitle} Is`,
-      summary: `The core definition — what makes ${topicTitle} what it is.`,
-      detail: `Every instance of **${topicTitle}** in ${subjectName} has a **${lens.conceptWord}** at its centre. Before applying any rule, you need to be able to name what ${topicTitle} is and why it matters in this subject. Start here: identify the ${lens.conceptWord}, then describe it in your own words.`,
-      example: `A quick test: can you point to the ${lens.conceptWord} in a problem? If yes, you've found ${topicTitle}. If not, read the problem again looking specifically for it.`
-    },
-    {
-      name: `Why the Rule Works`,
-      summary: `The reasoning behind the rule — not just the what, but the why.`,
-      detail: `Knowing why **${topicTitle}** works prevents the most common mistake: ${lens.misconception}. The rule is grounded in how ${lens.conceptWord}s behave in ${subjectName}. When you understand the reason, you can adapt it to situations you haven't seen before.`,
-      example: lens.example
-    },
-    {
-      name: `When to Apply It`,
-      summary: `Spotting the right moment to use ${topicTitle}.`,
-      detail: `Not every problem calls for **${topicTitle}**, but when it does, ${lens.evidenceWord} gives you the signal. The key habit is to ${lens.actionWord} — do this before writing anything down. Rushing past this step is what leads to ${lens.misconception}.`,
-      example: `If you see a problem that asks you to ${lens.actionWord.split(" and ")[0]}, that is your cue. Name the ${lens.conceptWord} first, then proceed.`
-    }
-  ];
-}
-function buildDynamicQuestionsForLesson(lesson, subjectName, topicTitle) {
-  return [
-    {
-      id: lesson.practiceQuestionIds[0],
-      lessonId: lesson.id,
-      type: "short-answer",
-      prompt: `Explain how ${topicTitle} works in ${subjectName}. What is the key rule and why does it matter?`,
-      expectedAnswer: `explain how ${slugify(topicTitle)} works`,
-      acceptedAnswers: [],
-      rubric: `A strong answer names the key rule for ${topicTitle}, explains why it works, and does not just repeat the topic name. The learner should show understanding, not memorisation.`,
-      explanation: `Understanding ${topicTitle} means being able to say what the rule is, why it applies, and how to use it — not just naming the topic.`,
-      hintLevels: [
-        `Start by naming the main rule or pattern for ${topicTitle}.`,
-        `Then explain what that rule means in ${subjectName} and when you would use it.`
-      ],
-      misconceptionTags: [slugify(topicTitle), slugify(subjectName)],
-      difficulty: "foundation",
-      topicId: lesson.topicId,
-      subtopicId: lesson.subtopicId
-    },
-    {
-      id: lesson.masteryQuestionIds[0],
-      lessonId: lesson.id,
-      type: "step-by-step",
-      prompt: `Show how you would apply ${topicTitle} to solve a problem in ${subjectName}. Walk through your reasoning step by step.`,
-      expectedAnswer: `apply ${slugify(topicTitle)} step by step`,
-      acceptedAnswers: [],
-      rubric: `The answer should show at least two steps of reasoning connected to ${topicTitle}, not just a final answer. The learner must justify each step.`,
-      explanation: `Applying ${topicTitle} means showing the method, not just the result. Each step should be explained so the reasoning is visible.`,
-      hintLevels: [
-        `Write down what ${topicTitle} is asking you to do first.`,
-        `Then apply the rule one step at a time and explain each move.`
-      ],
-      misconceptionTags: [slugify(`${topicTitle}-application`)],
-      difficulty: "core",
-      topicId: lesson.topicId,
-      subtopicId: lesson.subtopicId
-    }
-  ];
-}
-function buildQuestionReply(session, lesson, message) {
-  const conceptMatch = message.match(/^\[CONCEPT:\s*(.+?)\]/);
-  if (conceptMatch) {
-    const conceptName = conceptMatch[1].trim();
-    const concept = lesson.keyConcepts?.find(
-      (c) => c.name.toLowerCase() === conceptName.toLowerCase()
-    );
-    const readMatch = message.match(/\[STUDENT_HAS_READ:\s*([\s\S]+?)\]/);
-    const detailContent = concept?.detail ?? readMatch?.[1]?.trim() ?? null;
-    if (detailContent) {
-      const reply2 = [
-        `Let me put **${conceptName}** another way.`,
-        "",
-        detailContent,
-        "",
-        "---",
-        "",
-        `Does that help? What part is still fuzzy?`
-      ].join("\n");
-      return {
-        displayContent: reply2,
-        provider: "local-fallback",
-        metadata: {
-          action: "stay",
-          next_stage: null,
-          reteach_style: null,
-          reteach_count: session.reteachCount,
-          confidence_assessment: session.confidenceScore,
-          profile_update: {}
-        }
-      };
-    }
-  }
-  const stageContent = getLessonSectionForStage(lesson, session.currentStage);
-  const topicName = lesson.title.replace(/^.*?:\s*/, "");
-  const reply = [
-    `Good question — let me clarify this within **${topicName}**.`,
-    "",
-    `The key anchor for ${topicName} is: ${lesson.concepts.body.split(".")[0]}.`,
-    "",
-    `If your question was about something more specific, try phrasing it in your own words and I will work through it with you.`,
-    "",
-    "---",
-    "",
-    `↩ **Back to the lesson** — we were working through: *${stageContent.split("\n")[0].replace(/\*\*/g, "")}*. Let's pick up from there.`
-  ].join("\n");
-  return {
-    displayContent: reply,
-    provider: "local-fallback",
-    metadata: {
-      action: "side_thread",
-      next_stage: null,
-      reteach_style: null,
-      reteach_count: session.reteachCount,
-      confidence_assessment: session.confidenceScore,
-      profile_update: {
-        step_by_step: 0.65
-      }
-    }
-  };
-}
-function buildResponseReply(session, lesson, message) {
-  const lower = message.toLowerCase();
-  const indicatesConfusion = lower.includes("don't get") || lower.includes("confused") || lower.includes("not sure") || lower.includes("stuck");
-  if (session.currentStage === "check" && !indicatesConfusion) {
-    return {
-      displayContent: [
-        `Nice. You've shown enough understanding to finish this lesson.`,
-        ``,
-        `**Summary:**`,
-        lesson.summary.body,
-        ``,
-        `---`,
-        ``,
-        `**One more challenge before you go:**`,
-        lesson.transferChallenge.body
-      ].join("\n"),
-      provider: "local-fallback",
-      metadata: {
-        action: "complete",
-        next_stage: null,
-        reteach_style: null,
-        reteach_count: 0,
-        confidence_assessment: 0.86,
-        profile_update: {
-          quiz_performance: 0.86,
-          excelled_at: [lesson.title]
-        }
-      }
-    };
-  }
-  if (indicatesConfusion) {
-    return {
-      displayContent: `No worries, let me try that a different way.
-
-**Step 1:** Keep the main rule in view.
-**Step 2:** Match it to this topic.
-**Step 3:** Test it on one small example before doing the whole task.
-
-Tell me if that version feels clearer.`,
-      provider: "local-fallback",
-      metadata: {
-        action: "reteach",
-        next_stage: null,
-        reteach_style: "step_by_step",
-        reteach_count: session.reteachCount + 1,
-        confidence_assessment: 0.38,
-        profile_update: {
-          step_by_step: 0.8,
-          needs_repetition: 0.72,
-          struggled_with: [lesson.title]
-        }
-      }
-    };
-  }
-  const nextStage = getNextStage(session.currentStage);
-  if (!nextStage) {
-    return {
-      displayContent: `Good. Let's stay with this point for one more pass before moving on.`,
-      provider: "local-fallback",
-      metadata: {
-        action: "stay",
-        next_stage: null,
-        reteach_style: null,
-        reteach_count: session.reteachCount,
-        confidence_assessment: 0.61,
-        profile_update: {
-          abstract_thinking: 0.62
-        }
-      }
-    };
-  }
-  const transitionLine = nextStage === "check" ? `Good. Let's see how much has landed.` : `Good. Let's build on that.`;
-  return {
-    displayContent: transitionLine,
-    provider: "local-fallback",
-    metadata: {
-      action: "advance",
-      next_stage: nextStage,
-      reteach_style: null,
-      reteach_count: 0,
-      confidence_assessment: 0.74,
-      profile_update: {
-        abstract_thinking: 0.66,
-        quiz_performance: nextStage === "check" ? 0.72 : void 0
-      }
-    }
-  };
-}
-function buildLocalLessonChatResponse(request, lesson) {
-  if (request.messageType === "question") {
-    return buildQuestionReply(request.lessonSession, lesson, request.message);
-  }
-  return buildResponseReply(request.lessonSession, lesson, request.message);
 }
 function applyLessonAssistantResponse(lessonSession, assistantMessage) {
   const metadata = assistantMessage.metadata;
@@ -756,6 +313,7 @@ function applyLessonAssistantResponse(lessonSession, assistantMessage) {
       ...next,
       currentStage: "complete",
       stagesCompleted: completed,
+      reteachCount: metadata.reteach_count,
       status: "complete",
       completedAt: next.lastActiveAt,
       profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
@@ -772,6 +330,7 @@ function buildRevisionTopicFromLesson(lessonSession) {
   nextRevision.setDate(nextRevision.getDate() + 3);
   return {
     lessonSessionId: lessonSession.id,
+    nodeId: lessonSession.nodeId ?? null,
     subjectId: lessonSession.subjectId,
     subject: lessonSession.subject,
     topicTitle: lessonSession.topicTitle,
@@ -792,6 +351,12 @@ function isoNow() {
 function normalizeAnswer(value) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
+function normalizeTopicTitle(value) {
+  return value.trim().toLowerCase();
+}
+function slugify(value) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "lesson";
+}
 function createDefaultRevisionCalibration() {
   return {
     attempts: 0,
@@ -802,9 +367,152 @@ function createDefaultRevisionCalibration() {
     underconfidenceCount: 0
   };
 }
-function normalizeRevisionTopic(topic) {
+function dedupeSubjectNames(values) {
+  return values.filter((value, index) => value.length > 0 && values.indexOf(value) === index);
+}
+function createLocalProgramStub(country, curriculumName, grade, subjectNames) {
+  const lessons = [];
+  const questions = [];
+  const curriculum = {
+    country,
+    name: curriculumName,
+    grade,
+    subjects: subjectNames.map((subjectName) => {
+      const baseId = slugify(subjectName);
+      const subjectId = `subject-stub-${baseId}`;
+      const topicId = `topic-stub-${baseId}`;
+      const subtopicId = `subtopic-stub-${baseId}`;
+      const lessonId = `lesson-stub-${subtopicId}`;
+      const questionId = `${lessonId}-question`;
+      const placeholderBody = `This lesson is generated when you open **Core ideas in ${subjectName}**. Use the lesson launch flow to load the current artifact-backed lesson.`;
+      lessons.push({
+        id: lessonId,
+        topicId,
+        subtopicId,
+        title: `${subjectName}: Core ideas in ${subjectName}`,
+        subjectId,
+        grade,
+        orientation: { title: "Launch Lesson", body: placeholderBody },
+        mentalModel: { title: "Launch Lesson", body: placeholderBody },
+        concepts: { title: "Launch Lesson", body: placeholderBody },
+        guidedConstruction: { title: "Launch Lesson", body: placeholderBody },
+        workedExample: { title: "Launch Lesson", body: placeholderBody },
+        practicePrompt: { title: "Launch Lesson", body: placeholderBody },
+        commonMistakes: { title: "Launch Lesson", body: placeholderBody },
+        transferChallenge: { title: "Launch Lesson", body: placeholderBody },
+        summary: { title: "Launch Lesson", body: placeholderBody },
+        practiceQuestionIds: [questionId],
+        masteryQuestionIds: [questionId]
+      });
+      questions.push({
+        id: questionId,
+        lessonId,
+        type: "short-answer",
+        prompt: `Open the generated lesson for Core ideas in ${subjectName} to start working through ${subjectName}.`,
+        expectedAnswer: "Launch lesson first",
+        rubric: "The learner should launch the lesson to receive a generated question set.",
+        explanation: "Questions are generated at launch time for this node.",
+        hintLevels: ["Open the lesson from the curriculum tree or dashboard."],
+        misconceptionTags: [baseId],
+        difficulty: "foundation",
+        topicId,
+        subtopicId
+      });
+      return {
+        id: subjectId,
+        name: subjectName,
+        topics: [
+          {
+            id: topicId,
+            name: `${subjectName} Foundations`,
+            subtopics: [
+              {
+                id: subtopicId,
+                name: `Core ideas in ${subjectName}`,
+                lessonIds: [lessonId]
+              }
+            ]
+          }
+        ]
+      };
+    })
+  };
+  return {
+    curriculum,
+    lessons,
+    questions
+  };
+}
+function findSubjectByRevisionTopicTitle(subjects, topicTitle) {
+  const normalizedTitle = normalizeTopicTitle(topicTitle);
+  const matches = subjects.filter(
+    (subject) => subject.topics.some((topic) => normalizeTopicTitle(topic.name) === normalizedTitle)
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+function findNodeIdByPlanTopicLabel(subjects, subjectId, topicLabel) {
+  const normalizedLabel = normalizeTopicTitle(topicLabel);
+  const preferredSubject = subjects.find((subject) => subject.id === subjectId) ?? null;
+  const preferredMatches = preferredSubject ? [
+    ...preferredSubject.topics.filter((topic) => normalizeTopicTitle(topic.name) === normalizedLabel).map((topic) => topic.id),
+    ...preferredSubject.topics.flatMap((topic) => topic.subtopics).filter((subtopic) => normalizeTopicTitle(subtopic.name) === normalizedLabel).map((subtopic) => subtopic.id)
+  ] : [];
+  if (preferredMatches.length === 1) {
+    return preferredMatches[0];
+  }
+  const allMatches = [
+    ...subjects.flatMap((subject) => subject.topics).filter((topic) => normalizeTopicTitle(topic.name) === normalizedLabel).map((topic) => topic.id),
+    ...subjects.flatMap((subject) => subject.topics).flatMap((topic) => topic.subtopics).filter((subtopic) => normalizeTopicTitle(subtopic.name) === normalizedLabel).map((subtopic) => subtopic.id)
+  ];
+  return allMatches.length === 1 ? allMatches[0] : null;
+}
+function repairRevisionPlanSubject(plan, subjects) {
+  const directMatch = subjects.find((subject) => subject.id === plan.subjectId) ?? subjects.find((subject) => subject.name === plan.subjectName) ?? null;
+  const inferredMatches = Array.from(
+    new Set(
+      plan.topics.map((topicTitle) => findSubjectByRevisionTopicTitle(subjects, topicTitle)?.id ?? null).filter((subjectId) => Boolean(subjectId))
+    )
+  );
+  if (inferredMatches.length === 1) {
+    return subjects.find((subject) => subject.id === inferredMatches[0]) ?? directMatch;
+  }
+  return directMatch;
+}
+function normalizeRevisionPlan(plan, fallbackSubjectName = "Revision", subjects = []) {
+  const resolvedSubject = repairRevisionPlanSubject(plan, subjects);
+  const planStyle = plan.planStyle ?? plan.studyMode ?? "weak_topics";
+  const timestamp = typeof plan.updatedAt === "string" ? plan.updatedAt : isoNow();
+  const resolvedSubjectId = resolvedSubject?.id ?? plan.subjectId;
+  const topicNodeIds = Array.isArray(plan.topicNodeIds) && plan.topicNodeIds.length > 0 ? plan.topicNodeIds : plan.topics.map((topicLabel) => findNodeIdByPlanTopicLabel(subjects, resolvedSubjectId, topicLabel));
+  return {
+    ...plan,
+    id: typeof plan.id === "string" && plan.id.length > 0 ? plan.id : `revision-plan-${crypto.randomUUID()}`,
+    subjectId: resolvedSubject?.id ?? plan.subjectId,
+    subjectName: resolvedSubject?.name ?? (typeof plan.subjectName === "string" && plan.subjectName.length > 0 ? plan.subjectName : fallbackSubjectName),
+    planStyle,
+    studyMode: plan.studyMode ?? planStyle,
+    topicNodeIds,
+    status: plan.status ?? "active",
+    createdAt: typeof plan.createdAt === "string" ? plan.createdAt : timestamp,
+    updatedAt: timestamp
+  };
+}
+function normalizeRevisionTopic(topic, subjects = [], revisionPlans = []) {
+  const matchingPlanIds = Array.from(
+    new Set(
+      revisionPlans.filter(
+        (plan) => plan.topicNodeIds?.some((nodeId) => nodeId && nodeId === topic.nodeId) || plan.topics.some((title) => normalizeTopicTitle(title) === normalizeTopicTitle(topic.topicTitle))
+      ).map((plan) => plan.subjectId)
+    )
+  );
+  const planSubject = matchingPlanIds.length === 1 ? subjects.find((subject) => subject.id === matchingPlanIds[0]) ?? null : null;
+  const inferredSubject = findSubjectByRevisionTopicTitle(subjects, topic.topicTitle);
+  const resolvedSubject = planSubject ?? inferredSubject ?? subjects.find((subject) => subject.id === topic.subjectId) ?? subjects.find((subject) => subject.name === topic.subject) ?? null;
   return {
     ...topic,
+    subjectId: resolvedSubject?.id ?? topic.subjectId,
+    subject: resolvedSubject?.name ?? topic.subject,
+    curriculumReference: topic.isSynthetic && resolvedSubject ? `${resolvedSubject.name} · ${topic.topicTitle}` : topic.curriculumReference,
     retentionStability: typeof topic.retentionStability === "number" ? topic.retentionStability : 0.5,
     forgettingVelocity: typeof topic.forgettingVelocity === "number" ? topic.forgettingVelocity : 0.55,
     misconceptionSignals: Array.isArray(topic.misconceptionSignals) ? topic.misconceptionSignals : [],
@@ -814,21 +522,7 @@ function normalizeRevisionTopic(topic) {
     }
   };
 }
-function normalizeRevisionPlan(plan, fallbackSubjectName = "Revision") {
-  const planStyle = plan.planStyle ?? plan.studyMode ?? "weak_topics";
-  const timestamp = typeof plan.updatedAt === "string" ? plan.updatedAt : isoNow();
-  return {
-    ...plan,
-    id: typeof plan.id === "string" && plan.id.length > 0 ? plan.id : `revision-plan-${crypto.randomUUID()}`,
-    subjectName: typeof plan.subjectName === "string" && plan.subjectName.length > 0 ? plan.subjectName : fallbackSubjectName,
-    planStyle,
-    studyMode: plan.studyMode ?? planStyle,
-    status: plan.status ?? "active",
-    createdAt: typeof plan.createdAt === "string" ? plan.createdAt : timestamp,
-    updatedAt: timestamp
-  };
-}
-function buildRevisionPlan(subjectId, subjectName, selectedTopics, options) {
+function buildRevisionPlan(subjectId, subjectName, selectedTopics, topicNodeIds = selectedTopics.map(() => null), options) {
   const planStyle = options?.planStyle ?? options?.studyMode ?? "weak_topics";
   const updatedAt = options?.updatedAt ?? isoNow();
   return {
@@ -838,6 +532,7 @@ function buildRevisionPlan(subjectId, subjectName, selectedTopics, options) {
     examName: options?.examName,
     examDate: options?.examDate ?? "2026-06-18",
     topics: selectedTopics,
+    topicNodeIds,
     planStyle,
     studyMode: options?.studyMode ?? planStyle,
     timeBudgetMinutes: options?.timeBudgetMinutes,
@@ -859,10 +554,8 @@ function buildRevisionPlan(subjectId, subjectName, selectedTopics, options) {
   };
 }
 function createDerivedProgram(country, curriculumName, grade, selectedSubjectNames, customSubjects = []) {
-  const subjectNames = [...selectedSubjectNames, ...customSubjects].filter(
-    (subject, index, allSubjects) => subject.length > 0 && allSubjects.indexOf(subject) === index
-  );
-  return buildLearningProgram(country, curriculumName, grade, subjectNames);
+  const subjectNames = dedupeSubjectNames([...selectedSubjectNames, ...customSubjects]);
+  return createLocalProgramStub(country, curriculumName, grade, subjectNames);
 }
 function createAskQuestionState(state) {
   const selectedSubject = state.curriculum.subjects[0];
@@ -877,7 +570,7 @@ function createAskQuestionState(state) {
   return {
     request,
     response: buildAskQuestionResponse(request),
-    provider: "local-seed",
+    provider: "local-bootstrap",
     isLoading: false,
     error: null
   };
@@ -1032,9 +725,12 @@ function createInitialState() {
     revisionPlans: [],
     activeRevisionPlanId: null,
     upcomingExams: [],
-    revisionPlan: buildRevisionPlan(program.curriculum.subjects[0].id, program.curriculum.subjects[0].name, [
-      selectedTopic.name
-    ]),
+    revisionPlan: buildRevisionPlan(
+      program.curriculum.subjects[0].id,
+      program.curriculum.subjects[0].name,
+      [selectedTopic.name],
+      [selectedTopic.id]
+    ),
     askQuestion: createAskQuestionState({
       curriculum: program.curriculum,
       profile: emptyProfile
@@ -1042,10 +738,23 @@ function createInitialState() {
     topicDiscovery: {
       selectedSubjectId: program.curriculum.subjects[0].id,
       input: "",
-      status: "idle",
-      shortlist: null,
-      provider: null,
-      error: null
+      discovery: {
+        status: "idle",
+        subjectId: program.curriculum.subjects[0].id,
+        topics: [],
+        provider: null,
+        model: null,
+        requestId: null,
+        error: null,
+        lastLoadedAt: null,
+        refreshed: false
+      },
+      shortlist: {
+        status: "idle",
+        shortlist: null,
+        provider: null,
+        error: null
+      }
     },
     backend: {
       isConfigured: false,
@@ -1085,8 +794,10 @@ function normalizeAppState(value) {
     return base;
   }
   const input = value;
-  const legacyRevisionPlan = input.revisionPlan ? normalizeRevisionPlan(input.revisionPlan, base.revisionPlan.subjectName) : base.revisionPlan;
-  const revisionPlans = Array.isArray(input.revisionPlans) ? input.revisionPlans.map((plan) => normalizeRevisionPlan(plan, plan.subjectName)) : input.revisionPlan ? [legacyRevisionPlan] : base.revisionPlans;
+  const legacyTopicDiscovery = input.topicDiscovery;
+  const curriculum = input.curriculum ?? base.curriculum;
+  const legacyRevisionPlan = input.revisionPlan ? normalizeRevisionPlan(input.revisionPlan, base.revisionPlan.subjectName, curriculum.subjects) : base.revisionPlan;
+  const revisionPlans = Array.isArray(input.revisionPlans) ? input.revisionPlans.map((plan) => normalizeRevisionPlan(plan, plan.subjectName, curriculum.subjects)) : input.revisionPlan ? [legacyRevisionPlan] : base.revisionPlans;
   const activeRevisionPlanId = typeof input.activeRevisionPlanId === "string" && revisionPlans.some((plan) => plan.id === input.activeRevisionPlanId) ? input.activeRevisionPlanId : revisionPlans[0]?.id ?? null;
   const activeRevisionPlan = revisionPlans.find((plan) => plan.id === activeRevisionPlanId) ?? legacyRevisionPlan;
   const normalized = {
@@ -1122,7 +833,7 @@ function normalizeAppState(value) {
       ...base.learnerProfile,
       ...input.learnerProfile ?? {}
     },
-    curriculum: input.curriculum ?? base.curriculum,
+    curriculum,
     lessons: Array.isArray(input.lessons) ? input.lessons : base.lessons,
     questions: Array.isArray(input.questions) ? input.questions : base.questions,
     progress: input.progress && typeof input.progress === "object" ? { ...base.progress, ...input.progress } : base.progress,
@@ -1131,7 +842,7 @@ function normalizeAppState(value) {
       currentStage: migrateStage(session.currentStage),
       stagesCompleted: Array.isArray(session.stagesCompleted) ? session.stagesCompleted.map(migrateStage) : []
     })) : base.lessonSessions,
-    revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics.map(normalizeRevisionTopic) : base.revisionTopics,
+    revisionTopics: Array.isArray(input.revisionTopics) ? input.revisionTopics.map((topic) => normalizeRevisionTopic(topic, curriculum.subjects, revisionPlans)) : base.revisionTopics,
     revisionAttempts: Array.isArray(input.revisionAttempts) ? input.revisionAttempts : base.revisionAttempts,
     revisionSession: input.revisionSession ?? base.revisionSession,
     analytics: Array.isArray(input.analytics) ? input.analytics : base.analytics,
@@ -1147,7 +858,20 @@ function normalizeAppState(value) {
     },
     topicDiscovery: {
       ...base.topicDiscovery,
-      ...input.topicDiscovery ?? {}
+      ...input.topicDiscovery ?? {},
+      discovery: {
+        ...base.topicDiscovery.discovery,
+        ...input.topicDiscovery?.discovery ?? {}
+      },
+      shortlist: {
+        ...base.topicDiscovery.shortlist,
+        ...legacyTopicDiscovery?.shortlist && "matchedSection" in legacyTopicDiscovery.shortlist ? {
+          status: legacyTopicDiscovery.status ?? base.topicDiscovery.shortlist.status,
+          shortlist: legacyTopicDiscovery.shortlist,
+          provider: legacyTopicDiscovery.provider ?? base.topicDiscovery.shortlist.provider,
+          error: legacyTopicDiscovery.error ?? base.topicDiscovery.shortlist.error
+        } : input.topicDiscovery?.shortlist ?? {}
+      }
     },
     backend: {
       ...base.backend,
@@ -1193,49 +917,57 @@ function deriveLearningState(state) {
   const selectedLesson = mergedLessons.find((lesson) => lesson.id === state.ui.selectedLessonId) ?? mergedLessons.find((lesson) => lesson.id === selectedSubtopic?.lessonIds[0]) ?? mergedLessons[0];
   const practiceQuestionId = selectedLesson.practiceQuestionIds.find((questionId) => questionId === state.ui.practiceQuestionId) ?? selectedLesson.practiceQuestionIds[0];
   const revisionPlans = Array.isArray(state.revisionPlans) ? state.revisionPlans.map((plan) => {
-    const revisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === plan.subjectId) ?? program.curriculum.subjects.find((subject) => subject.name === plan.subjectName) ?? selectedSubject;
+    const normalizedPlan = normalizeRevisionPlan(plan, plan.subjectName, program.curriculum.subjects);
+    const revisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === normalizedPlan.subjectId) ?? program.curriculum.subjects.find((subject) => subject.name === normalizedPlan.subjectName) ?? selectedSubject;
     return buildRevisionPlan(
       revisionPlanSubject.id,
       revisionPlanSubject.name,
-      plan.topics.length > 0 ? plan.topics : revisionPlanSubject.topics.map((topic) => topic.name),
+      normalizedPlan.topics.length > 0 ? normalizedPlan.topics : revisionPlanSubject.topics.map((topic) => topic.name),
+      normalizedPlan.topicNodeIds ?? (normalizedPlan.topics.length > 0 ? normalizedPlan.topics.map(
+        (topicLabel) => findNodeIdByPlanTopicLabel(program.curriculum.subjects, revisionPlanSubject.id, topicLabel)
+      ) : revisionPlanSubject.topics.map((topic) => topic.id)),
       {
-        id: plan.id,
-        examName: plan.examName,
-        examDate: plan.examDate,
-        planStyle: plan.planStyle ?? plan.studyMode,
-        studyMode: plan.studyMode ?? plan.planStyle,
-        timeBudgetMinutes: plan.timeBudgetMinutes,
-        status: plan.status,
-        createdAt: plan.createdAt,
-        updatedAt: plan.updatedAt
+        id: normalizedPlan.id,
+        examName: normalizedPlan.examName,
+        examDate: normalizedPlan.examDate,
+        planStyle: normalizedPlan.planStyle ?? normalizedPlan.studyMode,
+        studyMode: normalizedPlan.studyMode ?? normalizedPlan.planStyle,
+        timeBudgetMinutes: normalizedPlan.timeBudgetMinutes,
+        status: normalizedPlan.status,
+        createdAt: normalizedPlan.createdAt,
+        updatedAt: normalizedPlan.updatedAt
       }
     );
   }) : [];
   const activeRevisionPlanId = state.activeRevisionPlanId && revisionPlans.some((plan) => plan.id === state.activeRevisionPlanId) ? state.activeRevisionPlanId : revisionPlans[0]?.id ?? null;
-  const fallbackRevisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === state.revisionPlan.subjectId) ?? program.curriculum.subjects.find((subject) => subject.name === state.revisionPlan.subjectName) ?? selectedSubject;
+  const normalizedLegacyPlan = normalizeRevisionPlan(state.revisionPlan, state.revisionPlan.subjectName, program.curriculum.subjects);
+  const fallbackRevisionPlanSubject = program.curriculum.subjects.find((subject) => subject.id === normalizedLegacyPlan.subjectId) ?? program.curriculum.subjects.find((subject) => subject.name === normalizedLegacyPlan.subjectName) ?? selectedSubject;
   const legacyRevisionPlan = buildRevisionPlan(
     fallbackRevisionPlanSubject.id,
     fallbackRevisionPlanSubject.name,
-    state.revisionPlan.topics.length > 0 ? state.revisionPlan.topics : fallbackRevisionPlanSubject.topics.map((topic) => topic.name),
+    normalizedLegacyPlan.topics.length > 0 ? normalizedLegacyPlan.topics : fallbackRevisionPlanSubject.topics.map((topic) => topic.name),
+    normalizedLegacyPlan.topicNodeIds ?? (normalizedLegacyPlan.topics.length > 0 ? normalizedLegacyPlan.topics.map(
+      (topicLabel) => findNodeIdByPlanTopicLabel(program.curriculum.subjects, fallbackRevisionPlanSubject.id, topicLabel)
+    ) : fallbackRevisionPlanSubject.topics.map((topic) => topic.id)),
     {
-      id: state.revisionPlan.id,
-      examName: state.revisionPlan.examName,
-      examDate: state.revisionPlan.examDate,
-      planStyle: state.revisionPlan.planStyle ?? state.revisionPlan.studyMode,
-      studyMode: state.revisionPlan.studyMode ?? state.revisionPlan.planStyle,
-      timeBudgetMinutes: state.revisionPlan.timeBudgetMinutes,
-      status: state.revisionPlan.status,
-      createdAt: state.revisionPlan.createdAt,
-      updatedAt: state.revisionPlan.updatedAt
+      id: normalizedLegacyPlan.id,
+      examName: normalizedLegacyPlan.examName,
+      examDate: normalizedLegacyPlan.examDate,
+      planStyle: normalizedLegacyPlan.planStyle ?? normalizedLegacyPlan.studyMode,
+      studyMode: normalizedLegacyPlan.studyMode ?? normalizedLegacyPlan.planStyle,
+      timeBudgetMinutes: normalizedLegacyPlan.timeBudgetMinutes,
+      status: normalizedLegacyPlan.status,
+      createdAt: normalizedLegacyPlan.createdAt,
+      updatedAt: normalizedLegacyPlan.updatedAt
     }
   );
   const activeRevisionPlan = revisionPlans.find((plan) => plan.id === activeRevisionPlanId) ?? legacyRevisionPlan;
   const lessonSessions = Array.isArray(state.lessonSessions) ? state.lessonSessions.filter(
-    (session) => mergedLessons.some((lesson) => lesson.id === session.lessonId) || session.lessonId.startsWith("generated-")
+    (session) => mergedLessons.some((lesson) => lesson.id === session.lessonId) || session.lessonId.startsWith("generated-") || Boolean(session.lessonArtifactId) || Boolean(session.nodeId)
   ) : [];
   const revisionTopics = Array.isArray(state.revisionTopics) ? state.revisionTopics.filter(
     (topic) => topic.isSynthetic || lessonSessions.some((session) => session.id === topic.lessonSessionId)
-  ).map(normalizeRevisionTopic) : [];
+  ).map((topic) => normalizeRevisionTopic(topic, program.curriculum.subjects, revisionPlans)) : [];
   return {
     ...state,
     curriculum: program.curriculum,
@@ -1255,7 +987,11 @@ function deriveLearningState(state) {
     upcomingExams: Array.isArray(state.upcomingExams) ? state.upcomingExams : [],
     topicDiscovery: {
       ...state.topicDiscovery,
-      selectedSubjectId: state.topicDiscovery.selectedSubjectId || selectedSubject.id
+      selectedSubjectId: state.topicDiscovery.selectedSubjectId || selectedSubject.id,
+      discovery: {
+        ...state.topicDiscovery.discovery,
+        subjectId: state.topicDiscovery.discovery.subjectId || state.topicDiscovery.selectedSubjectId || selectedSubject.id
+      }
     },
     ui: {
       ...state.ui,
@@ -1331,30 +1067,27 @@ function upsertRevisionTopicFromSession(revisionTopics, lessonSession) {
 }
 export {
   LESSON_STAGE_ORDER as L,
-  buildDynamicLessonFromTopic as a,
-  buildLocalLessonChatResponse as b,
-  buildDynamicQuestionsForLesson as c,
-  createInitialState as d,
-  getCompletionSummary as e,
-  getStageNumber as f,
-  getStageLabel as g,
-  getActiveLessonSession as h,
-  getNextStage as i,
-  getSelectedSubject as j,
-  getSelectedTopic as k,
-  getLessonsForSelectedTopic as l,
-  deriveLearningState as m,
+  buildInitialLessonMessages as a,
+  buildRevisionTopics as b,
+  createInitialState as c,
+  deriveLearningState as d,
+  getActiveLessonSession as e,
+  classifyLessonMessage as f,
+  getSelectedSubject as g,
+  applyLessonAssistantResponse as h,
+  createDefaultLearnerProfile as i,
+  upsertRevisionTopicFromSession as j,
+  buildAskQuestionResponse as k,
+  getQuestionById as l,
+  evaluateAnswer as m,
   normalizeAppState as n,
-  buildRevisionTopics as o,
-  buildInitialLessonMessages as p,
-  classifyLessonMessage as q,
-  applyLessonAssistantResponse as r,
-  createDefaultLearnerProfile as s,
-  upsertRevisionTopicFromSession as t,
+  getSelectedTopic as o,
+  buildLessonSessionFromTopic as p,
+  getStageLabel as q,
+  recalculateMastery as r,
+  getCompletionSummary as s,
+  getStageNumber as t,
   updateLearnerProfile as u,
-  buildLessonSessionFromTopic as v,
-  buildAskQuestionResponse as w,
-  getQuestionById as x,
-  evaluateAnswer as y,
-  recalculateMastery as z
+  getNextStage as v,
+  getLessonsForSelectedTopic as w
 };

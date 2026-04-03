@@ -14,7 +14,8 @@ describe('topic discovery edge validation', () => {
         gradeId: 'grade-6',
         forceRefresh: true,
         provider: 'github-models',
-        model: 'openai/gpt-4.1-nano'
+        model: 'openai/gpt-4.1-nano',
+        excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions']
       })
     ).toEqual({
       success: true,
@@ -25,6 +26,7 @@ describe('topic discovery edge validation', () => {
         forceRefresh: true,
         provider: 'github-models',
         model: 'openai/gpt-4.1-nano',
+        excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions'],
         limit: 12
       }
     });

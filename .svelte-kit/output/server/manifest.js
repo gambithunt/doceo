@@ -10,7 +10,7 @@ return {
 	assets: new Set([]),
 	mimeTypes: {},
 	_: {
-		client: {start:"_app/immutable/entry/start.BSil4cG2.js",app:"_app/immutable/entry/app.Dn_pnluC.js",imports:["_app/immutable/entry/start.BSil4cG2.js","_app/immutable/chunks/iI6cDhf1.js","_app/immutable/chunks/MHYgLwzm.js","_app/immutable/entry/app.Dn_pnluC.js","_app/immutable/chunks/MHYgLwzm.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.CI3yZ88l.js",app:"_app/immutable/entry/app.CVtCIKZJ.js",imports:["_app/immutable/entry/start.CI3yZ88l.js","_app/immutable/chunks/D-PE12_F.js","_app/immutable/chunks/BYLevpFT.js","_app/immutable/entry/app.CVtCIKZJ.js","_app/immutable/chunks/BYLevpFT.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -35,7 +35,10 @@ return {
 			__memo(() => import('./nodes/20.js')),
 			__memo(() => import('./nodes/21.js')),
 			__memo(() => import('./nodes/22.js')),
-			__memo(() => import('./nodes/23.js'))
+			__memo(() => import('./nodes/23.js')),
+			__memo(() => import('./nodes/24.js')),
+			__memo(() => import('./nodes/25.js')),
+			__memo(() => import('./nodes/26.js'))
 		],
 		remotes: {
 			
@@ -70,60 +73,95 @@ return {
 				endpoint: null
 			},
 			{
+				id: "/admin/graph",
+				pattern: /^\/admin\/graph\/?$/,
+				params: [],
+				page: { layouts: [0,3,], errors: [1,,], leaf: 15 },
+				endpoint: null
+			},
+			{
+				id: "/admin/graph/legacy",
+				pattern: /^\/admin\/graph\/legacy\/?$/,
+				params: [],
+				page: { layouts: [0,3,], errors: [1,,], leaf: 17 },
+				endpoint: null
+			},
+			{
+				id: "/admin/graph/[nodeId]",
+				pattern: /^\/admin\/graph\/([^/]+?)\/?$/,
+				params: [{"name":"nodeId","optional":false,"rest":false,"chained":false}],
+				page: { layouts: [0,3,], errors: [1,,], leaf: 16 },
+				endpoint: null
+			},
+			{
 				id: "/admin/learning",
 				pattern: /^\/admin\/learning\/?$/,
 				params: [],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 15 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 18 },
 				endpoint: null
 			},
 			{
 				id: "/admin/messages",
 				pattern: /^\/admin\/messages\/?$/,
 				params: [],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 16 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 19 },
 				endpoint: null
 			},
 			{
 				id: "/admin/messages/[session_id]",
 				pattern: /^\/admin\/messages\/([^/]+?)\/?$/,
 				params: [{"name":"session_id","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 17 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 20 },
 				endpoint: null
 			},
 			{
 				id: "/admin/revenue",
 				pattern: /^\/admin\/revenue\/?$/,
 				params: [],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 18 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 21 },
 				endpoint: null
 			},
 			{
 				id: "/admin/settings",
 				pattern: /^\/admin\/settings\/?$/,
 				params: [],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 19 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 22 },
 				endpoint: null
 			},
 			{
 				id: "/admin/system",
 				pattern: /^\/admin\/system\/?$/,
 				params: [],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 20 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 23 },
 				endpoint: null
 			},
 			{
 				id: "/admin/users",
 				pattern: /^\/admin\/users\/?$/,
 				params: [],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 21 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 24 },
 				endpoint: null
 			},
 			{
 				id: "/admin/users/[id]",
 				pattern: /^\/admin\/users\/([^/]+?)\/?$/,
 				params: [{"name":"id","optional":false,"rest":false,"chained":false}],
-				page: { layouts: [0,3,], errors: [1,,], leaf: 22 },
+				page: { layouts: [0,3,], errors: [1,,], leaf: 25 },
 				endpoint: null
+			},
+			{
+				id: "/api/admin/audit-export",
+				pattern: /^\/api\/admin\/audit-export\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/admin/audit-export/_server.ts.js'))
+			},
+			{
+				id: "/api/admin/lesson-artifacts",
+				pattern: /^\/api\/admin\/lesson-artifacts\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/admin/lesson-artifacts/_server.ts.js'))
 			},
 			{
 				id: "/api/ai/lesson-chat",
@@ -145,6 +183,13 @@ return {
 				params: [],
 				page: null,
 				endpoint: __memo(() => import('./entries/endpoints/api/ai/lesson-selector/_server.ts.js'))
+			},
+			{
+				id: "/api/ai/revision-pack",
+				pattern: /^\/api\/ai\/revision-pack\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/ai/revision-pack/_server.ts.js'))
 			},
 			{
 				id: "/api/ai/subject-hints",
@@ -175,6 +220,55 @@ return {
 				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/program/_server.ts.js'))
 			},
 			{
+				id: "/api/curriculum/subject-topics",
+				pattern: /^\/api\/curriculum\/subject-topics\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/subject-topics/_server.ts.js'))
+			},
+			{
+				id: "/api/curriculum/topic-discovery",
+				pattern: /^\/api\/curriculum\/topic-discovery\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/topic-discovery/_server.ts.js'))
+			},
+			{
+				id: "/api/curriculum/topic-discovery/click",
+				pattern: /^\/api\/curriculum\/topic-discovery\/click\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/topic-discovery/click/_server.ts.js'))
+			},
+			{
+				id: "/api/curriculum/topic-discovery/complete",
+				pattern: /^\/api\/curriculum\/topic-discovery\/complete\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/topic-discovery/complete/_server.ts.js'))
+			},
+			{
+				id: "/api/curriculum/topic-discovery/feedback",
+				pattern: /^\/api\/curriculum\/topic-discovery\/feedback\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/topic-discovery/feedback/_server.ts.js'))
+			},
+			{
+				id: "/api/curriculum/topic-discovery/refresh",
+				pattern: /^\/api\/curriculum\/topic-discovery\/refresh\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/topic-discovery/refresh/_server.ts.js'))
+			},
+			{
+				id: "/api/lesson-artifacts/rate",
+				pattern: /^\/api\/lesson-artifacts\/rate\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/lesson-artifacts/rate/_server.ts.js'))
+			},
+			{
 				id: "/api/onboarding/complete",
 				pattern: /^\/api\/onboarding\/complete\/?$/,
 				params: [],
@@ -201,6 +295,13 @@ return {
 				params: [],
 				page: null,
 				endpoint: __memo(() => import('./entries/endpoints/api/onboarding/reset/_server.ts.js'))
+			},
+			{
+				id: "/api/revision/planner-resolve",
+				pattern: /^\/api\/revision\/planner-resolve\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/revision/planner-resolve/_server.ts.js'))
 			},
 			{
 				id: "/api/state/bootstrap",
@@ -248,7 +349,7 @@ return {
 				id: "/onboarding",
 				pattern: /^\/onboarding\/?$/,
 				params: [],
-				page: { layouts: [0,], errors: [1,], leaf: 23 },
+				page: { layouts: [0,], errors: [1,], leaf: 26 },
 				endpoint: null
 			},
 			{

@@ -1094,6 +1094,153 @@ describe('topic discovery dashboard state', () => {
     );
   });
 
+  it('includes the currently shown topic signatures when refreshing discovery so refresh is not a no-op', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+    const currentTopic = createDiscoverySuggestion();
+
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.endsWith('/api/curriculum/topic-discovery')) {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          forceRefresh?: boolean;
+          excludeTopicSignatures?: string[];
+        };
+        expect(body.forceRefresh).toBe(true);
+        expect(body.excludeTopicSignatures).toEqual([currentTopic.topicSignature]);
+        return new Response(
+          JSON.stringify({
+            topics: [
+              createDiscoverySuggestion({
+                topicLabel: 'Ratios',
+                topicSignature: `${subject.id}::caps::grade-6::ratios`,
+                nodeId: null,
+                source: 'model_candidate',
+                reason: 'Fresh candidate',
+                freshness: 'new'
+              })
+            ],
+            provider: 'github-models',
+            model: 'openai/gpt-4.1-nano',
+            refreshed: true
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      if (url.endsWith('/api/curriculum/topic-discovery/refresh')) {
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id,
+        discovery: {
+          status: 'ready',
+          topics: [currentTopic],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          requestId: 'request-123',
+          error: null,
+          lastLoadedAt: '2026-04-02T12:00:00.000Z',
+          refreshed: false,
+          subjectId: subject.id
+        }
+      }
+    });
+
+    await store.refreshTopicDiscovery(subject.id);
+
+    expect(get(store).topicDiscovery.discovery.topics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          topicLabel: 'Ratios'
+        })
+      ])
+    );
+  });
+
+  it('rolls back optimistic feedback when the backend does not record the thumbs event', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+    const discoveryTopic = createDiscoverySuggestion();
+
+    fetchMock.mockImplementation(async (input: string | URL | Request) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.endsWith('/api/curriculum/topic-discovery/feedback')) {
+        return new Response(JSON.stringify({ recorded: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id,
+        discovery: {
+          status: 'ready',
+          topics: [discoveryTopic],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          requestId: 'request-123',
+          error: null,
+          lastLoadedAt: '2026-04-02T12:00:00.000Z',
+          refreshed: false,
+          subjectId: subject.id
+        }
+      }
+    });
+
+    await store.recordTopicFeedback(discoveryTopic.topicSignature, 'up');
+
+    expect(get(store).topicDiscovery.discovery.topics[0]).toEqual(
+      expect.objectContaining({
+        feedback: null,
+        feedbackPending: false
+      })
+    );
+  });
+
   it('surfaces an error state when discovery fails before any topics have loaded', async () => {
     const baseState = {
       ...createInitialState(),

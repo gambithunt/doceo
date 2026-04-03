@@ -257,6 +257,22 @@ function sortSuggestions(suggestions: RankedSuggestion[]): RankedSuggestion[] {
   });
 }
 
+function applyRefreshExclusions(
+  suggestions: RankedSuggestion[],
+  excludedSignatures: string[],
+  limit: number
+): RankedSuggestion[] {
+  if (excludedSignatures.length === 0) {
+    return suggestions.slice(0, limit);
+  }
+
+  const excluded = new Set(excludedSignatures);
+  const preferred = suggestions.filter((suggestion) => !excluded.has(suggestion.topicSignature));
+  const deprioritized = suggestions.filter((suggestion) => excluded.has(suggestion.topicSignature));
+
+  return [...preferred, ...deprioritized].slice(0, limit);
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed.' }, 405);
@@ -550,10 +566,14 @@ Deno.serve(async (request) => {
     freshness: ('freshness' in candidate ? candidate.freshness : 'stable') as 'new' | 'rising' | 'stable'
   }));
 
-  const suggestions = sortSuggestions(
+  const sortedSuggestions = sortSuggestions(
     dedupeTopicDiscoveryCandidates<RankedSuggestion>([...graphSuggestions, ...modelSuggestions])
+  );
+  const suggestions = applyRefreshExclusions(
+    sortedSuggestions,
+    body.forceRefresh ? body.excludeTopicSignatures : [],
+    Math.min(body.limit, MAX_TOPIC_DISCOVERY_RESULTS)
   )
-    .slice(0, Math.min(body.limit, MAX_TOPIC_DISCOVERY_RESULTS))
     .map((suggestion, index) => ({
       topicSignature: suggestion.topicSignature,
       topicLabel: suggestion.topicLabel,

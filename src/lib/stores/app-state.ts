@@ -802,17 +802,25 @@ export function createAppStore(initialState: AppState = readState()) {
       | '/api/curriculum/topic-discovery/refresh'
       | '/api/curriculum/topic-discovery/complete',
     body: Record<string, unknown>
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
-      await fetch(path, {
+      const response = await fetch(path, {
         method: 'POST',
         headers: await getAuthenticatedHeaders({
           'Content-Type': 'application/json'
         }),
         body: JSON.stringify(body)
       });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const payload = await response.json().catch(() => null) as { recorded?: boolean } | null;
+      return payload?.recorded ?? true;
     } catch {
       // Discovery interaction tracking must never break dashboard flows.
+      return false;
     }
   }
 
@@ -909,7 +917,12 @@ export function createAppStore(initialState: AppState = readState()) {
           subjectId: subject.id,
           curriculumId: snapshot.profile.curriculumId,
           gradeId: snapshot.profile.gradeId,
-          forceRefresh: options.forceRefresh ?? false
+          forceRefresh: options.forceRefresh ?? false,
+          ...(options.forceRefresh && previousTopics.length > 0
+            ? {
+                excludeTopicSignatures: previousTopics.map((topic) => topic.topicSignature)
+              }
+            : {})
         }),
         ...(signal ? { signal } : {})
       });
@@ -1013,6 +1026,8 @@ export function createAppStore(initialState: AppState = readState()) {
       return;
     }
 
+    const previousFeedback = topic.feedback;
+
     update((state) =>
       persistAndSync({
         ...state,
@@ -1030,7 +1045,7 @@ export function createAppStore(initialState: AppState = readState()) {
       })
     );
 
-    await postTopicDiscoveryEvent('/api/curriculum/topic-discovery/feedback', {
+    const recorded = await postTopicDiscoveryEvent('/api/curriculum/topic-discovery/feedback', {
       ...buildTopicDiscoveryEventPayload(snapshot, topic),
       feedback
     });
@@ -1044,7 +1059,7 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.topicDiscovery.discovery,
             topics: updateDiscoveryFeedback(state.topicDiscovery.discovery.topics, topicSignature, (item) => ({
               ...item,
-              feedback,
+              feedback: recorded ? feedback : previousFeedback,
               feedbackPending: false
             }))
           }

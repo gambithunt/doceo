@@ -1,4 +1,4 @@
-import { b as attr_class, f as bind_props, e as escape_html, c as attr, h as head, s as store_get, u as unsubscribe_stores } from "../../chunks/svelte-vendor.js";
+import { b as attr_class, k as bind_props, e as escape_html, c as attr, l as head, s as store_get, u as unsubscribe_stores } from "../../chunks/svelte-vendor.js";
 import "@sveltejs/kit/internal";
 import "../../chunks/exports.js";
 import "../../chunks/utils.js";

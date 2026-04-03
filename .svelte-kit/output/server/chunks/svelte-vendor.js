@@ -833,7 +833,7 @@ function createSubscriber(start) {
   let stop;
   return () => {
     if (effect_tracking()) {
-      get(version);
+      get$1(version);
       render_effect(() => {
         if (subscribers === 0) {
           stop = untrack(() => start(() => increment(version)));
@@ -1135,7 +1135,7 @@ class Boundary {
   }
   get_effect_pending() {
     this.#effect_pending_subscriber();
-    return get(
+    return get$1(
       /** @type {Source<number>} */
       this.#effect_pending
     );
@@ -1535,7 +1535,7 @@ function proxy(value) {
           sources.set(prop, s);
         }
         if (s !== void 0) {
-          var v = get(s);
+          var v = get$1(s);
           return v === UNINITIALIZED ? void 0 : v;
         }
         return Reflect.get(target, prop, receiver);
@@ -1544,7 +1544,7 @@ function proxy(value) {
         var descriptor = Reflect.getOwnPropertyDescriptor(target, prop);
         if (descriptor && "value" in descriptor) {
           var s = sources.get(prop);
-          if (s) descriptor.value = get(s);
+          if (s) descriptor.value = get$1(s);
         } else if (descriptor === void 0) {
           var source2 = sources.get(prop);
           var value2 = source2?.v;
@@ -1574,7 +1574,7 @@ function proxy(value) {
             });
             sources.set(prop, s);
           }
-          var value2 = get(s);
+          var value2 = get$1(s);
           if (value2 === UNINITIALIZED) {
             return false;
           }
@@ -1627,7 +1627,7 @@ function proxy(value) {
         return true;
       },
       ownKeys(target) {
-        get(version);
+        get$1(version);
         var own_keys = Reflect.ownKeys(target).filter((key2) => {
           var source3 = sources.get(key2);
           return source3 === void 0 || source3.v !== UNINITIALIZED;
@@ -2216,7 +2216,7 @@ function update_effect(effect) {
     active_effect = previous_effect;
   }
 }
-function get(signal) {
+function get$1(signal) {
   var flags2 = signal.f;
   var is_derived = (flags2 & DERIVED) !== 0;
   if (active_reaction !== null && !untracking) {
@@ -2803,11 +2803,11 @@ class Svelte4Component {
       { ...options.props || {}, $$events: {} },
       {
         get(target, prop) {
-          return get(sources.get(prop) ?? add_source(prop, Reflect.get(target, prop)));
+          return get$1(sources.get(prop) ?? add_source(prop, Reflect.get(target, prop)));
         },
         has(target, prop) {
           if (prop === LEGACY_PROPS) return true;
-          get(sources.get(prop) ?? add_source(prop, Reflect.get(target, prop)));
+          get$1(sources.get(prop) ?? add_source(prop, Reflect.get(target, prop)));
           return Reflect.has(target, prop);
         },
         set(target, prop, value) {
@@ -2989,6 +2989,11 @@ function derived$1(stores, fn, initial_value) {
       started = false;
     };
   });
+}
+function get(store) {
+  let value;
+  subscribe_to_store(store, (_) => value = _)();
+  return value;
 }
 const BLOCK_OPEN = `<!--${HYDRATION_START}-->`;
 const BLOCK_CLOSE = `<!--${HYDRATION_END}-->`;
@@ -4011,20 +4016,21 @@ export {
   attr as c,
   derived as d,
   escape_html as e,
-  bind_props as f,
+  setContext as f,
   getContext as g,
-  head as h,
-  attr_style as i,
-  stringify as j,
-  fallback as k,
-  html as l,
-  setContext as m,
-  asClassComponent as n,
+  asClassComponent as h,
+  derived$1 as i,
+  get as j,
+  bind_props as k,
+  head as l,
+  attr_style as m,
+  noop as n,
   onDestroy as o,
-  derived$1 as p,
-  noop as q,
+  stringify as p,
+  fallback as q,
   readable as r,
   store_get as s,
+  html as t,
   unsubscribe_stores as u,
   writable as w
 };

@@ -64,9 +64,9 @@ function getSupabaseAnonKey() {
   return serverEnv.supabaseAnonKey;
 }
 export {
-  createServerSupabaseFromRequest as a,
+  createServerSupabaseAdmin as a,
   getSupabaseAnonKey as b,
-  createServerSupabaseAdmin as c,
+  createServerSupabaseFromRequest as c,
   getSupabaseFunctionsUrl as g,
   isSupabaseConfigured as i
 };
