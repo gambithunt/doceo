@@ -825,7 +825,7 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
       return (data ?? []).map(mapNodeRow);
     },
     async upsertNode(node) {
-      await supabase.from('curriculum_graph_nodes').upsert({
+      const { error } = await supabase.from('curriculum_graph_nodes').upsert({
         id: node.id,
         type: node.type,
         label: node.label,
@@ -843,6 +843,9 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
         merged_into: node.mergedInto,
         superseded_by: node.supersededBy
       });
+      if (error) {
+        throw new Error(`Failed to upsert graph node ${node.id}: ${error.message}`);
+      }
       return node;
     },
     async findAliases(filters) {
@@ -864,7 +867,7 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
       return (data ?? []).map(mapAliasRow);
     },
     async upsertAlias(alias) {
-      await supabase.from('curriculum_graph_aliases').upsert({
+      const { error } = await supabase.from('curriculum_graph_aliases').upsert({
         id: alias.id,
         node_id: alias.nodeId,
         alias_label: alias.aliasLabel,
@@ -878,6 +881,9 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
         updated_at: alias.updatedAt,
         superseded_by: alias.supersededBy
       });
+      if (error) {
+        throw new Error(`Failed to upsert graph alias ${alias.id}: ${error.message}`);
+      }
       return alias;
     },
     async reassignAliases(sourceNodeId, targetNodeId) {
@@ -888,7 +894,7 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
         return;
       }
 
-      await supabase.from('curriculum_graph_aliases').upsert(
+      const { error } = await supabase.from('curriculum_graph_aliases').upsert(
         aliases.map((alias) => ({
           id: alias.id,
           node_id: targetNodeId,
@@ -904,6 +910,9 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
           superseded_by: alias.supersededBy
         }))
       );
+      if (error) {
+        throw new Error(`Failed to reassign aliases to node ${targetNodeId}: ${error.message}`);
+      }
     },
     async findEvidence(filters) {
       let query = supabase
@@ -920,7 +929,7 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
       return (data ?? []).map(mapEvidenceRow);
     },
     async upsertEvidence(evidence) {
-      await supabase.from('curriculum_graph_evidence').upsert({
+      const { error } = await supabase.from('curriculum_graph_evidence').upsert({
         node_id: evidence.nodeId,
         successful_resolution_count: evidence.successfulResolutionCount,
         repeat_use_count: evidence.repeatUseCount,
@@ -938,6 +947,9 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
         created_at: evidence.createdAt,
         updated_at: evidence.updatedAt
       });
+      if (error) {
+        throw new Error(`Failed to upsert graph evidence for node ${evidence.nodeId}: ${error.message}`);
+      }
       return evidence;
     },
     async findDuplicateCandidates(filters) {
@@ -959,7 +971,7 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
       return (data ?? []).map(mapDuplicateCandidateRow);
     },
     async upsertDuplicateCandidate(candidate) {
-      await supabase.from('curriculum_graph_duplicate_candidates').upsert({
+      const { error } = await supabase.from('curriculum_graph_duplicate_candidates').upsert({
         id: candidate.id,
         left_node_id: candidate.leftNodeId,
         right_node_id: candidate.rightNodeId,
@@ -970,6 +982,9 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
         created_at: candidate.createdAt,
         updated_at: candidate.updatedAt
       });
+      if (error) {
+        throw new Error(`Failed to upsert duplicate candidate ${candidate.id}: ${error.message}`);
+      }
       return candidate;
     },
     async findEvents(filters) {
@@ -1006,7 +1021,7 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
       return (data ?? []).map(mapEventRow);
     },
     async saveEvent(event) {
-      await supabase.from('curriculum_graph_events').upsert({
+      const { error } = await supabase.from('curriculum_graph_events').upsert({
         id: event.id,
         node_id: event.nodeId,
         event_type: event.eventType,
@@ -1016,6 +1031,9 @@ function createSupabaseGraphStore(supabase: SupabaseLike): GraphStore {
         correlation_id: event.correlationId,
         occurred_at: event.occurredAt
       });
+      if (error) {
+        throw new Error(`Failed to save graph event ${event.id}: ${error.message}`);
+      }
       return event;
     }
   };

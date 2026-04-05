@@ -118,11 +118,15 @@ async function resolveNode(
     };
   }
 
+  const parentId = request.subjectId
+    ? (await graphRepository.getNodeById(request.subjectId)) ? request.subjectId : null
+    : null;
+
   return {
     node: await graphRepository.createProvisionalNode({
       type: 'topic',
       label: request.topicTitle,
-      parentId: request.subjectId || null,
+      parentId,
       scope,
       description: request.topicDescription,
       origin: 'learner_discovered',

@@ -26,21 +26,12 @@
   const badge = $derived.by(() => {
     if (suggestion.feedback === 'up') return 'Helpful';
     if (suggestion.source === 'model_candidate') return 'New suggestion';
+    if (suggestion.freshness === 'new' || suggestion.freshness === 'rising') return 'Try something new';
     return 'Ready now';
-  });
-
-  const metaLine = $derived.by(() => {
-    const bits = [
-      `${suggestion.sampleSize} ${suggestion.sampleSize === 1 ? 'signal' : 'signals'}`,
-      suggestion.completionRate !== null ? `${Math.round(suggestion.completionRate * 100)}% finish` : null,
-      suggestion.thumbsUpCount > 0 ? `${suggestion.thumbsUpCount} liked this` : null
-    ].filter(Boolean);
-
-    return bits.join(' · ');
   });
 </script>
 
-<article class={`topic-tile topic-tile--${tone}`}>
+<article class={`topic-tile topic-tile--${tone}`} style="--i: {suggestion.rank};">
   <button
     type="button"
     class="topic-launch"
@@ -48,20 +39,21 @@
     aria-busy={launching}
     onclick={() => onLaunch?.(suggestion.topicSignature)}
   >
-    <div class="topic-kicker-row">
-      <span class="topic-badge">{badge}</span>
-      <span class="topic-rank">#{suggestion.rank}</span>
-    </div>
+    <span class="topic-badge">{badge}</span>
     <div class="topic-body">
       <strong>{suggestion.topicLabel}</strong>
-      <p>{suggestion.reason}</p>
     </div>
-    {#if metaLine}
-      <span class="topic-meta">{metaLine}</span>
-    {/if}
-    <span class="topic-primary-action">
-      <span>{launching ? 'Starting…' : 'Start lesson'}</span>
-      <span class="topic-primary-arrow" aria-hidden="true">→</span>
+    <span class="topic-cta">
+      {#if launching}
+        <span class="topic-busy-dots" aria-hidden="true">
+          <span class="topic-busy-dot"></span>
+          <span class="topic-busy-dot"></span>
+          <span class="topic-busy-dot"></span>
+        </span>
+        <span>Starting&hellip;</span>
+      {:else}
+        <span>Start lesson</span>
+      {/if}
     </span>
   </button>
 
@@ -74,6 +66,34 @@
 </article>
 
 <style>
+  /* ── Keyframes ── */
+
+  @keyframes tile-enter {
+    0% {
+      opacity: 0;
+      transform: translateY(12px) scale(0.92);
+    }
+    60% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes tile-loading {
+    0%, 100% { border-color: color-mix(in srgb, var(--accent) 22%, var(--tile-border)); }
+    50%      { border-color: color-mix(in srgb, var(--accent) 44%, var(--tile-border)); }
+  }
+
+  @keyframes busy-pulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+
+  /* ── Card surface ── */
+
   .topic-tile {
     --tile-border: color-mix(in srgb, var(--border-strong) 88%, transparent);
     --tile-bg:
@@ -85,19 +105,24 @@
     --tile-shadow: var(--shadow-sm);
     --tile-badge-bg: color-mix(in srgb, var(--surface-soft) 92%, transparent);
     --tile-badge-color: var(--text);
+
     display: grid;
-    gap: 0.9rem;
-    padding: 1rem;
+    gap: 0;
+    padding: 0;
     border-radius: calc(var(--radius-lg) + 0.15rem);
     border: 1px solid var(--tile-border);
     background: var(--tile-bg);
     box-shadow: var(--tile-shadow);
+    animation: tile-enter 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: calc(min(var(--i, 0), 8) * 0.045s);
     transition:
-      transform 180ms var(--ease-spring),
+      transform 200ms var(--ease-spring),
       box-shadow 200ms var(--ease-soft),
       border-color var(--motion-fast) var(--ease-soft),
       background 220ms var(--ease-soft);
   }
+
+  /* ── Tone variants ── */
 
   .topic-tile--ready {
     --tile-border: color-mix(in srgb, var(--color-blue) 16%, var(--border-strong));
@@ -144,18 +169,43 @@
     --tile-badge-color: color-mix(in srgb, var(--accent) 80%, var(--text) 20%);
   }
 
+  /* ── Card interactions ── */
+
   .topic-tile:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
     box-shadow: var(--shadow-md);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--tile-border));
   }
+
+  .topic-tile:has(.topic-launch:active) {
+    transform: translateY(-1px) scale(0.985);
+    box-shadow: var(--shadow-sm);
+    transition: transform 80ms ease, box-shadow 80ms ease;
+  }
+
+  .topic-tile:has(.topic-launch:focus-visible) {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 56%, var(--tile-border));
+    box-shadow:
+      0 0 0 2px var(--color-bg),
+      0 0 0 4px var(--accent),
+      var(--shadow-sm);
+  }
+
+  /* ── Loading state ── */
+
+  .topic-tile:has(.topic-launch[aria-busy='true']) {
+    animation: tile-loading 1.8s ease-in-out infinite;
+  }
+
+  /* ── Primary zone ── */
 
   .topic-launch {
     display: grid;
-    gap: 0.8rem;
+    gap: 0.55rem;
     width: 100%;
+    padding: 1rem 1.1rem 0.85rem;
     border: none;
-    padding: 0;
-    margin: 0;
     background: transparent;
     color: inherit;
     text-align: left;
@@ -167,86 +217,69 @@
     outline: none;
   }
 
-  .topic-tile:has(.topic-launch:focus-visible) {
-    border-color: color-mix(in srgb, var(--accent) 56%, var(--tile-border));
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent),
-      var(--shadow-md);
-  }
-
-  .topic-launch:active {
-    transform: translateY(0) scale(0.988);
-  }
-
-  .topic-kicker-row,
-  .topic-primary-action {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-
-  .topic-badge,
-  .topic-rank {
-    display: inline-flex;
-    align-items: center;
-    min-height: 1.9rem;
-    padding: 0.18rem 0.6rem;
-    border-radius: var(--radius-pill);
-    font-size: 0.74rem;
-    font-weight: 700;
-  }
+  /* ── Badge pill ── */
 
   .topic-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    padding: 0.18rem 0.55rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.72rem;
+    font-weight: 700;
     background: var(--tile-badge-bg);
     color: var(--tile-badge-color);
+    transition: background-color 280ms ease, color 280ms ease;
   }
 
-  .topic-rank {
-    padding-inline: 0;
-    min-height: auto;
-    color: var(--text-soft);
-  }
+  /* ── Topic body ── */
 
   .topic-body {
     display: grid;
-    gap: 0.35rem;
+    gap: 0.25rem;
   }
 
   .topic-body strong {
-    font-size: 1.02rem;
+    font-size: var(--text-lg);
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.25;
     color: var(--text);
     letter-spacing: -0.015em;
   }
 
-  .topic-body p,
-  .topic-meta {
-    color: var(--text-soft);
-    line-height: 1.45;
-  }
+  /* ── CTA ── */
 
-  .topic-body p {
-    font-size: 0.84rem;
-  }
-
-  .topic-meta {
-    font-size: 0.76rem;
-  }
-
-  .topic-primary-action {
-    color: var(--text);
-    font-size: 0.86rem;
+  .topic-cta {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--accent);
+    font-size: var(--text-base);
     font-weight: 700;
+    transition: text-shadow 200ms ease-out;
   }
 
-  .topic-primary-arrow {
-    transition: transform var(--motion-fast) var(--ease-spring);
+  .topic-tile:hover .topic-cta {
+    text-shadow: 0 0 8px rgba(20, 184, 166, 0.25);
   }
 
-  .topic-tile:hover .topic-primary-arrow,
-  .topic-tile:has(.topic-launch:focus-visible) .topic-primary-arrow {
-    transform: translateX(3px);
+  /* ── Busy dots (loading) ── */
+
+  .topic-busy-dots {
+    display: inline-flex;
+    gap: 0.2rem;
+    align-items: center;
   }
+
+  .topic-busy-dot {
+    width: 0.3rem;
+    height: 0.3rem;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.4;
+    animation: busy-pulse 1s ease-in-out infinite;
+  }
+
+  .topic-busy-dot:nth-child(2) { animation-delay: 0.15s; }
+  .topic-busy-dot:nth-child(3) { animation-delay: 0.3s; }
 </style>
