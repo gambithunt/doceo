@@ -664,6 +664,13 @@
                 <strong>Feedback saved.</strong>
                 <span>Thanks. This lesson will now influence future artifact ranking for this node.</span>
               </div>
+              <button
+                type="button"
+                class="btn btn-primary rating-submit"
+                onclick={() => appState.closeLessonToDashboard()}
+              >
+                Back to dashboard
+              </button>
             {:else}
               <button
                 type="button"
