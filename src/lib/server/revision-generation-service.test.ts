@@ -247,4 +247,105 @@ describe('revision generation service', () => {
     expect(second.session.revisionQuestionArtifactId).toBe(first.session.revisionQuestionArtifactId);
     expect(second.session.questions[0]?.prompt).toBe('Without notes, explain what equivalent fractions are.');
   });
+
+  it('creates a provisional topic node when no graph match exists', async () => {
+    const unknownTopic = createTopic({
+      lessonSessionId: 'revision-session-unknown',
+      nodeId: null,
+      topicTitle: 'Understanding Climate Change Impacts',
+      subjectId: 'subject-geography',
+      subject: 'Geography',
+      curriculumReference: 'CAPS Grade 6'
+    });
+
+    generator.mockResolvedValueOnce({
+      payload: {
+        ...createGeneratedPack(),
+        questions: [
+          {
+            ...createGeneratedPack().questions[0],
+            revisionTopicId: 'revision-session-unknown'
+          }
+        ]
+      },
+      provider: 'github-models',
+      model: 'openai/gpt-4.1-mini'
+    });
+
+    const result = await service.startRevisionSession({
+      request: {
+        student: createProfile(),
+        learnerProfile: createLearnerProfile(),
+        topics: [unknownTopic],
+        recommendationReason: 'Due today',
+        mode: 'deep_revision',
+        source: 'do_today'
+      }
+    });
+
+    // Should succeed without FK violation
+    expect(result.session).toBeTruthy();
+    expect(result.resolvedTopics[0]?.nodeId).toBeTruthy();
+
+    // Should have created a provisional subject node and a provisional topic node
+    const nodes = graphStore.snapshot().nodes;
+    const provisionalTopic = nodes.find(
+      (n) => n.label === 'Understanding Climate Change Impacts' && n.type === 'topic'
+    );
+    expect(provisionalTopic).toBeTruthy();
+    expect(provisionalTopic?.status).toBe('provisional');
+
+    // The topic's parentId should be a valid graph node, not a raw curriculum ID
+    if (provisionalTopic?.parentId) {
+      const parentNode = nodes.find((n) => n.id === provisionalTopic.parentId);
+      expect(parentNode).toBeTruthy();
+      expect(parentNode?.type).toBe('subject');
+      expect(parentNode?.label).toBe('Geography');
+    }
+  });
+
+  it('reuses existing subject node as parent when creating provisional topic', async () => {
+    const topic = createTopic({
+      lessonSessionId: 'revision-session-new-math-topic',
+      nodeId: null,
+      topicTitle: 'Probability Basics',
+      subjectId: 'graph-subject-mathematics',
+      subject: 'Mathematics',
+      curriculumReference: 'CAPS Grade 6'
+    });
+
+    generator.mockResolvedValueOnce({
+      payload: {
+        ...createGeneratedPack(),
+        questions: [
+          {
+            ...createGeneratedPack().questions[0],
+            revisionTopicId: 'revision-session-new-math-topic'
+          }
+        ]
+      },
+      provider: 'github-models',
+      model: 'openai/gpt-4.1-mini'
+    });
+
+    const result = await service.startRevisionSession({
+      request: {
+        student: createProfile(),
+        learnerProfile: createLearnerProfile(),
+        topics: [topic],
+        recommendationReason: 'Due today',
+        mode: 'deep_revision',
+        source: 'do_today'
+      }
+    });
+
+    const nodes = graphStore.snapshot().nodes;
+    const provisionalTopic = nodes.find(
+      (n) => n.label === 'Probability Basics' && n.type === 'topic'
+    );
+
+    expect(provisionalTopic).toBeTruthy();
+    // parentId should be the existing bootstrapped subject node
+    expect(provisionalTopic?.parentId).toBe('graph-subject-mathematics');
+  });
 });

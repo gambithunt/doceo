@@ -39,6 +39,35 @@ function buildScope(request: RevisionPackRequest): RevisionArtifactScope {
   };
 }
 
+async function resolveSubjectNode(
+  graphRepository: GraphRepository,
+  scope: RevisionArtifactScope,
+  topic: RevisionTopic
+): Promise<string | null> {
+  if (!topic.subject) return null;
+
+  const match = await graphRepository.findNodeByLabel(
+    { countryId: scope.countryId, curriculumId: scope.curriculumId, gradeId: scope.gradeId },
+    'subject',
+    topic.subject
+  );
+
+  if (match.node) return match.node.id;
+
+  // No subject node exists — create a provisional one
+  const subjectNode = await graphRepository.createProvisionalNode({
+    id: topic.subjectId?.startsWith('graph-') ? topic.subjectId : undefined,
+    type: 'subject',
+    label: topic.subject,
+    parentId: null, // subjects sit at the top of the hierarchy under grade
+    scope: { countryId: scope.countryId, curriculumId: scope.curriculumId, gradeId: scope.gradeId },
+    origin: 'learner_discovered',
+    trustScore: 0.3
+  });
+
+  return subjectNode.id;
+}
+
 async function resolveTopicNode(
   graphRepository: GraphRepository,
   request: RevisionPackRequest,
@@ -65,10 +94,13 @@ async function resolveTopicNode(
     return topicMatch.node;
   }
 
+  // 4. Resolve subject → graph node ID for parentId
+  const parentNodeId = await resolveSubjectNode(graphRepository, scope, topic);
+
   return graphRepository.createProvisionalNode({
     type: 'topic',
     label: topic.topicTitle,
-    parentId: topic.subjectId || null,
+    parentId: parentNodeId,
     scope,
     description: topic.curriculumReference,
     origin: 'learner_discovered',
