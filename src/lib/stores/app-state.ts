@@ -1196,16 +1196,21 @@ export function createAppStore(initialState: AppState = readState()) {
     setLessonCloseConfirm: (showLessonCloseConfirm: boolean) =>
       update((state) => persistAndSync({ ...state, ui: { ...state.ui, showLessonCloseConfirm } })),
     closeLessonToDashboard: () => {
-      update((state) =>
-        persistAndSync({
+      update((state) => {
+        const activeSession = getActiveLessonSession(state);
+        return persistAndSync({
           ...state,
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            selectedSubjectId: activeSession?.subjectId ?? state.topicDiscovery.selectedSubjectId
+          },
           ui: {
             ...state.ui,
             currentScreen: 'dashboard',
             showLessonCloseConfirm: false
           }
-        })
-      );
+        });
+      });
       navigate(dashboardPath());
     },
     updateComposerDraft: (composerDraft: string) =>
