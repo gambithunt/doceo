@@ -214,11 +214,11 @@ All tasks follow RED GREEN TDD per AGENTS.md. Each task is one focused change.
 
 ### Phase 5 — Cleanup
 
-- [ ] **5.1** Remove the standalone hero recommendation card, outlook panel, "Build your next revision path" invite card, and focus tabs section from the home view. All their data now powers the topic list and filters
-- [ ] **5.2** Remove the persistent recall panel from the home view. Topic detail (calibration, history, misconceptions) is accessible via expand-in-place on the topic row or a slide-out sheet (decide during implementation)
-- [ ] **5.3** Audit light mode — verify all new components use design tokens, test accent contrast on white surfaces (`#0D9488`), confirm shadows use light-mode overrides
-- [ ] **5.4** Audit mobile — full pass at 375px, 390px, 428px. Verify tap targets are minimum 44px, filter row scrolls cleanly, no horizontal overflow
-- [ ] **5.5** Things to check which were concerns at the end of each phase
+- [x] **5.1** Remove the standalone hero recommendation card, outlook panel, "Build your next revision path" invite card, and focus tabs section from the home view. All their data now powers the topic list and filters
+- [x] **5.2** Remove the persistent recall panel from the home view. Topic detail (calibration, history, misconceptions) is accessible via expand-in-place on the topic row or a slide-out sheet (decide during implementation)
+- [x] **5.3** Audit light mode — verify all new components use design tokens, test accent contrast on white surfaces (`#0D9488`), confirm shadows use light-mode overrides
+- [x] **5.4** Audit mobile — full pass at 375px, 390px, 428px. Verify tap targets are minimum 44px, filter row scrolls cleanly, no horizontal overflow
+- [x] **5.5** Things to check which were concerns at the end of each phase
       - Component buttons use locally-scoped .btn-primary/.btn-secondary styles. If the app has global button classes, these may need alignment in Phase 5 audit.
       - Make sure that all dead none used css is cleaned up
 

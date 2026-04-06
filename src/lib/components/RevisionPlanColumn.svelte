@@ -127,6 +127,8 @@
     letter-spacing: 0.04em;
   }
 
+
+
   /* CTA card */
   .plan-cta-card {
     display: flex;
