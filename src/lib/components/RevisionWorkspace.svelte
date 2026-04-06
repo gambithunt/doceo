@@ -3,7 +3,7 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { tick } from 'svelte';
-  import { fly } from 'svelte/transition';
+  import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
   import {
@@ -14,6 +14,8 @@
   import { formatSavedPlansCount, getRevisionPlansHeader } from '$lib/components/revision-plans';
   import { getRevisionPlanRemovalContent } from '$lib/components/revision-plan-removal';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
+  import RevisionTopicList from '$lib/components/RevisionTopicList.svelte';
+  import RevisionPlanColumn from '$lib/components/RevisionPlanColumn.svelte';
   import { renderSimpleMarkdown } from '$lib/markdown';
   import {
     getPlannerResolutionLabel,
@@ -1208,562 +1210,149 @@
 
 <section class="workspace" class:session-focus={hasSessionFocus}>
   {#if revisionWorkspaceMode === 'home'}
-  {#if upcomingExamInfo}
-    <section class="panel revision-outlook-panel">
-      <div class="revision-outlook-main">
-        <div class="revision-outlook-header">
-          <div class="revision-outlook-copy">
-            <p class="eyebrow">On The Horizon</p>
-            <h2>{upcomingExamInfo.examName}</h2>
-            <p class="revision-outlook-subject">{upcomingExamInfo.subjectName} revision path</p>
+  <div class="action-zone" out:fade={{ duration: 150 }}>
+    <div class="action-zone-grid">
+      <RevisionTopicList
+        topics={state.revisionTopics}
+        {homeModel}
+        lessonSessions={state.lessonSessions}
+        activePlan={activeRevisionPlan}
+        activeLessonSessionId={state.ui.activeLessonSessionId}
+        onreview={(topic, mode) => review(topic, mode)}
+      />
+      <RevisionPlanColumn
+        plans={sortedRevisionPlans}
+        activePlanId={state.activeRevisionPlanId}
+        onopenplanner={openPlanner}
+        onstartplan={(planId) => startPlan(planId)}
+        onremoveplan={(planId) => { appState.removeRevisionPlan(planId); }}
+      />
+    </div>
+  </div>
+
+  <!-- Insight zone — preserved panels, moved below fold -->
+  <section class="insight-zone">
+    <div class="insight-zone-header">
+      <p class="eyebrow">Your progress</p>
+    </div>
+
+    <div class="insight-zone-grid">
+      {#if upcomingExamInfo}
+        <article class="panel insight-card">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">On The Horizon</p>
+              <h3>{upcomingExamInfo.examName}</h3>
+            </div>
+            <small>{upcomingExamInfo.daysLabel}</small>
           </div>
-          <div class="revision-outlook-countdown">
-            <span>Time left</span>
-            <strong>{upcomingExamInfo.daysLabel}</strong>
+          <p class="insight-detail">{upcomingExamInfo.subjectName} revision path</p>
+        </article>
+      {/if}
+
+      <article class="panel insight-card">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Memory Strength</p>
+            <h3>Consistency is building recall</h3>
           </div>
+          <small>{progressModel.memoryStrength}%</small>
         </div>
+        <div class="strength-meter" aria-hidden="true">
+          <div class="strength-fill" style={`width: ${progressModel.memoryStrength}%`}></div>
+        </div>
+        <div class="calibration-grid">
+          <article class="mini-stat">
+            <strong>{progressModel.consistencyDays}</strong>
+            <span>Active days this week</span>
+          </article>
+          <article class="mini-stat">
+            <strong>{progressModel.coveredTopicsCount}</strong>
+            <span>Topics reviewed recently</span>
+          </article>
+        </div>
+      </article>
 
-        <p class="build-plan-summary revision-outlook-summary">{getRevisionOutlookMessage()}</p>
-
-        <div class="revision-outlook-stats" aria-label="Revision signals">
-          {#each outlookStats as stat}
-            <article class={`revision-signal-card tone-${stat.tone}`}>
-              <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
+      <article class="panel insight-card">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Weekly Activity</p>
+            <h3>Revision across the last 7 days</h3>
+          </div>
+          <small>{progressModel.consistencyDays} active days</small>
+        </div>
+        <div class="weekly-strip" aria-hidden="true">
+          {#each progressModel.weeklyActivity as day}
+            <article class="day-column">
+              <div class="day-bar-wrap">
+                <div
+                  class:active={day.count > 0}
+                  class="day-bar"
+                  style={`height: ${Math.max(0.35, Math.min(1, day.count / 3)) * 4.2}rem`}
+                ></div>
+              </div>
+              <strong>{day.count}</strong>
+              <span>{day.label}</span>
             </article>
           {/each}
         </div>
-      </div>
+      </article>
 
-      {#if outlookPlans.length > 0}
-        <div class="revision-outlook-side">
-          <div class="revision-outlook-side-header">
-            <p class="eyebrow">On Deck</p>
-            <small>{outlookPlans.length} target{outlookPlans.length === 1 ? '' : 's'}</small>
+      {#if progressModel.insights.length > 0}
+        <article class="panel insight-card">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Revision Signals</p>
+              <h3>Patterns Doceo is watching</h3>
+            </div>
+            <small>{progressModel.insights.length} signals</small>
           </div>
-          <div class="revision-plan-preview-grid" aria-label="Upcoming revision plans">
-            {#each outlookPlans as plan, index}
-              <article class={`revision-plan-preview tone-${index % 4}`}>
-                <div class="revision-plan-preview-topline">
-                  <strong>{plan.examName}</strong>
-                  {#if activeRevisionPlan?.id === plan.id}
-                    <span class="preview-badge">Current</span>
-                  {/if}
+          <div class="activity-list">
+            {#each progressModel.insights as item}
+              <article class:recovery={item.tone === 'recovery'} class="activity-item insight-item">
+                <div class="topic-row">
+                  <strong>{item.title}</strong>
+                  <span class="hero-pill subdued">{item.tone}</span>
                 </div>
-                <span>{plan.subjectName}</span>
-                <p>{formatPlanTiming(plan.examDate)}</p>
+                <p>{item.summary}</p>
               </article>
             {/each}
           </div>
-        </div>
+        </article>
       {/if}
-    </section>
-  {/if}
 
-  <section class="panel build-plan-panel build-plan-invite-card">
-    <div class="build-plan-invite-icon" aria-hidden="true">🎯</div>
-    <div class="build-plan-invite-body">
-      <h3>Build your next revision path</h3>
-      <p class="build-plan-summary">Choose the exam, and Doceo will organise what to revise next.</p>
-      <button type="button" class="action-btn build-plan-cta" onclick={openPlanner}>Build revision</button>
-    </div>
-  </section>
-
-  <section class="panel plans-panel">
-    <div class="panel-header">
-      <div>
-        <p class="eyebrow">{revisionPlansHeader.eyebrow}</p>
-        <h3>{revisionPlansHeader.title}</h3>
-        <p class="plans-summary">{revisionPlansHeader.summary}</p>
-      </div>
-      <small class="plans-count">{formatSavedPlansCount(sortedRevisionPlans.length)}</small>
-    </div>
-
-    {#if sortedRevisionPlans.length > 0}
-      <div class="plan-grid">
-        {#each sortedRevisionPlans as plan, index}
-          {@const examMs = new Date(plan.examDate).getTime()}
-          {@const daysLeft = Number.isNaN(examMs) ? null : Math.ceil((examMs - Date.now()) / 86400000)}
-          <article
-            class:active-plan={activeRevisionPlan?.id === plan.id}
-            class="plan-card tone-{index % 3}"
-          >
-            <div class="plan-card-header">
-              <div class="plan-card-title-block">
-                {#if activeRevisionPlan?.id === plan.id}
-                  <span class="plan-active-badge">Active</span>
-                {/if}
-                <strong class="plan-card-name">{plan.examName ?? 'Revision plan'}</strong>
-                <span class="plan-card-subject">{plan.subjectName}</span>
-              </div>
-              <div class="plan-card-aside">
-                <button
-                  type="button"
-                  class="plan-remove-btn"
-                  aria-label={`Remove ${plan.examName ?? 'revision plan'}`}
-                  onclick={() => removePlan(plan.id, plan.examName)}
-                >
-                  Remove
-                </button>
-                {#if daysLeft !== null}
-                  <div class="plan-countdown" class:plan-countdown--urgent={daysLeft <= 7 && daysLeft >= 0}>
-                    <strong class="plan-countdown-num">
-                      {daysLeft < 0 ? '—' : daysLeft === 0 ? '0' : daysLeft}
-                    </strong>
-                    <span class="plan-countdown-label">
-                      {daysLeft < 0 ? 'Passed' : daysLeft === 0 ? 'Today' : 'Days left'}
-                    </span>
-                  </div>
-                {/if}
-              </div>
-            </div>
-
-            <div class="plan-chips-row">
-              <span class="plan-chip plan-chip--info">{formatPlanStyleLabel(plan.planStyle)}</span>
-              <span class="plan-chip">{plan.topics.length} topic{plan.topics.length === 1 ? '' : 's'}</span>
-              <span class="plan-chip">{formatPlanDailyLabel(plan.timeBudgetMinutes)}</span>
-            </div>
-
-            <button type="button" class="action-btn plan-start-btn" onclick={() => startPlan(plan.id)}>
-              Start revision
-            </button>
-          </article>
-        {/each}
-      </div>
-    {:else}
-      <div class="empty-plan-state">
-        <div>
-          <p class="eyebrow">No Saved Plans</p>
-          <h3>Create your first exam plan</h3>
-          <p>Build a revision plan and it will appear here as a reusable card with the exam date, plan style, and included topics.</p>
-        </div>
-        <button type="button" class="action-btn" onclick={openPlanner}>Build my plan</button>
-      </div>
-    {/if}
-  </section>
-
-  {#if homeModel.hero}
-    <section class="hero-card revise-now-card">
-      <div class="hero-copy recommendation-copy">
-        <p class="recommendation-heading">{homeModel.hero.heading}</p>
-        <h3 class="recommendation-topic">{homeModel.hero.topic.topicTitle}</h3>
-        <p class="hero-support recommendation-summary">{formatRecommendationSummary()}</p>
-        {#if getRecommendationContextItems().length > 0}
-          <div class="recommendation-context" aria-label="Recommendation context">
-            {#each getRecommendationContextItems() as item}
-              <span>{item}</span>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <div class="hero-side recommendation-side">
-        <div class="hero-actions">
-          <button
-            type="button"
-            class="action-btn recommendation-cta"
-            onclick={() => review(homeModel.hero!.topic, homeModel.hero!.suggestedMode)}
-          >
-            {homeModel.hero.ctaLabel}
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <div class="content-grid" class:session-focus-grid={hasSessionFocus}>
-      <aside class="queue-stack">
-        <section class="panel">
+      {#if progressModel.recentActivity.length > 0}
+        <article class="panel insight-card">
           <div class="panel-header">
             <div>
-              <p class="eyebrow">Memory Strength</p>
-              <h3>Consistency is building recall</h3>
+              <p class="eyebrow">Recent Activity</p>
+              <h3>What changed most recently</h3>
             </div>
-            <small>{progressModel.memoryStrength}%</small>
+            <small>{progressModel.recentActivity.length} turns</small>
           </div>
-          <div class="strength-meter" aria-hidden="true">
-            <div class="strength-fill" style={`width: ${progressModel.memoryStrength}%`}></div>
-          </div>
-          <p>Showing up matters here. This score blends topic confidence with recent revision consistency and coverage.</p>
-          <div class="calibration-grid">
-            <article class="mini-stat">
-              <strong>{progressModel.consistencyDays}</strong>
-              <span>Active days this week</span>
-            </article>
-            <article class="mini-stat">
-              <strong>{progressModel.coveredTopicsCount}</strong>
-              <span>Topics reviewed recently</span>
-            </article>
-          </div>
-        </section>
-
-        {#if progressModel.insights.length > 0}
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">Revision Signals</p>
-                <h3>Patterns Doceo is watching</h3>
-              </div>
-              <small>{progressModel.insights.length} signals</small>
-            </div>
-
-            <div class="activity-list">
-              {#each progressModel.insights as item}
-                <article class:recovery={item.tone === 'recovery'} class="activity-item insight-item">
-                  <div class="topic-row">
-                    <strong>{item.title}</strong>
-                    <span class="hero-pill subdued">{item.tone}</span>
-                  </div>
-                  <p>{item.summary}</p>
-                </article>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Weekly Activity</p>
-              <h3>Revision across the last 7 days</h3>
-            </div>
-            <small>{progressModel.consistencyDays} active days</small>
-          </div>
-
-          <div class="weekly-strip" aria-hidden="true">
-            {#each progressModel.weeklyActivity as day}
-              <article class="day-column">
-                <div class="day-bar-wrap">
-                  <div
-                    class:active={day.count > 0}
-                    class="day-bar"
-                    style={`height: ${Math.max(0.35, Math.min(1, day.count / 3)) * 4.2}rem`}
-                  ></div>
+          <div class="activity-list">
+            {#each progressModel.recentActivity as item}
+              <article class="activity-item">
+                <div class="topic-row">
+                  <strong>{item.topicTitle}</strong>
+                  <small>{new Date(item.createdAt).toLocaleDateString()}</small>
                 </div>
-                <strong>{day.count}</strong>
-                <span>{day.label}</span>
+                <span class="hero-pill subdued">{item.label}</span>
+                <p>{item.summary}</p>
               </article>
             {/each}
           </div>
-        </section>
-
-        {#if progressModel.recentActivity.length > 0}
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <p class="eyebrow">Recent Activity</p>
-                <h3>What changed most recently</h3>
-              </div>
-              <small>{progressModel.recentActivity.length} turns</small>
-            </div>
-
-            <div class="activity-list">
-              {#each progressModel.recentActivity as item}
-                <article class="activity-item">
-                  <div class="topic-row">
-                    <strong>{item.topicTitle}</strong>
-                    <small>{new Date(item.createdAt).toLocaleDateString()}</small>
-                  </div>
-                  <span class="hero-pill subdued">{item.label}</span>
-                  <p>{item.summary}</p>
-                </article>
-              {/each}
-            </div>
-          </section>
-        {/if}
-
-        <section class="panel revision-focus-panel">
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">Revision Paths</p>
-              <h3>{activeFocusPanel.title}</h3>
-            </div>
-            <small>{activeFocusPanel.items.length} topics</small>
-          </div>
-
-          <div class="focus-tablist" role="tablist" aria-label="Revision paths">
-            {#each focusModel.tabs as tab}
-              <button
-                type="button"
-                role="tab"
-                class:active={activeFocusTab === tab.id}
-                class="focus-tab"
-                aria-selected={activeFocusTab === tab.id}
-                onclick={() => selectFocusTab(tab.id)}
-              >
-                <span>{tab.label}</span>
-                <strong>{tab.count}</strong>
-              </button>
-            {/each}
-          </div>
-
-          <p class="focus-summary">{activeFocusPanel.summary}</p>
-
-          {#if activeFocusTab === 'prepare_exam' && activeRevisionPlan}
-            <div class="focus-context">
-              <span class="hero-pill">{activeRevisionPlan.examName ?? 'Active plan'}</span>
-              <span class="hero-pill subdued">{formatPlanTiming(activeRevisionPlan.examDate)}</span>
-              <span class="hero-pill subdued">{activeRevisionPlan.subjectName}</span>
-            </div>
-          {/if}
-
-          {#if activeFocusPanel.items.length > 0}
-            <div class:compact={activeFocusTab !== 'choose_topic'} class="queue-list focus-queue">
-              {#each activeFocusPanel.items as item}
-                <button
-                  type="button"
-                  class:selected={selectedTopic?.lessonSessionId === item.topic.lessonSessionId}
-                  class:weakness={getFocusButtonTone(activeFocusTab ?? focusModel.defaultTab) === 'weakness'}
-                  class:exam={getFocusButtonTone(activeFocusTab ?? focusModel.defaultTab) === 'exam'}
-                  class:library={getFocusButtonTone(activeFocusTab ?? focusModel.defaultTab) === 'library'}
-                  class="topic-button"
-                  onclick={() => review(item.topic, item.recommendation?.suggestedMode ?? 'deep_revision')}
-                >
-                  <div class="topic-row">
-                    <strong>{item.topic.topicTitle}</strong>
-                    <small>{formatDueLabel(item.topic.nextRevisionAt)}</small>
-                  </div>
-                  <span>{getFocusItemSummary(activeFocusTab ?? focusModel.defaultTab, item)}</span>
-                  <span class="topic-meta">{getFocusItemMeta(activeFocusTab ?? focusModel.defaultTab, item)}</span>
-                  <p>{getFocusItemDescription(activeFocusTab ?? focusModel.defaultTab, item)}</p>
-                </button>
-              {/each}
-            </div>
-          {:else}
-            <div class="focus-empty-state">
-              <div>
-                <p class="eyebrow">{activeFocusPanel.emptyTitle}</p>
-                <p>{activeFocusPanel.emptyCopy}</p>
-              </div>
-              {#if (activeFocusTab ?? focusModel.defaultTab) === 'prepare_exam'}
-                <button type="button" class="secondary action-btn" onclick={openPlanner}>
-                  Build my plan
-                </button>
-              {/if}
-            </div>
-          {/if}
-        </section>
-      </aside>
-
-      <section class="panel recall-panel">
-        {#if selectedTopic}
-          <div class="panel-header">
-            <div>
-              <p class="eyebrow">{revisionSession ? 'Revision Session' : 'Recall Prompt'}</p>
-              <h3>{displayTopic?.topicTitle ?? selectedTopic.topicTitle}</h3>
-              {#if currentQuestionTopic && selectedTopic && currentQuestionTopic.lessonSessionId !== selectedTopic.lessonSessionId}
-                <p class="session-topic-note">Current question from {currentQuestionTopic.topicTitle}</p>
-              {/if}
-              {#if selectedRecommendation}
-                <p class="session-topic-note">Best mode: {selectedRecommendation.suggestedMode.replace('_', ' ')}. {selectedRecommendation.suggestedModeReason}</p>
-              {/if}
-            </div>
-            <small>{formatDueLabel((displayTopic ?? selectedTopic).nextRevisionAt)}</small>
-          </div>
-
-          {#if revisionSession}
-            <div class="session-meta">
-              <span class="hero-pill">{revisionSession.mode.replace('_', ' ')}</span>
-              <span class="hero-pill subdued">{revisionSession.recommendationReason}</span>
-              {#if revisionSession.mode === 'shuffle' && revisionSession.revisionTopicIds.length > 1}
-                <span class="hero-pill subdued">{revisionSession.revisionTopicIds.length} topics mixed</span>
-              {/if}
-              {#if revisionSession.status === 'completed'}
-                <span class="hero-pill subdued">Round complete</span>
-              {:else if revisionSession.status === 'escalated_to_lesson'}
-                <span class="hero-pill subdued">Lesson handoff</span>
-              {/if}
-            </div>
-          {/if}
-
-          {#if isSessionActive && currentQuestion}
-            <div class="question-card">
-              <p class="question-type">{currentQuestion.questionType.replace('_', ' ')}</p>
-              <p>{currentQuestion.prompt}</p>
-            </div>
-            <textarea
-              bind:value={recallDraft}
-              rows="8"
-              placeholder={`Answer the ${currentQuestion.questionType.replace('_', ' ')} prompt for ${(displayTopic ?? selectedTopic).topicTitle}`}
-            ></textarea>
-            <label class="field">
-              <span>How confident do you feel?</span>
-              <select bind:value={selfConfidence}>
-                <option value={1}>1 · Not at all</option>
-                <option value={2}>2 · A bit shaky</option>
-                <option value={3}>3 · Mixed</option>
-                <option value={4}>4 · Mostly sure</option>
-                <option value={5}>5 · Very sure</option>
-              </select>
-            </label>
-            <div class="actions">
-              <button type="button" class="action-btn" onclick={submitRecall}>Check answer</button>
-              <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionNudge()}>
-                Nudge
-              </button>
-              <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionHint()}>
-                Hint
-              </button>
-              <button type="button" class="secondary action-btn" onclick={() => appState.markRevisionStuck()}>
-                I'm stuck
-              </button>
-            </div>
-          {:else}
-            <div class="starter-card">
-              <p>
-                {#if revisionSession?.status === 'completed'}
-                  This round is complete. Start another pass or switch mode to challenge the topic differently.
-                {:else if revisionSession?.status === 'escalated_to_lesson'}
-                  Revision has found a real gap here. Step back into lesson mode for a short reteach, then come back.
-                {:else}
-                  Start a structured revision loop for this topic. Deep revision is the default; the other modes are lighter or more demanding.
-                {/if}
-              </p>
-
-              <div class="starter-actions">
-                {#if revisionSession?.status === 'escalated_to_lesson'}
-                  <button
-                    type="button"
-                    class="action-btn"
-                    onclick={() => appState.startRevisionLessonHandoff()}
-                  >
-                    Start focused reteach
-                  </button>
-                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'deep_revision')}>
-                    Try revision again
-                  </button>
-                {:else}
-                  <button type="button" class="action-btn" onclick={() => startRecommendedRevision(selectedTopic)}>
-                    {selectedRecommendation?.suggestedMode === 'teacher_mode'
-                      ? 'Start teacher mode'
-                      : selectedRecommendation?.suggestedMode === 'quick_fire'
-                        ? 'Start quick-fire'
-                        : 'Start deep revision'}
-                  </button>
-                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'quick_fire')}>
-                    Quick-fire
-                  </button>
-                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'shuffle')}>
-                    Shuffle
-                  </button>
-                  <button type="button" class="secondary action-btn" onclick={() => review(selectedTopic, 'teacher_mode')}>
-                    Teacher mode
-                  </button>
-                {/if}
-              </div>
-
-              <div class="mode-list">
-                {#each revisionModes as option}
-                  <article class="mode-card">
-                    <strong>{option.label}</strong>
-                    <p>{option.description}</p>
-                  </article>
-                {/each}
-              </div>
-            </div>
-          {/if}
-
-          {#if feedbackMarkdown()}
-            <article class="feedback-card">
-              {@html renderSimpleMarkdown(feedbackMarkdown()!)}
-            </article>
-          {/if}
-
-          {#if displayTopic}
-            <article class="feedback-card calibration-card">
-              <div class="panel-header">
-                <div>
-                  <p class="eyebrow">Calibration</p>
-                  <h3>{getCalibrationHeading(displayTopic)}</h3>
-                </div>
-                <span class="hero-pill subdued">{Math.round(displayTopic.calibration.averageCorrectness * 100)}% accuracy</span>
-              </div>
-              <p>{getCalibrationSummary(displayTopic)}</p>
-              <div class="calibration-grid">
-                <article class="mini-stat">
-                  <strong>{displayTopic.calibration.averageSelfConfidence.toFixed(1)}</strong>
-                  <span>Avg confidence / 5</span>
-                </article>
-                <article class="mini-stat">
-                  <strong>{Math.round(displayTopic.calibration.averageCorrectness * 100)}%</strong>
-                  <span>Avg performance</span>
-                </article>
-                <article class="mini-stat">
-                  <strong>{displayTopic.calibration.overconfidenceCount}</strong>
-                  <span>Overconfident turns</span>
-                </article>
-                <article class="mini-stat">
-                  <strong>{displayTopic.calibration.underconfidenceCount}</strong>
-                  <span>Underconfident turns</span>
-                </article>
-                <article class="mini-stat">
-                  <strong>{Math.round(displayTopic.retentionStability * 100)}%</strong>
-                  <span>Retention stability</span>
-                </article>
-                <article class="mini-stat">
-                  <strong>{Math.round(displayTopic.forgettingVelocity * 100)}%</strong>
-                  <span>Forgetting velocity</span>
-                </article>
-                {#if getStrongestMisconceptionLabel(displayTopic)}
-                  <article class="mini-stat wide-stat">
-                    <strong>{getStrongestMisconceptionLabel(displayTopic)}</strong>
-                    <span>Strongest repeated gap</span>
-                  </article>
-                {/if}
-              </div>
-            </article>
-          {/if}
-
-          {#if topicHistory}
-            <article class="feedback-card">
-              <div class="panel-header">
-                <div>
-                  <p class="eyebrow">Topic History</p>
-                  <h3>{topicHistory.topicTitle}</h3>
-                </div>
-                <span class="hero-pill subdued">{formatTrendLabel(topicHistory.trend)}</span>
-              </div>
-              <p>Dominant issue: {topicHistory.dominantIssue}.</p>
-              <div class="activity-list">
-                {#each topicHistory.entries as entry}
-                  <article class="activity-item">
-                    <div class="topic-row">
-                      <strong>{entry.label}</strong>
-                      <small>{new Date(entry.createdAt).toLocaleDateString()}</small>
-                    </div>
-                    <div class="hero-meta">
-                      <span class="hero-pill subdued">{Math.round(entry.correctness * 100)}% correct</span>
-                      <span class="hero-pill subdued">Confidence {entry.selfConfidence}/5</span>
-                    </div>
-                    <p>{entry.summary}</p>
-                  </article>
-                {/each}
-              </div>
-            </article>
-          {/if}
-        {:else}
-          <div class="empty-state">
-            <p class="eyebrow">No Revision Topics Yet</p>
-            <h3>Complete a lesson to start your revision queue</h3>
-            <p>Once you finish a lesson, Doceo can rank what needs another pass and bring it back at the right time.</p>
-            <button type="button" class="action-btn" onclick={() => appState.generateRevisionPlan()}>
-              Refresh this plan
-            </button>
-          </div>
-        {/if}
-      </section>
+        </article>
+      {/if}
     </div>
+  </section>
+
+
   {:else}
-    <section class="panel empty-state">
-      <p class="eyebrow">Revision</p>
-      <h3>Your queue is still empty</h3>
-      <p>Complete a lesson first, then come back here for ranked revision recommendations and recall practice.</p>
-      <button type="button" class="action-btn" onclick={openPlanner}>
-        Build my plan
-      </button>
-    </section>
-  {/if}
-  {:else}
-    <section class={`revision-session-shell status-${revisionSession?.status ?? 'active'} subject-${sessionSubjectSlug}`}>
+    <section
+      class={`revision-session-shell status-${revisionSession?.status ?? 'active'} subject-${sessionSubjectSlug}`}
+      in:fly={{ x: 80, duration: 250, easing: cubicOut }}
+    >
       <header class="revision-session-topbar">
         <button type="button" class="secondary action-btn session-exit-btn" onclick={() => appState.exitRevisionSession()}>
           Back to revision
@@ -2428,30 +2017,60 @@
     gap: 1rem;
   }
 
+  /* Phase 3 — Action zone grid */
+  .action-zone {
+    animation: section-enter 0.35s ease-out both;
+  }
+
+  .action-zone-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: var(--space-5, 1.25rem);
+    align-items: start;
+  }
+
+  @media (max-width: 768px) {
+    .action-zone-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Phase 3 — Insight zone */
+  .insight-zone {
+    margin-top: var(--space-10, 2.5rem);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 1rem);
+  }
+
+  .insight-zone-header .eyebrow {
+    font-size: var(--text-sm, 0.85rem);
+    font-weight: 600;
+    color: var(--color-text-muted, #64748b);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-bottom: var(--space-2, 0.5rem);
+    border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  }
+
+  .insight-zone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--space-4, 1rem);
+  }
+
+  .insight-card {
+    animation: section-enter 0.35s ease-out both;
+  }
+
+  .insight-detail {
+    font-size: var(--text-sm, 0.85rem);
+    color: var(--color-text-soft, #94a3b8);
+  }
+
   @keyframes section-enter {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .workspace > .revision-outlook-panel {
-    animation: section-enter 0.35s var(--ease-soft) both;
-    animation-delay: 0.02s;
-  }
-  .workspace > .build-plan-panel {
-    animation: section-enter 0.35s var(--ease-soft) both;
-    animation-delay: 0.04s;
-  }
-  .workspace > .plans-panel {
-    animation: section-enter 0.35s var(--ease-soft) both;
-    animation-delay: 0.07s;
-  }
-  .workspace > .hero-card {
-    animation: section-enter 0.35s var(--ease-soft) both;
-    animation-delay: 0.1s;
-  }
-  .workspace > .content-grid {
-    animation: section-enter 0.35s var(--ease-soft) both;
-    animation-delay: 0.16s;
   }
 
   .hero-card,
