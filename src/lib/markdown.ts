@@ -53,7 +53,11 @@ export function renderSimpleMarkdown(markdown: string): string {
 
     flushList();
 
-    if (trimmed === '---') {
+    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      blocks.push(`<h${level}>${headingMatch[2]}</h${level}>`);
+    } else if (trimmed === '---') {
       blocks.push('<hr />');
     } else if (trimmed.length === 0) {
       blocks.push('');
