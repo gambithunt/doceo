@@ -84,7 +84,7 @@
       use:enhance={() => {
         saveState = 'saving';
         return async ({ update }) => {
-          await update();
+          await update({ reset: false });
           saveState = 'saved';
           setTimeout(() => (saveState = 'idle'), 2200);
         };
