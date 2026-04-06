@@ -93,6 +93,7 @@
 
   $effect(() => {
     lessonSession?.messages.length;
+    viewState.ui.pendingAssistantSessionId;
     if (chatElement && !showScrollDown) {
       chatElement.scrollTo({ top: chatElement.scrollHeight, behavior: 'smooth' });
     }
