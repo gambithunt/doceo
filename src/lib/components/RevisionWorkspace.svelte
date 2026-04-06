@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { browser } from '$app/environment';
-  import { tick } from 'svelte';
+  import { tick, onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
@@ -185,6 +185,20 @@
   $: pendingTurnResult = revisionSession?.awaitingAdvance ? revisionSession.lastTurnResult : null;
   $: plannerSubjectSelected = hasSelectedPlannerSubject(plannerSubjectId);
   $: plannerTopicsVisible = shouldShowPlannerTopics(plannerMode, plannerSubjectId);
+
+  let insightZoneElement: HTMLElement | null = null;
+  let insightZoneVisible = false;
+
+  onMount(() => {
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        insightZoneVisible = true;
+        observer.disconnect();
+      }
+    }, { threshold: 0.1 });
+    if (insightZoneElement) observer.observe(insightZoneElement);
+    return () => observer.disconnect();
+  });
 
   function seedPlannerFields(): void {
     plannerSubjectId = '';
@@ -1231,14 +1245,14 @@
   </div>
 
   <!-- Insight zone — preserved panels, moved below fold -->
-  <section class="insight-zone">
+  <section class="insight-zone" bind:this={insightZoneElement}>
     <div class="insight-zone-header">
       <p class="eyebrow">Your progress</p>
     </div>
 
     <div class="insight-zone-grid">
       {#if upcomingExamInfo}
-        <article class="panel insight-card">
+        <article class="panel insight-card" transition:fly={{ y:16, duration:200, delay:0 }}>
           <div class="panel-header">
             <div>
               <p class="eyebrow">On The Horizon</p>
@@ -1250,7 +1264,7 @@
         </article>
       {/if}
 
-      <article class="panel insight-card">
+      <article class="panel insight-card" transition:fly={{ y:16, duration:200, delay:60 }}>
         <div class="panel-header">
           <div>
             <p class="eyebrow">Memory Strength</p>
@@ -1273,7 +1287,7 @@
         </div>
       </article>
 
-      <article class="panel insight-card">
+      <article class="panel insight-card" transition:fly={{ y:16, duration:200, delay:120 }}>
         <div class="panel-header">
           <div>
             <p class="eyebrow">Weekly Activity</p>
@@ -1299,7 +1313,7 @@
       </article>
 
       {#if progressModel.insights.length > 0}
-        <article class="panel insight-card">
+        <article class="panel insight-card" transition:fly={{ y:16, duration:200, delay:180 }}>
           <div class="panel-header">
             <div>
               <p class="eyebrow">Revision Signals</p>
@@ -1322,7 +1336,7 @@
       {/if}
 
       {#if progressModel.recentActivity.length > 0}
-        <article class="panel insight-card">
+        <article class="panel insight-card" transition:fly={{ y:16, duration:200, delay:240 }}>
           <div class="panel-header">
             <div>
               <p class="eyebrow">Recent Activity</p>

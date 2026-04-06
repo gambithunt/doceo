@@ -208,9 +208,9 @@ All tasks follow RED GREEN TDD per AGENTS.md. Each task is one focused change.
 
 ### Phase 4 — Insight Zone (Below Fold)
 
-- [ ] **4.1** Move memory strength, weekly activity, revision signals, and recent activity panels into an insight zone section below the action zone. Wrap in a responsive grid (`repeat(auto-fill, minmax(320px, 1fr))`)
-- [ ] **4.2** Add insight zone entrance — staggered fade-up animation as panels enter the viewport on scroll (Svelte `fly` with `y: 16`, 200ms per card, 60ms stagger). Use `IntersectionObserver` to trigger
-- [ ] **4.3** Add "Your progress" eyebrow label and subtle divider above the insight zone
+- [x] **4.1** Move memory strength, weekly activity, revision signals, and recent activity panels into an insight zone section below the action zone. Wrap in a responsive grid (`repeat(auto-fill, minmax(320px, 1fr))`)
+- [x] **4.2** Add insight zone entrance — staggered fade-up animation as panels enter the viewport on scroll (Svelte `fly` with `y: 16`, 200ms per card, 60ms stagger). Use `IntersectionObserver` to trigger
+- [x] **4.3** Add "Your progress" eyebrow label and subtle divider above the insight zone
 
 ### Phase 5 — Cleanup
 
