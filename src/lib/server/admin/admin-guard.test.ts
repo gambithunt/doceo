@@ -1,5 +1,66 @@
 import { describe, expect, it } from 'vitest';
-import { isAdminRole, formatAdminError } from '$lib/server/admin/admin-guard';
+import { isAdminRole, formatAdminError, extractAccessToken } from '$lib/server/admin/admin-guard';
+import { ADMIN_TOKEN_COOKIE } from '$lib/admin-constants';
+
+describe('extractAccessToken', () => {
+  it('extracts token from Authorization header', () => {
+    const request = new Request('http://localhost', {
+      headers: { Authorization: 'Bearer my-jwt-token' }
+    });
+    expect(extractAccessToken(request)).toBe('my-jwt-token');
+  });
+
+  it('returns null when Authorization header is missing', () => {
+    const request = new Request('http://localhost');
+    expect(extractAccessToken(request)).toBeNull();
+  });
+
+  it('returns null for non-Bearer Authorization header', () => {
+    const request = new Request('http://localhost', {
+      headers: { Authorization: 'Basic abc123' }
+    });
+    expect(extractAccessToken(request)).toBeNull();
+  });
+
+  it('falls back to admin token cookie', () => {
+    const request = new Request('http://localhost', {
+      headers: { Cookie: `${ADMIN_TOKEN_COOKIE}=cookie-jwt-token` }
+    });
+    expect(extractAccessToken(request)).toBe('cookie-jwt-token');
+  });
+
+  it('decodes URI-encoded cookie values', () => {
+    const encoded = encodeURIComponent('token+with/special=chars');
+    const request = new Request('http://localhost', {
+      headers: { Cookie: `${ADMIN_TOKEN_COOKIE}=${encoded}` }
+    });
+    expect(extractAccessToken(request)).toBe('token+with/special=chars');
+  });
+
+  it('extracts cookie when other cookies are present', () => {
+    const request = new Request('http://localhost', {
+      headers: { Cookie: `other=abc; ${ADMIN_TOKEN_COOKIE}=the-token; another=xyz` }
+    });
+    expect(extractAccessToken(request)).toBe('the-token');
+  });
+
+  it('prefers Authorization header over cookie', () => {
+    const request = new Request('http://localhost', {
+      headers: {
+        Authorization: 'Bearer header-token',
+        Cookie: `${ADMIN_TOKEN_COOKIE}=cookie-token`
+      }
+    });
+    expect(extractAccessToken(request)).toBe('header-token');
+  });
+
+  it('returns null when cookie header has no admin token', () => {
+    const request = new Request('http://localhost', {
+      headers: { Cookie: 'other=abc; something=xyz' }
+    });
+    expect(extractAccessToken(request)).toBeNull();
+  });
+});
 
 describe('isAdminRole', () => {
   it('returns true for admin role', () => {

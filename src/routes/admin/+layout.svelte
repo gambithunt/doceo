@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { supabase } from '$lib/supabase';
+  import { ADMIN_TOKEN_COOKIE } from '$lib/admin-constants';
 
   const { children } = $props();
 
@@ -27,6 +28,14 @@
     return pathname.startsWith(path);
   }
 
+  function setAdminTokenCookie(accessToken: string): void {
+    document.cookie = `${ADMIN_TOKEN_COOKIE}=${encodeURIComponent(accessToken)}; path=/admin; SameSite=Strict; Secure`;
+  }
+
+  function clearAdminTokenCookie(): void {
+    document.cookie = `${ADMIN_TOKEN_COOKIE}=; path=/admin; max-age=0`;
+  }
+
   onMount(async () => {
     if (!supabase) {
       status = 'denied';
@@ -36,6 +45,7 @@
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.user) {
+      clearAdminTokenCookie();
       void goto('/');
       return;
     }
@@ -47,11 +57,25 @@
       .maybeSingle<{ role: string }>();
 
     if (profile?.role !== 'admin') {
+      clearAdminTokenCookie();
       status = 'denied';
       return;
     }
 
+    setAdminTokenCookie(session.access_token);
     status = 'authorized';
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, updated) => {
+      if (updated?.access_token) {
+        setAdminTokenCookie(updated.access_token);
+      } else {
+        clearAdminTokenCookie();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   });
 </script>
 
