@@ -350,7 +350,8 @@ function isAiMode(value: unknown): value is AiMode {
     value === 'lesson-plan' ||
     value === 'lesson-chat' ||
     value === 'subject-verify' ||
-    value === 'revision-pack'
+    value === 'revision-pack' ||
+    value === 'revision-evaluate'
   );
 }
 
@@ -1172,6 +1173,8 @@ function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: 
         { role: 'system', content: buildRevisionPackSystemPrompt() },
         { role: 'user', content: buildRevisionPackUserPrompt(request as RevisionPackEdgeRequest) }
       ]);
+    case 'revision-evaluate':
+      return buildGithubRequest(model, 0.1, (request as { messages: GithubModelsMessage[] }).messages);
   }
 }
 
@@ -1230,6 +1233,9 @@ function buildModeResponse(
       return response
         ? { ...response, provider: PROVIDER, modelTier, model }
         : null;
+    }
+    case 'revision-evaluate': {
+      return { content, provider: PROVIDER, modelTier, model };
     }
   }
 }

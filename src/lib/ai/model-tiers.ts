@@ -8,6 +8,7 @@ export type AiMode =
   | 'lesson-plan'
   | 'lesson-chat'
   | 'revision-pack'
+  | 'revision-evaluate'
   | 'subject-verify';
 
 const DEFAULT_MODEL_TIER_BY_MODE: Record<AiMode, ModelTier> = {
@@ -18,7 +19,8 @@ const DEFAULT_MODEL_TIER_BY_MODE: Record<AiMode, ModelTier> = {
   tutor: 'default',
   'lesson-chat': 'default',
   'lesson-plan': 'thinking',
-  'revision-pack': 'thinking'
+  'revision-pack': 'thinking',
+  'revision-evaluate': 'fast'
 };
 
 const MODEL_TIER_ENV_VARS: Record<ModelTier, string> = {

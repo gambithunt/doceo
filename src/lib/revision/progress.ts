@@ -31,6 +31,7 @@ export interface RevisionTopicHistoryEntry {
   selfConfidence: number;
   scores: RevisionAttemptRecord['result']['scores'];
   scheduledAction: RevisionAttemptRecord['result']['sessionDecision'];
+  questionId?: string;
   questionType?: RevisionAttemptRecord['questionType'];
   difficulty?: RevisionAttemptRecord['difficulty'];
   promptSnippet?: string;
@@ -285,6 +286,7 @@ export function deriveRevisionTopicHistoryModel(
       correctness: attempt.result.scores.correctness,
       selfConfidence: attempt.selfConfidence,
       scores: attempt.result.scores,
+      questionId: attempt.questionId,
       questionType: attempt.questionType,
       difficulty: attempt.difficulty,
       promptSnippet: attempt.promptSnippet,

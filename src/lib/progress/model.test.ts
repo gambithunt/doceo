@@ -110,7 +110,8 @@ function createRevisionAttempt(overrides: Partial<RevisionAttemptRecord> = {}): 
           underconfidenceCount: 1
         }
       },
-      sessionDecision: 'continue'
+      sessionDecision: 'continue',
+      scoringProvider: 'heuristic'
     },
     createdAt: '2026-03-31T08:00:00.000Z',
     ...overrides

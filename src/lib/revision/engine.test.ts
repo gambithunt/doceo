@@ -262,18 +262,88 @@ describe('getRequestedIntervention', () => {
   });
 });
 
-describe('buildScores', () => {
-  it('includes question-level tokens in keyword coverage', () => {
-    // Import keywordCoverage if needed, but since it's internal, test via buildScores
-    const topic = createTopic();
-    const question = createQuestion({
-      prompt: 'Explain how fractions represent parts of a whole.',
-      expectedSkills: ['define numerator and denominator', 'give examples']
-    });
-    const scores = buildScores('Fractions represent parts of a whole using numerator and denominator with examples.', topic, question, 4);
+  describe('buildScores', () => {
+    it('includes question-level tokens in keyword coverage', () => {
+      // Import keywordCoverage if needed, but since it's internal, test via buildScores
+      const topic = createTopic();
+      const question = createQuestion({
+        prompt: 'Explain how fractions represent parts of a whole.',
+        expectedSkills: ['define numerator and denominator', 'give examples']
+      });
+      const scores = buildScores('Fractions represent parts of a whole using numerator and denominator with examples.', topic, question, 4);
 
-    // Should score higher due to question tokens
-    expect(scores.correctness).toBeGreaterThan(0.5); // Assuming baseline
+      // Should score higher due to question tokens
+      expect(scores.correctness).toBeGreaterThan(0.5); // Assuming baseline
+    });
+
+    it('uses provided AI scores instead of heuristic', () => {
+      const aiScores = {
+        correctness: 0.8,
+        reasoning: 0.7,
+        completeness: 0.9,
+        confidenceAlignment: 0.6,
+        selfConfidenceScore: 0.5,
+        calibrationGap: 0.1
+      };
+
+      const result = evaluateRevisionAnswer({
+        topic: createTopic(),
+        question: createQuestion(),
+        answer: 'Good answer',
+        selfConfidence: 4,
+        currentInterventionLevel: 'none',
+        attemptNumber: 1,
+        scores: aiScores,
+        now: new Date('2026-03-30T10:00:00.000Z')
+      });
+
+      expect(result.scores.correctness).toBe(0.8);
+      expect(result.scores.reasoning).toBe(0.7);
+      expect(result.scores.completeness).toBe(0.9);
+    });
+
+    it('uses heuristic when AI scores are not provided', () => {
+      const result = evaluateRevisionAnswer({
+        topic: createTopic(),
+        question: createQuestion(),
+        answer: 'Fractions compare parts of a whole.',
+        selfConfidence: 3,
+        currentInterventionLevel: 'none',
+        attemptNumber: 1,
+        scores: undefined,
+        now: new Date('2026-03-30T10:00:00.000Z')
+      });
+
+      expect(result.scores.correctness).toBeGreaterThan(0);
+      expect(result.scores.reasoning).toBeGreaterThan(0);
+      expect(result.scores.completeness).toBeGreaterThan(0);
+      expect(result.scoringProvider).toBe('heuristic');
+    });
+
+    it('uses heuristic when AI scores are not provided', () => {
+    const aiScores = {
+      correctness: 0.8,
+      reasoning: 0.7,
+      completeness: 0.9,
+      confidenceAlignment: 0.6,
+      selfConfidenceScore: 0.5,
+      calibrationGap: 0.1
+    };
+
+    const result = evaluateRevisionAnswer({
+      topic: createTopic(),
+      question: createQuestion(),
+      answer: 'Good answer',
+      selfConfidence: 4,
+      currentInterventionLevel: 'none',
+      attemptNumber: 1,
+      scores: aiScores,
+      now: new Date('2026-03-30T10:00:00.000Z')
+    });
+
+    expect(result.scores.correctness).toBe(0.8);
+    expect(result.scores.reasoning).toBe(0.7);
+    expect(result.scores.completeness).toBe(0.9);
   });
 });
 

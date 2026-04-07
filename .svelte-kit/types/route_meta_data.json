@@ -75,6 +75,9 @@
 	"/api/ai/lesson-selector": [
 		"src/routes/api/ai/lesson-selector/+server.ts"
 	],
+	"/api/ai/revision-evaluate": [
+		"src/routes/api/ai/revision-evaluate/+server.ts"
+	],
 	"/api/ai/revision-pack": [
 		"src/routes/api/ai/revision-pack/+server.ts"
 	],

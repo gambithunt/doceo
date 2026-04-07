@@ -36,25 +36,26 @@ function createAttempt(overrides: Partial<RevisionAttemptRecord> = {}): Revision
     questionId: 'question-1',
     answer: 'Fractions compare parts of a whole.',
     selfConfidence: 3,
-    result: {
-      scores: {
-        correctness: 0.72,
-        reasoning: 0.65,
-        completeness: 0.7,
-        confidenceAlignment: 0.92,
-        selfConfidenceScore: 0.6,
-        calibrationGap: -0.12
-      },
-      diagnosis: {
-        type: 'underconfidence',
-        summary: 'You know more than you think in Fractions.',
-        misconceptionTags: ['fractions-core-gap']
-      },
-      intervention: {
-        type: 'none',
-        content: ''
-      },
-      nextQuestion: null,
+      result: {
+        scores: {
+          correctness: 0.72,
+          reasoning: 0.65,
+          completeness: 0.7,
+          confidenceAlignment: 0.92,
+          selfConfidenceScore: 0.6,
+          calibrationGap: -0.12
+        },
+        diagnosis: {
+          type: 'underconfidence',
+          summary: 'You know more than you think in Fractions.',
+          misconceptionTags: ['fractions-core-gap']
+        },
+        intervention: {
+          type: 'none',
+          content: ''
+        },
+        nextQuestion: null,
+        scoringProvider: 'heuristic',
       topicUpdate: {
         confidenceScore: 0.71,
         nextRevisionAt: '2026-04-02T08:00:00.000Z',

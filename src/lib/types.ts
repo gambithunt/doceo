@@ -380,6 +380,7 @@ export interface RevisionTurnResult {
   diagnosis: RevisionDiagnosis;
   intervention: RevisionIntervention;
   nextQuestion: RevisionQuestion | null;
+  scoringProvider?: 'ai' | 'heuristic';
   topicUpdate: {
     confidenceScore: number;
     nextRevisionAt: string;
@@ -430,6 +431,8 @@ export interface ActiveRevisionSession {
   awaitingAdvance: boolean;
   skippedQuestionIds: string[];
   selfConfidenceHistory: number[];
+  evaluating?: boolean;
+  lastAnswer?: string;
   lastTurnResult: RevisionTurnResult | null;
   status: 'active' | 'completed' | 'abandoned' | 'escalated_to_lesson';
   startedAt: string;

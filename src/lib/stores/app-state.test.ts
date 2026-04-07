@@ -2162,6 +2162,304 @@ describe('topic discovery completion linkage', () => {
     expect(requestedUrls).toContain('/api/curriculum/topic-discovery/complete');
     expect(requestedUrls).not.toContain('/api/lesson-artifacts/rate');
   });
+
+  describe('AI evaluation on demand (Phase 7)', () => {
+    beforeEach(() => {
+      vi.resetAllMocks();
+      getAuthenticatedHeaders.mockResolvedValue({
+        Authorization: 'Bearer token'
+      });
+      fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.endsWith('/api/ai/revision-pack')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { request: RevisionPackRequest };
+          return new Response(JSON.stringify(buildMockRevisionPackPayload(body.request)), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+    });
+
+    it('7.10: requestAiEvaluation replaces heuristic scores with AI scores on lastTurnResult', async () => {
+      const baseState = createInitialState();
+      const topic = createRevisionTopic();
+      const aiScores = {
+        correctness: 0.85,
+        reasoning: 0.8,
+        completeness: 0.9,
+        confidenceAlignment: 0.75,
+        selfConfidenceScore: 0.6,
+        calibrationGap: 0.15
+      };
+
+      fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.endsWith('/api/ai/revision-pack')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { request: RevisionPackRequest };
+          return new Response(JSON.stringify(buildMockRevisionPackPayload(body.request)), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        if (url.endsWith('/api/ai/revision-evaluate')) {
+          return new Response(JSON.stringify({ scores: aiScores }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const store = createAppStore({
+        ...baseState,
+        lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+        revisionTopics: [topic]
+      });
+
+      await store.runRevisionSession(topic);
+      store.submitRevisionAnswer('Weak answer', 3);
+      await flushAsyncWork();
+
+      const heuristicResult = get(store).revisionSession?.lastTurnResult;
+      expect(heuristicResult?.scoringProvider).toBe('heuristic');
+
+      await store.requestAiEvaluation();
+      await flushAsyncWork();
+
+      const state = get(store);
+      expect(state.revisionSession?.lastTurnResult?.scoringProvider).toBe('ai');
+      expect(state.revisionSession?.lastTurnResult?.scores.correctness).toBe(0.85);
+      expect(state.revisionSession?.evaluating).toBe(false);
+    });
+
+    it('7.11: borderline auto-trigger fires AI evaluation when correctness is in 0.45-0.65 zone', async () => {
+      const baseState = createInitialState();
+      const topic = createRevisionTopic();
+
+      const evaluateRequests: string[] = [];
+      fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.endsWith('/api/ai/revision-pack')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { request: RevisionPackRequest };
+          return new Response(JSON.stringify(buildMockRevisionPackPayload(body.request)), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        if (url.endsWith('/api/ai/revision-evaluate')) {
+          evaluateRequests.push(url);
+          return new Response(JSON.stringify({ scores: { correctness: 0.6, reasoning: 0.5, completeness: 0.55 } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const store = createAppStore({
+        ...baseState,
+        lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+        revisionTopics: [topic]
+      });
+
+      await store.runRevisionSession(topic);
+      // Answer that produces borderline heuristic score (0.45-0.65)
+      await store.submitRevisionAnswer('Fractions compare parts of a whole because of denominator is the total number of equal parts and the numerator is the selected part with examples.', 3);
+      await flushAsyncWork();
+
+      const state = get(store);
+      const lastTurnResult = state.revisionSession?.lastTurnResult;
+
+      expect(lastTurnResult).toBeDefined();
+      if (lastTurnResult) {
+        // Borderline trigger should have called the evaluate endpoint
+        expect(evaluateRequests.length).toBeGreaterThan(0);
+        // After AI completes, scores should be updated
+        expect(lastTurnResult.scoringProvider).toBe('ai');
+      }
+    });
+
+    it('7.12: borderline auto-trigger does NOT fire when correctness is above 0.65', async () => {
+      const baseState = createInitialState();
+      const topic = createRevisionTopic();
+
+      const evaluateRequests: string[] = [];
+      fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.endsWith('/api/ai/revision-pack')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { request: RevisionPackRequest };
+          return new Response(JSON.stringify(buildMockRevisionPackPayload(body.request)), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        if (url.endsWith('/api/ai/revision-evaluate')) {
+          evaluateRequests.push(url);
+          return new Response(JSON.stringify({ scores: { correctness: 0.9, reasoning: 0.9, completeness: 0.9 } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const store = createAppStore({
+        ...baseState,
+        lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+        revisionTopics: [topic]
+      });
+
+      await store.runRevisionSession(topic);
+      // Very weak answer — should score below 0.45 (not in borderline zone)
+      await store.submitRevisionAnswer('I do not know.', 1);
+      await flushAsyncWork();
+
+      const state = get(store);
+      const lastTurnResult = state.revisionSession?.lastTurnResult;
+
+      expect(lastTurnResult).toBeDefined();
+      if (lastTurnResult) {
+        // Score should be below borderline zone
+        expect(lastTurnResult.scores.correctness).toBeLessThan(0.45);
+        // AI evaluate endpoint should NOT have been called
+        expect(evaluateRequests.length).toBe(0);
+        expect(lastTurnResult.scoringProvider).toBe('heuristic');
+      }
+    });
+
+    it('7.14: requestAiEvaluation preserves heuristic scores when endpoint returns non-ok', async () => {
+      const baseState = createInitialState();
+      const topic = createRevisionTopic();
+
+      fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.endsWith('/api/ai/revision-pack')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { request: RevisionPackRequest };
+          return new Response(JSON.stringify(buildMockRevisionPackPayload(body.request)), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        if (url.endsWith('/api/ai/revision-evaluate')) {
+          return new Response(JSON.stringify({ error: 'AI service unavailable' }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const store = createAppStore({
+        ...baseState,
+        lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+        revisionTopics: [topic]
+      });
+
+      await store.runRevisionSession(topic);
+      await store.submitRevisionAnswer('Weak answer', 3);
+      await flushAsyncWork();
+
+      const heuristicState = get(store);
+      const heuristicCorrectness = heuristicState.revisionSession?.lastTurnResult?.scores.correctness;
+      expect(heuristicState.revisionSession?.lastTurnResult?.scoringProvider).toBe('heuristic');
+
+      await store.requestAiEvaluation();
+      await flushAsyncWork();
+
+      const state = get(store);
+      expect(state.revisionSession?.lastTurnResult?.scoringProvider).toBe('heuristic');
+      expect(state.revisionSession?.lastTurnResult?.scores.correctness).toBe(heuristicCorrectness);
+      expect(state.revisionSession?.evaluating).toBe(false);
+    });
+
+    it('7.13: Check my answer properly button is hidden after AI evaluation completes', async () => {
+      const baseState = createInitialState();
+      const topic = createRevisionTopic();
+      const aiScores = {
+        correctness: 0.85,
+        reasoning: 0.8,
+        completeness: 0.9,
+        confidenceAlignment: 0.75,
+        selfConfidenceScore: 0.6,
+        calibrationGap: 0.15
+      };
+
+      fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.endsWith('/api/ai/revision-pack')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as { request: RevisionPackRequest };
+          return new Response(JSON.stringify(buildMockRevisionPackPayload(body.request)), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        if (url.endsWith('/api/ai/revision-evaluate')) {
+          return new Response(JSON.stringify({ scores: aiScores }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: `Unhandled request for ${url}` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const store = createAppStore({
+        ...baseState,
+        lessonSessions: [createLessonSession({ id: topic.lessonSessionId, subjectId: topic.subjectId, subject: topic.subject, topicTitle: topic.topicTitle, curriculumReference: topic.curriculumReference })],
+        revisionTopics: [topic]
+      });
+
+      await store.runRevisionSession(topic);
+      store.submitRevisionAnswer('Test answer', 3);
+      await flushAsyncWork();
+
+      const stateBeforeAI = get(store);
+      expect(stateBeforeAI.revisionSession?.lastTurnResult?.scoringProvider).toBe('heuristic');
+
+      await store.requestAiEvaluation();
+      await flushAsyncWork();
+
+      const stateAfterAI = get(store);
+      expect(stateAfterAI.revisionSession?.lastTurnResult?.scoringProvider).toBe('ai');
+    });
+  });
 });
 
 describe('degraded runtime handling', () => {

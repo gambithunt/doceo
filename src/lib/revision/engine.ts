@@ -5,7 +5,8 @@ import type {
   RevisionInterventionType,
   RevisionQuestion,
   RevisionTopic,
-  RevisionTurnResult
+  RevisionTurnResult,
+  RevisionTurnScores
 } from '$lib/types';
 
 function isoNow(now = new Date()): string {
@@ -321,10 +322,11 @@ export function evaluateRevisionAnswer(input: {
   selfConfidence: number;
   currentInterventionLevel: RevisionInterventionType;
   attemptNumber: number;
+  scores?: RevisionTurnScores;
   now?: Date;
 }): RevisionTurnResult {
   const now = input.now ?? new Date();
-  const scores = buildScores(input.answer, input.topic, input.question, input.selfConfidence);
+  const scores = input.scores ?? buildScores(input.answer, input.topic, input.question, input.selfConfidence);
   const diagnosisType = buildDiagnosisType(input.answer, scores, input.selfConfidence);
   const nextIntervention = nextInterventionLevel(input.currentInterventionLevel, scores, input.attemptNumber);
   const retention = buildRetentionProfile(input.topic, scores);
@@ -344,13 +346,13 @@ export function evaluateRevisionAnswer(input: {
       : isStrongEnoughToAdvance
         ? 'continue'
         : 'reschedule';
-
+ 
   return {
     scores,
     diagnosis: {
       type: diagnosisType,
       summary: buildDiagnosisSummary(diagnosisType, input.topic),
-      misconceptionTags: input.question.misconceptionTags
+      misconceptionTags: input.question.misconceptionTags ?? []
     },
     intervention: {
       type: nextIntervention,
@@ -358,7 +360,7 @@ export function evaluateRevisionAnswer(input: {
     },
     nextQuestion: null,
     topicUpdate: {
-      confidenceScore: clamp((input.topic.confidenceScore + scores.correctness) / 2, 0, 1),
+      confidenceScore: input.topic.confidenceScore,
       nextRevisionAt: reviewTiming.nextRevisionAt,
       previousIntervalDays: reviewTiming.previousIntervalDays,
       lastReviewedAt: isoNow(now),
@@ -367,7 +369,8 @@ export function evaluateRevisionAnswer(input: {
       misconceptionSignals,
       calibration
     },
-    sessionDecision
+    sessionDecision,
+    scoringProvider: 'heuristic'
   };
 }
 

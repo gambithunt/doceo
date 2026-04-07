@@ -159,7 +159,7 @@
   }
   $: activeFocusPanel = focusModel.panels[activeFocusTab ?? focusModel.defaultTab];
   $: isSessionActive = revisionSession?.status === 'active';
-  $: sessionProgressCurrent = revisionSession?.selfConfidenceHistory.length ?? 0;
+  $: sessionProgressCurrent = revisionSession ? revisionSession.questionIndex + 1 : 0;
   $: sessionProgressTotal = revisionSession?.questions.length ?? 0;
   $: nextRevisionRecommendation = revisionSession
     ? homeModel.doToday.find((item) => !revisionSession.revisionTopicIds.includes(item.topic.lessonSessionId)) ??
@@ -882,11 +882,11 @@
     plannerErrors = {};
   }
 
-  function submitRecall(): void {
+  async function submitRecall(): Promise<void> {
     if (!selectedTopic || !currentQuestion || recallDraft.trim().length === 0 || pendingTurnResult) {
       return;
     }
-    appState.submitRevisionAnswer(recallDraft.trim(), selfConfidence);
+    await appState.submitRevisionAnswer(recallDraft.trim(), selfConfidence);
   }
 
   function submitQuestionFeedback(questionId: string): void {
@@ -1214,10 +1214,11 @@
       return [];
     }
 
-    const { scores, topicUpdate } = revisionSession.lastTurnResult;
+    const { scores, topicUpdate, scoringProvider } = revisionSession.lastTurnResult;
+    const correctnessLabel = scoringProvider === 'ai' ? 'Correctness' : 'Coverage';
 
     return [
-      { label: 'Coverage', value: `${Math.round(scores.correctness * 100)}%`, tone: 'green' },
+      { label: correctnessLabel, value: `${Math.round(scores.correctness * 100)}%`, tone: 'green' },
       { label: 'Reasoning', value: `${Math.round(scores.reasoning * 100)}%`, tone: 'blue' },
       { label: 'Confidence match', value: `${Math.round(scores.confidenceAlignment * 100)}%`, tone: 'yellow' },
       { label: 'Next review', value: formatDueLabel(topicUpdate.nextRevisionAt), tone: 'pink' }
@@ -1502,7 +1503,7 @@
             </div>
 
             <div class="revision-session-actions">
-              <button type="button" class="action-btn session-submit-btn" onclick={submitRecall} disabled={Boolean(pendingTurnResult)}>Check answer</button>
+              <button type="button" class="action-btn session-submit-btn" onclick={async () => await submitRecall()} disabled={Boolean(pendingTurnResult || revisionSession?.evaluating)}>Check answer</button>
               <div class="session-secondary-actions">
                 <button type="button" class="secondary action-btn" onclick={() => appState.requestRevisionNudge()} disabled={Boolean(pendingTurnResult)}>
                   Nudge
@@ -1523,17 +1524,17 @@
                     <p class="eyebrow">Answer review</p>
                     <h3>{pendingTurnResult.diagnosis.summary}</h3>
                   </div>
-                  <span class="hero-pill subdued">{Math.round(pendingTurnResult.scores.correctness * 100)}% correct</span>
+                  <span class="hero-pill subdued">{Math.round(pendingTurnResult.scores.correctness * 100)}% {pendingTurnResult.scoringProvider === 'ai' ? 'correct' : 'coverage'}</span>
                 </div>
 
                 <div class="revision-diagnosis-metrics">
                   <article class="mini-stat tone-green">
-                    <strong>{Math.round(pendingTurnResult.scores.reasoning * 100)}%</strong>
-                    <span>Reasoning</span>
+                    <strong>{Math.round(pendingTurnResult.scores.correctness * 100)}%</strong>
+                    <span>{pendingTurnResult.scoringProvider === 'ai' ? 'Correctness' : 'Coverage'}</span>
                   </article>
                   <article class="mini-stat tone-blue">
-                    <strong>{Math.round(pendingTurnResult.scores.completeness * 100)}%</strong>
-                    <span>Completeness</span>
+                    <strong>{Math.round(pendingTurnResult.scores.reasoning * 100)}%</strong>
+                    <span>Reasoning</span>
                   </article>
                   <article class="mini-stat tone-yellow">
                     <strong>{Math.round(pendingTurnResult.scores.confidenceAlignment * 100)}%</strong>
@@ -1545,6 +1546,12 @@
                   <p><strong>Calibration:</strong> {getCalibrationNote(pendingTurnResult.scores.calibrationGap)}</p>
                   <p><strong>Next move:</strong> {pendingTurnResult.intervention.content || 'Keep building with the next prompt.'}</p>
                   <p><strong>Next review:</strong> {new Date(pendingTurnResult.topicUpdate.nextRevisionAt).toLocaleDateString()}</p>
+                  {#if revisionSession?.evaluating}
+                    <p class="ai-verifying-note">Verifying with AI...</p>
+                  {/if}
+                  {#if pendingTurnResult.scoringProvider === 'heuristic'}
+                    <p class="coverage-note">Scored offline — based on keyword coverage, not factual accuracy.</p>
+                  {/if}
                 </div>
 
                 <div class="revision-diagnosis-actions">
@@ -1554,12 +1561,22 @@
                   <button type="button" class="secondary action-btn" onclick={tryAgain}>
                     Try again
                   </button>
+                  {#if pendingTurnResult && pendingTurnResult.scoringProvider === 'heuristic'}
+                    <button
+                      type="button"
+                      class="secondary action-btn"
+                      onclick={() => appState.requestAiEvaluation()}
+                      disabled={Boolean(revisionSession?.evaluating)}
+                    >
+                      {revisionSession?.evaluating ? 'Evaluating...' : 'Check my answer properly'}
+                    </button>
+                  {/if}
                   {#if shouldShowModelAnswer()}
                     <button type="button" class="secondary action-btn" onclick={revealModelAnswer}>
                       Show me the model answer
                     </button>
-                {/if}
-              </div>
+                  {/if}
+                </div>
               {#if revisionError}
                 <p class="error-message">{revisionError}</p>
               {/if}
@@ -1588,6 +1605,9 @@
                     </article>
                   {/each}
                 </div>
+                {#if revisionSession?.lastTurnResult?.scoringProvider === 'heuristic'}
+                  <p class="coverage-note">Scored offline — based on keyword coverage, not factual accuracy.</p>
+                {/if}
               {/if}
 
               <div class="starter-actions revision-summary-actions">
@@ -1738,16 +1758,10 @@
                       <span class="hero-pill subdued">{Math.round(entry.correctness * 100)}% correct</span>
                       <span class="hero-pill subdued">Confidence {entry.selfConfidence}/5</span>
                       {#if entry.questionType}
-                        <span class="hero-pill subdued">{entry.questionType}</span>
+                        <span class="hero-pill subdued">{entry.questionType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
                       {/if}
                       {#if entry.difficulty}
-                        <span class="hero-pill subdued">{entry.difficulty}</span>
-                      {/if}
-                      {#if entry.questionType}
-                        <span class="hero-pill subdued">{entry.questionType}</span>
-                      {/if}
-                      {#if entry.difficulty}
-                        <span class="hero-pill subdued">{entry.difficulty}</span>
+                        <span class="hero-pill subdued">{entry.difficulty.replace(/\b\w/g, l => l.toUpperCase())}</span>
                       {/if}
                     </div>
                     <p>{entry.summary}</p>
@@ -2142,6 +2156,10 @@
     min-width: 0;
   }
 
+  .revision-session-side {
+    overflow: hidden;
+  }
+
   .revision-session-main {
     overflow: visible;
   }
@@ -2365,6 +2383,7 @@
     border-radius: 1.5rem;
     background: var(--surface);
     padding: 1.15rem;
+    min-width: 0;
   }
 
   .session-question-card {
@@ -2458,7 +2477,10 @@
   .revision-answer-field {
     min-width: 0;
     overflow: visible;
-    padding-right: 3px;
+  }
+
+  .revision-answer-field textarea {
+    outline-offset: -2px;
   }
 
   /* Confidence pill selector */
@@ -3584,6 +3606,8 @@
 
   .calibration-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
 
   .mini-stat {
@@ -3650,6 +3674,8 @@
     border-radius: 1rem;
     border: 1px solid var(--border);
     background: var(--surface-soft);
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
 
   .history-review-toggle {

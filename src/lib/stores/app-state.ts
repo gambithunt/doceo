@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { derived, get, writable } from 'svelte/store';
+import type { RevisionTurnScores } from '$lib/types';
 import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
 import { deduplicateSubjects } from '$lib/utils/strings';
 import { getSelectionMode } from '$lib/data/onboarding';
@@ -1175,7 +1176,7 @@ export function createAppStore(initialState: AppState = readState()) {
     }
   }
 
-  return {
+  const store = {
     subscribe,
     initializeRemoteState,
     setTheme: (theme: ThemeMode) =>
@@ -3237,31 +3238,35 @@ export function createAppStore(initialState: AppState = readState()) {
         navigate(revisionPath());
       }
     },
-    submitRevisionAnswer: (answer: string, selfConfidence: number) => {
+    submitRevisionAnswer: async (answer: string, selfConfidence: number) => {
+      const state = get({ subscribe });
+      const session = state.revisionSession;
+      if (!session) return;
+
+      const question = session.questions[session.questionIndex];
+      const topic = question
+        ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+        : null;
+
+      if (!topic || !question) return;
+
+      const attemptNumber = state.revisionAttempts.filter((item) => item.revisionTopicId === topic.lessonSessionId).length + 1;
+      const heuristicResult = evaluateRevisionAnswer({
+        topic,
+        question,
+        answer,
+        selfConfidence,
+        currentInterventionLevel: session.currentInterventionLevel,
+        attemptNumber
+      });
+      const result = {
+        ...heuristicResult,
+        scoringProvider: 'heuristic' as const
+      };
+
       update((state) => {
         const session = state.revisionSession;
-        if (!session) {
-          return state;
-        }
-
-        const question = session.questions[session.questionIndex];
-        const topic = question
-          ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
-          : null;
-
-        if (!topic || !question) {
-          return state;
-        }
-
-        const attemptNumber = state.revisionAttempts.filter((item) => item.revisionTopicId === topic.lessonSessionId).length + 1;
-        const result = evaluateRevisionAnswer({
-          topic,
-          question,
-          answer,
-          selfConfidence,
-          currentInterventionLevel: session.currentInterventionLevel,
-          attemptNumber
-        });
+        if (!session) return state;
 
         return persistAndSync({
           ...state,
@@ -3303,6 +3308,7 @@ export function createAppStore(initialState: AppState = readState()) {
             currentInterventionLevel: result.intervention.type,
             awaitingAdvance: true,
             selfConfidenceHistory: [...session.selfConfidenceHistory, selfConfidence],
+            lastAnswer: answer,
             lastTurnResult: {
               ...result,
               nextQuestion:
@@ -3310,9 +3316,139 @@ export function createAppStore(initialState: AppState = readState()) {
                   ? session.questions[session.questionIndex + 1] ?? null
                   : result.sessionDecision === 'reschedule'
                     ? session.questions[session.questionIndex] ?? null
-                  : null
+                    : null
             },
             lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
+
+      // Borderline auto-trigger: if correctness is in 0.45-0.65 zone and decision is continue/reschedule, fire AI
+      const isBorderline = result.scores.correctness >= 0.45 && result.scores.correctness <= 0.65;
+      const isDecisionCritical = result.sessionDecision === 'continue' || result.sessionDecision === 'reschedule';
+
+      if (isBorderline && isDecisionCritical) {
+        update((s) => ({
+          ...s,
+          revisionSession: s.revisionSession ? { ...s.revisionSession, evaluating: true } : null
+        }));
+        // Fire-and-forget: requestAiEvaluation runs independently
+        store.requestAiEvaluation();
+      }
+    },
+    requestAiEvaluation: async () => {
+      const state = get({ subscribe });
+      const session = state.revisionSession;
+      if (!session?.lastTurnResult || !session.lastAnswer) return;
+
+      const lastResult = session.lastTurnResult;
+      if (lastResult.scoringProvider === 'ai') return;
+
+      const question = session.questions[session.questionIndex];
+      const topic = question
+        ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+        : null;
+
+      if (!topic || !question) return;
+
+      update((s) => ({
+        ...s,
+        revisionSession: { ...session, evaluating: true }
+      }));
+
+      let aiScores: RevisionTurnScores | undefined;
+
+      try {
+        const authHeaders = await getAuthenticatedHeaders();
+        const response = await fetch('/api/ai/revision-evaluate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders
+          },
+          body: JSON.stringify({
+            request: {
+              answer: session.lastAnswer,
+              question: {
+                id: question.id,
+                questionType: question.questionType,
+                prompt: question.prompt,
+                expectedSkills: question.expectedSkills,
+                misconceptionTags: question.misconceptionTags
+              },
+              topic: {
+                topicTitle: topic.topicTitle,
+                subject: topic.subject
+              }
+            }
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          aiScores = data.scores;
+        }
+      } catch (error) {
+        console.error('AI evaluation failed:', error);
+        update((s) => ({
+          ...s,
+          revisionSession: s.revisionSession ? { ...s.revisionSession, evaluating: false } : null
+        }));
+        return;
+      }
+
+      if (!aiScores) {
+        update((s) => ({
+          ...s,
+          revisionSession: s.revisionSession ? { ...s.revisionSession, evaluating: false } : null
+        }));
+        return;
+      }
+
+      update((state) => {
+        const session = state.revisionSession;
+        if (!session || !session.lastTurnResult) {
+          return state;
+        }
+
+        const question = session.questions[session.questionIndex];
+        const topic = question
+          ? state.revisionTopics.find((item) => item.lessonSessionId === question.revisionTopicId)
+          : null;
+
+        if (!topic || !question || !session.lastAnswer) {
+          return state;
+        }
+
+        const attemptNumber = state.revisionAttempts.filter((item) => item.revisionTopicId === topic.lessonSessionId).length + 1;
+        const result = {
+          ...evaluateRevisionAnswer({
+            topic,
+            question,
+            answer: session.lastAnswer,
+            selfConfidence: session.selfConfidenceHistory[session.selfConfidenceHistory.length - 1] ?? 3,
+            currentInterventionLevel: session.currentInterventionLevel,
+            attemptNumber,
+            scores: aiScores
+          }),
+          scoringProvider: 'ai' as const
+        };
+
+        return persistAndSync({
+          ...state,
+          revisionSession: {
+            ...session,
+            lastTurnResult: {
+              ...result,
+              nextQuestion:
+                result.sessionDecision === 'continue' && session.questionIndex < session.questions.length - 1
+                  ? session.questions[session.questionIndex + 1] ?? null
+                  : result.sessionDecision === 'reschedule'
+                    ? session.questions[session.questionIndex] ?? null
+                    : null
+            },
+            lastActiveAt: new Date().toISOString(),
+            evaluating: false
           }
         });
       });
@@ -3524,6 +3660,8 @@ export function createAppStore(initialState: AppState = readState()) {
       });
     }
   };
+
+  return store;
 }
 
 export const appState = createAppStore();

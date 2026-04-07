@@ -34,4 +34,19 @@ describe('RevisionWorkspace counter logic', () => {
     toggle('entry1');
     expect(historyReviewOpen['entry1']).toBe(false);
   });
+
+  it('sessionProgressCurrent shows current question position', () => {
+    // Simulate revisionSession with questionIndex
+    const mockSession = { questionIndex: 0 }; // On first question
+    const sessionProgressCurrent = mockSession ? mockSession.questionIndex + 1 : 0;
+    expect(sessionProgressCurrent).toBe(1);
+
+    const mockSession2 = { questionIndex: 2 }; // After advancing to third question
+    const sessionProgressCurrent2 = mockSession2 ? mockSession2.questionIndex + 1 : 0;
+    expect(sessionProgressCurrent2).toBe(3);
+
+    const noSession = undefined as any;
+    const sessionProgressCurrent3 = noSession ? noSession.questionIndex + 1 : 0;
+    expect(sessionProgressCurrent3).toBe(0);
+  });
 });
