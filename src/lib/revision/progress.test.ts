@@ -270,6 +270,21 @@ describe('deriveRevisionTopicHistoryModel', () => {
     expect(model?.entries[0]?.scores.correctness).toBeGreaterThan(0);
   });
 
+  it('orders entries newest-first', () => {
+    const state = createState({
+      revisionTopics: [createRevisionTopic({ lessonSessionId: 'session-1', topicTitle: 'Fractions' })],
+      revisionAttempts: [
+        createAttempt({ id: 'old', revisionTopicId: 'session-1', createdAt: '2026-03-28T08:00:00.000Z' }),
+        createAttempt({ id: 'new', revisionTopicId: 'session-1', createdAt: '2026-03-30T08:00:00.000Z' }),
+        createAttempt({ id: 'middle', revisionTopicId: 'session-1', createdAt: '2026-03-29T08:00:00.000Z' })
+      ]
+    });
+
+    const model = deriveRevisionTopicHistoryModel(state, 'session-1');
+
+    expect(model?.entries.map(e => e.id)).toEqual(['new', 'middle', 'old']);
+  });
+
   it('detects when a topic trend is improving', () => {
     const state = createState({
       revisionTopics: [createRevisionTopic({ lessonSessionId: 'session-1', topicTitle: 'Fractions' })],

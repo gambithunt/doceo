@@ -107,25 +107,27 @@ function getHelpContent(
   }
 }
 
-function keywordCoverage(answer: string, topic: RevisionTopic): number {
+function keywordCoverage(answer: string, topic: RevisionTopic, question: RevisionQuestion): number {
   const answerTokens = tokenize(answer);
   const topicTokens = unique([topic.topicTitle, topic.subject, topic.curriculumReference].flatMap(tokenize));
+  const questionTokens = unique([question.prompt, ...question.expectedSkills].flatMap(tokenize));
+  const allTokens = unique([...topicTokens, ...questionTokens]);
 
-  if (answerTokens.length === 0 || topicTokens.length === 0) {
+  if (answerTokens.length === 0 || allTokens.length === 0) {
     return 0;
   }
 
-  const matches = topicTokens.filter((token) => answerTokens.includes(token)).length;
-  return clamp(matches / Math.max(2, topicTokens.length), 0, 1);
+  const matches = allTokens.filter((token) => answerTokens.includes(token)).length;
+  return clamp(matches / Math.max(2, allTokens.length), 0, 1);
 }
 
 function unique(values: string[]): string[] {
   return values.filter((value, index, all) => all.indexOf(value) === index);
 }
 
-function buildScores(answer: string, topic: RevisionTopic, selfConfidence: number) {
+export function buildScores(answer: string, topic: RevisionTopic, question: RevisionQuestion, selfConfidence: number) {
   const normalized = normalize(answer);
-  const coverage = keywordCoverage(answer, topic);
+  const coverage = keywordCoverage(answer, topic, question);
   const completeness = clamp(answer.trim().length / 120, 0, 1);
   const selfConfidenceScore = clamp(selfConfidence / 5, 0, 1);
   const reasoning = /(because|therefore|so that|which means|step|rule)/i.test(answer)
@@ -322,7 +324,7 @@ export function evaluateRevisionAnswer(input: {
   now?: Date;
 }): RevisionTurnResult {
   const now = input.now ?? new Date();
-  const scores = buildScores(input.answer, input.topic, input.selfConfidence);
+  const scores = buildScores(input.answer, input.topic, input.question, input.selfConfidence);
   const diagnosisType = buildDiagnosisType(input.answer, scores, input.selfConfidence);
   const nextIntervention = nextInterventionLevel(input.currentInterventionLevel, scores, input.attemptNumber);
   const retention = buildRetentionProfile(input.topic, scores);

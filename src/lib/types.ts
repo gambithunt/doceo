@@ -400,6 +400,9 @@ export interface RevisionAttemptRecord {
   revisionPackArtifactId?: string | null;
   revisionQuestionArtifactId?: string | null;
   questionId: string;
+  questionType?: RevisionQuestionType;
+  difficulty?: 'foundation' | 'core' | 'stretch';
+  promptSnippet?: string;
   answer: string;
   selfConfidence: number;
   result: RevisionTurnResult;
@@ -667,6 +670,12 @@ export interface RevisionPackGenerationPayload {
   sessionTitle: string;
   sessionRecommendations: string[];
   questions: RevisionQuestion[];
+}
+
+export interface RevisionEvaluationPayload {
+  scores: RevisionTurnScores;
+  provider: string;
+  model: string;
 }
 
 export interface RevisionPackResponse {

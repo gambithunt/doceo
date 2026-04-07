@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyRevisionTurn,
   buildRevisionSession,
+  buildScores,
   evaluateRevisionAnswer,
   getRequestedIntervention
 } from '$lib/revision/engine';
@@ -258,6 +259,21 @@ describe('getRequestedIntervention', () => {
 
     expect(intervention.type).toBe('worked_step');
     expect(intervention.content).toBe('');
+  });
+});
+
+describe('buildScores', () => {
+  it('includes question-level tokens in keyword coverage', () => {
+    // Import keywordCoverage if needed, but since it's internal, test via buildScores
+    const topic = createTopic();
+    const question = createQuestion({
+      prompt: 'Explain how fractions represent parts of a whole.',
+      expectedSkills: ['define numerator and denominator', 'give examples']
+    });
+    const scores = buildScores('Fractions represent parts of a whole using numerator and denominator with examples.', topic, question, 4);
+
+    // Should score higher due to question tokens
+    expect(scores.correctness).toBeGreaterThan(0.5); // Assuming baseline
   });
 });
 

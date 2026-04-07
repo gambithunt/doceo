@@ -73,6 +73,7 @@
   ];
 
   let recallDraft = '';
+  let revisionError = '';
   let selfConfidence = 3;
   let feedbackDifficulty: RevisionQuestionFeedback['difficulty'] | '' = '';
   let feedbackClarity: RevisionQuestionFeedback['clarity'] | '' = '';
@@ -158,10 +159,7 @@
   }
   $: activeFocusPanel = focusModel.panels[activeFocusTab ?? focusModel.defaultTab];
   $: isSessionActive = revisionSession?.status === 'active';
-  $: sessionProgressCurrent =
-    revisionSession && revisionSession.questions.length > 0
-      ? Math.min(revisionSession.questionIndex + 1, revisionSession.questions.length)
-      : 0;
+  $: sessionProgressCurrent = revisionSession?.selfConfidenceHistory.length ?? 0;
   $: sessionProgressTotal = revisionSession?.questions.length ?? 0;
   $: nextRevisionRecommendation = revisionSession
     ? homeModel.doToday.find((item) => !revisionSession.revisionTopicIds.includes(item.topic.lessonSessionId)) ??
@@ -1076,6 +1074,11 @@
     return Boolean(historyReviewOpen[entryId]);
   }
 
+  function getWorkedStepForQuestion(questionId: string): string {
+    const question = revisionSession?.questions.find((q) => q.id === questionId);
+    return question?.helpLadder?.workedStep || 'No worked step available for this question.';
+  }
+
   function getCalibrationTone(topic: RevisionTopic): 'overconfident' | 'underconfident' | 'aligned' {
     if (topic.calibration.confidenceGap >= 0.22 || topic.calibration.overconfidenceCount > topic.calibration.underconfidenceCount) {
       return 'overconfident';
@@ -1214,7 +1217,7 @@
     const { scores, topicUpdate } = revisionSession.lastTurnResult;
 
     return [
-      { label: 'Correctness', value: `${Math.round(scores.correctness * 100)}%`, tone: 'green' },
+      { label: 'Coverage', value: `${Math.round(scores.correctness * 100)}%`, tone: 'green' },
       { label: 'Reasoning', value: `${Math.round(scores.reasoning * 100)}%`, tone: 'blue' },
       { label: 'Confidence match', value: `${Math.round(scores.confidenceAlignment * 100)}%`, tone: 'yellow' },
       { label: 'Next review', value: formatDueLabel(topicUpdate.nextRevisionAt), tone: 'pink' }
@@ -1419,7 +1422,7 @@
             <span>{revisionWorkspaceMode === 'summary' ? 'Session state' : 'Current progress'}</span>
             <strong>{getSessionStatusBadge()}</strong>
             {#if revisionWorkspaceMode === 'session' && sessionProgressTotal > 0}
-              <p>{sessionProgressTotal} prompt{sessionProgressTotal === 1 ? '' : 's'} in this revision loop.</p>
+              <p>Question {sessionProgressCurrent} of {sessionProgressTotal} prompt{sessionProgressTotal === 1 ? '' : 's'} in this revision loop.</p>
             {:else if revisionSession?.status === 'escalated_to_lesson'}
               <p>Revision has identified a gap that needs a calmer reteach.</p>
             {:else}
@@ -1555,9 +1558,12 @@
                     <button type="button" class="secondary action-btn" onclick={revealModelAnswer}>
                       Show me the model answer
                     </button>
-                  {/if}
-                </div>
-              </article>
+                {/if}
+              </div>
+              {#if revisionError}
+                <p class="error-message">{revisionError}</p>
+              {/if}
+            </article>
             {/if}
           {:else}
             <article class="revision-summary-card">
@@ -1586,9 +1592,6 @@
 
               <div class="starter-actions revision-summary-actions">
                 {#if revisionSession?.status === 'escalated_to_lesson'}
-                  <button type="button" class="action-btn" onclick={() => appState.startRevisionLessonHandoff()}>
-                    Start focused reteach
-                  </button>
                   {#if sessionRootTopic}
                     <button type="button" class="secondary action-btn" onclick={() => review(sessionRootTopic, 'deep_revision')}>
                       Practise this topic again
@@ -1722,21 +1725,39 @@
               </div>
               <p>Dominant issue: {topicHistory.dominantIssue}.</p>
               <div class="activity-list">
-                {#each topicHistory.entries as entry}
+                {#each topicHistory.entries as entry, i}
                   <article class="activity-item">
                     <div class="topic-row">
                       <strong>{entry.label}</strong>
+                      {#if i === 0}
+                        <span class="hero-pill latest">Latest</span>
+                      {/if}
                       <small>{new Date(entry.createdAt).toLocaleDateString()}</small>
                     </div>
                     <div class="hero-meta">
                       <span class="hero-pill subdued">{Math.round(entry.correctness * 100)}% correct</span>
                       <span class="hero-pill subdued">Confidence {entry.selfConfidence}/5</span>
+                      {#if entry.questionType}
+                        <span class="hero-pill subdued">{entry.questionType}</span>
+                      {/if}
+                      {#if entry.difficulty}
+                        <span class="hero-pill subdued">{entry.difficulty}</span>
+                      {/if}
+                      {#if entry.questionType}
+                        <span class="hero-pill subdued">{entry.questionType}</span>
+                      {/if}
+                      {#if entry.difficulty}
+                        <span class="hero-pill subdued">{entry.difficulty}</span>
+                      {/if}
                     </div>
                     <p>{entry.summary}</p>
+                    {#if entry.promptSnippet}
+                      <p class="prompt-snippet">{entry.promptSnippet}</p>
+                    {/if}
                     <button type="button" class="ghost-btn history-review-toggle" onclick={() => toggleHistoryReview(entry.id)}>
                       {historyReviewVisible(entry.id) ? 'Hide review' : 'Review this attempt'}
                     </button>
-                    {#if historyReviewVisible(entry.id) && displayTopic}
+                    {#if historyReviewVisible(entry.id)}
                       <article class="history-review-card">
                         <div class="history-review-block">
                           <span>What you showed</span>
@@ -1748,7 +1769,7 @@
                         </div>
                         <div class="history-review-block">
                           <span>Model answer</span>
-                          <p>{entry.interventionContent || 'No authored worked step was stored for this attempt.'}</p>
+                          <p>{getWorkedStepForQuestion(entry.questionId!)}</p>
                         </div>
                         <div class="history-review-block">
                           <span>What Doceo scheduled</span>
@@ -2121,6 +2142,10 @@
     min-width: 0;
   }
 
+  .revision-session-main {
+    overflow: visible;
+  }
+
   .revision-session-shell {
     min-height: calc(100svh - 9rem);
     align-content: start;
@@ -2351,6 +2376,8 @@
   }
 
   .revision-summary-card {
+    display: grid;
+    gap: 1.25rem;
     background:
       radial-gradient(circle at top right, color-mix(in srgb, var(--color-yellow-dim) 90%, var(--surface-blend-base)), transparent 34%),
       linear-gradient(180deg, color-mix(in srgb, var(--accent-dim) 60%, var(--surface-blend-base)), var(--surface));
@@ -2363,6 +2390,18 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.75rem;
+  }
+
+  .error-message {
+    color: var(--color-red);
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+  }
+
+  .prompt-snippet {
+    font-style: italic;
+    color: var(--text-soft);
+    margin-top: 0.25rem;
   }
 
   .revision-summary-stat {
@@ -2419,6 +2458,7 @@
   .revision-answer-field {
     min-width: 0;
     overflow: visible;
+    padding-right: 3px;
   }
 
   /* Confidence pill selector */
