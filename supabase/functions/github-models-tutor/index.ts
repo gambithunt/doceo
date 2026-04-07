@@ -5,6 +5,11 @@ import {
   type AiMode,
   type ModelTier
 } from '../../../src/lib/ai/model-tiers.ts';
+import {
+  buildRevisionPackSystemPrompt,
+  buildRevisionPackUserPrompt,
+  parseRevisionPackResponse
+} from './revision-pack.ts';
 
 type SchoolTerm = 'Term 1' | 'Term 2' | 'Term 3' | 'Term 4';
 type LessonStage = 'orientation' | 'concepts' | 'construction' | 'examples' | 'practice' | 'check' | 'complete';
@@ -257,6 +262,32 @@ interface LessonChatRequest {
   messageType: 'question' | 'response';
 }
 
+interface RevisionPackEdgeRequest {
+  student: UserProfile;
+  learnerProfile: LearnerProfile;
+  topics: Array<{
+    lessonSessionId: string;
+    nodeId?: string | null;
+    subject: string;
+    topicTitle: string;
+    curriculumReference: string;
+    confidenceScore: number;
+    retentionStability: number;
+    forgettingVelocity: number;
+    misconceptionSignals: Array<{ pattern: string; frequency: number }>;
+    calibration: {
+      attempts: number;
+      averageSelfConfidence: number;
+      averageCorrectness: number;
+      confidenceGap: number;
+    };
+  }>;
+  recommendationReason: string;
+  mode: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
+  source: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
+  targetQuestionCount?: number;
+}
+
 interface GithubModelsResponse {
   choices: Array<{
     message: {
@@ -277,7 +308,7 @@ interface GithubModelsRequestBody {
 }
 
 type EdgePayload = {
-  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest | SubjectVerifyRequest;
+  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest | SubjectVerifyRequest | RevisionPackEdgeRequest;
   mode?: AiMode;
   modelTier?: ModelTier;
 };
@@ -318,7 +349,8 @@ function isAiMode(value: unknown): value is AiMode {
     value === 'lesson-selector' ||
     value === 'lesson-plan' ||
     value === 'lesson-chat' ||
-    value === 'subject-verify'
+    value === 'subject-verify' ||
+    value === 'revision-pack'
   );
 }
 
@@ -1135,6 +1167,11 @@ function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: 
         { role: 'system', content: buildSubjectVerifySystemPrompt() },
         { role: 'user', content: buildSubjectVerifyUserPrompt(request as SubjectVerifyRequest) }
       ]);
+    case 'revision-pack':
+      return buildGithubRequest(model, 0.3, [
+        { role: 'system', content: buildRevisionPackSystemPrompt() },
+        { role: 'user', content: buildRevisionPackUserPrompt(request as RevisionPackEdgeRequest) }
+      ]);
   }
 }
 
@@ -1186,6 +1223,12 @@ function buildModeResponse(
       const result = parseSubjectVerifyResponse(content);
       return result
         ? { result, provider: PROVIDER, modelTier, model }
+        : null;
+    }
+    case 'revision-pack': {
+      const response = parseRevisionPackResponse(content, request as RevisionPackEdgeRequest);
+      return response
+        ? { ...response, provider: PROVIDER, modelTier, model }
         : null;
     }
   }

@@ -29,45 +29,9 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ## Tasks
 
-- [ ] **Task 1 — Add `RevisionPackEdgeRequest` interface**
+- [x] **Task 1 — Add `RevisionPackEdgeRequest` interface**
 
-  **File:** `supabase/functions/github-models-tutor/index.ts`
-
-  Add after the existing request interfaces (around line 86). Must carry enough context for the prompt but not the full `RevisionTopic` shape — strip fields the model doesn't need.
-
-  ```ts
-  interface RevisionPackEdgeRequest {
-    student: UserProfile;
-    learnerProfile: LearnerProfile;
-    topics: Array<{
-      lessonSessionId: string;
-      nodeId?: string | null;
-      subject: string;
-      topicTitle: string;
-      curriculumReference: string;
-      confidenceScore: number;
-      retentionStability: number;
-      forgettingVelocity: number;
-      misconceptionSignals: Array<{ pattern: string; frequency: number }>;
-      calibration: {
-        attempts: number;
-        averageSelfConfidence: number;
-        averageCorrectness: number;
-        confidenceGap: number;
-      };
-    }>;
-    recommendationReason: string;
-    mode: 'quick_fire' | 'deep_revision' | 'shuffle' | 'teacher_mode';
-    source: 'do_today' | 'weakness' | 'exam_plan' | 'manual';
-    targetQuestionCount?: number;
-  }
-  ```
-
-  **Acceptance:** TypeScript compiles. The interface covers every field the prompt builders will reference.
-
----
-
-- [ ] **Task 2 — Add `EdgePayload.request` union member**
+- [x] **Task 2 — Add `EdgePayload.request` union member**
 
   **File:** `supabase/functions/github-models-tutor/index.ts` (line 280)
 
@@ -87,7 +51,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 3 — Add `'revision-pack'` to `isAiMode`**
+- [x] **Task 3 — Add `'revision-pack'` to `isAiMode`**
 
   **File:** `supabase/functions/github-models-tutor/index.ts` (line 313)
 
@@ -97,7 +61,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 4 — Build `buildRevisionPackSystemPrompt`**
+- [x] **Task 4 — Build `buildRevisionPackSystemPrompt`**
 
   **File:** `supabase/functions/github-models-tutor/index.ts`
 
@@ -136,7 +100,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 5 — Build `buildRevisionPackUserPrompt`**
+- [x] **Task 5 — Build `buildRevisionPackUserPrompt`**
 
   **File:** `supabase/functions/github-models-tutor/index.ts`
 
@@ -183,7 +147,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 6 — Build `parseRevisionPackResponse`**
+- [x] **Task 6 — Build `parseRevisionPackResponse`**
 
   **File:** `supabase/functions/github-models-tutor/index.ts`
 
@@ -251,7 +215,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 7 — Wire into `buildModeRequest` and `buildModeResponse`**
+- [x] **Task 7 — Wire into `buildModeRequest` and `buildModeResponse`**
 
   **File:** `supabase/functions/github-models-tutor/index.ts`
 
@@ -282,7 +246,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 8 — Redeploy / restart edge function**
+- [x] **Task 8 — Redeploy / restart edge function**
 
   After code changes, restart the local Supabase function serve:
 
@@ -300,7 +264,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 9 — Unit tests for prompt builders and response parser**
+- [x] **Task 9 — Unit tests for prompt builders and response parser**
 
   **File:** New file `supabase/functions/github-models-tutor/index.test.ts` or add to existing test file if one exists.
 
@@ -324,7 +288,7 @@ The following must be added to `supabase/functions/github-models-tutor/index.ts`
 
 ---
 
-- [ ] **Task 10 — End-to-end manual verification**
+- [x] **Task 10 — End-to-end manual verification**
 
   1. Start local Supabase: `supabase start` or `supabase functions serve`
   2. Start dev server: `npm run dev`
