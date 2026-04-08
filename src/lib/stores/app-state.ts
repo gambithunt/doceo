@@ -2291,18 +2291,27 @@ export function createAppStore(initialState: AppState = readState()) {
         return;
       }
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } }
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, fullName })
       });
 
-      if (error) {
-        update((state) => ({ ...state, auth: { status: 'signed_out', error: error.message } }));
+      const result = await response.json();
+
+      if (!response.ok) {
+        update((state) => ({ ...state, auth: { status: 'signed_out', error: result.error || 'Registration failed' } }));
         return;
       }
 
-      const userId = data.user?.id ?? '';
+      if (result.session) {
+        await supabase.auth.setSession({
+          access_token: result.session.access_token,
+          refresh_token: result.session.refresh_token
+        });
+      }
+
+      const userId = result.user?.id ?? '';
       update((state) =>
         persistAndSync({
           ...state,

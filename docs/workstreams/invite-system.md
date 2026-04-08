@@ -54,10 +54,10 @@
 - Email delivery
 
 ### Tasks (Checklist)
-- [ ] Add a Supabase migration for `registration_settings` and `invited_users`
-- [ ] Add shared TypeScript types for registration mode and invite row shape
-- [ ] Add server helpers to read the current registration mode and find an invite by normalized email
-- [ ] Add tests for default mode resolution, email normalization, and invite lookup behavior
+- [x] Add a Supabase migration for `registration_settings` and `invited_users`
+- [x] Add shared TypeScript types for registration mode and invite row shape
+- [x] Add server helpers to read the current registration mode and find an invite by normalized email
+- [x] Add tests for default mode resolution, email normalization, and invite lookup behavior
 
 ### TDD Plan
 
@@ -111,11 +111,11 @@ REFACTOR
 - Cloudflare Access or infrastructure setup
 
 ### Tasks (Checklist)
-- [ ] Add route tests covering `open`, `invite_only`, and `closed` registration outcomes
-- [ ] Add route tests for invited and non-invited email attempts
-- [ ] Implement a server registration path that checks registration mode before creating the account
-- [ ] Mark invite records accepted only after successful account creation
-- [ ] Return clear, bounded error states for blocked registration attempts
+- [x] Add route tests covering `open`, `invite_only`, and `closed` registration outcomes
+- [x] Add route tests for invited and non-invited email attempts
+- [x] Implement a server registration path that checks registration mode before creating the account
+- [x] Mark invite records accepted only after successful account creation
+- [x] Return clear, bounded error states for blocked registration attempts
 
 ### TDD Plan
 
@@ -171,10 +171,10 @@ REFACTOR
 - New auth providers
 
 ### Tasks (Checklist)
-- [ ] Add component or store tests for landing page behavior in each registration mode
-- [ ] Update landing auth tabs and submit flow to use server-backed registration
-- [ ] Add invite-only and closed-state copy using existing card, button, and form styles
-- [ ] Ensure light and dark mode behavior remains consistent
+- [x] Add component or store tests for landing page behavior in each registration mode
+- [x] Update landing auth tabs and submit flow to use server-backed registration
+- [x] Add invite-only and closed-state copy using existing card, button, and form styles
+- [x] Ensure light and dark mode behavior remains consistent
 
 ### TDD Plan
 
@@ -226,11 +226,11 @@ REFACTOR
 - Role-system changes
 
 ### Tasks (Checklist)
-- [ ] Add admin server tests for mode updates and invite creation
-- [ ] Add a settings section in the existing admin area for registration controls
-- [ ] Implement a server action to change registration mode
-- [ ] Implement a server action to add an invite by email
-- [ ] Show existing invites and statuses in a simple list or table using existing admin patterns
+- [x] Add admin server tests for mode updates and invite creation
+- [x] Add a settings section in the existing admin area for registration controls
+- [x] Implement a server action to change registration mode
+- [x] Implement a server action to add an invite by email
+- [x] Show existing invites and statuses in a simple list or table using existing admin patterns
 
 ### TDD Plan
 
@@ -282,10 +282,10 @@ REFACTOR
 - Team or organization invites
 
 ### Tasks (Checklist)
-- [ ] Add tests for already-accepted and revoked invite behavior
-- [ ] Add tests preventing repeated use of the same invite email where disallowed by the spec
-- [ ] Add final regression coverage for admin invite creation plus invited signup path
-- [ ] Tighten status transition handling if needed based on test results
+- [x] Add tests for already-accepted and revoked invite behavior
+- [x] Add tests preventing repeated use of the same invite email where disallowed by the spec
+- [x] Add final regression coverage for admin invite creation plus invited signup path
+- [x] Tighten status transition handling if needed based on test results
 
 ### TDD Plan
 
@@ -333,3 +333,7 @@ REFACTOR
 - Main ambiguity: whether an invite is single-use by email or reusable until manually revoked. This workstream assumes one accepted account per invited email and no multi-seat invite behavior.
 - Main ambiguity: where registration mode should be stored. This workstream assumes it should follow the existing admin-config style in Supabase rather than introducing a separate feature-flag service.
 - Deferred intentionally: outbound invite emails, Cloudflare Access configuration, waitlist collection, self-serve invite requests, and analytics/reporting beyond what is required for the core invite-only flow.
+
+
+## Post implemetation fixes
+When changing the setting

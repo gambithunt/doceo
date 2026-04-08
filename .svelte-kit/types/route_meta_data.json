@@ -90,6 +90,12 @@
 	"/api/ai/tutor": [
 		"src/routes/api/ai/tutor/+server.ts"
 	],
+	"/api/auth/mode": [
+		"src/routes/api/auth/mode/+server.ts"
+	],
+	"/api/auth/register": [
+		"src/routes/api/auth/register/+server.ts"
+	],
 	"/api/curriculum/program": [
 		"src/routes/api/curriculum/program/+server.ts"
 	],

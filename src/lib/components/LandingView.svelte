@@ -1,9 +1,11 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { onMount } from 'svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { appState } from '$lib/stores/app-state';
   import type { AppState } from '$lib/types';
+  import type { RegistrationMode } from '$lib/server/invite-system';
 
   const { state: viewState }: { state: AppState } = $props();
 
@@ -14,6 +16,24 @@
   let password = $state('');
   let lastAuthStatus: AppState['auth']['status'] = $state('signed_out');
   let lastAuthMode: 'signin' | 'signup' = $state('signup');
+  let registrationMode: RegistrationMode = $state('open');
+  let modeLoaded = $state(false);
+
+  onMount(async () => {
+    try {
+      const response = await fetch('/api/auth/mode');
+      if (response.ok) {
+        const data = await response.json();
+        registrationMode = data.mode;
+        if (registrationMode !== 'open') {
+          authMode = 'signin';
+        }
+      }
+    } catch {
+      registrationMode = 'open';
+    }
+    modeLoaded = true;
+  });
 
   $effect(() => {
     if (viewState.auth.status !== lastAuthStatus) {
@@ -55,6 +75,12 @@
     await appState.signIn(email, password);
   }
 
+  function getModeMessage(mode: RegistrationMode): string {
+    if (mode === 'invite_only') return 'This feature requires an invitation.';
+    if (mode === 'closed') return 'Registration is currently closed.';
+    return '';
+  }
+
 </script>
 
 <section class="landing-shell">
@@ -92,11 +118,13 @@
 
   <article class="auth card">
     <div class="tabs">
-      <button type="button" class:active={authMode === 'signup'} onclick={() => (authMode = 'signup')}>Create account</button>
+      {#if registrationMode === 'open'}
+        <button type="button" class:active={authMode === 'signup'} onclick={() => (authMode = 'signup')}>Create account</button>
+      {/if}
       <button type="button" class:active={authMode === 'signin'} onclick={() => (authMode = 'signin')}>Sign in</button>
     </div>
     <h2>{authMode === 'signup' ? 'Create your student account' : 'Sign in to continue'}</h2>
-    {#if authMode === 'signup'}
+    {#if authMode === 'signup' && registrationMode === 'open'}
       <div class="name-grid">
         <label>
           <span>First name</span>
@@ -108,22 +136,26 @@
         </label>
       </div>
     {/if}
-    <label>
-      <span>Email</span>
-      <input bind:value={email} type="email" />
-    </label>
-    <label>
-      <span>Password</span>
-      <input bind:value={password} type="password" />
-    </label>
-    <button
-      type="button"
-      aria-busy={viewState.auth.status === 'loading'}
-      onclick={submitAuth}
-      disabled={viewState.auth.status === 'loading'}
-    >
-      {viewState.auth.status === 'loading' ? 'Working...' : authMode === 'signup' ? 'Create account' : 'Sign in'}
-    </button>
+    {#if modeLoaded && registrationMode !== 'open' && authMode === 'signup'}
+      <p class="mode-notice">{getModeMessage(registrationMode)}</p>
+    {:else}
+      <label>
+        <span>Email</span>
+        <input bind:value={email} type="email" />
+      </label>
+      <label>
+        <span>Password</span>
+        <input bind:value={password} type="password" />
+      </label>
+      <button
+        type="button"
+        aria-busy={viewState.auth.status === 'loading'}
+        onclick={submitAuth}
+        disabled={viewState.auth.status === 'loading'}
+      >
+        {viewState.auth.status === 'loading' ? 'Working...' : authMode === 'signup' ? 'Create account' : 'Sign in'}
+      </button>
+    {/if}
     {#if viewState.auth.error}
       <p class="error" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{viewState.auth.error}</p>
     {/if}
@@ -271,6 +303,15 @@
 
   .error {
     color: var(--color-red, #ef4444);
+  }
+
+  .mode-notice {
+    color: var(--text-soft);
+    text-align: center;
+    padding: 1rem;
+    background: var(--surface-soft);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
   }
 
   /* ── Tablet ── */

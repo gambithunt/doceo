@@ -4,6 +4,7 @@
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
   import type { ProviderDefinition, ModelOption, ProviderId } from '$lib/ai/providers';
   import type { AiConfig } from '$lib/server/ai-config';
+  import type { RegistrationMode } from '$lib/server/invite-system';
 
   const { data, form } = $props<{
     data: {
@@ -11,6 +12,15 @@
       providers: ProviderDefinition[];
       budgetCapUsd: number;
       alertThresholds: { errorRatePct: number; spendPct: number };
+      registrationMode: RegistrationMode;
+      invites: Array<{
+        id: string;
+        normalized_email: string;
+        status: string;
+        invited_by: string | null;
+        invited_at: string;
+        accepted_at: string | null;
+      }>;
     };
     form: {
       success?: boolean;
@@ -26,6 +36,12 @@
     { mode: 'subject-hints',  label: 'Subject Hints',  defaultTier: 'fast'     },
   ] as const;
 
+  const REGISTRATION_MODES: { value: RegistrationMode; label: string }[] = [
+    { value: 'open', label: 'Open — anyone can sign up' },
+    { value: 'invite_only', label: 'Invite only — requires invitation' },
+    { value: 'closed', label: 'Closed — registration disabled' }
+  ];
+
   let selectedProviderId = $state<ProviderId>(data.aiConfig.provider);
   let tierModels = $state({
     fast:     data.aiConfig.tiers.fast.model,
@@ -39,13 +55,16 @@
   let saveState      = $state<'idle' | 'saving' | 'saved'>('idle');
   let scanning       = $state(false);
   let scanBanner     = $state<{ pricesUpdated: number; modelsAdded: number; errors: string[] } | null>(null);
+  let selectedMode   = $state<RegistrationMode>(data.registrationMode);
+  let inviteEmail    = $state('');
+  let modeSaveState  = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  let inviteSaveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  let inviteError    = $state<string | null>(null);
 
   const selectedProvider = $derived(
     data.providers.find((provider: ProviderDefinition) => provider.id === selectedProviderId) ?? data.providers[0]
   );
 
-  // All tiers show all provider models — the tier tag is just the recommended default,
-  // not a filter. The admin can assign any model to any capability tier.
   const allModels = $derived(selectedProvider.models);
 
   function onProviderChange() {
@@ -66,6 +85,27 @@
   function formatModelOption(m: ModelOption): string {
     return `${m.label} — $${m.inputPer1M.toFixed(2)}/$${m.outputPer1M.toFixed(2)} per 1M`;
   }
+
+  function formatDate(dateStr: string): string {
+    return new Date(dateStr).toLocaleDateString('en-ZA', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+
+  type Invite = {
+    id: string;
+    normalized_email: string;
+    status: string;
+    invited_by: string | null;
+    invited_at: string;
+    accepted_at: string | null;
+  };
+
+  const pendingInvites = $derived(
+    data.invites.filter((inv: Invite) => inv.status === 'pending')
+  );
 </script>
 
 <div class="page">
@@ -250,7 +290,7 @@
           <label class="field-label" for="budget-cap">Monthly Budget Cap (USD)</label>
           <div class="input-wrap">
             <span class="input-prefix">$</span>
-            <input id="budget-cap" type="number" min="1" max="10000" step="1" class="setting-input" bind:value={budgetCap} />
+            <input id="budget-cap" type="number" min="1" max="10000" step="1" class="setting-input narrow" bind:value={budgetCap} />
           </div>
         </div>
       </div>
@@ -268,6 +308,136 @@
         </div>
       </div>
     </form>
+
+    <!-- Registration Settings -->
+    <div class="settings-form">
+      <div class="settings-section">
+        <h2 class="section-title">Registration Mode</h2>
+        <p class="section-desc">Control how new users can create accounts on the platform.</p>
+        <form
+          method="POST"
+          action="?/setRegistrationMode"
+          use:enhance={() => {
+            modeSaveState = 'saving';
+            return async ({ update }) => {
+              await update({ reset: false });
+              modeSaveState = 'saved';
+              setTimeout(() => (modeSaveState = 'idle'), 2200);
+            };
+          }}
+        >
+          <div class="field-row">
+            <label class="field-label" for="reg-mode">Current Mode</label>
+            <div class="select-wrap">
+              <select
+                id="reg-mode"
+                name="mode"
+                class="setting-select"
+                bind:value={selectedMode}
+              >
+                {#each REGISTRATION_MODES as mode}
+                  <option value={mode.value}>{mode.label}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+          <div class="form-footer">
+            <button
+              type="submit"
+              class="save-btn save-btn--{modeSaveState}"
+              disabled={modeSaveState === 'saving'}
+            >
+              {#if modeSaveState === 'saving'}
+                <span class="btn-spinner" aria-hidden="true"></span>
+                <span>Saving…</span>
+              {:else if modeSaveState === 'saved'}
+                <span class="btn-check" aria-hidden="true">✓</span>
+                <span>Saved!</span>
+              {:else}
+                Save Mode
+              {/if}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="settings-section">
+        <h2 class="section-title">Invite Users</h2>
+        <p class="section-desc">Add invited email addresses for invite_only registration mode.</p>
+        <form
+          method="POST"
+          action="?/addInvite"
+          use:enhance={() => {
+            inviteSaveState = 'saving';
+            inviteError = null;
+            return async ({ update }) => {
+              await update({ reset: false });
+              inviteSaveState = 'idle';
+              if (inviteEmail) {
+                inviteSaveState = 'saved';
+                inviteEmail = '';
+                setTimeout(() => (inviteSaveState = 'idle'), 2200);
+              }
+            };
+          }}
+        >
+          <div class="field-row">
+            <label class="field-label" for="invite-email">Email Address</label>
+            <input
+              id="invite-email"
+              name="email"
+              type="email"
+              class="setting-input"
+              placeholder="user@example.com"
+              bind:value={inviteEmail}
+            />
+          </div>
+          {#if inviteError}
+            <p class="error-text">{inviteError}</p>
+          {/if}
+          <div class="form-footer">
+            <button
+              type="submit"
+              class="save-btn save-btn--{inviteSaveState}"
+              disabled={inviteSaveState === 'saving' || !inviteEmail.trim()}
+            >
+              {#if inviteSaveState === 'saving'}
+                <span class="btn-spinner" aria-hidden="true"></span>
+                <span>Adding…</span>
+              {:else if inviteSaveState === 'saved'}
+                <span class="btn-check" aria-hidden="true">✓</span>
+                <span>Added!</span>
+              {:else}
+                Add Invite
+              {/if}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {#if data.invites.length > 0}
+        <div class="settings-section">
+          <h2 class="section-title">Active Invites</h2>
+          <p class="section-desc">Invited users with pending status can still register. Accepted or revoked invites are not shown.</p>
+          <div class="invites-table">
+            <div class="invites-header">
+              <span>Email</span>
+              <span>Status</span>
+              <span>Invited</span>
+              <span>Accepted</span>
+            </div>
+            {#each pendingInvites as invite}
+              <div class="invite-row">
+                <span class="mono">{invite.normalized_email}</span>
+                <span class="status-badge status-{invite.status}">{invite.status}</span>
+                <span class="date-text">{formatDate(invite.invited_at)}</span>
+                <span class="date-text">{invite.accepted_at ? formatDate(invite.accepted_at) : '—'}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
 
   </div>
 </div>
@@ -385,8 +555,8 @@
   /* Spend/alert inputs */
   .input-wrap { display: flex; align-items: center; background: var(--surface-strong); border: 1px solid var(--border-strong); border-radius: 0.6rem; overflow: hidden; }
   .input-prefix { padding: 0 0.6rem; font-size: 0.875rem; color: var(--muted); background: var(--border); display: flex; align-items: center; border-right: 1px solid var(--border-strong); align-self: stretch; }
-  .setting-input { background: var(--surface-strong); border: 1px solid var(--border-strong); border-radius: 0.6rem; padding: 0.5rem 0.75rem; font: inherit; font-size: 0.875rem; color: var(--text); width: 6rem; outline: none; transition: border-color 150ms; }
-  .setting-input.narrow { width: 5rem; }
+  .setting-input { background: var(--surface-strong); border: 1px solid var(--border-strong); border-radius: 0.6rem; padding: 0.5rem 0.75rem; font: inherit; font-size: 0.875rem; color: var(--text); width: 100%; outline: none; transition: border-color 150ms; }
+  .setting-input.narrow { width: 6rem; }
   .input-wrap .setting-input { border: none; border-radius: 0; }
   .setting-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
 
@@ -474,4 +644,77 @@
     animation: spin 0.6s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Registration settings */
+  .error-text {
+    color: var(--color-red, #ef4444);
+    font-size: 0.82rem;
+    margin: 0.5rem 0;
+  }
+
+  .date-text {
+    font-size: 0.78rem;
+    color: var(--text-soft);
+  }
+
+  .invites-table {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    overflow: hidden;
+  }
+
+  .invites-header,
+  .invite-row {
+    display: grid;
+    grid-template-columns: 1fr 6rem 7rem 7rem;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    align-items: center;
+  }
+
+  .invites-header {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--surface-soft);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .invite-row {
+    font-size: 0.82rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .invite-row:last-child {
+    border-bottom: none;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .status-pending {
+    background: color-mix(in srgb, var(--color-amber, #f59e0b) 15%, transparent);
+    color: var(--color-amber, #f59e0b);
+  }
+
+  .status-accepted {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+  }
+
+  .status-revoked {
+    background: color-mix(in srgb, var(--muted) 15%, transparent);
+    color: var(--muted);
+  }
 </style>
