@@ -114,6 +114,71 @@ export const onboardingCountries: CountryOption[] = [
   }
 ];
 
+const timezoneToCountryId: Record<string, string> = {
+  'Africa/Johannesburg': 'za',
+  'Africa/Nairobi': 'ke',
+  'Africa/Lagos': 'ng',
+  'America/New_York': 'us',
+  'America/Los_Angeles': 'us',
+  'America/Chicago': 'us',
+  'America/Denver': 'us',
+  'America/Toronto': 'ca',
+  'America/Vancouver': 'ca',
+  'America/Mexico_City': 'mx',
+  'America/Sao_Paulo': 'br',
+  'Europe/London': 'gb',
+  'Europe/Paris': 'fr',
+  'Europe/Berlin': 'de',
+  'Asia/Kolkata': 'in',
+  'Asia/Dubai': 'ae',
+  'Asia/Singapore': 'sg',
+  'Australia/Sydney': 'au',
+  'Australia/Perth': 'au',
+  'Australia/Melbourne': 'au',
+  'Pacific/Auckland': 'nz'
+};
+
+const localeToCountryId: Record<string, string> = {
+  'en-ZA': 'za',
+  'en-GB': 'gb',
+  'en-US': 'us',
+  'en-AU': 'au',
+  'en-CA': 'ca',
+  'en-IN': 'in',
+  'af-ZA': 'za',
+  'de-DE': 'de',
+  'de-AT': 'de',
+  'de-CH': 'de',
+  'fr-FR': 'fr',
+  'fr-CA': 'ca',
+  'fr-BE': 'be',
+  'pt-BR': 'br',
+  'pt-PT': 'pt'
+};
+
+export interface CountryRecommendationSignals {
+  timezone?: string;
+  localeLanguage?: string;
+}
+
+export function getRecommendedCountryId(signals: CountryRecommendationSignals): string | null {
+  if (signals.timezone) {
+    const countryFromTimezone = timezoneToCountryId[signals.timezone];
+    if (countryFromTimezone) {
+      return countryFromTimezone;
+    }
+  }
+
+  if (signals.localeLanguage) {
+    const countryFromLocale = localeToCountryId[signals.localeLanguage];
+    if (countryFromLocale) {
+      return countryFromLocale;
+    }
+  }
+
+  return null;
+}
+
 export function hasStructuredSchoolSupport(countryId: string): boolean {
   return countryId === 'za';
 }

@@ -9,6 +9,7 @@
     isSchoolEducationType,
     isUniversityEducationType
   } from '$lib/data/onboarding';
+  import CountryPicker from './CountryPicker.svelte';
   import type { AppState, EducationType, OnboardingStep, SchoolTerm, SubjectOption, SubjectVerificationState } from '$lib/types';
 
   const { state }: { state: AppState } = $props();
@@ -50,6 +51,9 @@
   const countryName = $derived(
     state.onboarding.options.countries.find((country) => country.id === state.onboarding.selectedCountryId)?.name ??
       'Not chosen'
+  );
+  const selectedCountry = $derived(
+    state.onboarding.options.countries.find((country) => country.id === state.onboarding.selectedCountryId)
   );
   const curriculumName = $derived(
     state.onboarding.options.curriculums.find(
@@ -316,19 +320,11 @@
   <div class="content-grid">
     <article class="panel card">
       {#if state.onboarding.currentStep === 'country'}
-        <div class="selection-grid">
-          {#each state.onboarding.options.countries as country}
-            <button
-              type="button"
-              class:active={state.onboarding.selectedCountryId === country.id}
-              class="choice-card"
-              onclick={() => appState.selectOnboardingCountry(country.id)}
-            >
-              <strong>{country.name}</strong>
-              <span>Curriculum-aware onboarding</span>
-            </button>
-          {/each}
-        </div>
+        <CountryPicker
+          {selectedCountry}
+          countries={state.onboarding.options.countries}
+          selectedCountryId={state.onboarding.selectedCountryId}
+        />
 
         <div class="education-type-row">
           <span class="education-type-label">I am learning at a</span>

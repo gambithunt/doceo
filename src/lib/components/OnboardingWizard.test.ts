@@ -1,10 +1,39 @@
 import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import OnboardingWizard from './OnboardingWizard.svelte';
 import { createInitialState } from '$lib/data/platform';
+import { get } from 'svelte/store';
+
+vi.mock('$lib/stores/app-state', () => ({
+  appState: {
+    subscribe: (callback: (value: unknown) => void) => {
+      callback(createInitialState());
+      return () => {};
+    },
+    selectOnboardingCountry: vi.fn(),
+    setOnboardingStep: vi.fn(),
+    setOnboardingEducationType: vi.fn(),
+    setOnboardingCurriculum: vi.fn(),
+    selectOnboardingCurriculum: vi.fn(),
+    selectOnboardingGrade: vi.fn(),
+    setOnboardingSchoolYear: vi.fn(),
+    setOnboardingTerm: vi.fn(),
+    setOnboardingUnsure: vi.fn(),
+    toggleOnboardingSubject: vi.fn(),
+    setSubjectVerificationInput: vi.fn(),
+    verifyAndAddSubject: vi.fn(),
+    resetSubjectVerification: vi.fn(),
+    removeOnboardingCustomSubject: vi.fn(),
+    completeOnboarding: vi.fn()
+  }
+}));
 
 describe('OnboardingWizard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('sets the progress bar width to match the current step index', () => {
     const baseState = createInitialState();
     const cases = [

@@ -3,6 +3,7 @@ import {
   defaultTerm,
   getCurriculumsByCountry,
   getGradesByCurriculum,
+  getRecommendedCountryId,
   getRecommendedSubject,
   getSelectionMode,
   getSubjectsByCurriculumAndGrade,
@@ -12,6 +13,7 @@ import {
   getProviderForEducationType,
   getLevelForSchool
 } from '$lib/data/onboarding';
+import type { CountryRecommendationSignals } from '$lib/data/onboarding';
 import {
   buildRevisionTopicFromLesson,
   createDefaultLearnerProfile
@@ -476,8 +478,9 @@ export function buildAskQuestionResponse(request: AskQuestionRequest): AskQuesti
   };
 }
 
-export function createInitialState(): AppState {
-  const selectedCountryId = onboardingCountries[0].id;
+export function createInitialState(recommendationSignals: CountryRecommendationSignals = {}): AppState {
+  const recommendedCountryId = getRecommendedCountryId(recommendationSignals);
+  const selectedCountryId = recommendedCountryId ?? onboardingCountries[0].id;
   const availableCurriculums = getCurriculumsByCountry(selectedCountryId);
   const selectedCurriculumId = availableCurriculums[0]?.id ?? 'caps';
   const availableGrades = getGradesByCurriculum(selectedCurriculumId);

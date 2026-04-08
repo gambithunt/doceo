@@ -41,11 +41,11 @@ Each phase is self-contained, independently testable, and safe to ship on its ow
 - No precise geolocation permission prompts
 
 ### Tasks (Checklist)
-- [ ] Define the country recommendation signal order and fallback behavior
-- [ ] Add a recommended-country state to onboarding step 1
-- [ ] Auto-select the recommended country only when a valid recommendation exists
-- [ ] Keep onboarding functional when no recommendation is available
-- [ ] Add tests for recommendation and fallback behavior
+- [x] Define the country recommendation signal order and fallback behavior
+- [x] Add a recommended-country state to onboarding step 1
+- [x] Auto-select the recommended country only when a valid recommendation exists
+- [x] Keep onboarding functional when no recommendation is available
+- [x] Add tests for recommendation and fallback behavior
 
 ### TDD Plan
 
@@ -101,11 +101,11 @@ REFACTOR
 - No education type CTA redesign in this phase
 
 ### Tasks (Checklist)
-- [ ] Add an inline expandable container for the country picker
-- [ ] Add a secondary action to toggle the expanded state
-- [ ] Render the available country list inside the expanded panel
-- [ ] Collapse the panel cleanly after country selection
-- [ ] Add tests for expand, select, and collapse behavior
+- [x] Add an inline expandable container for the country picker
+- [x] Add a secondary action to toggle the expanded state
+- [x] Render the available country list inside the expanded panel
+- [x] Collapse the panel cleanly after country selection
+- [x] Add tests for expand, select, and collapse behavior
 
 ### TDD Plan
 

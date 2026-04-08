@@ -4,7 +4,8 @@ import { derived, get, writable } from 'svelte/store';
 import type { RevisionTurnScores } from '$lib/types';
 import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
 import { deduplicateSubjects } from '$lib/utils/strings';
-import { getSelectionMode } from '$lib/data/onboarding';
+import { getRecommendedCountryId, getSelectionMode } from '$lib/data/onboarding';
+import type { CountryRecommendationSignals } from '$lib/data/onboarding';
 import {
   applyLessonAssistantResponse,
   buildInitialLessonMessages,
@@ -160,21 +161,45 @@ function toDashboardTopicSuggestion(
   };
 }
 
-function readState(): AppState {
+function detectBrowserCountrySignals(): CountryRecommendationSignals {
   if (!browser) {
-    return createInitialState();
+    return {};
+  }
+
+  const signals: CountryRecommendationSignals = {};
+
+  try {
+    signals.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    // Timezone detection failed, continue without it
+  }
+
+  try {
+    signals.localeLanguage = navigator.language;
+  } catch {
+    // Locale detection failed, continue without it
+  }
+
+  return signals;
+}
+
+function readState(): AppState {
+  const browserSignals = detectBrowserCountrySignals();
+
+  if (!browser) {
+    return createInitialState(browserSignals);
   }
 
   const stored = localStorage.getItem(STORAGE_KEY);
 
   if (!stored) {
-    return createInitialState();
+    return createInitialState(browserSignals);
   }
 
   try {
     return normalizeAppState(JSON.parse(stored));
   } catch {
-    return createInitialState();
+    return createInitialState(browserSignals);
   }
 }
 
