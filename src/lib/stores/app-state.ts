@@ -35,6 +35,8 @@ import {
   upsertRevisionTopicFromSession
 } from '$lib/data/platform';
 import {
+  getCurriculumsByCountry,
+  getGradesByCurriculum,
   getUniversitySubjects,
   hasStructuredSchoolSupport,
   isUniversityEducationType
@@ -80,6 +82,7 @@ import type {
   TopicDiscoverySuggestion,
   TopicShortlistResponse
 } from '$lib/types';
+import type { UniversityVerificationState } from '$lib/types';
 
 const STORAGE_KEY = 'doceo-app-state';
 
@@ -259,6 +262,16 @@ async function fetchLearningProgram(state: AppState): Promise<LearningProgramRes
   }
 
   return (await response.json()) as LearningProgramResponse;
+}
+
+async function fetchServerCountryCode(): Promise<string | null> {
+  try {
+    const response = await fetch('/api/geo/country');
+    const body = (await response.json()) as { countryCode: string | null };
+    return body.countryCode;
+  } catch {
+    return null;
+  }
 }
 
 function buildTopicOptions(state: AppState, subjectId: string) {
@@ -2532,7 +2545,7 @@ export function createAppStore(initialState: AppState = readState()) {
 
       try {
         grades = await fetchOptions<GradeOption>(`type=grades&curriculumId=${curriculumId}`);
-        selectedGradeId = grades.find((grade) => grade.label === 'Grade 6')?.id ?? grades[0]?.id ?? '';
+        selectedGradeId = grades.find((grade) => grade.label === 'Grade 8')?.id ?? grades[0]?.id ?? '';
         subjects = selectedGradeId
           ? await fetchOptions<SubjectOption>(`type=subjects&curriculumId=${curriculumId}&gradeId=${selectedGradeId}`)
           : [];
@@ -3064,6 +3077,168 @@ export function createAppStore(initialState: AppState = readState()) {
       }),
     setOnboardingStep: (currentStep: OnboardingStep) =>
       update((state) => persistAndSync({ ...state, onboarding: { ...state.onboarding, currentStep } })),
+    verifyInstitution: async (query: string) => {
+      const current = currentState();
+      const country = current.onboarding.options.countries.find(
+        (c) => c.id === current.onboarding.selectedCountryId
+      )?.name ?? 'South Africa';
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            universityVerification: {
+              ...state.onboarding.universityVerification,
+              institutionStatus: 'loading',
+              institutionInput: query,
+              institutionError: null
+            }
+          }
+        })
+      );
+
+      try {
+        const response = await fetch('/api/ai/institution-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, country })
+        });
+
+        if (!response.ok) {
+          throw new Error('Institution verification failed');
+        }
+
+        const data = (await response.json()) as { suggestions: string[]; error?: string };
+
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              universityVerification: {
+                ...state.onboarding.universityVerification,
+                institutionStatus: data.suggestions.length > 0 ? 'suggestions' : 'error',
+                institutionSuggestions: data.suggestions,
+                institutionError: data.suggestions.length === 0 ? 'No institutions found. Try a different search.' : null
+              }
+            }
+          })
+        );
+      } catch {
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              universityVerification: {
+                ...state.onboarding.universityVerification,
+                institutionStatus: 'error',
+                institutionError: 'Verification failed. Please try again.'
+              }
+            }
+          })
+        );
+      }
+    },
+    verifyProgramme: async (query: string) => {
+      const current = currentState();
+      const institution = current.onboarding.provider;
+
+      if (!institution) {
+        return;
+      }
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            universityVerification: {
+              ...state.onboarding.universityVerification,
+              programmeStatus: 'loading',
+              programmeInput: query,
+              programmeError: null
+            }
+          }
+        })
+      );
+
+      try {
+        const response = await fetch('/api/ai/programme-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ institution, query })
+        });
+
+        if (!response.ok) {
+          throw new Error('Programme verification failed');
+        }
+
+        const data = (await response.json()) as { suggestions: string[]; error?: string };
+
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              universityVerification: {
+                ...state.onboarding.universityVerification,
+                programmeStatus: data.suggestions.length > 0 ? 'suggestions' : 'error',
+                programmeSuggestions: data.suggestions,
+                programmeError: data.suggestions.length === 0 ? 'No programmes found. Try a different search.' : null
+              }
+            }
+          })
+        );
+      } catch {
+        update((state) =>
+          persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              universityVerification: {
+                ...state.onboarding.universityVerification,
+                programmeStatus: 'error',
+                programmeError: 'Verification failed. Please try again.'
+              }
+            }
+          })
+        );
+      }
+    },
+    selectVerifiedInstitution: (institution: string) =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            provider: institution,
+            universityVerification: {
+              ...state.onboarding.universityVerification,
+              institutionStatus: 'idle',
+              institutionInput: '',
+              institutionSuggestions: []
+            }
+          }
+        })
+      ),
+    selectVerifiedProgramme: (programme: string) =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            programme,
+            universityVerification: {
+              ...state.onboarding.universityVerification,
+              programmeStatus: 'idle',
+              programmeInput: '',
+              programmeSuggestions: []
+            }
+          }
+        })
+      ),
     completeOnboarding: async (fullName: string, grade: string) => {
       update((state) =>
         persistAndSync({
@@ -3916,6 +4091,42 @@ export function createAppStore(initialState: AppState = readState()) {
             ...session,
             status: 'escalated_to_lesson',
             lastActiveAt: new Date().toISOString()
+          }
+        });
+      });
+    },
+    resolveAndApplyServerCountry: async () => {
+      const serverCountryCode = await fetchServerCountryCode();
+      if (!serverCountryCode) {
+        return;
+      }
+
+      update((state) => {
+        const currentRecommended = getRecommendedCountryId({
+          ipCountryCode: serverCountryCode
+        });
+
+        if (!currentRecommended || currentRecommended === state.onboarding.selectedCountryId) {
+          return state;
+        }
+
+        const availableCurriculums = getCurriculumsByCountry(currentRecommended);
+        const selectedCurriculumId = availableCurriculums[0]?.id ?? 'caps';
+        const availableGrades = getGradesByCurriculum(selectedCurriculumId);
+        const selectedGradeId = availableGrades[0]?.id ?? 'grade-6';
+
+        return persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            selectedCountryId: currentRecommended,
+            selectedCurriculumId,
+            selectedGradeId,
+            options: {
+              ...state.onboarding.options,
+              curriculums: availableCurriculums,
+              grades: availableGrades
+            }
           }
         });
       });

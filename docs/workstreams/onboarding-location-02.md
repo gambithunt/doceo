@@ -43,13 +43,13 @@ Each phase is self-contained, independently testable, and safe to ship on its ow
   - No changes to the context strip
 
 ### Tasks (Checklist)
-- [ ] Add a server endpoint or server load function that reads the user's IP country (from request headers or external service)
-- [ ] Map the resolved country code to the existing `onboardingCountries` list
-- [ ] Extend `CountryRecommendationSignals` to accept a server-resolved country code
-- [ ] Update `getRecommendedCountryId` to prefer the server-resolved country over timezone/locale
-- [ ] Wire the geolocation result into `createInitialState` or the onboarding options load path
-- [ ] Fall back gracefully when geolocation is unavailable, blocked, or returns an unsupported country
-- [ ] Add tests for the geolocation resolution, signal priority, and fallback behavior
+- [x] Add a server endpoint or server load function that reads the user's IP country (from request headers or external service)
+- [x] Map the resolved country code to the existing `onboardingCountries` list
+- [x] Extend `CountryRecommendationSignals` to accept a server-resolved country code
+- [x] Update `getRecommendedCountryId` to prefer the server-resolved country over timezone/locale
+- [x] Wire the geolocation result into `createInitialState` or the onboarding options load path
+- [x] Fall back gracefully when geolocation is unavailable, blocked, or returns an unsupported country
+- [x] Add tests for the geolocation resolution, signal priority, and fallback behavior
 
 ### TDD Plan
 
@@ -102,10 +102,10 @@ REFACTOR
   - No changes to step validation or progression logic
 
 ### Tasks (Checklist)
-- [ ] Add step-awareness logic to the context strip rendering
-- [ ] Hide academic-step pills (curriculum/grade or institution/programme/level) until the user has been on or past the academic step
-- [ ] Show all pills from the review step onward
-- [ ] Add tests for pill visibility at each step
+- [x] Add step-awareness logic to the context strip rendering
+- [x] Hide academic-step pills (curriculum/grade or institution/programme/level) until the user has been on or past the academic step
+- [x] Show all pills from the review step onward
+- [x] Add tests for pill visibility at each step
 
 ### TDD Plan
 
@@ -158,10 +158,10 @@ REFACTOR
   - No changes to the subject suggestion system
 
 ### Tasks (Checklist)
-- [ ] Investigate and fix the grade dropdown binding so `selectOnboardingGrade` fires and updates state
-- [ ] Ensure the options endpoint returns subjects correctly for the selected curriculum + grade
-- [ ] Pre-select a starting grade (e.g. Grade 8 or the middle of the available range) when a curriculum is first selected
-- [ ] Add tests for grade selection state updates and default grade selection
+- [x] Investigate and fix the grade dropdown binding so `selectOnboardingGrade` fires and updates state
+- [x] Ensure the options endpoint returns subjects correctly for the selected curriculum + grade
+- [x] Pre-select a starting grade (e.g. Grade 8 or the middle of the available range) when a curriculum is first selected
+- [x] Add tests for grade selection state updates and default grade selection
 
 ### TDD Plan
 
@@ -225,14 +225,14 @@ REFACTOR
   - No changes to the review step
 
 ### Tasks (Checklist)
-- [ ] Add a server endpoint for institution name validation and suggestions (POST `/api/ai/institution-verify`)
-- [ ] Add a server endpoint for programme name validation scoped to institution (POST `/api/ai/programme-verify`)
-- [ ] Build LLM prompts that return structured JSON with institution/programme names and confidence
-- [ ] Replace the free-text institution input with a verify-and-suggest flow: type → verify → pick from pills
-- [ ] Replace the free-text programme input with the same verify-and-suggest flow scoped to the selected institution
-- [ ] Show loading, suggestion, and error states during verification
-- [ ] Allow the user to accept a suggestion or re-enter and re-verify
-- [ ] Add tests for the verification endpoints, suggestion rendering, and selection behavior
+- [x] Add a server endpoint for institution name validation and suggestions (POST `/api/ai/institution-verify`)
+- [x] Add a server endpoint for programme name validation scoped to institution (POST `/api/ai/programme-verify`)
+- [x] Build LLM prompts that return structured JSON with institution/programme names and confidence
+- [x] Replace the free-text institution input with a verify-and-suggest flow: type → verify → pick from pills
+- [x] Replace the free-text programme input with the same verify-and-suggest flow scoped to the selected institution
+- [x] Show loading, suggestion, and error states during verification
+- [x] Allow the user to accept a suggestion or re-enter and re-verify
+- [x] Add tests for the verification endpoints, suggestion rendering, and selection behavior
 
 ### TDD Plan
 

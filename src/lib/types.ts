@@ -102,6 +102,19 @@ export interface SubjectVerificationState {
   provisional: boolean;
 }
 
+export type UniversityVerificationStatus = 'idle' | 'loading' | 'suggestions' | 'error';
+
+export interface UniversityVerificationState {
+  institutionStatus: UniversityVerificationStatus;
+  institutionInput: string;
+  institutionSuggestions: string[];
+  institutionError: string | null;
+  programmeStatus: UniversityVerificationStatus;
+  programmeInput: string;
+  programmeSuggestions: string[];
+  programmeError: string | null;
+}
+
 export interface QuestionOption {
   id: string;
   label: string;
@@ -741,6 +754,7 @@ export interface AppState {
     customSubjectInput: string;
     selectionMode: SubjectSelectionMode;
     subjectVerification: SubjectVerificationState;
+    universityVerification: UniversityVerificationState;
     isSaving: boolean;
     error: string | null;
     recommendation: {

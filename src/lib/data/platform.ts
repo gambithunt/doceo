@@ -485,7 +485,7 @@ export function createInitialState(recommendationSignals: CountryRecommendationS
   const selectedCurriculumId = availableCurriculums[0]?.id ?? 'caps';
   const availableGrades = getGradesByCurriculum(selectedCurriculumId);
   const selectedGradeId =
-    availableGrades.find((grade) => grade.label === 'Grade 6')?.id ?? availableGrades[0]?.id ?? 'grade-6';
+    availableGrades.find((grade) => grade.label === 'Grade 8')?.id ?? availableGrades[0]?.id ?? 'grade-8';
   const availableSubjects = getSubjectsByCurriculumAndGrade(selectedCurriculumId, selectedGradeId);
   const selectedStructuredSubjectIds = availableSubjects.map((subject) => subject.id);
   const selectedSubjectNames = availableSubjects.map((subject) => subject.name);
@@ -542,6 +542,16 @@ export function createInitialState(recommendationSignals: CountryRecommendationS
         reason: null,
         suggestion: null,
         provisional: false
+      },
+      universityVerification: {
+        institutionStatus: 'idle',
+        institutionInput: '',
+        institutionSuggestions: [],
+        institutionError: null,
+        programmeStatus: 'idle',
+        programmeInput: '',
+        programmeSuggestions: [],
+        programmeError: null
       },
       isSaving: false,
       error: null,

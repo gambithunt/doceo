@@ -129,4 +129,191 @@ describe('OnboardingWizard', () => {
 
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
   });
+
+  describe('context strip progressive disclosure', () => {
+    function getContextPills(container: HTMLElement) {
+      const pills = container.querySelectorAll('.context-pill');
+      return {
+        count: pills.length,
+        texts: Array.from(pills).map((p) => p.textContent?.trim() ?? '')
+      };
+    }
+
+    it('shows only the country pill on the country step', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'country'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(1);
+      expect(pills.texts[0]).toContain('Country');
+    });
+
+    it('shows country and school academic pills on the academic step (School)', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'School'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(3);
+      expect(pills.texts).toContainEqual(expect.stringContaining('Country'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Curriculum'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Grade'));
+    });
+
+    it('shows country and university academic pills on the academic step (University)', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              provider: 'MIT',
+              programme: 'CS',
+              level: 'Year 1'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(4);
+      expect(pills.texts).toContainEqual(expect.stringContaining('Country'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Institution'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Programme'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Level'));
+    });
+
+    it('shows country and academic pills on the subjects step (School)', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'subjects',
+              educationType: 'School'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(3);
+      expect(pills.texts).toContainEqual(expect.stringContaining('Country'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Curriculum'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Grade'));
+    });
+
+    it('shows country and academic pills on the subjects step (University)', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'subjects',
+              educationType: 'University'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(4);
+      expect(pills.texts).toContainEqual(expect.stringContaining('Country'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Institution'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Programme'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Level'));
+    });
+
+    it('shows all pills on the review step (School)', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'review',
+              educationType: 'School'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(3);
+      expect(pills.texts).toContainEqual(expect.stringContaining('Country'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Curriculum'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Grade'));
+    });
+
+    it('shows all pills on the review step (University)', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'review',
+              educationType: 'University'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(4);
+      expect(pills.texts).toContainEqual(expect.stringContaining('Country'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Institution'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Programme'));
+      expect(pills.texts).toContainEqual(expect.stringContaining('Level'));
+    });
+
+    it('hides academic pills on the country step even if educationType is set', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'country',
+              educationType: 'School'
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(1);
+      expect(pills.texts[0]).toContain('Country');
+    });
+  });
 });

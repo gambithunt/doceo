@@ -159,9 +159,20 @@ const localeToCountryId: Record<string, string> = {
 export interface CountryRecommendationSignals {
   timezone?: string;
   localeLanguage?: string;
+  ipCountryCode?: string;
+}
+
+const supportedIpCountryCodes = new Set(onboardingCountries.map((c) => c.id.toUpperCase()));
+
+function isSupportedIpCountry(code: string): boolean {
+  return supportedIpCountryCodes.has(code.toUpperCase());
 }
 
 export function getRecommendedCountryId(signals: CountryRecommendationSignals): string | null {
+  if (signals.ipCountryCode && isSupportedIpCountry(signals.ipCountryCode)) {
+    return signals.ipCountryCode.toLowerCase();
+  }
+
   if (signals.timezone) {
     const countryFromTimezone = timezoneToCountryId[signals.timezone];
     if (countryFromTimezone) {

@@ -27,7 +27,7 @@ export {};
 
 declare module "$app/types" {
 	export interface AppTypes {
-		RouteId(): "/(app)" | "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/legacy" | "/admin/graph/[nodeId]" | "/admin/learning" | "/admin/messages" | "/admin/messages/[session_id]" | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | "/admin/users/[id]" | "/api" | "/api/admin" | "/api/admin/audit-export" | "/api/admin/lesson-artifacts" | "/api/ai" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/revision-evaluate" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/auth" | "/api/auth/mode" | "/api/auth/register" | "/api/curriculum" | "/api/curriculum/program" | "/api/curriculum/subject-topics" | "/api/curriculum/topic-discovery" | "/api/curriculum/topic-discovery/click" | "/api/curriculum/topic-discovery/complete" | "/api/curriculum/topic-discovery/feedback" | "/api/curriculum/topic-discovery/refresh" | "/api/lesson-artifacts" | "/api/lesson-artifacts/rate" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision" | "/api/revision/planner-resolve" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects" | "/api/subjects/verify" | "/(app)/dashboard" | "/(app)/lesson" | "/(app)/lesson/[id]" | "/onboarding" | "/(app)/progress" | "/(app)/revision" | "/(app)/settings" | "/(app)/subjects" | "/(app)/subjects/[id]";
+		RouteId(): "/(app)" | "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/legacy" | "/admin/graph/[nodeId]" | "/admin/learning" | "/admin/messages" | "/admin/messages/[session_id]" | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | "/admin/users/[id]" | "/api" | "/api/admin" | "/api/admin/audit-export" | "/api/admin/lesson-artifacts" | "/api/ai" | "/api/ai/institution-verify" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/programme-verify" | "/api/ai/revision-evaluate" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/auth" | "/api/auth/mode" | "/api/auth/register" | "/api/curriculum" | "/api/curriculum/program" | "/api/curriculum/subject-topics" | "/api/curriculum/topic-discovery" | "/api/curriculum/topic-discovery/click" | "/api/curriculum/topic-discovery/complete" | "/api/curriculum/topic-discovery/feedback" | "/api/curriculum/topic-discovery/refresh" | "/api/geo" | "/api/geo/country" | "/api/lesson-artifacts" | "/api/lesson-artifacts/rate" | "/api/onboarding" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision" | "/api/revision/planner-resolve" | "/api/state" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects" | "/api/subjects/verify" | "/(app)/dashboard" | "/(app)/lesson" | "/(app)/lesson/[id]" | "/onboarding" | "/(app)/progress" | "/(app)/revision" | "/(app)/settings" | "/(app)/subjects" | "/(app)/subjects/[id]";
 		RouteParams(): {
 			"/admin/graph/[nodeId]": { nodeId: string };
 			"/admin/messages/[session_id]": { session_id: string };
@@ -57,9 +57,11 @@ declare module "$app/types" {
 			"/api/admin/audit-export": Record<string, never>;
 			"/api/admin/lesson-artifacts": Record<string, never>;
 			"/api/ai": Record<string, never>;
+			"/api/ai/institution-verify": Record<string, never>;
 			"/api/ai/lesson-chat": Record<string, never>;
 			"/api/ai/lesson-plan": Record<string, never>;
 			"/api/ai/lesson-selector": Record<string, never>;
+			"/api/ai/programme-verify": Record<string, never>;
 			"/api/ai/revision-evaluate": Record<string, never>;
 			"/api/ai/revision-pack": Record<string, never>;
 			"/api/ai/subject-hints": Record<string, never>;
@@ -76,6 +78,8 @@ declare module "$app/types" {
 			"/api/curriculum/topic-discovery/complete": Record<string, never>;
 			"/api/curriculum/topic-discovery/feedback": Record<string, never>;
 			"/api/curriculum/topic-discovery/refresh": Record<string, never>;
+			"/api/geo": Record<string, never>;
+			"/api/geo/country": Record<string, never>;
 			"/api/lesson-artifacts": Record<string, never>;
 			"/api/lesson-artifacts/rate": Record<string, never>;
 			"/api/onboarding": Record<string, never>;
@@ -100,7 +104,7 @@ declare module "$app/types" {
 			"/(app)/subjects": { id?: string };
 			"/(app)/subjects/[id]": { id: string }
 		};
-		Pathname(): "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/legacy" | `/admin/graph/${string}` & {} | "/admin/learning" | "/admin/messages" | `/admin/messages/${string}` & {} | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | `/admin/users/${string}` & {} | "/api/admin/audit-export" | "/api/admin/lesson-artifacts" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/revision-evaluate" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/auth/mode" | "/api/auth/register" | "/api/curriculum/program" | "/api/curriculum/subject-topics" | "/api/curriculum/topic-discovery" | "/api/curriculum/topic-discovery/click" | "/api/curriculum/topic-discovery/complete" | "/api/curriculum/topic-discovery/feedback" | "/api/curriculum/topic-discovery/refresh" | "/api/lesson-artifacts/rate" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision/planner-resolve" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects/verify" | "/dashboard" | "/lesson" | `/lesson/${string}` & {} | "/onboarding" | "/progress" | "/revision" | "/settings" | `/subjects/${string}` & {};
+		Pathname(): "/" | "/admin" | "/admin/ai" | "/admin/content" | "/admin/graph" | "/admin/graph/legacy" | `/admin/graph/${string}` & {} | "/admin/learning" | "/admin/messages" | `/admin/messages/${string}` & {} | "/admin/revenue" | "/admin/settings" | "/admin/system" | "/admin/users" | `/admin/users/${string}` & {} | "/api/admin/audit-export" | "/api/admin/lesson-artifacts" | "/api/ai/institution-verify" | "/api/ai/lesson-chat" | "/api/ai/lesson-plan" | "/api/ai/lesson-selector" | "/api/ai/programme-verify" | "/api/ai/revision-evaluate" | "/api/ai/revision-pack" | "/api/ai/subject-hints" | "/api/ai/topic-shortlist" | "/api/ai/tutor" | "/api/auth/mode" | "/api/auth/register" | "/api/curriculum/program" | "/api/curriculum/subject-topics" | "/api/curriculum/topic-discovery" | "/api/curriculum/topic-discovery/click" | "/api/curriculum/topic-discovery/complete" | "/api/curriculum/topic-discovery/feedback" | "/api/curriculum/topic-discovery/refresh" | "/api/geo/country" | "/api/lesson-artifacts/rate" | "/api/onboarding/complete" | "/api/onboarding/options" | "/api/onboarding/progress" | "/api/onboarding/reset" | "/api/revision/planner-resolve" | "/api/state/bootstrap" | "/api/state/sync" | "/api/subjects/verify" | "/dashboard" | "/lesson" | `/lesson/${string}` & {} | "/onboarding" | "/progress" | "/revision" | "/settings" | `/subjects/${string}` & {};
 		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
 		Asset(): string & {};
 	}

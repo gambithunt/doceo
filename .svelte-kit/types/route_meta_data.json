@@ -66,6 +66,9 @@
 	"/api/admin/lesson-artifacts": [
 		"src/routes/api/admin/lesson-artifacts/+server.ts"
 	],
+	"/api/ai/institution-verify": [
+		"src/routes/api/ai/institution-verify/+server.ts"
+	],
 	"/api/ai/lesson-chat": [
 		"src/routes/api/ai/lesson-chat/+server.ts"
 	],
@@ -74,6 +77,9 @@
 	],
 	"/api/ai/lesson-selector": [
 		"src/routes/api/ai/lesson-selector/+server.ts"
+	],
+	"/api/ai/programme-verify": [
+		"src/routes/api/ai/programme-verify/+server.ts"
 	],
 	"/api/ai/revision-evaluate": [
 		"src/routes/api/ai/revision-evaluate/+server.ts"
@@ -116,6 +122,9 @@
 	],
 	"/api/curriculum/topic-discovery/refresh": [
 		"src/routes/api/curriculum/topic-discovery/refresh/+server.ts"
+	],
+	"/api/geo/country": [
+		"src/routes/api/geo/country/+server.ts"
 	],
 	"/api/lesson-artifacts/rate": [
 		"src/routes/api/lesson-artifacts/rate/+server.ts"

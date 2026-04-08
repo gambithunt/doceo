@@ -77,4 +77,71 @@ describe('country recommendation', () => {
     const result = getRecommendedCountryId({ timezone: 'Asia/Kolkata' });
     expect(result).toBe('in');
   });
+
+  it('returns a country id when ipCountryCode matches a supported country', () => {
+    const result = getRecommendedCountryId({ ipCountryCode: 'ZA' });
+    expect(result).toBe('za');
+  });
+
+  it('returns a country id when ipCountryCode is lowercase', () => {
+    const result = getRecommendedCountryId({ ipCountryCode: 'us' });
+    expect(result).toBe('us');
+  });
+
+  it('prefers ipCountryCode over timezone when both are provided', () => {
+    const result = getRecommendedCountryId({
+      ipCountryCode: 'us',
+      timezone: 'Africa/Johannesburg'
+    });
+    expect(result).toBe('us');
+  });
+
+  it('prefers ipCountryCode over localeLanguage when both are provided', () => {
+    const result = getRecommendedCountryId({
+      ipCountryCode: 'gb',
+      localeLanguage: 'en-ZA'
+    });
+    expect(result).toBe('gb');
+  });
+
+  it('prefers ipCountryCode over timezone and localeLanguage when all are provided', () => {
+    const result = getRecommendedCountryId({
+      ipCountryCode: 'au',
+      timezone: 'Africa/Johannesburg',
+      localeLanguage: 'en-US'
+    });
+    expect(result).toBe('au');
+  });
+
+  it('falls back to timezone when ipCountryCode is not a supported country', () => {
+    const result = getRecommendedCountryId({
+      ipCountryCode: 'xx',
+      timezone: 'America/New_York'
+    });
+    expect(result).toBe('us');
+  });
+
+  it('falls back to locale when ipCountryCode is not supported and timezone is unknown', () => {
+    const result = getRecommendedCountryId({
+      ipCountryCode: 'xx',
+      timezone: 'Unknown/Unknown',
+      localeLanguage: 'en-GB'
+    });
+    expect(result).toBe('gb');
+  });
+
+  it('returns null when ipCountryCode is unsupported and no fallback signals exist', () => {
+    const result = getRecommendedCountryId({
+      ipCountryCode: 'xx'
+    });
+    expect(result).toBeNull();
+  });
+
+  it('treats unsupported ipCountryCode as missing and falls through to timezone', () => {
+    const result = getRecommendedCountryId({
+      ipCountryCode: 'zz',
+      timezone: 'Europe/London'
+    });
+    expect(result).toBe('gb');
+  });
 });

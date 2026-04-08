@@ -284,7 +284,7 @@
         <span>Country</span>
         <strong>{countryName}</strong>
       </div>
-      {#if isSchoolEducationType(state.onboarding.educationType)}
+      {#if stepIndex >= 1 && isSchoolEducationType(state.onboarding.educationType)}
         <div class="context-pill">
           <span>Curriculum</span>
           <strong>{curriculumName}</strong>
@@ -294,7 +294,7 @@
           <strong>{currentGradeLabel}</strong>
         </div>
       {/if}
-      {#if isUniversityEducationType(state.onboarding.educationType)}
+      {#if stepIndex >= 1 && isUniversityEducationType(state.onboarding.educationType)}
         <div class="context-pill">
           <span>Institution</span>
           <strong>{state.onboarding.provider || 'Not chosen'}</strong>
@@ -396,20 +396,76 @@
           <div class="form-grid">
             <label>
               <span>Institution name</span>
-              <input
-                value={state.onboarding.provider}
-                placeholder="e.g. University of Cape Town"
-                oninput={(event) => appState.setOnboardingProvider((event.currentTarget as HTMLInputElement).value)}
-              />
+              {#if state.onboarding.universityVerification.institutionStatus === 'loading'}
+                <div class="verification-loading">Verifying institutions...</div>
+              {:else if state.onboarding.universityVerification.institutionSuggestions.length > 0}
+                <div class="suggestion-pills">
+                  {#each state.onboarding.universityVerification.institutionSuggestions as suggestion}
+                    <button
+                      type="button"
+                      class="suggestion-pill"
+                      class:active={state.onboarding.provider === suggestion}
+                      onclick={() => appState.selectVerifiedInstitution(suggestion)}
+                    >
+                      {suggestion}
+                    </button>
+                  {/each}
+                </div>
+              {:else if state.onboarding.universityVerification.institutionStatus === 'error'}
+                <div class="verification-error">{state.onboarding.universityVerification.institutionError}</div>
+              {/if}
+              <div class="verify-input-row">
+                <input
+                  value={state.onboarding.provider}
+                  placeholder="e.g. University of Cape Town"
+                  oninput={(event) => appState.setOnboardingProvider((event.currentTarget as HTMLInputElement).value)}
+                />
+                <button
+                  type="button"
+                  class="verify-btn"
+                  onclick={() => appState.verifyInstitution(state.onboarding.provider)}
+                >
+                  Verify
+                </button>
+              </div>
             </label>
 
             <label>
               <span>Programme</span>
-              <input
-                value={state.onboarding.programme}
-                placeholder="e.g. Computer Science"
-                oninput={(event) => appState.setOnboardingProgramme((event.currentTarget as HTMLInputElement).value)}
-              />
+              {#if state.onboarding.universityVerification.programmeStatus === 'loading'}
+                <div class="verification-loading">Verifying programmes...</div>
+              {:else if state.onboarding.universityVerification.programmeSuggestions.length > 0}
+                <div class="suggestion-pills">
+                  {#each state.onboarding.universityVerification.programmeSuggestions as suggestion}
+                    <button
+                      type="button"
+                      class="suggestion-pill"
+                      class:active={state.onboarding.programme === suggestion}
+                      onclick={() => appState.selectVerifiedProgramme(suggestion)}
+                    >
+                      {suggestion}
+                    </button>
+                  {/each}
+                </div>
+              {:else if state.onboarding.universityVerification.programmeStatus === 'error'}
+                <div class="verification-error">{state.onboarding.universityVerification.programmeError}</div>
+              {/if}
+              <div class="verify-input-row">
+                <input
+                  value={state.onboarding.programme}
+                  placeholder="e.g. Computer Science"
+                  disabled={!state.onboarding.provider}
+                  oninput={(event) => appState.setOnboardingProgramme((event.currentTarget as HTMLInputElement).value)}
+                />
+                <button
+                  type="button"
+                  class="verify-btn"
+                  disabled={!state.onboarding.provider}
+                  onclick={() => appState.verifyProgramme(state.onboarding.programme)}
+                >
+                  Verify
+                </button>
+              </div>
             </label>
           </div>
 
@@ -1484,5 +1540,79 @@
       opacity: 0.72;
       transform: none;
     }
+  }
+
+  .verify-input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .verify-input-row input {
+    flex: 1;
+  }
+
+  .verify-btn {
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--accent) 44%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    color: var(--accent);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .verify-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 56%, transparent);
+  }
+
+  .verify-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .suggestion-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .suggestion-pill {
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+    background: var(--surface-soft);
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .suggestion-pill:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  }
+
+  .suggestion-pill.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .verification-loading {
+    font-size: 0.875rem;
+    color: var(--text-soft);
+    padding: 0.5rem 0;
+  }
+
+  .verification-error {
+    font-size: 0.875rem;
+    color: var(--error);
+    padding: 0.5rem 0;
   }
 </style>

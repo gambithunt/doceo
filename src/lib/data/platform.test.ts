@@ -275,6 +275,14 @@ describe('universal onboarding model', () => {
     expect(schoolProviders).toEqual(['caps', 'ieb']);
   });
 
+  it('defaults to Grade 8 (middle of available range) when initializing state', () => {
+    const state = createInitialState();
+    const capsGrades = state.onboarding.options.grades.filter((g) => g.curriculumId === 'caps');
+    const grade8 = capsGrades.find((g) => g.label === 'Grade 8');
+    expect(state.onboarding.selectedGradeId).toBe(grade8?.id ?? 'grade-8');
+    expect(state.onboarding.level).toBe('grade-8');
+  });
+
   it('normalizes onboarding state without new fields to defaults', () => {
     const legacyState = {
       onboarding: {
@@ -289,7 +297,7 @@ describe('universal onboarding model', () => {
     const normalized = normalizeAppState(legacyState);
     expect(normalized.onboarding.educationType).toBe('School');
     expect(normalized.onboarding.provider).toBe('caps');
-    expect(normalized.onboarding.level).toBe('grade-6');
+    expect(normalized.onboarding.level).toBe('grade-8');
     expect(normalized.onboarding.programme).toBe('');
   });
 });
