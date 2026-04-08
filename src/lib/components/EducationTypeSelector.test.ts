@@ -21,7 +21,7 @@ describe('EducationTypeSelector', () => {
     vi.clearAllMocks();
   });
 
-  function renderSelector(educationType = 'School') {
+  function renderSelector(educationType: 'School' | 'University' = 'School') {
     const baseState = createInitialState();
     baseState.onboarding.educationType = educationType;
     return render(EducationTypeSelector, {

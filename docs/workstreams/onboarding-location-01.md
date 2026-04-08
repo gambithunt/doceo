@@ -158,11 +158,11 @@ REFACTOR
 - No new copy systems beyond what is needed for this section
 
 ### Tasks (Checklist)
-- [ ] Update the location-step hierarchy so the education type section reads as a primary action area
-- [ ] Replace passive text-style options with pill CTA controls for `School` and `University`
-- [ ] Apply responsive layout behavior for mobile and desktop
-- [ ] Add selected and focus states that clearly communicate the active choice
-- [ ] Add tests for CTA rendering, selection behavior, and accessibility states
+- [x] Update the location-step hierarchy so the education type section reads as a primary action area
+- [x] Replace passive text-style options with pill CTA controls for `School` and `University`
+- [x] Apply responsive layout behavior for mobile and desktop
+- [x] Add selected and focus states that clearly communicate the active choice
+- [x] Add tests for CTA rendering, selection behavior, and accessibility states
 
 ### TDD Plan
 

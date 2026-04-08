@@ -10,6 +10,7 @@
     isUniversityEducationType
   } from '$lib/data/onboarding';
   import CountryPicker from './CountryPicker.svelte';
+  import EducationTypeSelector from './EducationTypeSelector.svelte';
   import type { AppState, EducationType, OnboardingStep, SchoolTerm, SubjectOption, SubjectVerificationState } from '$lib/types';
 
   const { state }: { state: AppState } = $props();
@@ -326,27 +327,7 @@
           selectedCountryId={state.onboarding.selectedCountryId}
         />
 
-        <div class="education-type-row">
-          <span class="education-type-label">I am learning at a</span>
-          <div class="education-type-options">
-            <button
-              type="button"
-              class:active={isSchoolEducationType(state.onboarding.educationType)}
-              class="education-type-btn"
-              onclick={() => appState.setOnboardingEducationType('School')}
-            >
-              School
-            </button>
-            <button
-              type="button"
-              class:active={isUniversityEducationType(state.onboarding.educationType)}
-              class="education-type-btn"
-              onclick={() => appState.setOnboardingEducationType('University')}
-            >
-              University
-            </button>
-          </div>
-        </div>
+        <EducationTypeSelector educationType={state.onboarding.educationType} />
       {/if}
 
       {#if state.onboarding.currentStep === 'academic'}
