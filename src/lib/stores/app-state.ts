@@ -33,6 +33,7 @@ import {
   recalculateMastery,
   upsertRevisionTopicFromSession
 } from '$lib/data/platform';
+import { getUniversitySubjects, isUniversityEducationType } from '$lib/data/onboarding';
 import { buildRevisionPlanFromInput, type RevisionPlanInput } from '$lib/revision/planner';
 import { sortRevisionPlans } from '$lib/revision/plans';
 import {
@@ -405,10 +406,6 @@ function applyAdditionalSubjectLimit(
     return selectedSubjectIds;
   }
 
-  if (selectedSubjectIds.includes(subjectId)) {
-    return selectedSubjectIds;
-  }
-
   if (subject.category !== 'elective') {
     return selectedSubjectIds;
   }
@@ -418,11 +415,29 @@ function applyAdditionalSubjectLimit(
     return selected?.category === 'elective';
   }).length;
 
-  if (currentElectiveCount >= MAX_ADDITIONAL_SUBJECTS) {
-    return selectedSubjectIds;
+  if (selectedSubjectIds.includes(subjectId) && currentElectiveCount > MAX_ADDITIONAL_SUBJECTS) {
+    return selectedSubjectIds.filter((id) => id !== subjectId);
   }
 
   return selectedSubjectIds;
+}
+
+function findUniversitySubjectMatch(
+  name: string,
+  provider: string,
+  programme: string,
+  level: string
+): SubjectOption | null {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  return (
+    getUniversitySubjects(provider, programme, level).find(
+      (subject) => subject.name.trim().toLowerCase() === normalized
+    ) ?? null
+  );
 }
 
 export function createAppStore(initialState: AppState = readState()) {
@@ -2688,10 +2703,11 @@ export function createAppStore(initialState: AppState = readState()) {
         })
       ),
     verifyAndAddSubject: async (name: string) => {
-      const current = readState();
+      const current = currentState();
       const { selectedCurriculumId: curriculumId, selectedGradeId: gradeId } = current.onboarding;
       const { curriculum, curriculumId: profileCurriculumId } = current.profile;
       const resolvedCurriculumId = curriculumId || profileCurriculumId;
+      const trimmedName = name.trim();
 
       update((state) =>
         persistAndSync({
@@ -2701,11 +2717,72 @@ export function createAppStore(initialState: AppState = readState()) {
             subjectVerification: {
               ...state.onboarding.subjectVerification,
               status: 'loading',
-              input: name
+              input: trimmedName
             }
           }
         })
       );
+
+      if (isUniversityEducationType(current.onboarding.educationType)) {
+        const matchedSubject = findUniversitySubjectMatch(
+          trimmedName,
+          current.onboarding.provider,
+          current.onboarding.programme,
+          current.onboarding.level
+        );
+
+        if (!matchedSubject) {
+          update((state) =>
+            persistAndSync({
+              ...state,
+              onboarding: {
+                ...state.onboarding,
+                subjectVerification: {
+                  status: 'invalid',
+                  input: trimmedName,
+                  subjectId: null,
+                  normalizedName: null,
+                  category: null,
+                  reason: 'That subject does not fit your current university programme.',
+                  suggestion: null,
+                  provisional: false
+                } satisfies SubjectVerificationState
+              }
+            })
+          );
+          return;
+        }
+
+        update((state) => {
+          const alreadySelected =
+            state.onboarding.selectedSubjectIds.includes(matchedSubject.id) ||
+            state.onboarding.selectedSubjectNames.includes(matchedSubject.name);
+
+          return persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              selectedSubjectIds: alreadySelected
+                ? state.onboarding.selectedSubjectIds
+                : [...state.onboarding.selectedSubjectIds, matchedSubject.id],
+              selectedSubjectNames: alreadySelected
+                ? state.onboarding.selectedSubjectNames
+                : deduplicateSubjects([...state.onboarding.selectedSubjectNames, matchedSubject.name]),
+              subjectVerification: {
+                status: 'verified',
+                input: trimmedName,
+                subjectId: matchedSubject.id,
+                normalizedName: matchedSubject.name,
+                category: matchedSubject.category,
+                reason: null,
+                suggestion: null,
+                provisional: false
+              } satisfies SubjectVerificationState
+            }
+          });
+        });
+        return;
+      }
 
       let headers: Record<string, string>;
       let response: Response;
@@ -2734,7 +2811,7 @@ export function createAppStore(initialState: AppState = readState()) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...headers },
           body: JSON.stringify({
-            name,
+            name: trimmedName,
             curriculumId: resolvedCurriculumId,
             curriculum: curriculum || resolvedCurriculumId,
             gradeId,
@@ -2801,9 +2878,9 @@ export function createAppStore(initialState: AppState = readState()) {
               customSubjects: deduplicateSubjects([...state.onboarding.customSubjects, name]),
               subjectVerification: {
                 status: 'provisional',
-                input: name,
+                input: trimmedName,
                 subjectId: null,
-                normalizedName: name,
+                normalizedName: trimmedName,
                 category: null,
                 reason: null,
                 suggestion: null,
@@ -2823,7 +2900,7 @@ export function createAppStore(initialState: AppState = readState()) {
               ...state.onboarding,
               subjectVerification: {
                 status: 'invalid',
-                input: name,
+                input: trimmedName,
                 subjectId: null,
                 normalizedName: null,
                 category: null,
@@ -2851,7 +2928,7 @@ export function createAppStore(initialState: AppState = readState()) {
               ...state.onboarding,
               subjectVerification: {
                 status: 'verified',
-                input: name,
+                input: trimmedName,
                 subjectId,
                 normalizedName: displayName,
                 category: result.category,
@@ -2871,7 +2948,7 @@ export function createAppStore(initialState: AppState = readState()) {
             selectedSubjectNames: [...state.onboarding.selectedSubjectNames, displayName],
             subjectVerification: {
               status: 'verified',
-              input: name,
+              input: trimmedName,
               subjectId,
               normalizedName: displayName,
               category: result.category,

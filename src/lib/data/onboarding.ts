@@ -213,6 +213,42 @@ export const universityElectiveModules = [
   'Project Management'
 ];
 
+const universityProgrammeModuleMap: Record<
+  string,
+  {
+    core: string[];
+    languages?: string[];
+    electives: string[];
+  }
+> = {
+  'computer science': {
+    core: ['Computer Science Fundamentals', 'Mathematics for Science', 'Programming Studio'],
+    electives: ['Data Science', 'Software Engineering', 'Artificial Intelligence', 'Digital Systems']
+  },
+  engineering: {
+    core: ['Engineering Mathematics', 'Mechanics', 'Design Fundamentals'],
+    electives: ['Physics', 'Chemistry', 'Materials Science', 'Project Management']
+  },
+  law: {
+    core: ['Legal Foundations', 'Constitutional Law', 'Case Analysis'],
+    electives: ['Law', 'Academic Writing', 'Professional Communication', 'Economics']
+  },
+  psychology: {
+    core: ['Introduction to Psychology', 'Research Methods', 'Statistics for Behavioural Science'],
+    electives: ['Biology', 'Psychology', 'Academic Writing', 'Project Management']
+  }
+};
+
+function makeUniversitySubject(name: string, category: SubjectOption['category']): SubjectOption {
+  return {
+    id: `university-${category}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    curriculumId: 'university',
+    gradeId: 'university',
+    name,
+    category
+  };
+}
+
 function makeSubject(
   name: string,
   curriculumId: string,
@@ -302,32 +338,23 @@ export function getSubjectsByCurriculumAndGrade(
 
 export function getUniversitySubjects(
   _provider: string,
-  _programme: string,
-  _level: string
+  programme: string,
+  level: string
 ): SubjectOption[] {
-  const core = universityCoreModules.map((name) => ({
-    id: `university-core-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-    curriculumId: 'university',
-    gradeId: 'university',
-    name,
-    category: 'core' as const
-  }));
+  const normalizedProgramme = programme.trim().toLowerCase();
+  const programmeModules = universityProgrammeModuleMap[normalizedProgramme];
+  const advancedLevel = /\b(3rd|4th|honours|masters|phd|final)\b/i.test(level);
 
-  const languages = universityLanguageModules.map((name) => ({
-    id: `university-language-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-    curriculumId: 'university',
-    gradeId: 'university',
-    name,
-    category: 'language' as const
-  }));
+  const coreModuleNames = programmeModules?.core ?? universityCoreModules;
+  const languageModuleNames = programmeModules?.languages ?? universityLanguageModules;
+  const electiveModuleNames = programmeModules?.electives ?? universityElectiveModules;
+  const levelAwareElectives = advancedLevel
+    ? Array.from(new Set([...electiveModuleNames, 'Research Methods', 'Capstone Project']))
+    : electiveModuleNames;
 
-  const electives = universityElectiveModules.map((name) => ({
-    id: `university-elective-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-    curriculumId: 'university',
-    gradeId: 'university',
-    name,
-    category: 'elective' as const
-  }));
+  const core = coreModuleNames.map((name) => makeUniversitySubject(name, 'core'));
+  const languages = languageModuleNames.map((name) => makeUniversitySubject(name, 'language'));
+  const electives = levelAwareElectives.map((name) => makeUniversitySubject(name, 'elective'));
 
   return [...core, ...languages, ...electives];
 }

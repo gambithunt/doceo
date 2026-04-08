@@ -22,6 +22,7 @@
 2. Phase 2: Guided flow and track branching
 3. Phase 3: Subject suggestion model and selection UX
 4. Phase 4: Review, edit loop, and progress clarity
+5. Phase 5: Global country support and onboarding fallback hardening
 
 Each phase is self-contained, independently testable, and must leave onboarding stable and usable.
 
@@ -332,6 +333,75 @@ REFACTOR
 
 ---
 
+## Phase 5: Global country support and onboarding fallback hardening
+
+### Goal
+- Make country selection globally available in onboarding while keeping structured academic support intentionally limited to the currently supported tracks and data.
+
+### Scope
+- Included:
+- Make the country selector global rather than hardcoded to South Africa
+- Remove South Africa-only assumptions from onboarding defaults, seed data, and option loading
+- Keep structured school support limited to `CAPS` and `IEB`
+- Allow `University` onboarding from any selected country, even where programme coverage is still narrow
+- Add clear safe fallback behavior when structured programme or subject coverage is incomplete for the selected country or track
+- Add regression coverage so the new level-selection flow replaces the current broken grade-dropdown dependency
+- Excluded:
+- No full curriculum coverage for every country
+- No new education types beyond `School` and `University`
+- No expansion into professional courses, certifications, or AWS-style onboarding
+
+### Tasks (Checklist)
+- [ ] Replace hardcoded South Africa-only country data with a global country list source
+- [ ] Update onboarding option loading so country selection is not coupled to South Africa defaults
+- [ ] Ensure `School` only exposes structured provider options where supported
+- [ ] Ensure `University` remains selectable for any country with safe downstream fallback behavior
+- [ ] Define and implement fallback states for unsupported programme, level, or subject coverage
+- [ ] Add regression tests proving the new flow does not depend on the old broken grade dropdown behavior
+- [ ] Update end-to-end coverage for global country selection across both supported tracks
+
+### TDD Plan
+
+RED
+- Write tests asserting the onboarding country selector returns a global list rather than only `South Africa`
+- Assert selecting a non-South African country does not break onboarding
+- Assert `School` only exposes structured options where support exists
+- Assert `University` can still proceed for any selected country with the intended fallback behavior
+- Assert unsupported structured coverage produces a safe guided state rather than invalid data or dead ends
+- Assert the onboarding flow no longer depends on the old grade dropdown implementation for progression correctness
+
+GREEN
+- Implement the minimal option-loading, default-state, and fallback changes needed to satisfy tests
+- Preserve the current supported academic scope while removing South Africa-only blocking behavior
+
+REFACTOR
+- Consolidate country and fallback helpers only where duplication appears
+- Keep unsupported-state logic localized to onboarding data loading and validation paths
+
+### Implementation Notes
+- Likely files:
+- `/Users/delon/Documents/code/projects/doceo/src/lib/data/onboarding.ts`
+- `/Users/delon/Documents/code/projects/doceo/src/lib/server/onboarding-repository.ts`
+- `/Users/delon/Documents/code/projects/doceo/src/routes/api/onboarding/options/+server.ts`
+- `/Users/delon/Documents/code/projects/doceo/src/lib/components/OnboardingWizard.svelte`
+- `/Users/delon/Documents/code/projects/doceo/tests/onboarding.spec.ts`
+- Reuse existing options route and onboarding state patterns
+- Global country support means the selector and data model are global now; it does not imply equal academic depth for every country in this workstream
+- Fallback behavior should stay clear and calm, matching the product tone without adding new feature surfaces
+- Reuse existing CSS and components
+
+### Done Criteria
+- All tasks completed
+- Tests passing
+- No scope creep
+- No duplicate logic
+- Behavior matches spec exactly
+- Country selection is global
+- South Africa is no longer hardcoded as the only onboarding country
+- Unsupported coverage paths remain usable and clear
+
+---
+
 ## Cross-Phase Rules
 
 - Do not implement future phases early
@@ -347,7 +417,7 @@ REFACTOR
 ## Final Notes
 
 - Ambiguity: university catalogue depth is not fully specified. This workstream assumes a limited, explicitly supported set of university programmes and level options for the first pass, not a global institution-complete catalogue.
-- Ambiguity: country support is globally modeled in the data shape, but content coverage remains intentionally narrow in this workstream. Full country-by-country curriculum expansion is deferred.
+- Ambiguity: country support is global at the selector and data-model level, but content coverage remains intentionally narrow in this workstream. Full country-by-country curriculum expansion is deferred.
 - Assumption: `provider` is the internal abstraction, while the UI may use more natural labels such as `School system` or `University`.
 - Assumption: university `institution name` supports profile quality but is not the primary driver of onboarding logic.
 - Assumption: delight and warmth should be expressed through the existing design language, tone, and interaction polish, not through new assistant/chat features in this workstream.
@@ -376,28 +446,28 @@ REFACTOR
 ### Tasks (Checklist)
 
 #### Bug fixes
-- [ ] Fix `applyAdditionalSubjectLimit` in `src/lib/stores/app-state.ts` — the function currently returns the unmodified array in all code paths, so a 6th elective is never blocked. When `currentElectiveCount >= MAX_ADDITIONAL_SUBJECTS` and the subject is being added, filter out the new `subjectId` from the returned array.
+- [x] Fix `applyAdditionalSubjectLimit` in `src/lib/stores/app-state.ts` — the function currently returns the unmodified array in all code paths, so a 6th elective is never blocked. When `currentElectiveCount >= MAX_ADDITIONAL_SUBJECTS` and the subject is being added, filter out the new `subjectId` from the returned array.
 
 #### Missing tests — Phase 1 spec
-- [ ] Add test asserting that unsupported `educationType` values (e.g. `'Trade'`, `''`) are rejected by `isValidEducationType`
-- [ ] Add test asserting that missing `educationType` defaults to `'School'` via `getDefaultEducationType`
+- [x] Add test asserting that unsupported `educationType` values (e.g. `'Trade'`, `''`) are rejected by `isValidEducationType`
+- [x] Add test asserting that missing `educationType` defaults to `'School'` via `getDefaultEducationType`
 
 #### Missing tests — Phase 3 spec
-- [ ] Add test asserting that selecting a 6th elective subject does not increase the selected list (RED test for the limit bug fix)
-- [ ] Add test asserting that selecting a 5th elective succeeds (boundary case)
-- [ ] Add test asserting that deselecting an elective below the cap allows a new one to be added
-- [ ] Add test asserting that `Add missing subject` rejects irrelevant entries for the active context (e.g. a school subject name when in university mode, or a nonsense string) — covers the verification path
+- [x] Add test asserting that selecting a 6th elective subject does not increase the selected list (RED test for the limit bug fix)
+- [x] Add test asserting that selecting a 5th elective succeeds (boundary case)
+- [x] Add test asserting that deselecting an elective below the cap allows a new one to be added
+- [x] Add test asserting that `Add missing subject` rejects irrelevant entries for the active context (e.g. a school subject name when in university mode, or a nonsense string) — covers the verification path
 
 #### Missing tests — Phase 4 spec
-- [ ] Add test for the edit-return loop: navigate from review to country, change country, continue forward through steps, and assert arrival back at review
-- [ ] Add test for the edit-return loop: navigate from review to academic, change a field, continue forward, and assert arrival back at review
-- [ ] Add test for the edit-return loop: navigate from review to subjects, change selection, continue, and assert arrival back at review
-- [ ] Add test asserting the progress bar value matches the current step index (step 1 = 25%, step 2 = 50%, step 3 = 75%, step 4 = 100%)
+- [x] Add test for the edit-return loop: navigate from review to country, change country, continue forward through steps, and assert arrival back at review
+- [x] Add test for the edit-return loop: navigate from review to academic, change a field, continue forward, and assert arrival back at review
+- [x] Add test for the edit-return loop: navigate from review to subjects, change selection, continue, and assert arrival back at review
+- [x] Add test asserting the progress bar value matches the current step index (step 1 = 25%, step 2 = 50%, step 3 = 75%, step 4 = 100%)
 
 #### Context-aware university suggestions
-- [ ] Make `getUniversitySubjects` return different module sets based on at least the `programme` parameter (e.g. a Computer Science programme returns CS-relevant modules, a generic fallback covers unknown programmes)
-- [ ] Add test asserting that different programmes produce different subject suggestion lists
-- [ ] Add test asserting that an unknown programme falls back to the generic university module list
+- [x] Make `getUniversitySubjects` return different module sets based on at least the `programme` parameter (e.g. a Computer Science programme returns CS-relevant modules, a generic fallback covers unknown programmes)
+- [x] Add test asserting that different programmes produce different subject suggestion lists
+- [x] Add test asserting that an unknown programme falls back to the generic university module list
 
 ### TDD Plan
 

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { createInitialState } from '$lib/data/platform';
+import { getSubjectsByCurriculumAndGrade } from '$lib/data/onboarding';
 import { createAppStore } from './app-state';
 
 const { getAuthenticatedHeaders, fetchMock } = vi.hoisted(() => ({
@@ -163,6 +164,76 @@ describe('Phase 4: Review, edit loop, and progress clarity', () => {
   });
 
   describe('progress state', () => {
+    it('returns to review after editing country and moving forward again', () => {
+      const baseState = createInitialState();
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          currentStep: 'review',
+          selectedCountryId: 'za'
+        }
+      });
+
+      store.setOnboardingStep('country');
+      store.setOnboardingStep('academic');
+      store.setOnboardingStep('subjects');
+      store.setOnboardingStep('review');
+
+      expect(get(store).onboarding.currentStep).toBe('review');
+    });
+
+    it('returns to review after editing academic details and moving forward again', () => {
+      const baseState = createInitialState();
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          currentStep: 'review',
+          educationType: 'University',
+          provider: 'University of Cape Town',
+          programme: 'Computer Science',
+          level: '2nd Year'
+        }
+      });
+
+      store.setOnboardingStep('academic');
+      store.setOnboardingProgramme('Engineering');
+      store.setOnboardingStep('subjects');
+      store.setOnboardingStep('review');
+
+      const state = get(store);
+      expect(state.onboarding.currentStep).toBe('review');
+      expect(state.onboarding.programme).toBe('Engineering');
+    });
+
+    it('returns to review after editing subjects and moving forward again', () => {
+      const baseState = createInitialState();
+      const grade10Subjects = getSubjectsByCurriculumAndGrade('caps', 'grade-10');
+      const electiveId = grade10Subjects.find((subject) => subject.category === 'elective')?.id;
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          currentStep: 'review',
+          selectedCurriculumId: 'caps',
+          selectedGradeId: 'grade-10',
+          options: {
+            ...baseState.onboarding.options,
+            subjects: grade10Subjects
+          }
+        }
+      });
+
+      store.setOnboardingStep('subjects');
+      store.toggleOnboardingSubject(electiveId!);
+      store.setOnboardingStep('review');
+
+      const state = get(store);
+      expect(state.onboarding.currentStep).toBe('review');
+      expect(state.onboarding.selectedSubjectIds).toContain(electiveId);
+    });
+
     it('reflects current step in step order', () => {
       const baseState = createInitialState();
 

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, normalizeAppState } from '$lib/data/platform';
-import { isValidEducationType, isSchoolEducationType, isUniversityEducationType, isSchoolProvider, schoolProviders } from '$lib/data/onboarding';
+import {
+  getDefaultEducationType,
+  isSchoolEducationType,
+  isSchoolProvider,
+  isUniversityEducationType,
+  isValidEducationType,
+  schoolProviders
+} from '$lib/data/onboarding';
 import type { RevisionPlan, RevisionTopic } from '$lib/types';
 
 function createSyntheticTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
@@ -234,6 +241,15 @@ describe('universal onboarding model', () => {
   it('rejects unsupported education type values', () => {
     const result = isValidEducationType('College');
     expect(result).toBe(false);
+  });
+
+  it('rejects additional unsupported education type values from the phase 1 spec', () => {
+    expect(isValidEducationType('Trade')).toBe(false);
+    expect(isValidEducationType('')).toBe(false);
+  });
+
+  it('defaults missing education type values to School', () => {
+    expect(getDefaultEducationType()).toBe('School');
   });
 
   it('accepts valid School education type', () => {
