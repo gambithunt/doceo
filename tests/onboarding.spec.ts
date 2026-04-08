@@ -21,7 +21,11 @@ test('student can complete onboarding, shortlist a topic, start a lesson, and re
       selectedSubjectIds: initialState.onboarding.selectedSubjectIds,
       selectedSubjectNames: initialState.onboarding.selectedSubjectNames,
       customSubjects: [],
-      isUnsure: false
+      isUnsure: false,
+      educationType: initialState.onboarding.educationType,
+      provider: initialState.onboarding.provider,
+      programme: initialState.onboarding.programme,
+      level: initialState.onboarding.level
     }
   });
 
@@ -88,4 +92,39 @@ test('student can complete onboarding, shortlist a topic, start a lesson, and re
       name: 'Build a student profile that keeps the app relevant from the first screen.'
     })
   ).toBeVisible();
+});
+
+test('student can choose a non-South-African country and continue through the university onboarding path', async ({ page }) => {
+  await page.goto('/');
+
+  const authPanel = page.locator('.auth');
+  const email = `student-global-${Date.now()}@example.com`;
+
+  await page.getByLabel('First name').fill('Delon');
+  await page.getByLabel('Last name').fill('Student');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill('Password123!');
+  await authPanel.getByRole('button', { name: 'Create account' }).last().click();
+
+  await expect(
+    page.getByRole('heading', {
+      name: 'Build a student profile that keeps the app relevant from the first screen.'
+    })
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: /United States/i }).click();
+  await page.getByRole('button', { name: 'University' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await page.getByLabel('Institution name').fill('Massachusetts Institute of Technology');
+  await page.getByLabel('Programme').fill('Computer Science');
+  await page.getByLabel('Year of study').selectOption('2nd Year');
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByText('Computer Science Fundamentals')).toBeVisible();
+  await page.getByRole('button', { name: 'Computer Science Fundamentals' }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.getByText('Massachusetts Institute of Technology')).toBeVisible();
+  await expect(page.getByText(/Computer Science · 2nd Year/i)).toBeVisible();
 });

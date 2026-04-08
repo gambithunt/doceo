@@ -69,10 +69,54 @@ export function isSchoolEducationType(educationType: EducationType): boolean {
 
 export const onboardingCountries: CountryOption[] = [
   {
+    id: 'au',
+    name: 'Australia'
+  },
+  {
+    id: 'br',
+    name: 'Brazil'
+  },
+  {
+    id: 'ca',
+    name: 'Canada'
+  },
+  {
+    id: 'de',
+    name: 'Germany'
+  },
+  {
+    id: 'fr',
+    name: 'France'
+  },
+  {
+    id: 'gb',
+    name: 'United Kingdom'
+  },
+  {
+    id: 'in',
+    name: 'India'
+  },
+  {
+    id: 'ke',
+    name: 'Kenya'
+  },
+  {
+    id: 'ng',
+    name: 'Nigeria'
+  },
+  {
+    id: 'us',
+    name: 'United States'
+  },
+  {
     id: 'za',
     name: 'South Africa'
   }
 ];
+
+export function hasStructuredSchoolSupport(countryId: string): boolean {
+  return countryId === 'za';
+}
 
 export const onboardingCurriculums: CurriculumOption[] = [
   {
@@ -318,6 +362,10 @@ function getSubjectsForGrade(curriculumId: string, grade: number): string[] {
 }
 
 export function getCurriculumsByCountry(countryId: string): CurriculumOption[] {
+  if (!hasStructuredSchoolSupport(countryId)) {
+    return [];
+  }
+
   return onboardingCurriculums.filter((curriculum) => curriculum.countryId === countryId);
 }
 

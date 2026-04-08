@@ -2,7 +2,13 @@
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { appState } from '$lib/stores/app-state';
-  import { getRecommendedSubject, isSchoolEducationType, isUniversityEducationType, getUniversitySubjects } from '$lib/data/onboarding';
+  import {
+    getRecommendedSubject,
+    getUniversitySubjects,
+    hasStructuredSchoolSupport,
+    isSchoolEducationType,
+    isUniversityEducationType
+  } from '$lib/data/onboarding';
   import type { AppState, EducationType, OnboardingStep, SchoolTerm, SubjectOption, SubjectVerificationState } from '$lib/types';
 
   const { state }: { state: AppState } = $props();
@@ -55,6 +61,7 @@
   );
   const currentStepTitle = $derived(stepTitles[state.onboarding.currentStep]);
   const currentStepDescription = $derived(stepDescriptions[state.onboarding.currentStep]);
+  const schoolSupportAvailable = $derived(hasStructuredSchoolSupport(state.onboarding.selectedCountryId));
   const optionSubjectNames = $derived(state.onboarding.options.subjects.map((subject) => subject.name));
   const recognisedAddedSubjects = $derived(
     state.onboarding.selectedSubjectNames.filter(
@@ -162,6 +169,11 @@
           state.onboarding.level.length > 0
         );
       }
+
+      if (!schoolSupportAvailable) {
+        return true;
+      }
+
       return (
         state.onboarding.selectedCurriculumId.length > 0 &&
         state.onboarding.selectedGradeId.length > 0 &&
@@ -343,57 +355,64 @@
 
       {#if state.onboarding.currentStep === 'academic'}
         {#if isSchoolEducationType(state.onboarding.educationType)}
-          <div class="selection-grid">
-            {#each state.onboarding.options.curriculums as curriculum}
-              <button
-                type="button"
-                class:active={state.onboarding.selectedCurriculumId === curriculum.id}
-                class="choice-card"
-                onclick={() => appState.selectOnboardingCurriculum(curriculum.id)}
-              >
-                <strong>{curriculum.name}</strong>
-                <span>{curriculum.description}</span>
-              </button>
-            {/each}
-          </div>
+          {#if schoolSupportAvailable}
+            <div class="selection-grid">
+              {#each state.onboarding.options.curriculums as curriculum}
+                <button
+                  type="button"
+                  class:active={state.onboarding.selectedCurriculumId === curriculum.id}
+                  class="choice-card"
+                  onclick={() => appState.selectOnboardingCurriculum(curriculum.id)}
+                >
+                  <strong>{curriculum.name}</strong>
+                  <span>{curriculum.description}</span>
+                </button>
+              {/each}
+            </div>
 
-          <div class="form-grid">
-            <label>
-              <span>Grade</span>
-              <select
-                value={state.onboarding.selectedGradeId}
-                onchange={(event) => appState.selectOnboardingGrade((event.currentTarget as HTMLSelectElement).value)}
-              >
-                {#each state.onboarding.options.grades as grade}
-                  <option value={grade.id}>{grade.label}</option>
-                {/each}
-              </select>
-            </label>
+            <div class="form-grid">
+              <label>
+                <span>Grade</span>
+                <select
+                  value={state.onboarding.selectedGradeId}
+                  onchange={(event) => appState.selectOnboardingGrade((event.currentTarget as HTMLSelectElement).value)}
+                >
+                  {#each state.onboarding.options.grades as grade}
+                    <option value={grade.id}>{grade.label}</option>
+                  {/each}
+                </select>
+              </label>
 
-            <label>
-              <span>School year</span>
-              <input
-                value={state.onboarding.schoolYear}
-                maxlength="4"
-                inputmode="numeric"
-                placeholder="2026"
-                oninput={(event) => appState.setOnboardingSchoolYear((event.currentTarget as HTMLInputElement).value)}
-              />
-            </label>
-          </div>
+              <label>
+                <span>School year</span>
+                <input
+                  value={state.onboarding.schoolYear}
+                  maxlength="4"
+                  inputmode="numeric"
+                  placeholder="2026"
+                  oninput={(event) => appState.setOnboardingSchoolYear((event.currentTarget as HTMLInputElement).value)}
+                />
+              </label>
+            </div>
 
-          <div class="term-row">
-            {#each ['Term 1', 'Term 2', 'Term 3', 'Term 4'] as term}
-              <button
-                type="button"
-                class:active={state.onboarding.term === term}
-                class="term-chip"
-                onclick={() => appState.setOnboardingTerm(term as SchoolTerm)}
-              >
-                {term}
-              </button>
-            {/each}
-          </div>
+            <div class="term-row">
+              {#each ['Term 1', 'Term 2', 'Term 3', 'Term 4'] as term}
+                <button
+                  type="button"
+                  class:active={state.onboarding.term === term}
+                  class="term-chip"
+                  onclick={() => appState.setOnboardingTerm(term as SchoolTerm)}
+                >
+                  {term}
+                </button>
+              {/each}
+            </div>
+          {:else}
+            <div class="empty-state" role="status">
+              <strong>Structured school support is not available yet for this country.</strong>
+              <p>Switch to University or choose South Africa to use the supported CAPS or IEB school path.</p>
+            </div>
+          {/if}
         {/if}
 
         {#if isUniversityEducationType(state.onboarding.educationType)}

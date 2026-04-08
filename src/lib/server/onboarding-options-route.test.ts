@@ -41,4 +41,27 @@ describe('onboarding options route', () => {
       })
     );
   });
+
+  it('returns a global country list for onboarding country selection', async () => {
+    fetchCountries.mockResolvedValue([
+      { id: 'za', name: 'South Africa' },
+      { id: 'us', name: 'United States' },
+      { id: 'gb', name: 'United Kingdom' }
+    ]);
+
+    const { GET } = await import('../../routes/api/onboarding/options/+server');
+    const response = await GET({
+      url: new URL('http://localhost/api/onboarding/options?type=countries')
+    } as never);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'za' }),
+        expect.objectContaining({ id: 'us' }),
+        expect.objectContaining({ id: 'gb' })
+      ])
+    );
+  });
 });

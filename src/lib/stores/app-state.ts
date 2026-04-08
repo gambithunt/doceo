@@ -33,7 +33,11 @@ import {
   recalculateMastery,
   upsertRevisionTopicFromSession
 } from '$lib/data/platform';
-import { getUniversitySubjects, isUniversityEducationType } from '$lib/data/onboarding';
+import {
+  getUniversitySubjects,
+  hasStructuredSchoolSupport,
+  isUniversityEducationType
+} from '$lib/data/onboarding';
 import { buildRevisionPlanFromInput, type RevisionPlanInput } from '$lib/revision/planner';
 import { sortRevisionPlans } from '$lib/revision/plans';
 import {
@@ -438,6 +442,14 @@ function findUniversitySubjectMatch(
       (subject) => subject.name.trim().toLowerCase() === normalized
     ) ?? null
   );
+}
+
+function getActiveOnboardingSubjects(onboarding: AppState['onboarding']): SubjectOption[] {
+  if (isUniversityEducationType(onboarding.educationType)) {
+    return getUniversitySubjects(onboarding.provider, onboarding.programme, onboarding.level);
+  }
+
+  return onboarding.options.subjects;
 }
 
 export function createAppStore(initialState: AppState = readState()) {
@@ -2423,15 +2435,20 @@ export function createAppStore(initialState: AppState = readState()) {
       let grades: GradeOption[] = [];
       let selectedGradeId = '';
       let subjects: SubjectOption[] = [];
+      const current = currentState();
+      const selectedEducationType = current.onboarding.educationType;
+      const schoolSupportAvailable = hasStructuredSchoolSupport(countryId);
 
       try {
         curriculums = await fetchOptions<CurriculumOption>(`type=curriculums&countryId=${countryId}`);
-        selectedCurriculumId = curriculums[0]?.id ?? '';
-        grades = selectedCurriculumId
+        selectedCurriculumId = schoolSupportAvailable ? (curriculums[0]?.id ?? '') : '';
+        grades = schoolSupportAvailable && selectedCurriculumId
           ? await fetchOptions<GradeOption>(`type=grades&curriculumId=${selectedCurriculumId}`)
           : [];
-        selectedGradeId = grades.find((grade) => grade.label === 'Grade 6')?.id ?? grades[0]?.id ?? '';
-        subjects = selectedGradeId
+        selectedGradeId = schoolSupportAvailable
+          ? (grades.find((grade) => grade.label === 'Grade 6')?.id ?? grades[0]?.id ?? '')
+          : '';
+        subjects = schoolSupportAvailable && selectedGradeId
           ? await fetchOptions<SubjectOption>(`type=subjects&curriculumId=${selectedCurriculumId}&gradeId=${selectedGradeId}`)
           : [];
       } catch (error) {
@@ -2453,8 +2470,10 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.onboarding,
             selectedCountryId: countryId,
             error: null,
-            selectedCurriculumId,
-            selectedGradeId,
+            selectedCurriculumId:
+              selectedEducationType === 'School' && schoolSupportAvailable ? selectedCurriculumId : '',
+            selectedGradeId:
+              selectedEducationType === 'School' && schoolSupportAvailable ? selectedGradeId : '',
             selectedSubjectIds: [],
             selectedSubjectNames: [],
             customSubjects: [],
@@ -2464,9 +2483,19 @@ export function createAppStore(initialState: AppState = readState()) {
               grades,
               subjects
             },
-            educationType: 'School',
-            provider: selectedCurriculumId,
-            level: selectedGradeId
+            educationType: selectedEducationType,
+            provider:
+              selectedEducationType === 'School'
+                ? schoolSupportAvailable
+                  ? selectedCurriculumId
+                  : ''
+                : state.onboarding.provider,
+            level:
+              selectedEducationType === 'School'
+                ? schoolSupportAvailable
+                  ? selectedGradeId
+                  : ''
+                : state.onboarding.level
           }
         });
       });
@@ -2616,22 +2645,19 @@ export function createAppStore(initialState: AppState = readState()) {
       ),
     toggleOnboardingSubject: (subjectId: string) =>
       update((state) => {
-        const subject = state.onboarding.options.subjects.find((item) => item.id === subjectId);
+        const activeSubjects = getActiveOnboardingSubjects(state.onboarding);
+        const subject = activeSubjects.find((item) => item.id === subjectId);
         if (!subject) {
           return state;
         }
         let selectedSubjectIds = applyOnboardingSubjectExclusivity(
           subjectId,
           state.onboarding.selectedSubjectIds,
-          state.onboarding.options.subjects
+          activeSubjects
         );
-        selectedSubjectIds = applyAdditionalSubjectLimit(
-          subjectId,
-          selectedSubjectIds,
-          state.onboarding.options.subjects
-        );
+        selectedSubjectIds = applyAdditionalSubjectLimit(subjectId, selectedSubjectIds, activeSubjects);
         const selectedSubjectNames = deduplicateSubjects(
-          state.onboarding.options.subjects
+          activeSubjects
             .filter((item) => selectedSubjectIds.includes(item.id))
             .map((item) => item.name)
         );
@@ -2977,14 +3003,15 @@ export function createAppStore(initialState: AppState = readState()) {
           return state;
         }
         if (educationType === 'School') {
+          const schoolSupportAvailable = hasStructuredSchoolSupport(state.onboarding.selectedCountryId);
           return persistAndSync({
             ...state,
             onboarding: {
               ...state.onboarding,
               educationType,
-              provider: state.onboarding.selectedCurriculumId || 'caps',
+              provider: schoolSupportAvailable ? state.onboarding.selectedCurriculumId || 'caps' : '',
               programme: '',
-              level: state.onboarding.selectedGradeId || ''
+              level: schoolSupportAvailable ? state.onboarding.selectedGradeId || '' : ''
             }
           });
         }

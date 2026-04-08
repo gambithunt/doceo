@@ -94,6 +94,82 @@ describe('Phase 2: Guided flow and track branching', () => {
     });
   });
 
+  describe('updated phase 5 country fallback behavior', () => {
+    it('keeps university selectable when changing to an unsupported country', async () => {
+      fetchMock.mockImplementation(async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.includes('/api/onboarding/options?type=curriculums&countryId=us')) {
+          return new Response(JSON.stringify({ options: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ persisted: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const baseState = createInitialState();
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          educationType: 'University',
+          provider: 'University of Cape Town',
+          programme: 'Computer Science',
+          level: '2nd Year'
+        }
+      });
+
+      await store.selectOnboardingCountry('us');
+
+      const state = get(store);
+      expect(state.onboarding.selectedCountryId).toBe('us');
+      expect(state.onboarding.educationType).toBe('University');
+      expect(state.onboarding.provider).toBe('University of Cape Town');
+      expect(state.onboarding.selectedCurriculumId).toBe('');
+      expect(state.onboarding.selectedGradeId).toBe('');
+      expect(state.onboarding.options.curriculums).toEqual([]);
+    });
+
+    it('clears structured school options when the selected country has no supported school catalogs', async () => {
+      fetchMock.mockImplementation(async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.includes('/api/onboarding/options?type=curriculums&countryId=us')) {
+          return new Response(JSON.stringify({ options: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({ persisted: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const baseState = createInitialState();
+      const store = createAppStore(baseState);
+
+      await store.selectOnboardingCountry('us');
+
+      const state = get(store);
+      expect(state.onboarding.selectedCountryId).toBe('us');
+      expect(state.onboarding.educationType).toBe('School');
+      expect(state.onboarding.selectedCurriculumId).toBe('');
+      expect(state.onboarding.selectedGradeId).toBe('');
+      expect(state.onboarding.provider).toBe('');
+      expect(state.onboarding.level).toBe('');
+      expect(state.onboarding.options.curriculums).toEqual([]);
+      expect(state.onboarding.options.grades).toEqual([]);
+      expect(state.onboarding.options.subjects).toEqual([]);
+    });
+  });
+
   describe('back navigation preserves state', () => {
     it('preserves school fields when navigating back from subjects to academic', () => {
       const baseState = createInitialState();

@@ -357,6 +357,39 @@ REFACTOR
 
 ## Phase 5: Implementation fixes and missing coverage
 
+### Updated Phase 5 Addendum: Global country support and onboarding fallback hardening
+
+#### Goal
+- Make country selection globally available while keeping structured school support intentionally limited to the currently supported South African school paths.
+
+#### Scope
+- Included:
+  - Replace the South Africa-only country selector with a broader global country list source
+  - Remove South Africa-only assumptions from country option handling and fallback state transitions
+  - Keep structured school onboarding limited to supported CAPS and IEB flows
+  - Preserve university onboarding for any country with safe downstream fallback behavior
+  - Add regression coverage so university onboarding no longer depends on the old school-grade path
+- Not included:
+  - No expansion of structured school catalog support beyond South Africa
+  - No new non-school or non-university tracks
+  - No broader curriculum-content expansion by country
+
+#### Tasks (Checklist)
+- [x] Replace local South Africa-only country data with a broader global country list source
+- [x] Update option loading so country selection is no longer coupled to South Africa school defaults
+- [x] Ensure School only exposes structured provider options where support exists
+- [x] Ensure University remains selectable for any country with safe downstream fallback behavior
+- [x] Define and implement fallback states for unsupported programme, level, or subject coverage without breaking progression
+- [x] Add regression tests proving the flow no longer depends on the old broken grade-dropdown path
+- [x] Add or update onboarding coverage for global country selection across both supported tracks
+
+#### Implementation Notes
+- `src/lib/data/onboarding.ts` now exposes a broader static country list and gates structured school support through `hasStructuredSchoolSupport`
+- `src/lib/stores/app-state.ts` preserves the selected education type across country changes and clears school-only state when the selected country has no structured catalog support
+- `src/lib/data/platform.ts` preserves the current derived program when onboarding selections are temporarily empty, preventing fallback transitions from breaking lesson state
+- `src/lib/components/OnboardingWizard.svelte` shows a dedicated unsupported-country school fallback state and allows the university path to continue without school-grade dependencies
+- Regression coverage lives in `src/lib/data/onboarding.test.ts`, `src/lib/stores/app-state-wizard.test.ts`, `src/lib/components/OnboardingWizard.test.ts`, `src/lib/server/onboarding-options-route.test.ts`, and `tests/onboarding.spec.ts`
+
 ### Goal
 - Fix broken behavior, fill missing test coverage, and close gaps between the spec and the current implementation across Phases 1–4.
 

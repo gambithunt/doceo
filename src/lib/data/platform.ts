@@ -786,13 +786,18 @@ export function deriveLearningState(state: AppState): AppState {
     (subject, index, subjects) => subject.length > 0 && subjects.indexOf(subject) === index
   );
   const currentSubjectNames = state.curriculum.subjects.map((subject) => subject.name);
+  const shouldPreserveCurrentProgram =
+    expectedSubjectNames.length === 0 &&
+    state.curriculum.subjects.length > 0 &&
+    state.lessons.length > 0 &&
+    state.questions.length > 0;
   const hasMatchingProgram =
     state.curriculum.subjects.length > 0 &&
     state.lessons.length > 0 &&
     expectedSubjectNames.length > 0 &&
     expectedSubjectNames.length === currentSubjectNames.length &&
     expectedSubjectNames.every((subjectName) => currentSubjectNames.includes(subjectName));
-  const program = hasMatchingProgram
+  const program = hasMatchingProgram || shouldPreserveCurrentProgram
     ? {
         curriculum: state.curriculum,
         lessons: state.lessons,
