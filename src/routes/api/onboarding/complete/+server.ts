@@ -12,7 +12,11 @@ const CompleteOnboardingSchema = z.object({
   selectedSubjectIds: z.array(z.string()),
   selectedSubjectNames: z.array(z.string()),
   customSubjects: z.array(z.string()),
-  isUnsure: z.boolean()
+  isUnsure: z.boolean(),
+  educationType: z.enum(['School', 'University']),
+  provider: z.string(),
+  programme: z.string(),
+  level: z.string()
 });
 
 export async function POST({ request }) {

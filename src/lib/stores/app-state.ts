@@ -51,6 +51,7 @@ import type {
   CountryOption,
   CurriculumOption,
   DashboardTopicDiscoverySuggestion,
+  EducationType,
   GradeOption,
   Lesson,
   LearnerProfile,
@@ -366,6 +367,8 @@ const MUTUALLY_EXCLUSIVE_SUBJECT_GROUPS: ReadonlyArray<ReadonlyArray<string>> = 
   ['Mathematics', 'Mathematical Literacy']
 ];
 
+const MAX_ADDITIONAL_SUBJECTS = 5;
+
 function applyOnboardingSubjectExclusivity(
   subjectId: string,
   selectedSubjectIds: string[],
@@ -389,6 +392,37 @@ function applyOnboardingSubjectExclusivity(
   });
 
   return [...withoutConflicts, subjectId];
+}
+
+function applyAdditionalSubjectLimit(
+  subjectId: string,
+  selectedSubjectIds: string[],
+  subjects: SubjectOption[]
+): string[] {
+  const subject = subjects.find((item) => item.id === subjectId);
+
+  if (!subject) {
+    return selectedSubjectIds;
+  }
+
+  if (selectedSubjectIds.includes(subjectId)) {
+    return selectedSubjectIds;
+  }
+
+  if (subject.category !== 'elective') {
+    return selectedSubjectIds;
+  }
+
+  const currentElectiveCount = selectedSubjectIds.filter((id) => {
+    const selected = subjects.find((item) => item.id === id);
+    return selected?.category === 'elective';
+  }).length;
+
+  if (currentElectiveCount >= MAX_ADDITIONAL_SUBJECTS) {
+    return selectedSubjectIds;
+  }
+
+  return selectedSubjectIds;
 }
 
 export function createAppStore(initialState: AppState = readState()) {
@@ -529,7 +563,11 @@ export function createAppStore(initialState: AppState = readState()) {
         selectedSubjectIds: next.onboarding.selectedSubjectIds,
         selectedSubjectNames: next.onboarding.selectedSubjectNames,
         customSubjects: next.onboarding.customSubjects,
-        isUnsure: next.onboarding.selectionMode === 'unsure'
+        isUnsure: next.onboarding.selectionMode === 'unsure',
+        educationType: next.onboarding.educationType,
+        provider: next.onboarding.provider,
+        programme: next.onboarding.programme,
+        level: next.onboarding.level
       })
     });
 
@@ -2410,7 +2448,10 @@ export function createAppStore(initialState: AppState = readState()) {
               curriculums,
               grades,
               subjects
-            }
+            },
+            educationType: 'School',
+            provider: selectedCurriculumId,
+            level: selectedGradeId
           }
         });
       });
@@ -2453,7 +2494,9 @@ export function createAppStore(initialState: AppState = readState()) {
               ...state.onboarding.options,
               grades,
               subjects
-            }
+            },
+            provider: curriculumId,
+            level: selectedGradeId
           }
         });
       });
@@ -2491,7 +2534,8 @@ export function createAppStore(initialState: AppState = readState()) {
             options: {
               ...current.onboarding.options,
               subjects
-            }
+            },
+            level: gradeId
           }
         })
       );
@@ -2525,15 +2569,50 @@ export function createAppStore(initialState: AppState = readState()) {
           }
         })
       ),
+    setOnboardingProvider: (provider: string) =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            provider
+          }
+        })
+      ),
+    setOnboardingProgramme: (programme: string) =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            programme
+          }
+        })
+      ),
+    setOnboardingLevel: (level: string) =>
+      update((state) =>
+        persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            level
+          }
+        })
+      ),
     toggleOnboardingSubject: (subjectId: string) =>
       update((state) => {
         const subject = state.onboarding.options.subjects.find((item) => item.id === subjectId);
         if (!subject) {
           return state;
         }
-        const selectedSubjectIds = applyOnboardingSubjectExclusivity(
+        let selectedSubjectIds = applyOnboardingSubjectExclusivity(
           subjectId,
           state.onboarding.selectedSubjectIds,
+          state.onboarding.options.subjects
+        );
+        selectedSubjectIds = applyAdditionalSubjectLimit(
+          subjectId,
+          selectedSubjectIds,
           state.onboarding.options.subjects
         );
         const selectedSubjectNames = deduplicateSubjects(
@@ -2814,6 +2893,46 @@ export function createAppStore(initialState: AppState = readState()) {
           }
         })
       ),
+    setOnboardingEducationType: (educationType: EducationType) =>
+      update((state) => {
+        const previousEducationType = state.onboarding.educationType;
+        if (previousEducationType === educationType) {
+          return state;
+        }
+        if (educationType === 'School') {
+          return persistAndSync({
+            ...state,
+            onboarding: {
+              ...state.onboarding,
+              educationType,
+              provider: state.onboarding.selectedCurriculumId || 'caps',
+              programme: '',
+              level: state.onboarding.selectedGradeId || ''
+            }
+          });
+        }
+        return persistAndSync({
+          ...state,
+          onboarding: {
+            ...state.onboarding,
+            educationType,
+            provider: '',
+            programme: '',
+            level: '',
+            selectedCurriculumId: '',
+            selectedGradeId: '',
+            selectedSubjectIds: [],
+            selectedSubjectNames: [],
+            customSubjects: [],
+            options: {
+              ...state.onboarding.options,
+              curriculums: [],
+              grades: [],
+              subjects: []
+            }
+          }
+        });
+      }),
     setOnboardingStep: (currentStep: OnboardingStep) =>
       update((state) => persistAndSync({ ...state, onboarding: { ...state.onboarding, currentStep } })),
     completeOnboarding: async (fullName: string, grade: string) => {
@@ -2849,7 +2968,11 @@ export function createAppStore(initialState: AppState = readState()) {
             selectedSubjectIds: current.onboarding.selectedSubjectIds,
             selectedSubjectNames: current.onboarding.selectedSubjectNames,
             customSubjects: current.onboarding.customSubjects,
-            isUnsure: current.onboarding.selectionMode === 'unsure'
+            isUnsure: current.onboarding.selectionMode === 'unsure',
+            educationType: current.onboarding.educationType,
+            provider: current.onboarding.provider,
+            programme: current.onboarding.programme,
+            level: current.onboarding.level
           })
         });
 

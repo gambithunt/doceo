@@ -1,6 +1,7 @@
 export type ThemeMode = 'light' | 'dark';
 export type LearningMode = 'learn' | 'revision';
 export type { ModelTier } from '$lib/ai/model-tiers';
+export type EducationType = 'School' | 'University';
 export type AppScreen =
   | 'landing'
   | 'onboarding'
@@ -753,6 +754,10 @@ export interface AppState {
       grades: GradeOption[];
       subjects: SubjectOption[];
     };
+    educationType: EducationType;
+    provider: string;
+    programme: string;
+    level: string;
   };
   profile: UserProfile;
   learnerProfile: LearnerProfile;

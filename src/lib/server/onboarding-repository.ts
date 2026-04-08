@@ -4,7 +4,8 @@ import {
   getRecommendedSubject,
   getSelectionMode,
   getSubjectsByCurriculumAndGrade,
-  onboardingCountries
+  onboardingCountries,
+  isValidEducationType
 } from '$lib/data/onboarding';
 import { allowLocalCatalogFallback, throwBackendUnavailable } from '$lib/server/backend-availability';
 import { createServerGraphCatalogRepository } from '$lib/server/graph-catalog-repository';
@@ -13,6 +14,7 @@ import { deduplicateSubjects } from '$lib/utils/strings';
 import type {
   CountryOption,
   CurriculumOption,
+  EducationType,
   GradeOption,
   SchoolTerm,
   SubjectSelectionMode,
@@ -31,6 +33,10 @@ interface StudentOnboardingRow {
   recommended_start_subject_name: string | null;
   onboarding_completed: boolean;
   onboarding_completed_at: string | null;
+  education_type?: string | null;
+  provider?: string | null;
+  programme?: string | null;
+  level?: string | null;
   updated_at: string;
 }
 
@@ -54,6 +60,10 @@ export interface CompleteOnboardingInput {
   selectedSubjectNames: string[];
   customSubjects: string[];
   isUnsure: boolean;
+  educationType: EducationType;
+  provider: string;
+  programme: string;
+  level: string;
 }
 
 export interface StoredOnboardingProgress {
@@ -73,6 +83,10 @@ export interface StoredOnboardingProgress {
     subjectName: string | null;
     reason: string;
   };
+  educationType: EducationType;
+  provider: string;
+  programme: string;
+  level: string;
 }
 
 export async function fetchCountries(): Promise<CountryOption[]> {
@@ -130,6 +144,40 @@ export async function fetchSubjects(
   return graphCatalog.fetchSubjects(curriculumId, gradeId);
 }
 
+function resolveStoredEducationType(onboarding: StudentOnboardingRow): EducationType {
+  return isValidEducationType(onboarding.education_type ?? '') ? onboarding.education_type : 'School';
+}
+
+function resolveStoredProvider(
+  onboarding: StudentOnboardingRow,
+  educationType: EducationType
+): string {
+  if (educationType === 'School') {
+    return onboarding.provider ?? onboarding.curriculum_id ?? '';
+  }
+
+  return onboarding.provider ?? '';
+}
+
+function resolveStoredProgramme(
+  onboarding: StudentOnboardingRow,
+  educationType: EducationType
+): string {
+  if (educationType === 'School') {
+    return onboarding.programme ?? '';
+  }
+
+  return onboarding.programme ?? '';
+}
+
+function resolveStoredLevel(onboarding: StudentOnboardingRow, educationType: EducationType): string {
+  if (educationType === 'School') {
+    return onboarding.level ?? onboarding.grade_id ?? '';
+  }
+
+  return onboarding.level ?? '';
+}
+
 async function writeOnboardingProgress(
   input: CompleteOnboardingInput,
   selectionMode: SubjectSelectionMode,
@@ -158,6 +206,10 @@ async function writeOnboardingProgress(
     recommended_start_subject_name: recommendation.subjectName,
     onboarding_completed: isCompleted,
     onboarding_completed_at: isCompleted ? new Date().toISOString() : null,
+    education_type: input.educationType,
+    provider: input.provider,
+    programme: input.programme,
+    level: input.level,
     updated_at: new Date().toISOString()
   });
 
@@ -222,7 +274,7 @@ export async function loadOnboardingProgress(profileId: string): Promise<StoredO
   const { data: onboarding } = await supabase
     .from('student_onboarding')
     .select(
-      'profile_id, country_id, curriculum_id, grade_id, school_year, term, selection_mode, recommended_start_subject_id, recommended_start_subject_name, onboarding_completed, onboarding_completed_at, updated_at'
+      'profile_id, country_id, curriculum_id, grade_id, school_year, term, selection_mode, recommended_start_subject_id, recommended_start_subject_name, onboarding_completed, onboarding_completed_at, education_type, provider, programme, level, updated_at'
     )
     .eq('profile_id', profileId)
     .maybeSingle<StudentOnboardingRow>();
@@ -257,6 +309,7 @@ export async function loadOnboardingProgress(profileId: string): Promise<StoredO
     subjectName: onboarding.recommended_start_subject_name,
     reason: getRecommendedSubject(selectedSubjectIds, customSubjectNames, subjectOptions).reason
   };
+  const educationType = resolveStoredEducationType(onboarding);
 
   return {
     completed: onboarding.onboarding_completed,
@@ -270,7 +323,11 @@ export async function loadOnboardingProgress(profileId: string): Promise<StoredO
     selectedSubjectNames,
     customSubjects: customSubjectNames,
     selectionMode: onboarding.selection_mode,
-    recommendation
+    recommendation,
+    educationType,
+    provider: resolveStoredProvider(onboarding, educationType),
+    programme: resolveStoredProgramme(onboarding, educationType),
+    level: resolveStoredLevel(onboarding, educationType)
   };
 }
 

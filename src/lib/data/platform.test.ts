@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, normalizeAppState } from '$lib/data/platform';
+import { isValidEducationType, isSchoolEducationType, isUniversityEducationType, isSchoolProvider, schoolProviders } from '$lib/data/onboarding';
 import type { RevisionPlan, RevisionTopic } from '$lib/types';
 
 function createSyntheticTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
@@ -180,5 +181,99 @@ describe('normalizeAppState', () => {
       })
     ]);
     expect(normalized.lessons[0]?.id).toMatch(/^lesson-stub-/);
+  });
+});
+
+describe('universal onboarding model', () => {
+  it('initializes with School as the default education type', () => {
+    const state = createInitialState();
+    expect(state.onboarding.educationType).toBe('School');
+    expect(state.onboarding.provider).toBe('caps');
+    expect(state.onboarding.programme).toBe('');
+    expect(state.onboarding.level).toBeTruthy();
+  });
+
+  it('represents School + CAPS + Grade in the new model', () => {
+    const state = createInitialState();
+    expect(state.onboarding.educationType).toBe('School');
+    expect(state.onboarding.provider).toBe('caps');
+    expect(state.onboarding.level).toBeTruthy();
+  });
+
+  it('represents School + IEB + Grade in the new model', () => {
+    const normalized = normalizeAppState({
+      onboarding: {
+        ...createInitialState().onboarding,
+        educationType: 'School',
+        provider: 'ieb',
+        selectedCurriculumId: 'ieb',
+        level: 'ieb-grade-10'
+      }
+    });
+    expect(normalized.onboarding.educationType).toBe('School');
+    expect(normalized.onboarding.provider).toBe('ieb');
+    expect(normalized.onboarding.selectedCurriculumId).toBe('ieb');
+  });
+
+  it('represents University + Institution name + Programme + Level in the new model', () => {
+    const normalized = normalizeAppState({
+      onboarding: {
+        ...createInitialState().onboarding,
+        educationType: 'University',
+        provider: 'University of Cape Town',
+        programme: 'Computer Science',
+        level: '2nd Year'
+      }
+    });
+    expect(normalized.onboarding.educationType).toBe('University');
+    expect(normalized.onboarding.provider).toBe('University of Cape Town');
+    expect(normalized.onboarding.programme).toBe('Computer Science');
+    expect(normalized.onboarding.level).toBe('2nd Year');
+  });
+
+  it('rejects unsupported education type values', () => {
+    const result = isValidEducationType('College');
+    expect(result).toBe(false);
+  });
+
+  it('accepts valid School education type', () => {
+    const result = isValidEducationType('School');
+    expect(result).toBe(true);
+    expect(isSchoolEducationType('School')).toBe(true);
+  });
+
+  it('accepts valid University education type', () => {
+    const result = isValidEducationType('University');
+    expect(result).toBe(true);
+    expect(isUniversityEducationType('University')).toBe(true);
+  });
+
+  it('identifies school providers correctly', () => {
+    expect(isSchoolProvider('caps')).toBe(true);
+    expect(isSchoolProvider('ieb')).toBe(true);
+    expect(isSchoolProvider('uct')).toBe(false);
+    expect(isSchoolProvider('wits')).toBe(false);
+  });
+
+  it('schoolProviders contains only caps and ieb', () => {
+    expect(schoolProviders).toEqual(['caps', 'ieb']);
+  });
+
+  it('normalizes onboarding state without new fields to defaults', () => {
+    const legacyState = {
+      onboarding: {
+        selectedCountryId: 'za',
+        selectedCurriculumId: 'caps',
+        selectedGradeId: 'grade-8',
+        selectedSubjectIds: [],
+        selectedSubjectNames: ['Mathematics'],
+        customSubjects: []
+      }
+    };
+    const normalized = normalizeAppState(legacyState);
+    expect(normalized.onboarding.educationType).toBe('School');
+    expect(normalized.onboarding.provider).toBe('caps');
+    expect(normalized.onboarding.level).toBe('grade-6');
+    expect(normalized.onboarding.programme).toBe('');
   });
 });

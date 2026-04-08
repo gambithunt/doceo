@@ -7,7 +7,10 @@ import {
   getSelectionMode,
   getSubjectsByCurriculumAndGrade,
   onboardingCountries,
-  onboardingStepOrder
+  onboardingStepOrder,
+  getDefaultEducationType,
+  getProviderForEducationType,
+  getLevelForSchool
 } from '$lib/data/onboarding';
 import {
   buildRevisionTopicFromLesson,
@@ -545,7 +548,11 @@ export function createInitialState(): AppState {
         curriculums: availableCurriculums,
         grades: availableGrades,
         subjects: availableSubjects
-      }
+      },
+      educationType: getDefaultEducationType(),
+      provider: getProviderForEducationType('School', selectedCurriculumId),
+      programme: '',
+      level: getLevelForSchool(selectedCurriculumId, selectedGradeId)
     },
     profile: emptyProfile,
     learnerProfile,
@@ -698,7 +705,11 @@ export function normalizeAppState(value: unknown): AppState {
         subjects: Array.isArray(input.onboarding?.options?.subjects)
           ? input.onboarding.options.subjects
           : base.onboarding.options.subjects
-      }
+      },
+      educationType: input.onboarding?.educationType ?? base.onboarding.educationType,
+      provider: input.onboarding?.provider ?? base.onboarding.provider,
+      programme: input.onboarding?.programme ?? base.onboarding.programme,
+      level: input.onboarding?.level ?? base.onboarding.level
     },
     profile: {
       ...base.profile,

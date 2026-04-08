@@ -2,28 +2,28 @@
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { appState } from '$lib/stores/app-state';
-  import { getRecommendedSubject } from '$lib/data/onboarding';
-  import type { AppState, OnboardingStep, SchoolTerm, SubjectOption, SubjectVerificationState } from '$lib/types';
+  import { getRecommendedSubject, isSchoolEducationType, isUniversityEducationType, getUniversitySubjects } from '$lib/data/onboarding';
+  import type { AppState, EducationType, OnboardingStep, SchoolTerm, SubjectOption, SubjectVerificationState } from '$lib/types';
 
   const { state }: { state: AppState } = $props();
 
   const stepLabels: Record<OnboardingStep, string> = {
-    country: 'Country',
-    academic: 'Curriculum and grade',
+    country: 'Location',
+    academic: 'Study path',
     subjects: 'Subjects',
     review: 'Review'
   };
   const stepTitles: Record<OnboardingStep, string> = {
-    country: 'Choose where your learning profile begins',
-    academic: 'Set the academic context for this year',
-    subjects: 'Choose the subjects you study',
-    review: 'Review the profile we will use'
+    country: 'Where are you learning?',
+    academic: 'What are you studying?',
+    subjects: 'Pick your subjects',
+    review: "You're all set"
   };
   const stepDescriptions: Record<OnboardingStep, string> = {
-    country: 'Start with the country so the app can present the right curriculum structure and school context.',
-    academic: 'Your curriculum, grade, school year, and term shape the lessons and recommendations you will see next.',
+    country: 'Start here so we can show you the right curriculum and learning context.',
+    academic: 'This shapes the lessons and recommendations you will see.',
     subjects: 'Choose everything relevant this year. Add anything missing and keep moving.',
-    review: 'Check the learning profile before you continue into the dashboard and subject recommendations.'
+    review: "Here's what we have. Change anything before you continue."
   };
 
   const stepIndex = $derived(state.onboarding.stepOrder.indexOf(state.onboarding.currentStep));
@@ -73,12 +73,16 @@
 
     return liveRecommendation;
   });
+  const educationTypeLabel = $derived(state.onboarding.educationType);
   const footerTitle = $derived.by(() => {
     if (state.onboarding.currentStep === 'country') {
-      return countryName;
+      return `${countryName} · ${educationTypeLabel}`;
     }
 
     if (state.onboarding.currentStep === 'academic') {
+      if (isUniversityEducationType(state.onboarding.educationType)) {
+        return state.onboarding.provider || 'Not chosen';
+      }
       return `${curriculumName} · ${currentGradeLabel}`;
     }
 
@@ -90,10 +94,13 @@
   });
   const footerDetail = $derived.by(() => {
     if (state.onboarding.currentStep === 'country') {
-      return 'Choose the country that matches your school context.';
+      return 'Choose the country and learning type that match your situation.';
     }
 
     if (state.onboarding.currentStep === 'academic') {
+      if (isUniversityEducationType(state.onboarding.educationType)) {
+        return 'Add your university details to get the right recommendations.';
+      }
       return 'Confirm the curriculum, grade, year, and term before moving on.';
     }
 
@@ -103,7 +110,7 @@
         : 'Keep going once you have captured everything you study.';
     }
 
-    return 'Save this profile to enter the dashboard and recommendations.';
+    return 'Save this to enter your dashboard and get recommendations.';
   });
 
   function goToStep(step: OnboardingStep): void {
@@ -148,6 +155,13 @@
     }
 
     if (state.onboarding.currentStep === 'academic') {
+      if (isUniversityEducationType(state.onboarding.educationType)) {
+        return (
+          state.onboarding.provider.length > 0 &&
+          state.onboarding.programme.length > 0 &&
+          state.onboarding.level.length > 0
+        );
+      }
       return (
         state.onboarding.selectedCurriculumId.length > 0 &&
         state.onboarding.selectedGradeId.length > 0 &&
@@ -172,6 +186,13 @@
   }
 
   function groupedSubjects(category: SubjectOption['category']): SubjectOption[] {
+    if (isUniversityEducationType(state.onboarding.educationType)) {
+      return getUniversitySubjects(
+        state.onboarding.provider,
+        state.onboarding.programme,
+        state.onboarding.level
+      ).filter((subject) => subject.category === category);
+    }
     return state.onboarding.options.subjects.filter((subject) => subject.category === category);
   }
 
@@ -208,6 +229,9 @@
   <header class="setup-header card">
     <div class="header-copy">
       <p class="step-kicker">Step {stepIndex + 1} of {state.onboarding.stepOrder.length}</p>
+      <div class="progress-bar" role="progressbar" aria-valuenow={stepIndex + 1} aria-valuemin={1} aria-valuemax={state.onboarding.stepOrder.length}>
+        <div class="progress-bar-fill" style="width: {((stepIndex + 1) / state.onboarding.stepOrder.length) * 100}%"></div>
+      </div>
       <h1>{currentStepTitle}</h1>
       <p>{currentStepDescription}</p>
     </div>
@@ -243,14 +267,30 @@
         <span>Country</span>
         <strong>{countryName}</strong>
       </div>
-      <div class="context-pill">
-        <span>Curriculum</span>
-        <strong>{curriculumName}</strong>
-      </div>
-      <div class="context-pill">
-        <span>Grade</span>
-        <strong>{currentGradeLabel}</strong>
-      </div>
+      {#if isSchoolEducationType(state.onboarding.educationType)}
+        <div class="context-pill">
+          <span>Curriculum</span>
+          <strong>{curriculumName}</strong>
+        </div>
+        <div class="context-pill">
+          <span>Grade</span>
+          <strong>{currentGradeLabel}</strong>
+        </div>
+      {/if}
+      {#if isUniversityEducationType(state.onboarding.educationType)}
+        <div class="context-pill">
+          <span>Institution</span>
+          <strong>{state.onboarding.provider || 'Not chosen'}</strong>
+        </div>
+        <div class="context-pill">
+          <span>Programme</span>
+          <strong>{state.onboarding.programme || 'Not chosen'}</strong>
+        </div>
+        <div class="context-pill">
+          <span>Level</span>
+          <strong>{state.onboarding.level || 'Not chosen'}</strong>
+        </div>
+      {/if}
     </div>
   </section>
 
@@ -277,60 +317,123 @@
             </button>
           {/each}
         </div>
+
+        <div class="education-type-row">
+          <span class="education-type-label">I am learning at a</span>
+          <div class="education-type-options">
+            <button
+              type="button"
+              class:active={isSchoolEducationType(state.onboarding.educationType)}
+              class="education-type-btn"
+              onclick={() => appState.setOnboardingEducationType('School')}
+            >
+              School
+            </button>
+            <button
+              type="button"
+              class:active={isUniversityEducationType(state.onboarding.educationType)}
+              class="education-type-btn"
+              onclick={() => appState.setOnboardingEducationType('University')}
+            >
+              University
+            </button>
+          </div>
+        </div>
       {/if}
 
       {#if state.onboarding.currentStep === 'academic'}
-        <div class="selection-grid">
-          {#each state.onboarding.options.curriculums as curriculum}
-            <button
-              type="button"
-              class:active={state.onboarding.selectedCurriculumId === curriculum.id}
-              class="choice-card"
-              onclick={() => appState.selectOnboardingCurriculum(curriculum.id)}
-            >
-              <strong>{curriculum.name}</strong>
-              <span>{curriculum.description}</span>
-            </button>
-          {/each}
-        </div>
+        {#if isSchoolEducationType(state.onboarding.educationType)}
+          <div class="selection-grid">
+            {#each state.onboarding.options.curriculums as curriculum}
+              <button
+                type="button"
+                class:active={state.onboarding.selectedCurriculumId === curriculum.id}
+                class="choice-card"
+                onclick={() => appState.selectOnboardingCurriculum(curriculum.id)}
+              >
+                <strong>{curriculum.name}</strong>
+                <span>{curriculum.description}</span>
+              </button>
+            {/each}
+          </div>
 
-        <div class="form-grid">
-          <label>
-            <span>Grade</span>
+          <div class="form-grid">
+            <label>
+              <span>Grade</span>
+              <select
+                value={state.onboarding.selectedGradeId}
+                onchange={(event) => appState.selectOnboardingGrade((event.currentTarget as HTMLSelectElement).value)}
+              >
+                {#each state.onboarding.options.grades as grade}
+                  <option value={grade.id}>{grade.label}</option>
+                {/each}
+              </select>
+            </label>
+
+            <label>
+              <span>School year</span>
+              <input
+                value={state.onboarding.schoolYear}
+                maxlength="4"
+                inputmode="numeric"
+                placeholder="2026"
+                oninput={(event) => appState.setOnboardingSchoolYear((event.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+          </div>
+
+          <div class="term-row">
+            {#each ['Term 1', 'Term 2', 'Term 3', 'Term 4'] as term}
+              <button
+                type="button"
+                class:active={state.onboarding.term === term}
+                class="term-chip"
+                onclick={() => appState.setOnboardingTerm(term as SchoolTerm)}
+              >
+                {term}
+              </button>
+            {/each}
+          </div>
+        {/if}
+
+        {#if isUniversityEducationType(state.onboarding.educationType)}
+          <div class="form-grid">
+            <label>
+              <span>Institution name</span>
+              <input
+                value={state.onboarding.provider}
+                placeholder="e.g. University of Cape Town"
+                oninput={(event) => appState.setOnboardingProvider((event.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+
+            <label>
+              <span>Programme</span>
+              <input
+                value={state.onboarding.programme}
+                placeholder="e.g. Computer Science"
+                oninput={(event) => appState.setOnboardingProgramme((event.currentTarget as HTMLInputElement).value)}
+              />
+            </label>
+          </div>
+
+          <label class="level-select">
+            <span>Year of study</span>
             <select
-              value={state.onboarding.selectedGradeId}
-              onchange={(event) => appState.selectOnboardingGrade((event.currentTarget as HTMLSelectElement).value)}
+              value={state.onboarding.level}
+              onchange={(event) => appState.setOnboardingLevel((event.currentTarget as HTMLSelectElement).value)}
             >
-              {#each state.onboarding.options.grades as grade}
-                <option value={grade.id}>{grade.label}</option>
-              {/each}
+              <option value="">Select your year</option>
+              <option value="1st Year">1st Year</option>
+              <option value="2nd Year">2nd Year</option>
+              <option value="3rd Year">3rd Year</option>
+              <option value="4th Year">4th Year</option>
+              <option value="Honours">Honours</option>
+              <option value="Master's">Master's</option>
+              <option value="PhD">PhD</option>
             </select>
           </label>
-
-          <label>
-            <span>School year</span>
-            <input
-              value={state.onboarding.schoolYear}
-              maxlength="4"
-              inputmode="numeric"
-              placeholder="2026"
-              oninput={(event) => appState.setOnboardingSchoolYear((event.currentTarget as HTMLInputElement).value)}
-            />
-          </label>
-        </div>
-
-        <div class="term-row">
-          {#each ['Term 1', 'Term 2', 'Term 3', 'Term 4'] as term}
-            <button
-              type="button"
-              class:active={state.onboarding.term === term}
-              class="term-chip"
-              onclick={() => appState.setOnboardingTerm(term as SchoolTerm)}
-            >
-              {term}
-            </button>
-          {/each}
-        </div>
+        {/if}
       {/if}
 
       {#if state.onboarding.currentStep === 'subjects'}
@@ -513,28 +616,46 @@
         <div class="review-stack">
           <div class="review-grid">
             <div class="review-card">
-              <span>Country</span>
+              <div class="review-card-header">
+                <span>Country</span>
+                <button type="button" class="change-btn" onclick={() => goToStep('country')}>Change</button>
+              </div>
               <strong>{state.onboarding.options.countries.find((country) => country.id === state.onboarding.selectedCountryId)?.name}</strong>
             </div>
-            <div class="review-card">
-              <span>Curriculum</span>
-              <strong>{state.onboarding.options.curriculums.find((curriculum) => curriculum.id === state.onboarding.selectedCurriculumId)?.name}</strong>
-            </div>
-            <div class="review-card">
-              <span>Grade</span>
-              <strong>{currentGradeLabel}</strong>
-            </div>
-            <div class="review-card">
-              <span>School year / term</span>
-              <strong>{state.onboarding.schoolYear} · {state.onboarding.term}</strong>
-            </div>
+            {#if isSchoolEducationType(state.onboarding.educationType)}
+              <div class="review-card">
+                <div class="review-card-header">
+                  <span>Study path</span>
+                  <button type="button" class="change-btn" onclick={() => goToStep('academic')}>Change</button>
+                </div>
+                <strong>{state.onboarding.options.curriculums.find((curriculum) => curriculum.id === state.onboarding.selectedCurriculumId)?.name} · {currentGradeLabel}</strong>
+              </div>
+              <div class="review-card">
+                <div class="review-card-header">
+                  <span>Term</span>
+                  <button type="button" class="change-btn" onclick={() => goToStep('academic')}>Change</button>
+                </div>
+                <strong>{state.onboarding.schoolYear} · {state.onboarding.term}</strong>
+              </div>
+            {/if}
+            {#if isUniversityEducationType(state.onboarding.educationType)}
+              <div class="review-card">
+                <div class="review-card-header">
+                  <span>University details</span>
+                  <button type="button" class="change-btn" onclick={() => goToStep('academic')}>Change</button>
+                </div>
+                <strong>{state.onboarding.provider || 'Not specified'}</strong>
+                <span class="review-card-detail">{state.onboarding.programme || 'Not specified'} · {state.onboarding.level || 'Not specified'}</span>
+              </div>
+            {/if}
           </div>
 
           <div class="review-card review-subjects">
             <div class="review-section-head">
               <span>Selected subjects</span>
-              <strong>{selectedCountLabel}</strong>
+              <button type="button" class="change-btn" onclick={() => goToStep('subjects')}>Change</button>
             </div>
+            <strong>{selectedCountLabel}</strong>
 
             {#if selectedCount > 0}
               <div class="review-chip-list">
@@ -643,6 +764,20 @@
     line-height: 1;
     letter-spacing: -0.045em;
     font-weight: 700;
+  }
+
+  .progress-bar {
+    height: 0.35rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--border-strong) 40%, transparent);
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, var(--accent)) 100%);
+    transition: width 0.3s ease;
   }
 
   .header-copy p:last-child,
@@ -1063,6 +1198,38 @@
     border-radius: 1.15rem;
     background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
     border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  }
+
+  .review-card-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .change-btn {
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+    color: var(--accent);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .change-btn:hover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  .review-card-detail {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.85rem;
+    color: var(--text-soft);
   }
 
   .review-section-head {

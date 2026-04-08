@@ -1,6 +1,7 @@
 import type {
   CountryOption,
   CurriculumOption,
+  EducationType,
   GradeOption,
   OnboardingStep,
   SchoolTerm,
@@ -17,6 +18,54 @@ export const onboardingStepOrder: OnboardingStep[] = [
 
 export const defaultSchoolYear = '2026';
 export const defaultTerm: SchoolTerm = 'Term 1';
+
+export const SUPPORTED_EDUCATION_TYPES: EducationType[] = ['School', 'University'];
+
+export const schoolProviders = ['caps', 'ieb'] as const;
+export type SchoolProvider = (typeof schoolProviders)[number];
+
+export function isSchoolProvider(provider: string): provider is SchoolProvider {
+  return schoolProviders.includes(provider as SchoolProvider);
+}
+
+export function isValidEducationType(value: string): value is EducationType {
+  return SUPPORTED_EDUCATION_TYPES.includes(value as EducationType);
+}
+
+export function isSupportedProvider(provider: string): boolean {
+  return isSchoolProvider(provider);
+}
+
+export function mapCurriculumToProvider(curriculumId: string): string {
+  return curriculumId;
+}
+
+export function mapProviderToCurriculum(provider: string): string {
+  return provider;
+}
+
+export function getDefaultEducationType(): EducationType {
+  return 'School';
+}
+
+export function getProviderForEducationType(educationType: EducationType, curriculumId?: string): string {
+  if (educationType === 'School') {
+    return curriculumId ?? 'caps';
+  }
+  return '';
+}
+
+export function getLevelForSchool(curriculumId: string, gradeId: string): string {
+  return gradeId;
+}
+
+export function isUniversityEducationType(educationType: EducationType): boolean {
+  return educationType === 'University';
+}
+
+export function isSchoolEducationType(educationType: EducationType): boolean {
+  return educationType === 'School';
+}
 
 export const onboardingCountries: CountryOption[] = [
   {
@@ -135,6 +184,35 @@ const iebFetSubjects = [
   'Visual Arts'
 ];
 
+export const universityCoreModules = [
+  'Computer Science Fundamentals',
+  'Mathematics for Science',
+  'Academic Writing',
+  'Research Methods'
+];
+
+export const universityLanguageModules = [
+  'English for Academic Purposes',
+  'Professional Communication'
+];
+
+export const universityElectiveModules = [
+  'Physics',
+  'Chemistry',
+  'Biology',
+  'Statistics',
+  'Data Science',
+  'Software Engineering',
+  'Artificial Intelligence',
+  'Philosophy',
+  'Psychology',
+  'Economics',
+  'Business Management',
+  'Law',
+  'Digital Literacy',
+  'Project Management'
+];
+
 function makeSubject(
   name: string,
   curriculumId: string,
@@ -220,6 +298,38 @@ export function getSubjectsByCurriculumAndGrade(
   return onboardingSubjects.filter(
     (subject) => subject.curriculumId === curriculumId && subject.gradeId === gradeId
   );
+}
+
+export function getUniversitySubjects(
+  _provider: string,
+  _programme: string,
+  _level: string
+): SubjectOption[] {
+  const core = universityCoreModules.map((name) => ({
+    id: `university-core-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    curriculumId: 'university',
+    gradeId: 'university',
+    name,
+    category: 'core' as const
+  }));
+
+  const languages = universityLanguageModules.map((name) => ({
+    id: `university-language-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    curriculumId: 'university',
+    gradeId: 'university',
+    name,
+    category: 'language' as const
+  }));
+
+  const electives = universityElectiveModules.map((name) => ({
+    id: `university-elective-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    curriculumId: 'university',
+    gradeId: 'university',
+    name,
+    category: 'elective' as const
+  }));
+
+  return [...core, ...languages, ...electives];
 }
 
 export function getSelectionMode(
