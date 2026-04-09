@@ -431,6 +431,83 @@ describe('OnboardingWizard', () => {
       expect(screen.getByText(/verifying institutions/i)).toBeInTheDocument();
     });
 
+    it('disables the institution verify button during loading', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              universityVerification: {
+                ...baseState.onboarding.universityVerification,
+                institutionStatus: 'loading'
+              }
+            }
+          }
+        }
+      });
+
+      const verifyButtons = screen.getAllByRole('button', { name: 'Verifying' });
+      expect(verifyButtons.length).toBeGreaterThan(0);
+      const institutionVerifyBtn = verifyButtons[0];
+      expect(institutionVerifyBtn).toBeDisabled();
+      expect(institutionVerifyBtn).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('shows busy indicator in institution verify button during loading', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              universityVerification: {
+                ...baseState.onboarding.universityVerification,
+                institutionStatus: 'loading'
+              }
+            }
+          }
+        }
+      });
+
+      const verifyButtons = screen.getAllByRole('button', { name: 'Verifying' });
+      expect(verifyButtons.length).toBeGreaterThan(0);
+      expect(screen.getByText('Verifying')).toBeInTheDocument();
+    });
+
+    it('disables the programme verify button during loading', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              provider: 'University of Cape Town',
+              universityVerification: {
+                ...baseState.onboarding.universityVerification,
+                programmeStatus: 'loading'
+              }
+            }
+          }
+        }
+      });
+
+      const verifyButtons = screen.getAllByRole('button', { name: 'Verifying' });
+      expect(verifyButtons.length).toBeGreaterThan(0);
+      const programmeVerifyBtn = verifyButtons[verifyButtons.length - 1];
+      expect(programmeVerifyBtn).toBeDisabled();
+      expect(programmeVerifyBtn).toHaveAttribute('aria-busy', 'true');
+    });
+
     it('shows an error message when institutionStatus is error', () => {
       const baseState = createInitialState();
       render(OnboardingWizard, {

@@ -86,6 +86,9 @@ describe('programme-verify endpoint', () => {
     const response = await POST({ request: mockRequest, fetch: vi.fn() } as never);
 
     expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe('Enter a programme name to verify.');
+    expect(body.suggestions).toEqual([]);
   });
 
   it('returns 503 with graceful error when AI edge fails', async () => {

@@ -439,9 +439,20 @@
                 <button
                   type="button"
                   class="verify-btn"
+                  class:is-checking={state.onboarding.universityVerification.institutionStatus === 'loading'}
+                  aria-busy={state.onboarding.universityVerification.institutionStatus === 'loading'}
+                  disabled={!state.onboarding.provider.trim() || state.onboarding.universityVerification.institutionStatus === 'loading'}
                   onclick={() => appState.verifyInstitution(state.onboarding.provider)}
                 >
-                  Verify
+                  {#if state.onboarding.universityVerification.institutionStatus === 'loading'}
+                    <span class="busy-indicator" aria-hidden="true">
+                      <span></span>
+                      <span></span>
+                    </span>
+                    <span>Verifying</span>
+                  {:else}
+                    Verify
+                  {/if}
                 </button>
               </div>
             </label>
@@ -476,10 +487,20 @@
                 <button
                   type="button"
                   class="verify-btn"
-                  disabled={!state.onboarding.provider}
+                  class:is-checking={state.onboarding.universityVerification.programmeStatus === 'loading'}
+                  aria-busy={state.onboarding.universityVerification.programmeStatus === 'loading'}
+                  disabled={!state.onboarding.provider || state.onboarding.universityVerification.programmeStatus === 'loading'}
                   onclick={() => appState.verifyProgramme(state.onboarding.programme)}
                 >
-                  Verify
+                  {#if state.onboarding.universityVerification.programmeStatus === 'loading'}
+                    <span class="busy-indicator" aria-hidden="true">
+                      <span></span>
+                      <span></span>
+                    </span>
+                    <span>Verifying</span>
+                  {:else}
+                    Verify
+                  {/if}
                 </button>
               </div>
             </label>
@@ -870,9 +891,9 @@
 
   label span {
     margin: 0;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-    font-size: var(--text-sm);
+    color: var(--text-soft);
+    font-size: var(--text-base);
+    font-weight: 500;
     font-family: var(--sans);
   }
 
@@ -1011,6 +1032,7 @@
   }
 
   .form-grid {
+    align-items: start;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
 
@@ -1566,16 +1588,12 @@
   }
 
   .verify-input-row {
-    display: flex;
+    display: grid;
     gap: 0.5rem;
-    align-items: center;
-  }
-
-  .verify-input-row input {
-    flex: 1;
   }
 
   .verify-btn {
+    justify-self: start;
     padding: 0.5rem 1rem;
     border-radius: var(--radius-lg);
     border: 1px solid color-mix(in srgb, var(--accent) 44%, transparent);

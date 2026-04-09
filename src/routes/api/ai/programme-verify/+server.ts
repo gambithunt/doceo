@@ -18,7 +18,7 @@ export async function POST({ request, fetch }): Promise<Response> {
   const parsed = ProgrammeVerifyBodySchema.safeParse(raw);
 
   if (!parsed.success) {
-    return json({ error: parsed.error.message }, { status: 400 });
+    return json({ error: 'Enter a programme name to verify.', suggestions: [] }, { status: 400 });
   }
 
   const { institution, query } = parsed.data;
