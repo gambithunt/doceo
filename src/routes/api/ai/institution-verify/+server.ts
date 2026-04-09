@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
+import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 
 const InstitutionVerifyBodySchema = z.object({
   query: z.string().min(1).max(200),
@@ -22,15 +23,23 @@ export async function POST({ request, fetch }): Promise<Response> {
 
   const { query, country } = parsed.data;
 
+  const aiConfig = await getAiConfig();
+  const { model: resolvedModel } = resolveAiRoute(aiConfig, 'institution-verify');
+
   const edge = await invokeAuthenticatedAiEdge<InstitutionVerifyResponse>(
     request,
     fetch,
     'institution-verify',
-    { query, country }
+    { query, country },
+    undefined,
+    resolvedModel
   );
 
   if (!edge.ok || !edge.payload) {
-    return json({ error: edge.error ?? 'Institution verification failed' }, { status: 502 });
+    return json(
+      { error: 'Institution verification is not available right now. You can type your institution name manually.', suggestions: [] },
+      { status: 503 }
+    );
   }
 
   return json({

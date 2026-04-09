@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const invokeAuthenticatedAiEdge = vi.fn();
+const { invokeAuthenticatedAiEdge, getAiConfigMock, resolveAiRouteMock } = vi.hoisted(() => ({
+  invokeAuthenticatedAiEdge: vi.fn(),
+  getAiConfigMock: vi.fn(),
+  resolveAiRouteMock: vi.fn()
+}));
 
 vi.mock('$lib/server/ai-edge', () => ({
   invokeAuthenticatedAiEdge,
@@ -11,9 +15,20 @@ vi.mock('$lib/server/ai-edge', () => ({
   })
 }));
 
+vi.mock('$lib/server/ai-config', () => ({
+  getAiConfig: getAiConfigMock,
+  resolveAiRoute: resolveAiRouteMock
+}));
+
 describe('institution-verify endpoint', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    getAiConfigMock.mockResolvedValue({
+      provider: 'github-models',
+      tiers: { fast: { model: 'gpt-4.1-mini' }, standard: { model: 'gpt-4.1-mini' }, advanced: { model: 'gpt-4.1' } },
+      routeOverrides: {}
+    });
+    resolveAiRouteMock.mockReturnValue({ provider: 'github-models', model: 'gpt-4.1-mini' });
   });
 
   async function verifyInstitution(query: string, country: string = 'South Africa') {
@@ -73,7 +88,7 @@ describe('institution-verify endpoint', () => {
     expect(response.status).toBe(400);
   });
 
-  it('returns 502 when AI edge fails', async () => {
+  it('returns 503 with graceful error when AI edge fails', async () => {
     invokeAuthenticatedAiEdge.mockResolvedValueOnce({
       ok: false,
       status: 502,
@@ -81,6 +96,25 @@ describe('institution-verify endpoint', () => {
     });
 
     const response = await verifyInstitution('University of');
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(503);
+
+    const body = await response.json();
+    expect(body.suggestions).toEqual([]);
+    expect(body.error).toBe('Institution verification is not available right now. You can type your institution name manually.');
+  });
+
+  it('returns 503 with graceful error when AI edge returns 401', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      error: 'Authentication required for AI requests.'
+    });
+
+    const response = await verifyInstitution('University of');
+    expect(response.status).toBe(503);
+
+    const body = await response.json();
+    expect(body.suggestions).toEqual([]);
+    expect(body.error).toBe('Institution verification is not available right now. You can type your institution name manually.');
   });
 });

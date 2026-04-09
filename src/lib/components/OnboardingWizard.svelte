@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { onMount } from 'svelte';
   import { appState } from '$lib/stores/app-state';
   import {
     getRecommendedSubject,
@@ -123,6 +124,14 @@
     }
 
     return 'Save this to enter your dashboard and get recommendations.';
+  });
+
+  let geoResolved = false;
+  onMount(() => {
+    if (!geoResolved) {
+      geoResolved = true;
+      appState.resolveAndApplyServerCountry();
+    }
   });
 
   function goToStep(step: OnboardingStep): void {
@@ -295,18 +304,24 @@
         </div>
       {/if}
       {#if stepIndex >= 1 && isUniversityEducationType(state.onboarding.educationType)}
-        <div class="context-pill">
-          <span>Institution</span>
-          <strong>{state.onboarding.provider || 'Not chosen'}</strong>
-        </div>
-        <div class="context-pill">
-          <span>Programme</span>
-          <strong>{state.onboarding.programme || 'Not chosen'}</strong>
-        </div>
-        <div class="context-pill">
-          <span>Level</span>
-          <strong>{state.onboarding.level || 'Not chosen'}</strong>
-        </div>
+        {#if state.onboarding.provider}
+          <div class="context-pill">
+            <span>Institution</span>
+            <strong>{state.onboarding.provider}</strong>
+          </div>
+        {/if}
+        {#if state.onboarding.programme}
+          <div class="context-pill">
+            <span>Programme</span>
+            <strong>{state.onboarding.programme}</strong>
+          </div>
+        {/if}
+        {#if state.onboarding.level}
+          <div class="context-pill">
+            <span>Level</span>
+            <strong>{state.onboarding.level}</strong>
+          </div>
+        {/if}
       {/if}
     </div>
   </section>
@@ -354,6 +369,7 @@
                   value={state.onboarding.selectedGradeId}
                   onchange={(event) => appState.selectOnboardingGrade((event.currentTarget as HTMLSelectElement).value)}
                 >
+                  <option value="">Select a grade</option>
                   {#each state.onboarding.options.grades as grade}
                     <option value={grade.id}>{grade.label}</option>
                   {/each}
@@ -844,13 +860,20 @@
   .context-pill span,
   .category-head span,
   .review-card span,
-  .footer-status span,
-  label span {
+  .footer-status span {
     margin: 0;
     color: var(--muted);
     letter-spacing: 0.04em;
     font-size: 0.72rem;
     font-family: var(--mono);
+  }
+
+  label span {
+    margin: 0;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    font-size: var(--text-sm);
+    font-family: var(--sans);
   }
 
   .header-aside {

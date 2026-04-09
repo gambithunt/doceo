@@ -355,4 +355,214 @@ describe('Phase 2: Guided flow and track branching', () => {
       expect(state.stepOrder).toHaveLength(4);
     });
   });
+
+  describe('grade selection (Phase 3)', () => {
+    it('selectOnboardingCurriculum sets selectedGradeId to Grade 8 when available', async () => {
+      fetchMock.mockImplementation(async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.includes('type=grades')) {
+          return new Response(
+            JSON.stringify({
+              options: [
+                { id: 'grade-6', label: 'Grade 6' },
+                { id: 'grade-7', label: 'Grade 7' },
+                { id: 'grade-8', label: 'Grade 8' },
+                { id: 'grade-9', label: 'Grade 9' }
+              ]
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (url.includes('type=subjects')) {
+          return new Response(
+            JSON.stringify({ options: [{ id: 'mathematics', name: 'Mathematics', category: 'core' }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(JSON.stringify({ persisted: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const baseState = createInitialState();
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          selectedCountryId: 'za',
+          educationType: 'School',
+          options: {
+            ...baseState.onboarding.options,
+            curriculums: [{ id: 'caps', name: 'CAPS' }]
+          }
+        }
+      });
+
+      await store.selectOnboardingCurriculum('caps');
+
+      const state = get(store);
+      expect(state.onboarding.selectedGradeId).toBe('grade-8');
+    });
+
+    it('selectOnboardingCurriculum falls back to the first grade when Grade 8 is not in the list', async () => {
+      fetchMock.mockImplementation(async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.includes('type=grades')) {
+          return new Response(
+            JSON.stringify({
+              options: [
+                { id: 'grade-10', label: 'Grade 10' },
+                { id: 'grade-11', label: 'Grade 11' },
+                { id: 'grade-12', label: 'Grade 12' }
+              ]
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (url.includes('type=subjects')) {
+          return new Response(
+            JSON.stringify({ options: [{ id: 'mathematics', name: 'Mathematics', category: 'core' }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(JSON.stringify({ persisted: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const baseState = createInitialState();
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          selectedCountryId: 'za',
+          educationType: 'School',
+          options: {
+            ...baseState.onboarding.options,
+            curriculums: [{ id: 'caps', name: 'CAPS' }]
+          }
+        }
+      });
+
+      await store.selectOnboardingCurriculum('caps');
+
+      const state = get(store);
+      expect(state.onboarding.selectedGradeId).toBe('grade-10');
+    });
+
+    it('selectOnboardingGrade updates selectedGradeId in onboarding state', async () => {
+      fetchMock.mockImplementation(async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.includes('type=subjects')) {
+          return new Response(
+            JSON.stringify({ options: [{ id: 'mathematics', name: 'Mathematics', category: 'core' }] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (url.includes('/api/onboarding/progress')) {
+          return new Response(
+            JSON.stringify({ recommendation: { subjectId: 'mathematics', subjectName: 'Mathematics' }, selectionMode: 'manual' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(JSON.stringify({ persisted: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const baseState = createInitialState();
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          selectedCountryId: 'za',
+          selectedCurriculumId: 'caps',
+          selectedGradeId: 'grade-8',
+          educationType: 'School',
+          options: {
+            ...baseState.onboarding.options,
+            grades: [
+              { id: 'grade-8', label: 'Grade 8' },
+              { id: 'grade-9', label: 'Grade 9' }
+            ]
+          }
+        }
+      });
+
+      await store.selectOnboardingGrade('grade-9');
+
+      const state = get(store);
+      expect(state.onboarding.selectedGradeId).toBe('grade-9');
+    });
+
+    it('selectOnboardingGrade triggers a subject list refresh for the new grade', async () => {
+      const newSubjects = [
+        { id: 'mathematics', name: 'Mathematics', category: 'core' },
+        { id: 'science', name: 'Natural Sciences', category: 'core' }
+      ];
+
+      fetchMock.mockImplementation(async (input: string | URL | Request) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (url.includes('type=subjects') && url.includes('gradeId=grade-9')) {
+          return new Response(
+            JSON.stringify({ options: newSubjects }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (url.includes('/api/onboarding/progress')) {
+          return new Response(
+            JSON.stringify({ recommendation: { subjectId: 'mathematics', subjectName: 'Mathematics' }, selectionMode: 'manual' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(JSON.stringify({ persisted: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      });
+
+      const baseState = createInitialState();
+      const store = createAppStore({
+        ...baseState,
+        onboarding: {
+          ...baseState.onboarding,
+          selectedCountryId: 'za',
+          selectedCurriculumId: 'caps',
+          selectedGradeId: 'grade-8',
+          educationType: 'School',
+          options: {
+            ...baseState.onboarding.options,
+            grades: [
+              { id: 'grade-8', label: 'Grade 8' },
+              { id: 'grade-9', label: 'Grade 9' }
+            ],
+            subjects: [{ id: 'mathematics', name: 'Mathematics', category: 'core' }]
+          }
+        }
+      });
+
+      await store.selectOnboardingGrade('grade-9');
+
+      const state = get(store);
+      expect(state.onboarding.options.subjects).toHaveLength(2);
+      expect(state.onboarding.options.subjects).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: 'science' })])
+      );
+    });
+  });
 });

@@ -70,49 +70,62 @@ export function isSchoolEducationType(educationType: EducationType): boolean {
 export const onboardingCountries: CountryOption[] = [
   {
     id: 'au',
-    name: 'Australia'
+    name: 'Australia',
+    enabled: false
   },
   {
     id: 'br',
-    name: 'Brazil'
+    name: 'Brazil',
+    enabled: false
   },
   {
     id: 'ca',
-    name: 'Canada'
+    name: 'Canada',
+    enabled: false
   },
   {
     id: 'de',
-    name: 'Germany'
+    name: 'Germany',
+    enabled: false
   },
   {
     id: 'fr',
-    name: 'France'
+    name: 'France',
+    enabled: false
   },
   {
     id: 'gb',
-    name: 'United Kingdom'
+    name: 'United Kingdom',
+    enabled: false
   },
   {
     id: 'in',
-    name: 'India'
+    name: 'India',
+    enabled: false
   },
   {
     id: 'ke',
-    name: 'Kenya'
+    name: 'Kenya',
+    enabled: false
   },
   {
     id: 'ng',
-    name: 'Nigeria'
+    name: 'Nigeria',
+    enabled: false
   },
   {
     id: 'us',
-    name: 'United States'
+    name: 'United States',
+    enabled: false
   },
   {
     id: 'za',
-    name: 'South Africa'
+    name: 'South Africa',
+    enabled: true
   }
 ];
+
+export const activeCountries = onboardingCountries.filter((c) => c.enabled !== false);
 
 const timezoneToCountryId: Record<string, string> = {
   'Africa/Johannesburg': 'za',
@@ -163,31 +176,43 @@ export interface CountryRecommendationSignals {
 }
 
 const supportedIpCountryCodes = new Set(onboardingCountries.map((c) => c.id.toUpperCase()));
+const activeCountryIds = new Set(activeCountries.map((c) => c.id.toUpperCase()));
 
 function isSupportedIpCountry(code: string): boolean {
   return supportedIpCountryCodes.has(code.toUpperCase());
 }
 
-export function getRecommendedCountryId(signals: CountryRecommendationSignals): string | null {
+function isActiveCountry(code: string): boolean {
+  return activeCountryIds.has(code.toUpperCase());
+}
+
+function getActiveOrDefault(code: string | null): string {
+  if (code && isActiveCountry(code)) {
+    return code.toLowerCase();
+  }
+  return 'za';
+}
+
+export function getRecommendedCountryId(signals: CountryRecommendationSignals): string {
   if (signals.ipCountryCode && isSupportedIpCountry(signals.ipCountryCode)) {
-    return signals.ipCountryCode.toLowerCase();
+    return getActiveOrDefault(signals.ipCountryCode);
   }
 
   if (signals.timezone) {
     const countryFromTimezone = timezoneToCountryId[signals.timezone];
     if (countryFromTimezone) {
-      return countryFromTimezone;
+      return getActiveOrDefault(countryFromTimezone);
     }
   }
 
   if (signals.localeLanguage) {
     const countryFromLocale = localeToCountryId[signals.localeLanguage];
     if (countryFromLocale) {
-      return countryFromLocale;
+      return getActiveOrDefault(countryFromLocale);
     }
   }
 
-  return null;
+  return 'za';
 }
 
 export function hasStructuredSchoolSupport(countryId: string): boolean {

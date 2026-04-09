@@ -99,7 +99,11 @@ export async function fetchCountries(): Promise<CountryOption[]> {
     return onboardingCountries;
   }
 
-  return graphCatalog.fetchCountries();
+  const results = await graphCatalog.fetchCountries();
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return onboardingCountries;
+  }
+  return results;
 }
 
 export async function fetchCurriculums(countryId: string): Promise<CurriculumOption[]> {
@@ -112,7 +116,11 @@ export async function fetchCurriculums(countryId: string): Promise<CurriculumOpt
     return getCurriculumsByCountry(countryId);
   }
 
-  return graphCatalog.fetchCurriculums(countryId);
+  const results = await graphCatalog.fetchCurriculums(countryId);
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return getCurriculumsByCountry(countryId);
+  }
+  return results;
 }
 
 export async function fetchGrades(curriculumId: string): Promise<GradeOption[]> {
@@ -125,7 +133,11 @@ export async function fetchGrades(curriculumId: string): Promise<GradeOption[]> 
     return getGradesByCurriculum(curriculumId);
   }
 
-  return graphCatalog.fetchGrades(curriculumId);
+  const results = await graphCatalog.fetchGrades(curriculumId);
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return getGradesByCurriculum(curriculumId);
+  }
+  return results;
 }
 
 export async function fetchSubjects(
@@ -141,7 +153,11 @@ export async function fetchSubjects(
     return getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
   }
 
-  return graphCatalog.fetchSubjects(curriculumId, gradeId);
+  const results = await graphCatalog.fetchSubjects(curriculumId, gradeId);
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
+  }
+  return results;
 }
 
 function resolveStoredEducationType(onboarding: StudentOnboardingRow): EducationType {

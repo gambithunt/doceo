@@ -99,6 +99,26 @@ interface SubjectVerifyResult {
   suggestion: string | null;
 }
 
+interface InstitutionVerifyRequest {
+  query: string;
+  country: string;
+}
+
+interface InstitutionVerifyResult {
+  suggestions: string[];
+  provider: string;
+}
+
+interface ProgrammeVerifyRequest {
+  institution: string;
+  query: string;
+}
+
+interface ProgrammeVerifyResult {
+  suggestions: string[];
+  provider: string;
+}
+
 interface UserProfile {
   id: string;
   fullName: string;
@@ -308,7 +328,7 @@ interface GithubModelsRequestBody {
 }
 
 type EdgePayload = {
-  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest | SubjectVerifyRequest | RevisionPackEdgeRequest;
+  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest | SubjectVerifyRequest | InstitutionVerifyRequest | ProgrammeVerifyRequest | RevisionPackEdgeRequest;
   mode?: AiMode;
   modelTier?: ModelTier;
 };
@@ -350,6 +370,8 @@ function isAiMode(value: unknown): value is AiMode {
     value === 'lesson-plan' ||
     value === 'lesson-chat' ||
     value === 'subject-verify' ||
+    value === 'institution-verify' ||
+    value === 'programme-verify' ||
     value === 'revision-pack' ||
     value === 'revision-evaluate'
   );
@@ -1098,6 +1120,67 @@ function parseSubjectVerifyResponse(content: string): SubjectVerifyResult | null
   return null;
 }
 
+function buildInstitutionVerifySystemPrompt(): string {
+  return [
+    'You are an expert on higher education institutions worldwide.',
+    'Given a partial or full institution name and a country, return a JSON object with exactly these keys:',
+    '{ "suggestions": string[], "provider": "github-models" }',
+    'Rules:',
+    '- suggestions: up to 5 real, recognised universities or colleges that match the query in the given country.',
+    '- Only include institutions that actually exist. Do not invent names.',
+    '- Order by relevance to the query (closest match first).',
+    '- If no institutions match, return an empty suggestions array.',
+    '- Return JSON only — no markdown, no explanation.'
+  ].join(' ');
+}
+
+function buildInstitutionVerifyUserPrompt(request: InstitutionVerifyRequest): string {
+  return JSON.stringify({
+    query: request.query,
+    country: request.country
+  });
+}
+
+function parseInstitutionVerifyResponse(content: string): InstitutionVerifyResult | null {
+  const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const parsed = parseJson<InstitutionVerifyResult>(cleaned);
+  if (parsed && Array.isArray(parsed.suggestions)) {
+    return { suggestions: parsed.suggestions, provider: 'github-models' };
+  }
+  return null;
+}
+
+function buildProgrammeVerifySystemPrompt(): string {
+  return [
+    'You are an expert on university programmes and degrees worldwide.',
+    'Given a partial or full programme name and an institution, return a JSON object with exactly these keys:',
+    '{ "suggestions": string[], "provider": "github-models" }',
+    'Rules:',
+    '- suggestions: up to 5 real programmes, degrees, or courses of study offered at the given institution that match the query.',
+    '- Only include programmes that are actually offered. Do not invent names.',
+    '- Use the official programme name as listed by the institution.',
+    '- Order by relevance to the query (closest match first).',
+    '- If no programmes match, return an empty suggestions array.',
+    '- Return JSON only — no markdown, no explanation.'
+  ].join(' ');
+}
+
+function buildProgrammeVerifyUserPrompt(request: ProgrammeVerifyRequest): string {
+  return JSON.stringify({
+    institution: request.institution,
+    query: request.query
+  });
+}
+
+function parseProgrammeVerifyResponse(content: string): ProgrammeVerifyResult | null {
+  const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const parsed = parseJson<ProgrammeVerifyResult>(cleaned);
+  if (parsed && Array.isArray(parsed.suggestions)) {
+    return { suggestions: parsed.suggestions, provider: 'github-models' };
+  }
+  return null;
+}
+
 function buildGithubRequest(
   model: string,
   temperature: number,
@@ -1168,6 +1251,16 @@ function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: 
         { role: 'system', content: buildSubjectVerifySystemPrompt() },
         { role: 'user', content: buildSubjectVerifyUserPrompt(request as SubjectVerifyRequest) }
       ]);
+    case 'institution-verify':
+      return buildGithubRequest(model, 0.1, [
+        { role: 'system', content: buildInstitutionVerifySystemPrompt() },
+        { role: 'user', content: buildInstitutionVerifyUserPrompt(request as InstitutionVerifyRequest) }
+      ]);
+    case 'programme-verify':
+      return buildGithubRequest(model, 0.1, [
+        { role: 'system', content: buildProgrammeVerifySystemPrompt() },
+        { role: 'user', content: buildProgrammeVerifyUserPrompt(request as ProgrammeVerifyRequest) }
+      ]);
     case 'revision-pack':
       return buildGithubRequest(model, 0.3, [
         { role: 'system', content: buildRevisionPackSystemPrompt() },
@@ -1226,6 +1319,18 @@ function buildModeResponse(
       const result = parseSubjectVerifyResponse(content);
       return result
         ? { result, provider: PROVIDER, modelTier, model }
+        : null;
+    }
+    case 'institution-verify': {
+      const result = parseInstitutionVerifyResponse(content);
+      return result
+        ? { ...result, provider: PROVIDER, modelTier, model }
+        : null;
+    }
+    case 'programme-verify': {
+      const result = parseProgrammeVerifyResponse(content);
+      return result
+        ? { ...result, provider: PROVIDER, modelTier, model }
         : null;
     }
     case 'revision-pack': {

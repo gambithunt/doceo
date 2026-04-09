@@ -64,6 +64,7 @@ export interface UserProfile {
 export interface CountryOption {
   id: string;
   name: string;
+  enabled?: boolean;
 }
 
 export interface CurriculumOption {

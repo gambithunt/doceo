@@ -19,6 +19,7 @@
 2. Phase 2: Context-strip progressive disclosure
 3. Phase 3: Fix school grade dropdown and suggest starting grade
 4. Phase 4: LLM-backed university institution and programme validation
+5. Phase 5: Review fixes, wiring gaps, and missing test coverage
 
 Each phase is self-contained, independently testable, and safe to ship on its own.
 
@@ -283,6 +284,91 @@ REFACTOR
 - No scope creep
 - No duplicate logic
 - Behavior matches spec exactly
+
+---
+
+## Phase 5: Review fixes, wiring gaps, and missing test coverage
+
+### Goal
+- Wire up the geolocation auto-select that was implemented but never called, remove remaining "Not chosen" text from university context pills, add AI route resolution to verification endpoints, and fill all missing test coverage identified in the code review.
+
+### Scope
+- Included:
+  - Call `resolveAndApplyServerCountry` on first onboarding load so IP geolocation actually takes effect
+  - Replace "Not chosen" fallback text in university context pills with conditional rendering that hides the pill when empty
+  - Add `resolveAiRoute` calls to institution-verify and programme-verify endpoints so they use the configured `fast` model tier
+  - Add Phase 3 grade selection tests that were required by the TDD plan but never written
+  - Add Phase 4 verification UI component tests that were required by the TDD plan but never written
+- Not included:
+  - No new features or endpoints
+  - No changes to the country picker, education type CTA, or step flow
+  - No changes to the verification prompt content or LLM behavior
+
+### Tasks (Checklist)
+
+#### Wiring fixes
+- [x] Call `appState.resolveAndApplyServerCountry()` from `OnboardingWizard.svelte` `onMount` so IP geolocation auto-selects on first load
+- [x] Add a guard so `resolveAndApplyServerCountry` only runs once per session (not on every wizard re-mount)
+- [x] Replace `state.onboarding.provider || 'Not chosen'` in the context strip with conditional rendering — hide the Institution pill entirely when `provider` is empty
+- [x] Replace `state.onboarding.programme || 'Not chosen'` in the context strip with conditional rendering — hide the Programme pill entirely when `programme` is empty
+- [x] Replace `state.onboarding.level || 'Not chosen'` in the context strip with conditional rendering — hide the Level pill entirely when `level` is empty
+- [x] Add `resolveAiRoute(aiConfig, 'institution-verify')` to the institution-verify endpoint and pass the resolved model to `invokeAuthenticatedAiEdge`
+- [x] Add `resolveAiRoute(aiConfig, 'programme-verify')` to the programme-verify endpoint and pass the resolved model to `invokeAuthenticatedAiEdge`
+
+#### Missing tests — Phase 3 (grade selection)
+- [x] Add test asserting that `selectOnboardingCurriculum` sets `selectedGradeId` to a Grade 8 variant when Grade 8 is available
+- [x] Add test asserting that `selectOnboardingCurriculum` falls back to the first grade when Grade 8 is not in the list
+- [x] Add test asserting that `selectOnboardingGrade` updates `selectedGradeId` in onboarding state
+- [x] Add test asserting that `selectOnboardingGrade` triggers a subject list refresh for the new curriculum + grade combination
+
+#### Missing tests — Phase 4 (verification UI)
+- [x] Add component test asserting that suggestion pills render when `institutionSuggestions` is populated in state
+- [x] Add component test asserting that suggestion pills render when `programmeSuggestions` is populated in state
+- [x] Add component test asserting that a loading state is shown when `institutionStatus` is `'loading'`
+- [x] Add component test asserting that an error message is shown when `institutionStatus` is `'error'` and `institutionError` is set
+- [x] Add component test asserting that the programme verify button is disabled when `provider` is empty
+
+#### Geolocation integration
+- [x] Add test asserting that `resolveAndApplyServerCountry` updates `selectedCountryId` when the server returns a supported country different from the current selection
+- [x] Add test asserting that `resolveAndApplyServerCountry` does not change state when the server returns the same country already selected
+- [x] Add test asserting that `resolveAndApplyServerCountry` does not change state when the server returns null
+
+### TDD Plan
+
+RED
+- Write the grade selection tests first — assert `selectOnboardingCurriculum` sets Grade 8, assert `selectOnboardingGrade` updates state and subjects
+- Write the verification UI tests — assert pills render from state, assert loading/error states, assert programme verify disabled without institution
+- Write the geolocation integration tests — assert `resolveAndApplyServerCountry` updates/preserves state correctly
+- Write a context strip test asserting university pills are hidden when values are empty
+
+GREEN
+- Wire `resolveAndApplyServerCountry` into `OnboardingWizard.svelte` onMount
+- Replace "Not chosen" fallback strings with `{#if}` conditional rendering
+- Add `resolveAiRoute` to both verification endpoints
+- No other implementation changes — all behavior already exists, just needs wiring and testing
+
+REFACTOR
+- Remove the unused "Not chosen" fallback strings only after the conditional rendering is confirmed working
+- No other refactoring
+
+### Implementation Notes
+- `resolveAndApplyServerCountry` call: add to `OnboardingWizard.svelte` inside `onMount`, guarded by a module-level `let geoResolved = false` flag to prevent re-runs
+- Context strip pills: lines ~298–309 in `OnboardingWizard.svelte` — wrap each university pill in `{#if state.onboarding.provider}`, `{#if state.onboarding.programme}`, `{#if state.onboarding.level}`
+- AI route resolution: import `getAiConfig` and `resolveAiRoute` in both verification endpoints, following the pattern in `src/routes/api/ai/subject-hints/+server.ts` (lines 73–74)
+- Grade selection tests: these are store-level async tests that need to mock `fetchOptions` — add to `src/lib/stores/app-state-wizard.test.ts` or a new `app-state-grade.test.ts`
+- Verification UI tests: add to `src/lib/components/OnboardingWizard.test.ts` — render with `universityVerification.institutionSuggestions` populated in state and assert `.suggestion-pill` elements exist
+- Geolocation integration tests: mock `fetchServerCountryCode` and test `resolveAndApplyServerCountry` in a store-level test
+- Reuse existing CSS and components — no visual changes beyond hiding empty pills
+
+### Done Criteria
+- `resolveAndApplyServerCountry` fires on first wizard load and auto-selects the geolocation country
+- University context pills are hidden when their values are empty (no "Not chosen" text)
+- Verification endpoints use the configured AI route and model tier
+- All missing Phase 3 grade tests written and passing
+- All missing Phase 4 verification UI tests written and passing
+- All geolocation integration tests written and passing
+- No scope creep
+- No duplicate logic
 
 ---
 

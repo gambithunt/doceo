@@ -1,15 +1,17 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const { onboardingCountries } = vi.hoisted(() => ({
+const { activeCountries, onboardingCountries } = vi.hoisted(() => ({
   onboardingCountries: [
     { id: 'za', name: 'South Africa' },
     { id: 'us', name: 'United States' },
     { id: 'gb', name: 'United Kingdom' }
-  ]
+  ],
+  activeCountries: [{ id: 'za', name: 'South Africa' }]
 }));
 
 vi.mock('$lib/data/onboarding', () => ({
-  onboardingCountries
+  onboardingCountries,
+  activeCountries
 }));
 
 describe('geo country endpoint', () => {
@@ -32,19 +34,19 @@ describe('geo country endpoint', () => {
     expect(result).toBe('za');
   });
 
-  it('returns country from Cloudflare header in lowercase', async () => {
+  it('returns null for unsupported Cloudflare country', async () => {
     const result = await getCountryCode({ 'cf-ipcountry': 'us' });
-    expect(result).toBe('us');
+    expect(result).toBeNull();
   });
 
   it('falls back to external service when Cloudflare header is missing', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
-      text: async () => ' GB '
+      text: async () => ' ZA '
     } as unknown as Response);
 
     const result = await getCountryCode({});
-    expect(result).toBe('gb');
+    expect(result).toBe('za');
     expect(global.fetch).toHaveBeenCalledWith('https://ipapi.co/country/', expect.any(Object));
   });
 
@@ -75,11 +77,11 @@ describe('geo country endpoint', () => {
     expect(result).toBeNull();
   });
 
-  it('uses cloudflare source when available', async () => {
+  it('uses cloudflare source when available and supported', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch');
     const { GET } = await import('../../routes/api/geo/country/+server');
     const mockRequest = new Request('http://localhost/api/geo/country', {
-      headers: new Headers({ 'cf-ipcountry': 'US' })
+      headers: new Headers({ 'cf-ipcountry': 'ZA' })
     });
     const response = await GET({ request: mockRequest } as never);
     const body = await response.json();
@@ -90,7 +92,7 @@ describe('geo country endpoint', () => {
   it('uses external source when Cloudflare is unavailable', async () => {
     vi.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
-      text: async () => 'GB'
+      text: async () => 'ZA'
     } as unknown as Response);
 
     const { GET } = await import('../../routes/api/geo/country/+server');

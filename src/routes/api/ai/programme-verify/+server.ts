@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
+import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 
 const ProgrammeVerifyBodySchema = z.object({
   institution: z.string().min(1).max(200),
@@ -22,15 +23,23 @@ export async function POST({ request, fetch }): Promise<Response> {
 
   const { institution, query } = parsed.data;
 
+  const aiConfig = await getAiConfig();
+  const { model: resolvedModel } = resolveAiRoute(aiConfig, 'programme-verify');
+
   const edge = await invokeAuthenticatedAiEdge<ProgrammeVerifyResponse>(
     request,
     fetch,
     'programme-verify',
-    { institution, query }
+    { institution, query },
+    undefined,
+    resolvedModel
   );
 
   if (!edge.ok || !edge.payload) {
-    return json({ error: edge.error ?? 'Programme verification failed' }, { status: 502 });
+    return json(
+      { error: 'Programme verification is not available right now. You can type your programme name manually.', suggestions: [] },
+      { status: 503 }
+    );
   }
 
   return json({

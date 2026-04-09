@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { getCurriculumsByCountry, getRecommendedCountryId, onboardingCountries } from './onboarding';
+import {
+  activeCountries,
+  getCurriculumsByCountry,
+  getRecommendedCountryId,
+  onboardingCountries
+} from './onboarding';
 
-describe('updated phase 5 global onboarding countries', () => {
-  it('exposes a global fallback country list instead of only South Africa', () => {
-    expect(onboardingCountries.length).toBeGreaterThan(5);
+describe('Phase 2: active countries', () => {
+  it('activeCountries contains only South Africa', () => {
+    expect(activeCountries.length).toBe(1);
+    expect(activeCountries[0]).toEqual(
+      expect.objectContaining({ id: 'za', name: 'South Africa', enabled: true })
+    );
+  });
+
+  it('onboardingCountries preserves all country data for future use', () => {
+    expect(onboardingCountries.length).toBe(11);
     expect(onboardingCountries).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'za', name: 'South Africa' }),
@@ -20,29 +32,29 @@ describe('updated phase 5 global onboarding countries', () => {
 });
 
 describe('country recommendation', () => {
-  it('returns a country id when timezone matches a supported country', () => {
+  it('returns za when timezone matches South Africa', () => {
     const result = getRecommendedCountryId({ timezone: 'Africa/Johannesburg' });
     expect(result).toBe('za');
   });
 
-  it('returns a country id when locale language matches a supported country', () => {
+  it('returns za when locale language matches South Africa', () => {
     const result = getRecommendedCountryId({ localeLanguage: 'en-ZA' });
     expect(result).toBe('za');
   });
 
-  it('returns null when no valid signals are provided', () => {
+  it('defaults to za when no valid signals are provided', () => {
     const result = getRecommendedCountryId({});
-    expect(result).toBeNull();
+    expect(result).toBe('za');
   });
 
-  it('falls back to null for unknown timezone', () => {
+  it('defaults to za for unknown timezone', () => {
     const result = getRecommendedCountryId({ timezone: 'Unknown/Unknown' });
-    expect(result).toBeNull();
+    expect(result).toBe('za');
   });
 
-  it('falls back to null for unknown locale language', () => {
+  it('defaults to za for unknown locale language', () => {
     const result = getRecommendedCountryId({ localeLanguage: 'xx-XX' });
-    expect(result).toBeNull();
+    expect(result).toBe('za');
   });
 
   it('prefers timezone over locale when both are provided', () => {
@@ -53,95 +65,74 @@ describe('country recommendation', () => {
     expect(result).toBe('za');
   });
 
-  it('returns null when timezone is not in the supported list', () => {
+  it('defaults to za when timezone is not in the active list', () => {
     const result = getRecommendedCountryId({ timezone: 'Antarctica/DumontDUrville' });
-    expect(result).toBeNull();
+    expect(result).toBe('za');
   });
 
-  it('maps US timezone to US country', () => {
+  it('defaults to za when US timezone is detected', () => {
     const result = getRecommendedCountryId({ timezone: 'America/New_York' });
-    expect(result).toBe('us');
+    expect(result).toBe('za');
   });
 
-  it('maps UK timezone to GB country', () => {
+  it('defaults to za when UK timezone is detected', () => {
     const result = getRecommendedCountryId({ timezone: 'Europe/London' });
-    expect(result).toBe('gb');
+    expect(result).toBe('za');
   });
 
-  it('maps Australia timezone to AU country', () => {
+  it('defaults to za when Australia timezone is detected', () => {
     const result = getRecommendedCountryId({ timezone: 'Australia/Sydney' });
-    expect(result).toBe('au');
+    expect(result).toBe('za');
   });
 
-  it('maps India timezone to IN country', () => {
+  it('defaults to za when India timezone is detected', () => {
     const result = getRecommendedCountryId({ timezone: 'Asia/Kolkata' });
-    expect(result).toBe('in');
+    expect(result).toBe('za');
   });
 
-  it('returns a country id when ipCountryCode matches a supported country', () => {
+  it('returns za when ipCountryCode is ZA', () => {
     const result = getRecommendedCountryId({ ipCountryCode: 'ZA' });
     expect(result).toBe('za');
   });
 
-  it('returns a country id when ipCountryCode is lowercase', () => {
+  it('defaults to za when ipCountryCode is unsupported', () => {
     const result = getRecommendedCountryId({ ipCountryCode: 'us' });
-    expect(result).toBe('us');
+    expect(result).toBe('za');
   });
 
-  it('prefers ipCountryCode over timezone when both are provided', () => {
-    const result = getRecommendedCountryId({
-      ipCountryCode: 'us',
-      timezone: 'Africa/Johannesburg'
-    });
-    expect(result).toBe('us');
+  it('defaults to za when ipCountryCode is xx', () => {
+    const result = getRecommendedCountryId({ ipCountryCode: 'xx' });
+    expect(result).toBe('za');
   });
 
-  it('prefers ipCountryCode over localeLanguage when both are provided', () => {
-    const result = getRecommendedCountryId({
-      ipCountryCode: 'gb',
-      localeLanguage: 'en-ZA'
-    });
-    expect(result).toBe('gb');
-  });
-
-  it('prefers ipCountryCode over timezone and localeLanguage when all are provided', () => {
-    const result = getRecommendedCountryId({
-      ipCountryCode: 'au',
-      timezone: 'Africa/Johannesburg',
-      localeLanguage: 'en-US'
-    });
-    expect(result).toBe('au');
-  });
-
-  it('falls back to timezone when ipCountryCode is not a supported country', () => {
+  it('defaults to za when ipCountryCode is unsupported, ignoring timezone', () => {
     const result = getRecommendedCountryId({
       ipCountryCode: 'xx',
       timezone: 'America/New_York'
     });
-    expect(result).toBe('us');
+    expect(result).toBe('za');
   });
 
-  it('falls back to locale when ipCountryCode is not supported and timezone is unknown', () => {
+  it('defaults to za when ipCountryCode is unsupported and timezone is unknown', () => {
     const result = getRecommendedCountryId({
       ipCountryCode: 'xx',
       timezone: 'Unknown/Unknown',
       localeLanguage: 'en-GB'
     });
-    expect(result).toBe('gb');
+    expect(result).toBe('za');
   });
 
-  it('returns null when ipCountryCode is unsupported and no fallback signals exist', () => {
-    const result = getRecommendedCountryId({
-      ipCountryCode: 'xx'
-    });
-    expect(result).toBeNull();
+  it('defaults to za when ipCountryCode is zz', () => {
+    const result = getRecommendedCountryId({ ipCountryCode: 'zz' });
+    expect(result).toBe('za');
   });
 
-  it('treats unsupported ipCountryCode as missing and falls through to timezone', () => {
+  it('defaults to za when ipCountryCode is au', () => {
     const result = getRecommendedCountryId({
-      ipCountryCode: 'zz',
-      timezone: 'Europe/London'
+      ipCountryCode: 'au',
+      timezone: 'Africa/Johannesburg',
+      localeLanguage: 'en-US'
     });
-    expect(result).toBe('gb');
+    expect(result).toBe('za');
   });
 });

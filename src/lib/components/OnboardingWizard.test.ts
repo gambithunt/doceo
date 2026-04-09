@@ -25,7 +25,15 @@ vi.mock('$lib/stores/app-state', () => ({
     verifyAndAddSubject: vi.fn(),
     resetSubjectVerification: vi.fn(),
     removeOnboardingCustomSubject: vi.fn(),
-    completeOnboarding: vi.fn()
+    completeOnboarding: vi.fn(),
+    selectVerifiedInstitution: vi.fn(),
+    selectVerifiedProgramme: vi.fn(),
+    setOnboardingProvider: vi.fn(),
+    setOnboardingProgramme: vi.fn(),
+    setOnboardingLevel: vi.fn(),
+    verifyInstitution: vi.fn(),
+    verifyProgramme: vi.fn(),
+    resolveAndApplyServerCountry: vi.fn()
   }
 }));
 
@@ -237,7 +245,10 @@ describe('OnboardingWizard', () => {
             onboarding: {
               ...baseState.onboarding,
               currentStep: 'subjects',
-              educationType: 'University'
+              educationType: 'University',
+              provider: 'MIT',
+              programme: 'CS',
+              level: 'Year 1'
             }
           }
         }
@@ -282,7 +293,10 @@ describe('OnboardingWizard', () => {
             onboarding: {
               ...baseState.onboarding,
               currentStep: 'review',
-              educationType: 'University'
+              educationType: 'University',
+              provider: 'MIT',
+              programme: 'CS',
+              level: 'Year 1'
             }
           }
         }
@@ -314,6 +328,152 @@ describe('OnboardingWizard', () => {
       const pills = getContextPills(container);
       expect(pills.count).toBe(1);
       expect(pills.texts[0]).toContain('Country');
+    });
+
+    it('hides university pills when provider, programme, and level are empty', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              provider: '',
+              programme: '',
+              level: ''
+            }
+          }
+        }
+      });
+
+      const pills = getContextPills(container);
+      expect(pills.count).toBe(1);
+      expect(pills.texts[0]).toContain('Country');
+      expect(pills.texts.join()).not.toContain('Institution');
+      expect(pills.texts.join()).not.toContain('Programme');
+      expect(pills.texts.join()).not.toContain('Level');
+    });
+  });
+
+  describe('verification UI (Phase 4)', () => {
+    it('renders institution suggestion pills when institutionSuggestions is populated', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              universityVerification: {
+                ...baseState.onboarding.universityVerification,
+                institutionSuggestions: ['University of Cape Town', 'University of Stellenbosch']
+              }
+            }
+          }
+        }
+      });
+
+      const pills = container.querySelectorAll('.suggestion-pill');
+      expect(pills.length).toBeGreaterThanOrEqual(2);
+      expect(pills[0]?.textContent?.trim()).toBe('University of Cape Town');
+      expect(pills[1]?.textContent?.trim()).toBe('University of Stellenbosch');
+    });
+
+    it('renders programme suggestion pills when programmeSuggestions is populated', () => {
+      const baseState = createInitialState();
+      const { container } = render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              provider: 'University of Cape Town',
+              universityVerification: {
+                ...baseState.onboarding.universityVerification,
+                programmeSuggestions: ['Computer Science', 'Information Systems']
+              }
+            }
+          }
+        }
+      });
+
+      const pills = container.querySelectorAll('.suggestion-pill');
+      const pillTexts = Array.from(pills).map((p) => p.textContent?.trim());
+      expect(pillTexts).toContain('Computer Science');
+      expect(pillTexts).toContain('Information Systems');
+    });
+
+    it('shows a loading state when institutionStatus is loading', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              universityVerification: {
+                ...baseState.onboarding.universityVerification,
+                institutionStatus: 'loading'
+              }
+            }
+          }
+        }
+      });
+
+      expect(screen.getByText(/verifying institutions/i)).toBeInTheDocument();
+    });
+
+    it('shows an error message when institutionStatus is error', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              universityVerification: {
+                ...baseState.onboarding.universityVerification,
+                institutionStatus: 'error',
+                institutionError: 'Could not verify institution'
+              }
+            }
+          }
+        }
+      });
+
+      expect(screen.getByText('Could not verify institution')).toBeInTheDocument();
+    });
+
+    it('disables the programme verify button when provider is empty', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'academic',
+              educationType: 'University',
+              provider: '',
+              programme: 'Computer Science'
+            }
+          }
+        }
+      });
+
+      const verifyButtons = screen.getAllByRole('button', { name: 'Verify' });
+      const programmeVerifyBtn = verifyButtons[verifyButtons.length - 1];
+      expect(programmeVerifyBtn).toBeDisabled();
     });
   });
 });

@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  onboardingCountries,
+  getCurriculumsByCountry,
+  getGradesByCurriculum,
+  getSubjectsByCurriculumAndGrade
+} from '$lib/data/onboarding';
 
 const {
   createServerSupabaseAdmin,
@@ -220,5 +226,81 @@ describe('onboarding repository', () => {
         selectedGradeId: 'ieb-grade-11'
       })
     );
+  });
+
+  describe('local catalog fallback', () => {
+    beforeEach(() => {
+      vi.resetAllMocks();
+      isSupabaseConfigured.mockReturnValue(true);
+      throwBackendUnavailable.mockImplementation((message: string) => {
+        throw new Error(message);
+      });
+    });
+
+    it('fetchCountries returns local countries when graph catalog returns empty array', async () => {
+      const mockGraphCatalog = {
+        fetchCountries: vi.fn().mockResolvedValue([])
+      };
+      createServerGraphCatalogRepository.mockReturnValue(mockGraphCatalog);
+      allowLocalCatalogFallback.mockReturnValue(true);
+
+      const { fetchCountries } = await import('./onboarding-repository');
+      const result = await fetchCountries();
+
+      expect(result).toEqual(onboardingCountries);
+    });
+
+    it('fetchCountries returns graph data when not empty', async () => {
+      const graphCountries = [{ id: 'za', name: 'South Africa' }];
+      const mockGraphCatalog = {
+        fetchCountries: vi.fn().mockResolvedValue(graphCountries)
+      };
+      createServerGraphCatalogRepository.mockReturnValue(mockGraphCatalog);
+      allowLocalCatalogFallback.mockReturnValue(true);
+
+      const { fetchCountries } = await import('./onboarding-repository');
+      const result = await fetchCountries();
+
+      expect(result).toEqual(graphCountries);
+    });
+
+    it('fetchCurriculums returns local curriculums when graph catalog returns empty array', async () => {
+      const mockGraphCatalog = {
+        fetchCurriculums: vi.fn().mockResolvedValue([])
+      };
+      createServerGraphCatalogRepository.mockReturnValue(mockGraphCatalog);
+      allowLocalCatalogFallback.mockReturnValue(true);
+
+      const { fetchCurriculums } = await import('./onboarding-repository');
+      const result = await fetchCurriculums('za');
+
+      expect(result).toEqual(getCurriculumsByCountry('za'));
+    });
+
+    it('fetchGrades returns local grades when graph catalog returns empty array', async () => {
+      const mockGraphCatalog = {
+        fetchGrades: vi.fn().mockResolvedValue([])
+      };
+      createServerGraphCatalogRepository.mockReturnValue(mockGraphCatalog);
+      allowLocalCatalogFallback.mockReturnValue(true);
+
+      const { fetchGrades } = await import('./onboarding-repository');
+      const result = await fetchGrades('caps');
+
+      expect(result).toEqual(getGradesByCurriculum('caps'));
+    });
+
+    it('fetchSubjects returns local subjects when graph catalog returns empty array', async () => {
+      const mockGraphCatalog = {
+        fetchSubjects: vi.fn().mockResolvedValue([])
+      };
+      createServerGraphCatalogRepository.mockReturnValue(mockGraphCatalog);
+      allowLocalCatalogFallback.mockReturnValue(true);
+
+      const { fetchSubjects } = await import('./onboarding-repository');
+      const result = await fetchSubjects('caps', 'grade-10');
+
+      expect(result).toEqual(getSubjectsByCurriculumAndGrade('caps', 'grade-10'));
+    });
   });
 });

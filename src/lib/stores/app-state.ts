@@ -3105,11 +3105,25 @@ export function createAppStore(initialState: AppState = readState()) {
           body: JSON.stringify({ query, country })
         });
 
-        if (!response.ok) {
-          throw new Error('Institution verification failed');
-        }
-
         const data = (await response.json()) as { suggestions: string[]; error?: string };
+
+        if (!response.ok) {
+          update((state) =>
+            persistAndSync({
+              ...state,
+              onboarding: {
+                ...state.onboarding,
+                universityVerification: {
+                  ...state.onboarding.universityVerification,
+                  institutionStatus: 'error',
+                  institutionSuggestions: data.suggestions ?? [],
+                  institutionError: data.error ?? 'Verification failed. Please try again.'
+                }
+              }
+            })
+          );
+          return;
+        }
 
         update((state) =>
           persistAndSync({
@@ -3171,11 +3185,25 @@ export function createAppStore(initialState: AppState = readState()) {
           body: JSON.stringify({ institution, query })
         });
 
-        if (!response.ok) {
-          throw new Error('Programme verification failed');
-        }
-
         const data = (await response.json()) as { suggestions: string[]; error?: string };
+
+        if (!response.ok) {
+          update((state) =>
+            persistAndSync({
+              ...state,
+              onboarding: {
+                ...state.onboarding,
+                universityVerification: {
+                  ...state.onboarding.universityVerification,
+                  programmeStatus: 'error',
+                  programmeSuggestions: data.suggestions ?? [],
+                  programmeError: data.error ?? 'Verification failed. Please try again.'
+                }
+              }
+            })
+          );
+          return;
+        }
 
         update((state) =>
           persistAndSync({

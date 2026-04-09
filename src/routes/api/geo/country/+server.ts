@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
-import { onboardingCountries } from '$lib/data/onboarding';
+import { activeCountries } from '$lib/data/onboarding';
 
 interface GeoResponse {
   countryCode: string | null;
   source: 'cloudflare' | 'external' | 'fallback';
 }
 
-const SUPPORTED_COUNTRY_CODES = new Set(onboardingCountries.map((c) => c.id.toUpperCase()));
+const SUPPORTED_COUNTRY_CODES = new Set(activeCountries.map((c) => c.id.toUpperCase()));
 
 function isSupportedCountry(code: string): boolean {
   return SUPPORTED_COUNTRY_CODES.has(code.toUpperCase());
