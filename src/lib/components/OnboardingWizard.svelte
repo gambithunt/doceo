@@ -118,9 +118,7 @@
     }
 
     if (state.onboarding.currentStep === 'subjects') {
-      return state.onboarding.selectionMode === 'unsure'
-        ? 'You can continue now and refine the subject list later.'
-        : 'Keep going once you have captured everything you study.';
+      return 'Keep going once you have captured everything you study.';
     }
 
     return 'Save this to enter your dashboard and get recommendations.';
@@ -199,8 +197,14 @@
     if (state.onboarding.currentStep === 'subjects') {
       return (
         state.onboarding.selectedSubjectIds.length > 0 ||
-        state.onboarding.customSubjects.length > 0 ||
-        state.onboarding.selectionMode === 'unsure'
+        state.onboarding.customSubjects.length > 0
+      );
+    }
+
+    if (state.onboarding.currentStep === 'review') {
+      return (
+        state.onboarding.selectedSubjectIds.length > 0 ||
+        state.onboarding.customSubjects.length > 0
       );
     }
 
@@ -412,30 +416,32 @@
           <div class="form-grid">
             <label>
               <span>Institution name</span>
-              {#if state.onboarding.universityVerification.institutionStatus === 'loading'}
-                <div class="verification-loading">Verifying institutions...</div>
-              {:else if state.onboarding.universityVerification.institutionSuggestions.length > 0}
-                <div class="suggestion-pills">
-                  {#each state.onboarding.universityVerification.institutionSuggestions as suggestion}
-                    <button
-                      type="button"
-                      class="suggestion-pill"
-                      class:active={state.onboarding.provider === suggestion}
-                      onclick={() => appState.selectVerifiedInstitution(suggestion)}
-                    >
-                      {suggestion}
-                    </button>
-                  {/each}
-                </div>
-              {:else if state.onboarding.universityVerification.institutionStatus === 'error'}
-                <div class="verification-error">{state.onboarding.universityVerification.institutionError}</div>
-              {/if}
+              <input
+                value={state.onboarding.provider}
+                placeholder="e.g. University of Cape Town"
+                oninput={(event) => appState.setOnboardingProvider((event.currentTarget as HTMLInputElement).value)}
+              />
+              <div class="verify-feedback-slot">
+                {#if state.onboarding.universityVerification.institutionStatus === 'loading'}
+                  <div class="verification-loading">Verifying institutions...</div>
+                {:else if state.onboarding.universityVerification.institutionSuggestions.length > 0}
+                  <div class="suggestion-pills">
+                    {#each state.onboarding.universityVerification.institutionSuggestions as suggestion}
+                      <button
+                        type="button"
+                        class="suggestion-pill"
+                        class:active={state.onboarding.provider === suggestion}
+                        onclick={() => appState.selectVerifiedInstitution(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    {/each}
+                  </div>
+                {:else if state.onboarding.universityVerification.institutionStatus === 'error'}
+                  <div class="verification-error">{state.onboarding.universityVerification.institutionError}</div>
+                {/if}
+              </div>
               <div class="verify-input-row">
-                <input
-                  value={state.onboarding.provider}
-                  placeholder="e.g. University of Cape Town"
-                  oninput={(event) => appState.setOnboardingProvider((event.currentTarget as HTMLInputElement).value)}
-                />
                 <button
                   type="button"
                   class="verify-btn"
@@ -459,31 +465,33 @@
 
             <label>
               <span>Programme</span>
-              {#if state.onboarding.universityVerification.programmeStatus === 'loading'}
-                <div class="verification-loading">Verifying programmes...</div>
-              {:else if state.onboarding.universityVerification.programmeSuggestions.length > 0}
-                <div class="suggestion-pills">
-                  {#each state.onboarding.universityVerification.programmeSuggestions as suggestion}
-                    <button
-                      type="button"
-                      class="suggestion-pill"
-                      class:active={state.onboarding.programme === suggestion}
-                      onclick={() => appState.selectVerifiedProgramme(suggestion)}
-                    >
-                      {suggestion}
-                    </button>
-                  {/each}
-                </div>
-              {:else if state.onboarding.universityVerification.programmeStatus === 'error'}
-                <div class="verification-error">{state.onboarding.universityVerification.programmeError}</div>
-              {/if}
+              <input
+                value={state.onboarding.programme}
+                placeholder="e.g. Computer Science"
+                disabled={!state.onboarding.provider}
+                oninput={(event) => appState.setOnboardingProgramme((event.currentTarget as HTMLInputElement).value)}
+              />
+              <div class="verify-feedback-slot">
+                {#if state.onboarding.universityVerification.programmeStatus === 'loading'}
+                  <div class="verification-loading">Verifying programmes...</div>
+                {:else if state.onboarding.universityVerification.programmeSuggestions.length > 0}
+                  <div class="suggestion-pills">
+                    {#each state.onboarding.universityVerification.programmeSuggestions as suggestion}
+                      <button
+                        type="button"
+                        class="suggestion-pill"
+                        class:active={state.onboarding.programme === suggestion}
+                        onclick={() => appState.selectVerifiedProgramme(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    {/each}
+                  </div>
+                {:else if state.onboarding.universityVerification.programmeStatus === 'error'}
+                  <div class="verification-error">{state.onboarding.universityVerification.programmeError}</div>
+                {/if}
+              </div>
               <div class="verify-input-row">
-                <input
-                  value={state.onboarding.programme}
-                  placeholder="e.g. Computer Science"
-                  disabled={!state.onboarding.provider}
-                  oninput={(event) => appState.setOnboardingProgramme((event.currentTarget as HTMLInputElement).value)}
-                />
                 <button
                   type="button"
                   class="verify-btn"
@@ -690,15 +698,6 @@
             </div>
           </div>
         {/if}
-
-        <label class="unsure">
-          <input
-            type="checkbox"
-            checked={state.onboarding.selectionMode === 'unsure'}
-            onchange={(event) => appState.setOnboardingUnsure((event.currentTarget as HTMLInputElement).checked)}
-          />
-          <span>Not sure yet. Continue now and refine this later.</span>
-        </label>
       {/if}
 
       {#if state.onboarding.currentStep === 'review'}
@@ -785,7 +784,7 @@
         </div>
 
         {#if state.onboarding.currentStep === 'review'}
-          <button type="button" aria-busy={state.onboarding.isSaving} onclick={complete} disabled={state.onboarding.isSaving}>
+          <button type="button" aria-busy={state.onboarding.isSaving} onclick={complete} disabled={state.onboarding.isSaving || !canContinue()}>
             {state.onboarding.isSaving ? 'Saving profile...' : 'Save profile and continue'}
           </button>
         {:else}
@@ -1263,28 +1262,6 @@
     font-size: 0.9rem;
   }
 
-  .unsure {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.84rem 0.95rem;
-    border-radius: 1.15rem;
-    background: color-mix(in srgb, var(--surface-soft) 46%, transparent);
-    border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
-  }
-
-  .unsure span {
-    font-size: 0.9rem;
-    line-height: 1.45;
-    color: var(--text-soft);
-  }
-
-  .unsure input {
-    width: 1.05rem;
-    height: 1.05rem;
-    margin: 0;
-    accent-color: var(--accent);
-  }
 
   .review-grid {
     grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -1590,6 +1567,10 @@
   .verify-input-row {
     display: grid;
     gap: 0.5rem;
+  }
+
+  .verify-feedback-slot {
+    min-height: 2.5rem;
   }
 
   .verify-btn {

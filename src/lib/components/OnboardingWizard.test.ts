@@ -553,4 +553,84 @@ describe('OnboardingWizard', () => {
       expect(programmeVerifyBtn).toBeDisabled();
     });
   });
+
+  describe('minimum progression requirements (Phase 5)', () => {
+    it('disables Continue button on subjects step when no subjects selected and selectionMode is unsure', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'subjects',
+              selectedSubjectIds: [],
+              customSubjects: [],
+              selectionMode: 'unsure'
+            }
+          }
+        }
+      });
+
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    });
+
+    it('enables Continue button on subjects step when at least one subject is selected', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'subjects',
+              selectedSubjectIds: ['math-1'],
+              customSubjects: [],
+              selectionMode: 'structured'
+            }
+          }
+        }
+      });
+
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    });
+
+    it('disables Continue button on review step when no subjects selected', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'review',
+              selectedSubjectIds: [],
+              customSubjects: []
+            }
+          }
+        }
+      });
+
+      expect(screen.getByRole('button', { name: 'Save profile and continue' })).toBeDisabled();
+    });
+
+    it('enables Continue button on review step when at least one custom subject is added', () => {
+      const baseState = createInitialState();
+      render(OnboardingWizard, {
+        props: {
+          state: {
+            ...baseState,
+            onboarding: {
+              ...baseState.onboarding,
+              currentStep: 'review',
+              selectedSubjectIds: [],
+              customSubjects: ['Physics']
+            }
+          }
+        }
+      });
+
+      expect(screen.getByRole('button', { name: 'Save profile and continue' })).toBeEnabled();
+    });
+  });
 });

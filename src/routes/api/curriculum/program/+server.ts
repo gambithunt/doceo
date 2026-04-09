@@ -5,9 +5,9 @@ import { loadLearningProgram } from '$lib/server/learning-program-repository';
 
 const ProgramBodySchema = z.object({
   country: z.string().min(1),
-  curriculumName: z.string().min(1),
+  curriculumName: z.string(),
   curriculumId: z.string(),
-  grade: z.string().min(1),
+  grade: z.string(),
   gradeId: z.string(),
   selectedSubjectIds: z.array(z.string()),
   selectedSubjectNames: z.array(z.string()),

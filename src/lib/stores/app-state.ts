@@ -237,16 +237,26 @@ async function fetchOptions<TOption>(query: string): Promise<TOption[]> {
 }
 
 async function fetchLearningProgram(state: AppState): Promise<LearningProgramResponse> {
+  const country = state.onboarding.options.countries.find(
+    (c) => c.id === state.onboarding.selectedCountryId
+  )?.name ?? state.profile.country;
+  const curriculumName = state.onboarding.options.curriculums.find(
+    (c) => c.id === state.onboarding.selectedCurriculumId
+  )?.name ?? state.profile.curriculum;
+  const grade = state.onboarding.options.grades.find(
+    (g) => g.id === state.onboarding.selectedGradeId
+  )?.label ?? state.profile.grade;
+
   const response = await fetch('/api/curriculum/program', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      country: state.profile.country,
-      curriculumName: state.profile.curriculum,
+      country,
+      curriculumName,
       curriculumId: state.onboarding.selectedCurriculumId,
-      grade: state.profile.grade,
+      grade,
       gradeId: state.onboarding.selectedGradeId,
       selectedSubjectIds: state.onboarding.selectedSubjectIds,
       selectedSubjectNames: state.onboarding.selectedSubjectNames,
@@ -584,11 +594,22 @@ export function createAppStore(initialState: AppState = readState()) {
       const payload = (await response.json()) as BootstrapResponse;
       const remoteState = normalizeAppState(payload.state);
       // Preserve client-only UI prefs (theme) that aren't round-tripped through the server
-      const localTheme = readState().ui.theme;
+      const local = readState();
+      const localTheme = local.ui.theme;
       const routeScreen = screenForPath(window.location.pathname);
+      // If the client completed onboarding but the server hasn't caught up yet,
+      // preserve the local completion so the user isn't sent back to onboarding.
+      const onboardingCompleted = local.onboarding.completed || remoteState.onboarding.completed;
       set(
         persistAndSync({
           ...remoteState,
+          onboarding: {
+            ...remoteState.onboarding,
+            completed: onboardingCompleted,
+            completedAt: onboardingCompleted
+              ? (remoteState.onboarding.completedAt ?? local.onboarding.completedAt)
+              : null
+          },
           ui: {
             ...remoteState.ui,
             theme: localTheme,
@@ -3323,9 +3344,11 @@ export function createAppStore(initialState: AppState = readState()) {
 
       update((state) => {
         const selectedSubject = program.curriculum.subjects[0];
-        const selectedTopic = selectedSubject.topics[0];
-        const selectedSubtopic = selectedTopic.subtopics[0];
-        const selectedLesson = program.lessons.find((item) => item.id === selectedSubtopic.lessonIds[0]) ?? program.lessons[0];
+        const selectedTopic = selectedSubject?.topics[0];
+        const selectedSubtopic = selectedTopic?.subtopics[0];
+        const selectedLesson = selectedSubtopic
+          ? program.lessons.find((item) => item.id === selectedSubtopic.lessonIds[0]) ?? program.lessons[0]
+          : program.lessons[0];
 
         return persistAndSync({
           ...state,
@@ -3351,11 +3374,11 @@ export function createAppStore(initialState: AppState = readState()) {
           ui: {
             ...state.ui,
             currentScreen: 'dashboard',
-            selectedSubjectId: selectedSubject.id,
-            selectedTopicId: selectedTopic.id,
-            selectedSubtopicId: selectedSubtopic.id,
-            selectedLessonId: selectedLesson.id,
-            practiceQuestionId: selectedLesson.practiceQuestionIds[0]
+            selectedSubjectId: selectedSubject?.id ?? '',
+            selectedTopicId: selectedTopic?.id ?? '',
+            selectedSubtopicId: selectedSubtopic?.id ?? '',
+            selectedLessonId: selectedLesson?.id ?? '',
+            practiceQuestionId: selectedLesson?.practiceQuestionIds[0] ?? ''
           }
         });
       });

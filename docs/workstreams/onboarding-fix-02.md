@@ -162,9 +162,9 @@ When suggestion pills, error messages, or loading text appear for institution or
 ### Tasks (Checklist)
 
 - [x] Add `align-items: start` to the `.form-grid` CSS rule
-- [ ] Restructure the university label markup: move suggestion pills, error, and loading blocks from above the input to below the input (between input and verify button)
-- [ ] Wrap feedback (suggestions/error/loading) in a `.verify-feedback-slot` container with `min-height: 2.5rem` so the verify button doesn't jump when feedback appears or disappears
-- [ ] Apply the same structure to both institution and programme labels
+- [x] Restructure the university label markup: move suggestion pills, error, and loading blocks from above the input to below the input (between input and verify button)
+- [x] Wrap feedback (suggestions/error/loading) in a `.verify-feedback-slot` container with `min-height: 2.5rem` so the verify button doesn't jump when feedback appears or disappears
+- [x] Apply the same structure to both institution and programme labels
 - [ ] Verify visually: toggling feedback on/off does not shift the input or verify button position
 - [ ] Verify visually: both columns stay top-aligned when one has feedback and the other does not
 
@@ -294,12 +294,12 @@ Prevent the user from advancing through the wizard without making the minimum re
 
 ### Tasks (Checklist)
 
-- [ ] Update `canContinue()` for subjects step: remove `selectionMode === 'unsure'` from the OR condition
-- [ ] Update `canContinue()` for review step: require `selectedSubjectIds.length > 0 || customSubjects.length > 0`
-- [ ] Remove or hide the "Not sure yet" checkbox on the subjects step (it creates a false escape hatch)
-- [ ] Write test for `canContinue` returning false when no subjects selected and unsure is checked
-- [ ] Write test for `canContinue` returning false on review step with no subjects
-- [ ] Write test for `canContinue` returning true on review step with at least 1 subject
+- [x] Update `canContinue()` for subjects step: remove `selectionMode === 'unsure'` from the OR condition
+- [x] Update `canContinue()` for review step: require `selectedSubjectIds.length > 0 || customSubjects.length > 0`
+- [x] Remove or hide the "Not sure yet" checkbox on the subjects step (it creates a false escape hatch)
+- [x] Write test for `canContinue` returning false when no subjects selected and unsure is checked
+- [x] Write test for `canContinue` returning false on review step with no subjects
+- [x] Write test for `canContinue` returning true on review step with at least 1 subject
 
 ### TDD Plan
 
