@@ -995,7 +995,52 @@ export function createAppStore(initialState: AppState = readState()) {
     const snapshot = currentState();
     const subject = snapshot.curriculum.subjects.find((item) => item.id === subjectId) ?? snapshot.curriculum.subjects[0];
 
-    if (!subject || !snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
+    if (!subject) {
+      return;
+    }
+
+    // University / stub subjects have no structured curriculumId/gradeId.
+    // Build topic suggestions directly from the local curriculum data.
+    if (!snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
+      const localTopics: DashboardTopicDiscoverySuggestion[] = subject.topics.flatMap((topic, tIndex) =>
+        topic.subtopics.map((subtopic, sIndex) => ({
+          topicSignature: `${subject.id}:${topic.id}:${subtopic.id}`,
+          topicLabel: subtopic.name,
+          nodeId: topic.id,
+          source: 'graph_existing' as const,
+          rank: tIndex * 100 + sIndex + 1,
+          reason: `Topic from ${subject.name}`,
+          sampleSize: 0,
+          thumbsUpCount: 0,
+          thumbsDownCount: 0,
+          completionRate: null,
+          freshness: 'stable' as const,
+          feedback: null,
+          feedbackPending: false
+        }))
+      );
+
+      update((state) =>
+        persistAndSync({
+          ...state,
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            selectedSubjectId: subject.id,
+            discovery: {
+              ...state.topicDiscovery.discovery,
+              status: localTopics.length > 0 ? 'ready' : 'empty',
+              subjectId: subject.id,
+              topics: localTopics,
+              provider: 'local',
+              model: 'local',
+              requestId: crypto.randomUUID(),
+              error: null,
+              lastLoadedAt: new Date().toISOString(),
+              refreshed: false
+            }
+          }
+        })
+      );
       return;
     }
 
@@ -1133,21 +1178,23 @@ export function createAppStore(initialState: AppState = readState()) {
     const snapshot = currentState();
     const topic = snapshot.topicDiscovery.discovery.topics.find((item) => item.topicSignature === topicSignature);
 
-    if (!topic || !snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
+    if (!topic) {
       return;
     }
 
-    await postTopicDiscoveryEvent(
-      '/api/curriculum/topic-discovery/click',
-      buildTopicDiscoveryEventPayload(snapshot, topic)
-    );
+    if (snapshot.profile.curriculumId && snapshot.profile.gradeId) {
+      await postTopicDiscoveryEvent(
+        '/api/curriculum/topic-discovery/click',
+        buildTopicDiscoveryEventPayload(snapshot, topic)
+      );
+    }
   }
 
   async function recordTopicFeedback(topicSignature: string, feedback: TopicDiscoveryFeedback): Promise<void> {
     const snapshot = currentState();
     const topic = snapshot.topicDiscovery.discovery.topics.find((item) => item.topicSignature === topicSignature);
 
-    if (!topic || !snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
+    if (!topic) {
       return;
     }
 
@@ -1170,10 +1217,12 @@ export function createAppStore(initialState: AppState = readState()) {
       })
     );
 
-    const recorded = await postTopicDiscoveryEvent('/api/curriculum/topic-discovery/feedback', {
-      ...buildTopicDiscoveryEventPayload(snapshot, topic),
-      feedback
-    });
+    const recorded = snapshot.profile.curriculumId && snapshot.profile.gradeId
+      ? await postTopicDiscoveryEvent('/api/curriculum/topic-discovery/feedback', {
+          ...buildTopicDiscoveryEventPayload(snapshot, topic),
+          feedback
+        })
+      : true;
 
     update((state) =>
       persistAndSync({
@@ -1670,6 +1719,50 @@ export function createAppStore(initialState: AppState = readState()) {
     refreshTopicDiscovery,
     recordTopicSuggestionClick,
     recordTopicFeedback,
+    injectHintSuggestions: (subjectId: string, hints: string[]) => {
+      update((state) => {
+        const normalize = (v: string) => v.trim().replace(/\s+/g, ' ').toLowerCase();
+        const existingLabels = new Set(
+          state.topicDiscovery.discovery.topics.map((t) => normalize(t.topicLabel))
+        );
+        const newTopics: DashboardTopicDiscoverySuggestion[] = hints
+          .filter((label) => label.trim().length > 0 && !existingLabels.has(normalize(label)))
+          .map((label, index) => ({
+            topicSignature: [
+              subjectId.trim(),
+              (state.profile.curriculumId || 'university').trim(),
+              (state.profile.gradeId || 'none').trim(),
+              normalize(label)
+            ].join('::'),
+            topicLabel: label.trim(),
+            nodeId: null,
+            source: 'model_candidate' as const,
+            rank: state.topicDiscovery.discovery.topics.length + index + 1,
+            reason: 'AI-suggested topic',
+            sampleSize: 0,
+            thumbsUpCount: 0,
+            thumbsDownCount: 0,
+            completionRate: null,
+            freshness: 'new' as const,
+            feedback: null,
+            feedbackPending: false
+          }));
+
+        if (newTopics.length === 0) return state;
+
+        return persistAndSync({
+          ...state,
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            discovery: {
+              ...state.topicDiscovery.discovery,
+              topics: [...state.topicDiscovery.discovery.topics, ...newTopics],
+              status: state.topicDiscovery.discovery.status === 'empty' ? 'ready' : state.topicDiscovery.discovery.status
+            }
+          }
+        });
+      });
+    },
     shortlistTopics: async (subjectId: string, studentInput: string) => {
       update((state) =>
         persistAndSync({
@@ -3365,6 +3458,15 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.profile,
             fullName,
             grade,
+            gradeId: state.onboarding.selectedGradeId || state.profile.gradeId,
+            country: state.onboarding.options.countries.find(
+              (c) => c.id === state.onboarding.selectedCountryId
+            )?.name || state.profile.country,
+            countryId: state.onboarding.selectedCountryId || state.profile.countryId,
+            curriculum: state.onboarding.options.curriculums.find(
+              (c) => c.id === state.onboarding.selectedCurriculumId
+            )?.name || state.profile.curriculum,
+            curriculumId: state.onboarding.selectedCurriculumId || state.profile.curriculumId,
             recommendedStartSubjectId: payload.recommendation.subjectId,
             recommendedStartSubjectName: payload.recommendation.subjectName
           },

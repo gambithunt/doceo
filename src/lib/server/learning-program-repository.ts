@@ -157,25 +157,34 @@ function buildProgramFromCurriculum(
 function buildLocalSubjectStubProgram(input: ProgramInput): LearningProgramResult {
   const subjects = dedupe([...input.selectedSubjectNames, ...input.customSubjects]).map((subjectName) => {
     const subjectId = `subject-stub-${slugify(subjectName)}`;
-    const topicId = `topic-stub-${slugify(subjectName)}`;
-    const subtopicId = `subtopic-stub-${slugify(subjectName)}`;
+    const stubTopics = [
+      { label: 'Foundations', desc: `Core ideas in ${subjectName}` },
+      { label: 'Key Concepts', desc: `Essential concepts in ${subjectName}` },
+      { label: 'Methods & Techniques', desc: `Approaches used in ${subjectName}` },
+      { label: 'Problem Solving', desc: `Applied problem solving in ${subjectName}` },
+      { label: 'Analysis & Reasoning', desc: `Critical thinking in ${subjectName}` },
+      { label: 'Connections', desc: `How ${subjectName} connects to other fields` },
+      { label: 'Advanced Topics', desc: `Deeper exploration of ${subjectName}` }
+    ];
 
     return {
       id: subjectId,
       name: subjectName,
-      topics: [
-        {
+      topics: stubTopics.map((stub, index) => {
+        const topicId = `topic-stub-${slugify(subjectName)}-${index}`;
+        const subtopicId = `subtopic-stub-${slugify(subjectName)}-${index}`;
+        return {
           id: topicId,
-          name: `${subjectName} Foundations`,
+          name: `${subjectName} ${stub.label}`,
           subtopics: [
             {
               id: subtopicId,
-              name: `Core ideas in ${subjectName}`,
+              name: stub.desc,
               lessonIds: []
             }
           ]
-        }
-      ]
+        };
+      })
     };
   });
 
