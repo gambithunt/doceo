@@ -81,6 +81,12 @@ export async function loadAppState(profileId: string): Promise<AppState> {
     return normalizeAppState({
       ...base,
       profile: { ...base.profile, id: profileId },
+      // Preserve onboarding data from the snapshot so subject selections,
+      // education type, and other onboarding fields survive the session-row
+      // reconstruction path instead of falling back to createInitialState defaults.
+      onboarding: snapshotState.onboarding.completed
+        ? snapshotState.onboarding
+        : base.onboarding,
       learnerProfile: learnerProfileResult.data?.profile_json ?? base.learnerProfile,
       lessonSessions: sessionRows.map((row) => row.session_json),
       revisionTopics: (revisionResult.data ?? []).map(

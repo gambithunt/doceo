@@ -600,18 +600,60 @@ export function createAppStore(initialState: AppState = readState()) {
       // If the client completed onboarding but the server hasn't caught up yet,
       // preserve the local completion so the user isn't sent back to onboarding.
       const onboardingCompleted = local.onboarding.completed || remoteState.onboarding.completed;
-      set(
-        persistAndSync({
-          ...remoteState,
-          onboarding: {
+
+      // When the local state has completed onboarding but the remote state
+      // appears to carry default/stale subject selections (e.g. server sync
+      // hasn't fired yet), preserve the local onboarding selections so the
+      // user's subject choices survive a fast page refresh.
+      const localOnboardingWins =
+        local.onboarding.completed &&
+        !remoteState.onboarding.completed &&
+        local.onboarding.selectedSubjectNames.length > 0;
+
+      const mergedOnboarding = localOnboardingWins
+        ? {
+            ...local.onboarding,
+            completed: onboardingCompleted,
+            completedAt: onboardingCompleted
+              ? (local.onboarding.completedAt ?? remoteState.onboarding.completedAt)
+              : null,
+            options: {
+              ...local.onboarding.options,
+              countries: remoteState.onboarding.options.countries.length > 0
+                ? remoteState.onboarding.options.countries
+                : local.onboarding.options.countries
+            }
+          }
+        : {
             ...remoteState.onboarding,
             completed: onboardingCompleted,
             completedAt: onboardingCompleted
               ? (remoteState.onboarding.completedAt ?? local.onboarding.completedAt)
               : null
-          },
+          };
+
+      set(
+        persistAndSync({
+          ...remoteState,
+          onboarding: mergedOnboarding,
+          // When local onboarding wins, also preserve the local curriculum and
+          // lessons so that `deriveLearningState` doesn't regenerate from defaults.
+          ...(localOnboardingWins
+            ? {
+                curriculum: local.curriculum,
+                lessons: local.lessons,
+                questions: local.questions,
+                profile: {
+                  ...remoteState.profile,
+                  ...local.profile,
+                  // Always prefer the remote profile.id (set from the auth token
+                  // in bootstrap) over a potentially stale local value.
+                  id: remoteState.profile.id || local.profile.id
+                }
+              }
+            : {}),
           ui: {
-            ...remoteState.ui,
+            ...(localOnboardingWins ? local.ui : remoteState.ui),
             theme: localTheme,
             currentScreen: routeScreen === 'landing' ? remoteState.ui.currentScreen : routeScreen
           },

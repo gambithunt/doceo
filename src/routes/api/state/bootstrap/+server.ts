@@ -95,6 +95,7 @@ export async function GET({ request }) {
     learnerProfile: refreshedLearnerProfile,
     profile: {
       ...state.profile,
+      id: profileId,
       fullName: fullName || state.profile.fullName
     }
   };
@@ -123,12 +124,14 @@ export async function GET({ request }) {
   const gradeLabel =
     onboardingOptions?.grades.find((grade) => grade.id === onboardingProgress?.selectedGradeId)?.label ??
     stateWithProfile.profile.grade;
-  const shouldLoadLearningProgram = Boolean(
-    onboardingProgress &&
-      onboardingProgress.selectedCurriculumId &&
-      onboardingProgress.selectedGradeId &&
-      (onboardingProgress.selectedSubjectIds.length > 0 || onboardingProgress.customSubjects.length > 0)
+  const hasSubjects = onboardingProgress &&
+    (onboardingProgress.selectedSubjectIds.length > 0 ||
+     onboardingProgress.customSubjects.length > 0 ||
+     onboardingProgress.selectedSubjectNames.length > 0);
+  const isStructuredPath = Boolean(
+    onboardingProgress?.selectedCurriculumId && onboardingProgress?.selectedGradeId
   );
+  const shouldLoadLearningProgram = Boolean(hasSubjects && (isStructuredPath || onboardingProgress));
   let learningProgram = null;
 
   if (shouldLoadLearningProgram && onboardingProgress) {

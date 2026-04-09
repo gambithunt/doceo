@@ -192,7 +192,6 @@
 
   $effect(() => {
     if (!browser || !selectedSubject || hasRequestedInitialDiscovery) return;
-    if (!viewState.profile.curriculumId || !viewState.profile.gradeId) return;
     if (discoveryState.status !== 'idle' || discoveryTopics.length > 0) return;
     hasRequestedInitialDiscovery = true;
     void appState.loadTopicDiscovery(selectedSubject.id);

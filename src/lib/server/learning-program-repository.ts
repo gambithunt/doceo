@@ -216,6 +216,19 @@ function mergePrograms(primary: LearningProgramResult, additional: LearningProgr
 }
 
 export async function loadLearningProgram(input: ProgramInput): Promise<LearningProgramResult> {
+  // University / unstructured paths have no real curriculumId or gradeId.
+  // Build a local stub program from subject names instead of querying the
+  // graph catalog, which has no data for university-style subjects.
+  const isUnstructuredPath = !input.curriculumId || !input.gradeId;
+
+  if (isUnstructuredPath) {
+    if (input.selectedSubjectNames.length > 0 || input.customSubjects.length > 0) {
+      return buildLocalSubjectStubProgram(input);
+    }
+
+    throwBackendUnavailable('Learning program backend is unavailable.');
+  }
+
   const graphCatalog = createServerGraphCatalogRepository();
 
   if (input.selectedSubjectIds.length === 0) {

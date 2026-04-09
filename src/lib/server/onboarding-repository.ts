@@ -235,13 +235,17 @@ async function writeOnboardingProgress(
   if (input.selectedSubjectIds.length > 0) {
     const subjects = await fetchSubjects(input.curriculumId, input.gradeId);
     await supabase.from('student_selected_subjects').insert(
-      input.selectedSubjectIds.map((subjectId) => {
-        const subject = subjects.find((item) => item.id === subjectId);
+      input.selectedSubjectIds.map((subjectId, index) => {
+        // Prefer the human-readable name from the client input. Fall back to
+        // the catalog lookup (works for school subjects) and finally the raw ID.
+        const catalogName = subjects.find((item) => item.id === subjectId)?.name;
+        const inputName = input.selectedSubjectNames[index];
+        const subjectName = inputName || catalogName || subjectId;
         return {
           id: `${input.profileId}-${subjectId}`,
           profile_id: input.profileId,
           subject_id: subjectId,
-          subject_name: subject?.name ?? subjectId
+          subject_name: subjectName
         };
       })
     );
