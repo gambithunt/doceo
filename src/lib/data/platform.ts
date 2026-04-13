@@ -14,6 +14,7 @@ import {
   getLevelForSchool
 } from '$lib/data/onboarding';
 import type { CountryRecommendationSignals } from '$lib/data/onboarding';
+import { yearSlug } from '$lib/utils/strings';
 import {
   buildRevisionTopicFromLesson,
   createDefaultLearnerProfile
@@ -724,10 +725,17 @@ export function normalizeAppState(value: unknown): AppState {
       programme: input.onboarding?.programme ?? base.onboarding.programme,
       level: input.onboarding?.level ?? base.onboarding.level
     },
-    profile: {
-      ...base.profile,
-      ...(input.profile ?? {})
-    },
+    profile: (() => {
+      const profile = { ...base.profile, ...(input.profile ?? {}) };
+      if (
+        input.onboarding?.educationType === 'University' &&
+        !profile.curriculumId
+      ) {
+        profile.curriculumId = 'university';
+        profile.gradeId = yearSlug(input.onboarding.level ?? '');
+      }
+      return profile;
+    })(),
     learnerProfile: {
       ...base.learnerProfile,
       ...(input.learnerProfile ?? {})

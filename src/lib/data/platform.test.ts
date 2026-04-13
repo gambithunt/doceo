@@ -300,4 +300,66 @@ describe('universal onboarding model', () => {
     expect(normalized.onboarding.level).toBe('grade-8');
     expect(normalized.onboarding.programme).toBe('');
   });
+
+  it('normalizes university profile with missing curriculumId and gradeId on bootstrap', () => {
+    const legacyUniversityState = {
+      profile: {
+        id: 'user-1',
+        fullName: 'Test User',
+        email: 'test@example.com',
+        role: 'student' as const,
+        schoolYear: '2026',
+        term: 'Term 1' as const,
+        grade: '2nd Year',
+        gradeId: '',
+        country: '',
+        countryId: '',
+        curriculum: '',
+        curriculumId: '',
+        recommendedStartSubjectId: null,
+        recommendedStartSubjectName: null
+      },
+      onboarding: {
+        ...createInitialState().onboarding,
+        educationType: 'University',
+        provider: 'University of Cape Town',
+        programme: 'Computer Science',
+        level: '2nd Year'
+      }
+    };
+    const normalized = normalizeAppState(legacyUniversityState);
+    expect(normalized.profile.curriculumId).toBe('university');
+    expect(normalized.profile.gradeId).toBe('year-2');
+  });
+
+  it('does not overwrite existing university curriculumId and gradeId on bootstrap', () => {
+    const existingUniversityState = {
+      profile: {
+        id: 'user-1',
+        fullName: 'Test User',
+        email: 'test@example.com',
+        role: 'student' as const,
+        schoolYear: '2026',
+        term: 'Term 1' as const,
+        grade: '3rd Year',
+        gradeId: 'year-3',
+        country: '',
+        countryId: '',
+        curriculum: 'University of Cape Town',
+        curriculumId: 'university',
+        recommendedStartSubjectId: null,
+        recommendedStartSubjectName: null
+      },
+      onboarding: {
+        ...createInitialState().onboarding,
+        educationType: 'University',
+        provider: 'University of Cape Town',
+        programme: 'Computer Science',
+        level: '3rd Year'
+      }
+    };
+    const normalized = normalizeAppState(existingUniversityState);
+    expect(normalized.profile.curriculumId).toBe('university');
+    expect(normalized.profile.gradeId).toBe('year-3');
+  });
 });

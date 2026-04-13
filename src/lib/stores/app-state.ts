@@ -3,7 +3,7 @@ import { goto } from '$app/navigation';
 import { derived, get, writable } from 'svelte/store';
 import type { RevisionTurnScores } from '$lib/types';
 import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
-import { deduplicateSubjects } from '$lib/utils/strings';
+import { deduplicateSubjects, yearSlug } from '$lib/utils/strings';
 import { getRecommendedCountryId, getSelectionMode } from '$lib/data/onboarding';
 import type { CountryRecommendationSignals } from '$lib/data/onboarding';
 import {
@@ -3500,15 +3500,24 @@ export function createAppStore(initialState: AppState = readState()) {
             ...state.profile,
             fullName,
             grade,
-            gradeId: state.onboarding.selectedGradeId || state.profile.gradeId,
+            gradeId:
+              state.onboarding.educationType === 'University'
+                ? yearSlug(state.onboarding.level)
+                : state.onboarding.selectedGradeId || state.profile.gradeId,
             country: state.onboarding.options.countries.find(
               (c) => c.id === state.onboarding.selectedCountryId
             )?.name || state.profile.country,
             countryId: state.onboarding.selectedCountryId || state.profile.countryId,
-            curriculum: state.onboarding.options.curriculums.find(
-              (c) => c.id === state.onboarding.selectedCurriculumId
-            )?.name || state.profile.curriculum,
-            curriculumId: state.onboarding.selectedCurriculumId || state.profile.curriculumId,
+            curriculum:
+              state.onboarding.educationType === 'University'
+                ? state.onboarding.provider || state.profile.curriculum
+                : state.onboarding.options.curriculums.find(
+                    (c) => c.id === state.onboarding.selectedCurriculumId
+                  )?.name || state.profile.curriculum,
+            curriculumId:
+              state.onboarding.educationType === 'University'
+                ? 'university'
+                : state.onboarding.selectedCurriculumId || state.profile.curriculumId,
             recommendedStartSubjectId: payload.recommendation.subjectId,
             recommendedStartSubjectName: payload.recommendation.subjectName
           },
