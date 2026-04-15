@@ -104,6 +104,7 @@
       "_supabase2.js",
       "src/lib/utils/strings.ts",
       "src/lib/data/onboarding.ts",
+      "_subject-catalog.js",
       "_platform.js",
       "_engine.js"
     ]
@@ -165,6 +166,10 @@
       "_environment.js"
     ]
   },
+  "_invite-system.js": {
+    "file": "chunks/invite-system.js",
+    "name": "invite-system"
+  },
   "_learning-program-repository.js": {
     "file": "chunks/learning-program-repository.js",
     "name": "learning-program-repository",
@@ -202,7 +207,8 @@
     "file": "chunks/platform.js",
     "name": "platform",
     "imports": [
-      "src/lib/data/onboarding.ts"
+      "src/lib/data/onboarding.ts",
+      "src/lib/utils/strings.ts"
     ]
   },
   "_progress.js": {
@@ -245,6 +251,25 @@
       "_svelte-vendor.js",
       "_exports.js",
       "_root.js"
+    ]
+  },
+  "_stripe.js": {
+    "file": "chunks/stripe.js",
+    "name": "stripe",
+    "imports": [
+      "_supabase.js"
+    ]
+  },
+  "_subject-catalog.js": {
+    "file": "chunks/subject-catalog.js",
+    "name": "subject-catalog"
+  },
+  "_subscription-repository.js": {
+    "file": "chunks/subscription-repository.js",
+    "name": "subscription-repository",
+    "imports": [
+      "_supabase.js",
+      "_stripe.js"
     ]
   },
   "_supabase.js": {
@@ -360,7 +385,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.CdqujjaJ.css"
+      "_app/immutable/assets/_page.CUmupsBx.css"
     ]
   },
   "src/routes/(app)/lesson/+page.svelte": {
@@ -423,7 +448,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.Kl2laAfb.css"
+      "_app/immutable/assets/_page.CuyP2quP.css"
     ]
   },
   "src/routes/(app)/settings/+page.svelte": {
@@ -473,7 +498,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_layout.Cs9V_cQU.css"
+      "_app/immutable/assets/_layout.jyIPFs53.css"
     ]
   },
   "src/routes/+page.svelte": {
@@ -490,7 +515,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.C9Ye9lIr.css"
+      "_app/immutable/assets/_page.Cv9oZYsY.css"
     ]
   },
   "src/routes/+page.ts": {
@@ -777,7 +802,9 @@
     "imports": [
       "_ai-config.js",
       "_admin-guard.js",
-      "_dynamic-operations.js"
+      "_dynamic-operations.js",
+      "_supabase.js",
+      "_invite-system.js"
     ]
   },
   "src/routes/admin/settings/+page.svelte": {
@@ -794,7 +821,7 @@
       "_AdminPageHeader.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.BLxhkJw5.css"
+      "_app/immutable/assets/_page.C19axOSX.css"
     ]
   },
   "src/routes/admin/system/+page.server.ts": {
@@ -897,6 +924,26 @@
       "_graph-repository.js"
     ]
   },
+  "src/routes/api/admin/promote-topics/+server.ts": {
+    "file": "entries/endpoints/api/admin/promote-topics/_server.ts.js",
+    "name": "entries/endpoints/api/admin/promote-topics/_server.ts",
+    "src": "src/routes/api/admin/promote-topics/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_admin-guard.js",
+      "_supabase.js"
+    ]
+  },
+  "src/routes/api/ai/institution-verify/+server.ts": {
+    "file": "entries/endpoints/api/ai/institution-verify/_server.ts.js",
+    "name": "entries/endpoints/api/ai/institution-verify/_server.ts",
+    "src": "src/routes/api/ai/institution-verify/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_ai-edge.js",
+      "_ai-config.js"
+    ]
+  },
   "src/routes/api/ai/lesson-chat/+server.ts": {
     "file": "entries/endpoints/api/ai/lesson-chat/_server.ts.js",
     "name": "entries/endpoints/api/ai/lesson-chat/_server.ts",
@@ -920,13 +967,35 @@
       "_graph-repository.js",
       "_lesson-artifact-repository.js",
       "_dynamic-operations.js",
-      "_topic-discovery-repository.js"
+      "_topic-discovery-repository.js",
+      "_supabase.js",
+      "_subscription-repository.js"
     ]
   },
   "src/routes/api/ai/lesson-selector/+server.ts": {
     "file": "entries/endpoints/api/ai/lesson-selector/_server.ts.js",
     "name": "entries/endpoints/api/ai/lesson-selector/_server.ts",
     "src": "src/routes/api/ai/lesson-selector/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_ai-edge.js",
+      "_ai-config.js"
+    ]
+  },
+  "src/routes/api/ai/programme-verify/+server.ts": {
+    "file": "entries/endpoints/api/ai/programme-verify/_server.ts.js",
+    "name": "entries/endpoints/api/ai/programme-verify/_server.ts",
+    "src": "src/routes/api/ai/programme-verify/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_ai-edge.js",
+      "_ai-config.js"
+    ]
+  },
+  "src/routes/api/ai/revision-evaluate/+server.ts": {
+    "file": "entries/endpoints/api/ai/revision-evaluate/_server.ts.js",
+    "name": "entries/endpoints/api/ai/revision-evaluate/_server.ts",
+    "src": "src/routes/api/ai/revision-evaluate/+server.ts",
     "isEntry": true,
     "imports": [
       "_ai-edge.js",
@@ -978,6 +1047,26 @@
       "_ai-edge.js"
     ]
   },
+  "src/routes/api/auth/mode/+server.ts": {
+    "file": "entries/endpoints/api/auth/mode/_server.ts.js",
+    "name": "entries/endpoints/api/auth/mode/_server.ts",
+    "src": "src/routes/api/auth/mode/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_supabase.js",
+      "_invite-system.js"
+    ]
+  },
+  "src/routes/api/auth/register/+server.ts": {
+    "file": "entries/endpoints/api/auth/register/_server.ts.js",
+    "name": "entries/endpoints/api/auth/register/_server.ts",
+    "src": "src/routes/api/auth/register/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_supabase.js",
+      "_invite-system.js"
+    ]
+  },
   "src/routes/api/curriculum/program/+server.ts": {
     "file": "entries/endpoints/api/curriculum/program/_server.ts.js",
     "name": "entries/endpoints/api/curriculum/program/_server.ts",
@@ -1006,7 +1095,9 @@
       "_ai-edge.js",
       "_ai-config.js",
       "_topic-discovery-ranking.js",
-      "_graph-repository.js"
+      "_graph-repository.js",
+      "_subject-catalog.js",
+      "_supabase.js"
     ]
   },
   "src/routes/api/curriculum/topic-discovery/click/+server.ts": {
@@ -1043,6 +1134,15 @@
     "isEntry": true,
     "imports": [
       "_topic-discovery-event-routes.js"
+    ]
+  },
+  "src/routes/api/geo/country/+server.ts": {
+    "file": "entries/endpoints/api/geo/country/_server.ts.js",
+    "name": "entries/endpoints/api/geo/country/_server.ts",
+    "src": "src/routes/api/geo/country/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "src/lib/data/onboarding.ts"
     ]
   },
   "src/routes/api/lesson-artifacts/rate/+server.ts": {
@@ -1095,6 +1195,37 @@
     "isEntry": true,
     "imports": [
       "_onboarding-repository.js"
+    ]
+  },
+  "src/routes/api/payments/checkout/+server.ts": {
+    "file": "entries/endpoints/api/payments/checkout/_server.ts.js",
+    "name": "entries/endpoints/api/payments/checkout/_server.ts",
+    "src": "src/routes/api/payments/checkout/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_supabase.js",
+      "_stripe.js"
+    ]
+  },
+  "src/routes/api/payments/quota-status/+server.ts": {
+    "file": "entries/endpoints/api/payments/quota-status/_server.ts.js",
+    "name": "entries/endpoints/api/payments/quota-status/_server.ts",
+    "src": "src/routes/api/payments/quota-status/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_supabase.js",
+      "_subscription-repository.js"
+    ]
+  },
+  "src/routes/api/payments/webhook/+server.ts": {
+    "file": "entries/endpoints/api/payments/webhook/_server.ts.js",
+    "name": "entries/endpoints/api/payments/webhook/_server.ts",
+    "src": "src/routes/api/payments/webhook/+server.ts",
+    "isEntry": true,
+    "imports": [
+      "_supabase.js",
+      "_subscription-repository.js",
+      "_stripe.js"
     ]
   },
   "src/routes/api/revision/planner-resolve/+server.ts": {
@@ -1153,7 +1284,7 @@
       "src/lib/data/onboarding.ts"
     ],
     "css": [
-      "_app/immutable/assets/_page.D-1ieZ0B.css"
+      "_app/immutable/assets/_page.CDh9aIB7.css"
     ]
   }
 }

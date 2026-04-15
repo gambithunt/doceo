@@ -1,6 +1,6 @@
-import { getRecommendedSubject, getSelectionMode, onboardingCountries, getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade } from "./onboarding.js";
+import { getRecommendedSubject, getSelectionMode, onboardingCountries, getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade, isValidEducationType } from "./onboarding.js";
 import { c as createServerGraphCatalogRepository, a as allowLocalCatalogFallback, t as throwBackendUnavailable } from "./graph-catalog-repository.js";
-import { a as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
+import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
 import { deduplicateSubjects } from "./strings.js";
 async function fetchCountries() {
   const graphCatalog = createServerGraphCatalogRepository();
@@ -10,7 +10,11 @@ async function fetchCountries() {
     }
     return onboardingCountries;
   }
-  return graphCatalog.fetchCountries();
+  const results = await graphCatalog.fetchCountries();
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return onboardingCountries;
+  }
+  return results;
 }
 async function fetchCurriculums(countryId) {
   const graphCatalog = createServerGraphCatalogRepository();
@@ -20,7 +24,11 @@ async function fetchCurriculums(countryId) {
     }
     return getCurriculumsByCountry(countryId);
   }
-  return graphCatalog.fetchCurriculums(countryId);
+  const results = await graphCatalog.fetchCurriculums(countryId);
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return getCurriculumsByCountry(countryId);
+  }
+  return results;
 }
 async function fetchGrades(curriculumId) {
   const graphCatalog = createServerGraphCatalogRepository();
@@ -30,7 +38,11 @@ async function fetchGrades(curriculumId) {
     }
     return getGradesByCurriculum(curriculumId);
   }
-  return graphCatalog.fetchGrades(curriculumId);
+  const results = await graphCatalog.fetchGrades(curriculumId);
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return getGradesByCurriculum(curriculumId);
+  }
+  return results;
 }
 async function fetchSubjects(curriculumId, gradeId) {
   const graphCatalog = createServerGraphCatalogRepository();
@@ -40,7 +52,32 @@ async function fetchSubjects(curriculumId, gradeId) {
     }
     return getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
   }
-  return graphCatalog.fetchSubjects(curriculumId, gradeId);
+  const results = await graphCatalog.fetchSubjects(curriculumId, gradeId);
+  if (results.length === 0 && allowLocalCatalogFallback()) {
+    return getSubjectsByCurriculumAndGrade(curriculumId, gradeId);
+  }
+  return results;
+}
+function resolveStoredEducationType(onboarding) {
+  return isValidEducationType(onboarding.education_type ?? "") ? onboarding.education_type : "School";
+}
+function resolveStoredProvider(onboarding, educationType) {
+  if (educationType === "School") {
+    return onboarding.provider ?? onboarding.curriculum_id ?? "";
+  }
+  return onboarding.provider ?? "";
+}
+function resolveStoredProgramme(onboarding, educationType) {
+  if (educationType === "School") {
+    return onboarding.programme ?? "";
+  }
+  return onboarding.programme ?? "";
+}
+function resolveStoredLevel(onboarding, educationType) {
+  if (educationType === "School") {
+    return onboarding.level ?? onboarding.grade_id ?? "";
+  }
+  return onboarding.level ?? "";
 }
 async function writeOnboardingProgress(input, selectionMode, recommendation, isCompleted) {
   const supabase = createServerSupabaseAdmin();
@@ -59,6 +96,10 @@ async function writeOnboardingProgress(input, selectionMode, recommendation, isC
     recommended_start_subject_name: recommendation.subjectName,
     onboarding_completed: isCompleted,
     onboarding_completed_at: isCompleted ? (/* @__PURE__ */ new Date()).toISOString() : null,
+    education_type: input.educationType,
+    provider: input.provider,
+    programme: input.programme,
+    level: input.level,
     updated_at: (/* @__PURE__ */ new Date()).toISOString()
   });
   await supabase.from("student_selected_subjects").delete().eq("profile_id", input.profileId);
@@ -66,13 +107,15 @@ async function writeOnboardingProgress(input, selectionMode, recommendation, isC
   if (input.selectedSubjectIds.length > 0) {
     const subjects = await fetchSubjects(input.curriculumId, input.gradeId);
     await supabase.from("student_selected_subjects").insert(
-      input.selectedSubjectIds.map((subjectId) => {
-        const subject = subjects.find((item) => item.id === subjectId);
+      input.selectedSubjectIds.map((subjectId, index) => {
+        const catalogName = subjects.find((item) => item.id === subjectId)?.name;
+        const inputName = input.selectedSubjectNames[index];
+        const subjectName = inputName || catalogName || subjectId;
         return {
           id: `${input.profileId}-${subjectId}`,
           profile_id: input.profileId,
           subject_id: subjectId,
-          subject_name: subject?.name ?? subjectId
+          subject_name: subjectName
         };
       })
     );
@@ -112,7 +155,7 @@ async function loadOnboardingProgress(profileId) {
     return null;
   }
   const { data: onboarding } = await supabase.from("student_onboarding").select(
-    "profile_id, country_id, curriculum_id, grade_id, school_year, term, selection_mode, recommended_start_subject_id, recommended_start_subject_name, onboarding_completed, onboarding_completed_at, updated_at"
+    "profile_id, country_id, curriculum_id, grade_id, school_year, term, selection_mode, recommended_start_subject_id, recommended_start_subject_name, onboarding_completed, onboarding_completed_at, education_type, provider, programme, level, updated_at"
   ).eq("profile_id", profileId).maybeSingle();
   if (!onboarding) {
     return null;
@@ -128,6 +171,7 @@ async function loadOnboardingProgress(profileId) {
     subjectName: onboarding.recommended_start_subject_name,
     reason: getRecommendedSubject(selectedSubjectIds, customSubjectNames, subjectOptions).reason
   };
+  const educationType = resolveStoredEducationType(onboarding);
   return {
     completed: onboarding.onboarding_completed,
     completedAt: onboarding.onboarding_completed_at,
@@ -140,7 +184,11 @@ async function loadOnboardingProgress(profileId) {
     selectedSubjectNames,
     customSubjects: customSubjectNames,
     selectionMode: onboarding.selection_mode,
-    recommendation
+    recommendation,
+    educationType,
+    provider: resolveStoredProvider(onboarding, educationType),
+    programme: resolveStoredProgramme(onboarding, educationType),
+    level: resolveStoredLevel(onboarding, educationType)
   };
 }
 async function completeOnboarding(input) {

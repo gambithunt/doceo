@@ -11,7 +11,12 @@ const serverEnv = {
   githubModelsToken: readEnv("GITHUB_MODELS_TOKEN"),
   openaiApiKey: readEnv("OPENAI_API_KEY"),
   anthropicApiKey: readEnv("ANTHROPIC_API_KEY"),
-  kimiApiKey: readEnv("KIMI_API_KEY")
+  kimiApiKey: readEnv("KIMI_API_KEY"),
+  stripeSecretKey: readEnv("STRIPE_SECRET_KEY"),
+  stripeWebhookSecret: readEnv("STRIPE_WEBHOOK_SECRET"),
+  stripePriceIdBasic: readEnv("STRIPE_PRICE_ID_BASIC"),
+  stripePriceIdStandard: readEnv("STRIPE_PRICE_ID_STANDARD"),
+  stripePriceIdPremium: readEnv("STRIPE_PRICE_ID_PREMIUM")
 };
 function hasConfiguredPublicSupabase() {
   return serverEnv.supabaseUrl.length > 0 && serverEnv.supabaseAnonKey.length > 0 && !serverEnv.supabaseUrl.includes("your-project-ref") && !serverEnv.supabaseAnonKey.includes("your-supabase-anon-key");
@@ -64,9 +69,10 @@ function getSupabaseAnonKey() {
   return serverEnv.supabaseAnonKey;
 }
 export {
-  createServerSupabaseAdmin as a,
+  createServerSupabaseFromRequest as a,
   getSupabaseAnonKey as b,
-  createServerSupabaseFromRequest as c,
+  createServerSupabaseAdmin as c,
   getSupabaseFunctionsUrl as g,
-  isSupabaseConfigured as i
+  isSupabaseConfigured as i,
+  serverEnv as s
 };

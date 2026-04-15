@@ -1,5 +1,5 @@
 import { c as createInitialState, n as normalizeAppState } from "./platform.js";
-import { a as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
+import { c as createServerSupabaseAdmin, i as isSupabaseConfigured } from "./supabase.js";
 const MODEL_PRICING = {
   "openai/gpt-4.1-nano": { inputPer1M: 0.1, outputPer1M: 0.4 },
   "openai/gpt-4o-mini": { inputPer1M: 0.15, outputPer1M: 0.6 },
@@ -24,15 +24,17 @@ function parseAiCost(response, modelOrTier) {
     try {
       parsed = JSON.parse(response);
     } catch {
-      return { tokensUsed: null, costUsd: null };
+      return { tokensUsed: null, costUsd: null, inputTokens: null, outputTokens: null };
     }
   }
   const tokens = extractTokensFromResponse(parsed);
-  if (!tokens) return { tokensUsed: null, costUsd: null };
+  if (!tokens) return { tokensUsed: null, costUsd: null, inputTokens: null, outputTokens: null };
   const { costUsd } = calculateCost(tokens, modelOrTier);
   return {
     tokensUsed: tokens.inputTokens + tokens.outputTokens,
-    costUsd
+    costUsd,
+    inputTokens: tokens.inputTokens,
+    outputTokens: tokens.outputTokens
   };
 }
 function extractTokensFromResponse(responseBody) {
@@ -73,6 +75,10 @@ async function loadAppState(profileId) {
     return normalizeAppState({
       ...base,
       profile: { ...base.profile, id: profileId },
+      // Preserve onboarding data from the snapshot so subject selections,
+      // education type, and other onboarding fields survive the session-row
+      // reconstruction path instead of falling back to createInitialState defaults.
+      onboarding: snapshotState.onboarding.completed ? snapshotState.onboarding : base.onboarding,
       learnerProfile: learnerProfileResult.data?.profile_json ?? base.learnerProfile,
       lessonSessions: sessionRows.map((row) => row.session_json),
       revisionTopics: (revisionResult.data ?? []).map(
@@ -216,7 +222,7 @@ async function logAiInteraction(profileId, requestPayload, response, provider, m
     }
   };
   const modelOrTier = meta?.model ?? meta?.modelTier ?? "default";
-  const { tokensUsed, costUsd } = parseAiCost(response, modelOrTier);
+  const { tokensUsed, costUsd, inputTokens, outputTokens } = parseAiCost(response, modelOrTier);
   await supabase.from("ai_interactions").insert({
     id: crypto.randomUUID(),
     profile_id: profileId,
@@ -225,6 +231,8 @@ async function logAiInteraction(profileId, requestPayload, response, provider, m
     model_tier: meta?.modelTier ?? null,
     model: meta?.model ?? null,
     tokens_used: tokensUsed,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
     cost_usd: costUsd,
     request_payload: wrapPayload(requestPayload),
     response_payload: wrapPayload(response),

@@ -1,4 +1,5 @@
-import { getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade, getRecommendedSubject, getSelectionMode, defaultTerm, defaultSchoolYear, onboardingCountries, onboardingStepOrder } from "./onboarding.js";
+import { getRecommendedCountryId, onboardingCountries, getCurriculumsByCountry, getGradesByCurriculum, getSubjectsByCurriculumAndGrade, getRecommendedSubject, getSelectionMode, defaultTerm, defaultSchoolYear, onboardingStepOrder, getLevelForSchool, getProviderForEducationType, getDefaultEducationType } from "./onboarding.js";
+import { yearSlug } from "./strings.js";
 function createDefaultRevisionCalibration$1() {
   return {
     attempts: 0,
@@ -639,12 +640,13 @@ function buildAskQuestionResponse(request) {
     checkForUnderstanding: `What is the next step you would try now in ${topicContext}?`
   };
 }
-function createInitialState() {
-  const selectedCountryId = onboardingCountries[0].id;
+function createInitialState(recommendationSignals = {}) {
+  const recommendedCountryId = getRecommendedCountryId(recommendationSignals);
+  const selectedCountryId = recommendedCountryId ?? onboardingCountries[0].id;
   const availableCurriculums = getCurriculumsByCountry(selectedCountryId);
   const selectedCurriculumId = availableCurriculums[0]?.id ?? "caps";
   const availableGrades = getGradesByCurriculum(selectedCurriculumId);
-  const selectedGradeId = availableGrades.find((grade) => grade.label === "Grade 6")?.id ?? availableGrades[0]?.id ?? "grade-6";
+  const selectedGradeId = availableGrades.find((grade) => grade.label === "Grade 8")?.id ?? availableGrades[0]?.id ?? "grade-8";
   const availableSubjects = getSubjectsByCurriculumAndGrade(selectedCurriculumId, selectedGradeId);
   const selectedStructuredSubjectIds = availableSubjects.map((subject) => subject.id);
   const selectedSubjectNames = availableSubjects.map((subject) => subject.name);
@@ -701,6 +703,16 @@ function createInitialState() {
         suggestion: null,
         provisional: false
       },
+      universityVerification: {
+        institutionStatus: "idle",
+        institutionInput: "",
+        institutionSuggestions: [],
+        institutionError: null,
+        programmeStatus: "idle",
+        programmeInput: "",
+        programmeSuggestions: [],
+        programmeError: null
+      },
       isSaving: false,
       error: null,
       recommendation,
@@ -709,7 +721,11 @@ function createInitialState() {
         curriculums: availableCurriculums,
         grades: availableGrades,
         subjects: availableSubjects
-      }
+      },
+      educationType: getDefaultEducationType(),
+      provider: getProviderForEducationType("School", selectedCurriculumId),
+      programme: "",
+      level: getLevelForSchool(selectedCurriculumId, selectedGradeId)
     },
     profile: emptyProfile,
     learnerProfile,
@@ -774,6 +790,7 @@ function createInitialState() {
       activeLessonSessionId: null,
       pendingAssistantSessionId: null,
       composerDraft: "",
+      lessonLaunchQuotaExceeded: false,
       showTopicDiscoveryComposer: false,
       showLessonCloseConfirm: false,
       showRevisionPlanner: false
@@ -823,12 +840,20 @@ function normalizeAppState(value) {
         curriculums: Array.isArray(input.onboarding?.options?.curriculums) ? input.onboarding.options.curriculums : base.onboarding.options.curriculums,
         grades: Array.isArray(input.onboarding?.options?.grades) ? input.onboarding.options.grades : base.onboarding.options.grades,
         subjects: Array.isArray(input.onboarding?.options?.subjects) ? input.onboarding.options.subjects : base.onboarding.options.subjects
+      },
+      educationType: input.onboarding?.educationType ?? base.onboarding.educationType,
+      provider: input.onboarding?.provider ?? base.onboarding.provider,
+      programme: input.onboarding?.programme ?? base.onboarding.programme,
+      level: input.onboarding?.level ?? base.onboarding.level
+    },
+    profile: (() => {
+      const profile = { ...base.profile, ...input.profile ?? {} };
+      if (input.onboarding?.educationType === "University" && !profile.curriculumId) {
+        profile.curriculumId = "university";
+        profile.gradeId = yearSlug(input.onboarding.level ?? "");
       }
-    },
-    profile: {
-      ...base.profile,
-      ...input.profile ?? {}
-    },
+      return profile;
+    })(),
     learnerProfile: {
       ...base.learnerProfile,
       ...input.learnerProfile ?? {}
@@ -889,8 +914,9 @@ function deriveLearningState(state) {
     (subject, index, subjects) => subject.length > 0 && subjects.indexOf(subject) === index
   );
   const currentSubjectNames = state.curriculum.subjects.map((subject) => subject.name);
+  const shouldPreserveCurrentProgram = expectedSubjectNames.length === 0 && state.curriculum.subjects.length > 0 && state.lessons.length > 0 && state.questions.length > 0;
   const hasMatchingProgram = state.curriculum.subjects.length > 0 && state.lessons.length > 0 && expectedSubjectNames.length > 0 && expectedSubjectNames.length === currentSubjectNames.length && expectedSubjectNames.every((subjectName) => currentSubjectNames.includes(subjectName));
-  const program = hasMatchingProgram ? {
+  const program = hasMatchingProgram || shouldPreserveCurrentProgram ? {
     curriculum: state.curriculum,
     lessons: state.lessons,
     questions: state.questions

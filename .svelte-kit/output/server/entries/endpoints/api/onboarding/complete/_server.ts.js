@@ -5,13 +5,17 @@ const CompleteOnboardingSchema = z.object({
   profileId: z.string().min(1),
   countryId: z.string().min(1),
   curriculumId: z.string(),
-  gradeId: z.string().min(1),
-  schoolYear: z.string().min(1),
-  term: z.enum(["Term 1", "Term 2", "Term 3", "Term 4"]),
+  gradeId: z.string(),
+  schoolYear: z.string(),
+  term: z.string(),
   selectedSubjectIds: z.array(z.string()),
   selectedSubjectNames: z.array(z.string()),
   customSubjects: z.array(z.string()),
-  isUnsure: z.boolean()
+  isUnsure: z.boolean(),
+  educationType: z.enum(["School", "University"]),
+  provider: z.string(),
+  programme: z.string(),
+  level: z.string()
 });
 async function POST({ request }) {
   const raw = await request.json();

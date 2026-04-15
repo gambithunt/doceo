@@ -7,10 +7,10 @@ function __memo(fn) {
 return {
 	appDir: "_app",
 	appPath: "_app",
-	assets: new Set([]),
+	assets: new Set(["favicon.ico"]),
 	mimeTypes: {},
 	_: {
-		client: {start:"_app/immutable/entry/start.CI3yZ88l.js",app:"_app/immutable/entry/app.CVtCIKZJ.js",imports:["_app/immutable/entry/start.CI3yZ88l.js","_app/immutable/chunks/D-PE12_F.js","_app/immutable/chunks/BYLevpFT.js","_app/immutable/entry/app.CVtCIKZJ.js","_app/immutable/chunks/BYLevpFT.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
+		client: {start:"_app/immutable/entry/start.D4SxjjCZ.js",app:"_app/immutable/entry/app.BN7jBAS9.js",imports:["_app/immutable/entry/start.D4SxjjCZ.js","_app/immutable/chunks/BChidGUp.js","_app/immutable/chunks/nPQwml6W.js","_app/immutable/entry/app.BN7jBAS9.js","_app/immutable/chunks/nPQwml6W.js"],stylesheets:[],fonts:[],uses_env_dynamic_public:false},
 		nodes: [
 			__memo(() => import('./nodes/0.js')),
 			__memo(() => import('./nodes/1.js')),
@@ -164,6 +164,20 @@ return {
 				endpoint: __memo(() => import('./entries/endpoints/api/admin/lesson-artifacts/_server.ts.js'))
 			},
 			{
+				id: "/api/admin/promote-topics",
+				pattern: /^\/api\/admin\/promote-topics\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/admin/promote-topics/_server.ts.js'))
+			},
+			{
+				id: "/api/ai/institution-verify",
+				pattern: /^\/api\/ai\/institution-verify\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/ai/institution-verify/_server.ts.js'))
+			},
+			{
 				id: "/api/ai/lesson-chat",
 				pattern: /^\/api\/ai\/lesson-chat\/?$/,
 				params: [],
@@ -183,6 +197,20 @@ return {
 				params: [],
 				page: null,
 				endpoint: __memo(() => import('./entries/endpoints/api/ai/lesson-selector/_server.ts.js'))
+			},
+			{
+				id: "/api/ai/programme-verify",
+				pattern: /^\/api\/ai\/programme-verify\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/ai/programme-verify/_server.ts.js'))
+			},
+			{
+				id: "/api/ai/revision-evaluate",
+				pattern: /^\/api\/ai\/revision-evaluate\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/ai/revision-evaluate/_server.ts.js'))
 			},
 			{
 				id: "/api/ai/revision-pack",
@@ -211,6 +239,20 @@ return {
 				params: [],
 				page: null,
 				endpoint: __memo(() => import('./entries/endpoints/api/ai/tutor/_server.ts.js'))
+			},
+			{
+				id: "/api/auth/mode",
+				pattern: /^\/api\/auth\/mode\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/auth/mode/_server.ts.js'))
+			},
+			{
+				id: "/api/auth/register",
+				pattern: /^\/api\/auth\/register\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/auth/register/_server.ts.js'))
 			},
 			{
 				id: "/api/curriculum/program",
@@ -262,6 +304,13 @@ return {
 				endpoint: __memo(() => import('./entries/endpoints/api/curriculum/topic-discovery/refresh/_server.ts.js'))
 			},
 			{
+				id: "/api/geo/country",
+				pattern: /^\/api\/geo\/country\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/geo/country/_server.ts.js'))
+			},
+			{
 				id: "/api/lesson-artifacts/rate",
 				pattern: /^\/api\/lesson-artifacts\/rate\/?$/,
 				params: [],
@@ -295,6 +344,27 @@ return {
 				params: [],
 				page: null,
 				endpoint: __memo(() => import('./entries/endpoints/api/onboarding/reset/_server.ts.js'))
+			},
+			{
+				id: "/api/payments/checkout",
+				pattern: /^\/api\/payments\/checkout\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/payments/checkout/_server.ts.js'))
+			},
+			{
+				id: "/api/payments/quota-status",
+				pattern: /^\/api\/payments\/quota-status\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/payments/quota-status/_server.ts.js'))
+			},
+			{
+				id: "/api/payments/webhook",
+				pattern: /^\/api\/payments\/webhook\/?$/,
+				params: [],
+				page: null,
+				endpoint: __memo(() => import('./entries/endpoints/api/payments/webhook/_server.ts.js'))
 			},
 			{
 				id: "/api/revision/planner-resolve",

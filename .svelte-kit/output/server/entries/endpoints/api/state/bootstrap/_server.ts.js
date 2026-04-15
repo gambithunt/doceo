@@ -3,7 +3,7 @@ import { i as isBackendUnavailableError } from "../../../../../chunks/graph-cata
 import { l as loadLearningProgram } from "../../../../../chunks/learning-program-repository.js";
 import { b as loadAppState, c as loadSignalsForProfile } from "../../../../../chunks/state-repository.js";
 import { l as loadOnboardingProgress, f as fetchCountries, a as fetchCurriculums, b as fetchGrades, d as fetchSubjects } from "../../../../../chunks/onboarding-repository.js";
-import { c as createServerSupabaseFromRequest } from "../../../../../chunks/supabase.js";
+import { a as createServerSupabaseFromRequest } from "../../../../../chunks/supabase.js";
 function buildLearnerProfileFromSignals(signals) {
   if (signals.length === 0) {
     return {};
@@ -139,6 +139,7 @@ async function GET({ request }) {
     learnerProfile: refreshedLearnerProfile,
     profile: {
       ...state.profile,
+      id: profileId,
       fullName: fullName || state.profile.fullName
     }
   };
@@ -158,9 +159,11 @@ async function GET({ request }) {
   const countryName = onboardingOptions?.countries.find((country) => country.id === onboardingProgress?.selectedCountryId)?.name ?? stateWithProfile.profile.country;
   const curriculumName = onboardingOptions?.curriculums.find((curriculum) => curriculum.id === onboardingProgress?.selectedCurriculumId)?.name ?? stateWithProfile.profile.curriculum;
   const gradeLabel = onboardingOptions?.grades.find((grade) => grade.id === onboardingProgress?.selectedGradeId)?.label ?? stateWithProfile.profile.grade;
-  const shouldLoadLearningProgram = Boolean(
-    onboardingProgress && onboardingProgress.selectedCurriculumId && onboardingProgress.selectedGradeId && (onboardingProgress.selectedSubjectIds.length > 0 || onboardingProgress.customSubjects.length > 0)
+  const hasSubjects = onboardingProgress && (onboardingProgress.selectedSubjectIds.length > 0 || onboardingProgress.customSubjects.length > 0 || onboardingProgress.selectedSubjectNames.length > 0);
+  const isStructuredPath = Boolean(
+    onboardingProgress?.selectedCurriculumId && onboardingProgress?.selectedGradeId
   );
+  const shouldLoadLearningProgram = Boolean(hasSubjects && (isStructuredPath || onboardingProgress));
   let learningProgram = null;
   if (shouldLoadLearningProgram && onboardingProgress) {
     try {

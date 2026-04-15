@@ -6,12 +6,160 @@ const onboardingStepOrder = [
 ];
 const defaultSchoolYear = "2026";
 const defaultTerm = "Term 1";
+const SUPPORTED_EDUCATION_TYPES = ["School", "University"];
+function isValidEducationType(value) {
+  return SUPPORTED_EDUCATION_TYPES.includes(value);
+}
+function getDefaultEducationType() {
+  return "School";
+}
+function getProviderForEducationType(educationType, curriculumId) {
+  {
+    return curriculumId ?? "caps";
+  }
+}
+function getLevelForSchool(curriculumId, gradeId) {
+  return gradeId;
+}
+function isUniversityEducationType(educationType) {
+  return educationType === "University";
+}
+function isSchoolEducationType(educationType) {
+  return educationType === "School";
+}
 const onboardingCountries = [
   {
+    id: "au",
+    name: "Australia",
+    enabled: false
+  },
+  {
+    id: "br",
+    name: "Brazil",
+    enabled: false
+  },
+  {
+    id: "ca",
+    name: "Canada",
+    enabled: false
+  },
+  {
+    id: "de",
+    name: "Germany",
+    enabled: false
+  },
+  {
+    id: "fr",
+    name: "France",
+    enabled: false
+  },
+  {
+    id: "gb",
+    name: "United Kingdom",
+    enabled: false
+  },
+  {
+    id: "in",
+    name: "India",
+    enabled: false
+  },
+  {
+    id: "ke",
+    name: "Kenya",
+    enabled: false
+  },
+  {
+    id: "ng",
+    name: "Nigeria",
+    enabled: false
+  },
+  {
+    id: "us",
+    name: "United States",
+    enabled: false
+  },
+  {
     id: "za",
-    name: "South Africa"
+    name: "South Africa",
+    enabled: true
   }
 ];
+const activeCountries = onboardingCountries.filter((c) => c.enabled !== false);
+const timezoneToCountryId = {
+  "Africa/Johannesburg": "za",
+  "Africa/Nairobi": "ke",
+  "Africa/Lagos": "ng",
+  "America/New_York": "us",
+  "America/Los_Angeles": "us",
+  "America/Chicago": "us",
+  "America/Denver": "us",
+  "America/Toronto": "ca",
+  "America/Vancouver": "ca",
+  "America/Mexico_City": "mx",
+  "America/Sao_Paulo": "br",
+  "Europe/London": "gb",
+  "Europe/Paris": "fr",
+  "Europe/Berlin": "de",
+  "Asia/Kolkata": "in",
+  "Asia/Dubai": "ae",
+  "Asia/Singapore": "sg",
+  "Australia/Sydney": "au",
+  "Australia/Perth": "au",
+  "Australia/Melbourne": "au",
+  "Pacific/Auckland": "nz"
+};
+const localeToCountryId = {
+  "en-ZA": "za",
+  "en-GB": "gb",
+  "en-US": "us",
+  "en-AU": "au",
+  "en-CA": "ca",
+  "en-IN": "in",
+  "af-ZA": "za",
+  "de-DE": "de",
+  "de-AT": "de",
+  "de-CH": "de",
+  "fr-FR": "fr",
+  "fr-CA": "ca",
+  "fr-BE": "be",
+  "pt-BR": "br",
+  "pt-PT": "pt"
+};
+const supportedIpCountryCodes = new Set(onboardingCountries.map((c) => c.id.toUpperCase()));
+const activeCountryIds = new Set(activeCountries.map((c) => c.id.toUpperCase()));
+function isSupportedIpCountry(code) {
+  return supportedIpCountryCodes.has(code.toUpperCase());
+}
+function isActiveCountry(code) {
+  return activeCountryIds.has(code.toUpperCase());
+}
+function getActiveOrDefault(code) {
+  if (code && isActiveCountry(code)) {
+    return code.toLowerCase();
+  }
+  return "za";
+}
+function getRecommendedCountryId(signals) {
+  if (signals.ipCountryCode && isSupportedIpCountry(signals.ipCountryCode)) {
+    return getActiveOrDefault(signals.ipCountryCode);
+  }
+  if (signals.timezone) {
+    const countryFromTimezone = timezoneToCountryId[signals.timezone];
+    if (countryFromTimezone) {
+      return getActiveOrDefault(countryFromTimezone);
+    }
+  }
+  if (signals.localeLanguage) {
+    const countryFromLocale = localeToCountryId[signals.localeLanguage];
+    if (countryFromLocale) {
+      return getActiveOrDefault(countryFromLocale);
+    }
+  }
+  return "za";
+}
+function hasStructuredSchoolSupport(countryId) {
+  return countryId === "za";
+}
 const onboardingCurriculums = [
   {
     id: "caps",
@@ -111,6 +259,59 @@ const iebFetSubjects = [
   "Information Technology",
   "Visual Arts"
 ];
+const universityCoreModules = [
+  "Computer Science Fundamentals",
+  "Mathematics for Science",
+  "Academic Writing",
+  "Research Methods"
+];
+const universityLanguageModules = [
+  "English for Academic Purposes",
+  "Professional Communication"
+];
+const universityElectiveModules = [
+  "Physics",
+  "Chemistry",
+  "Biology",
+  "Statistics",
+  "Data Science",
+  "Software Engineering",
+  "Artificial Intelligence",
+  "Philosophy",
+  "Psychology",
+  "Economics",
+  "Business Management",
+  "Law",
+  "Digital Literacy",
+  "Project Management"
+];
+const universityProgrammeModuleMap = {
+  "computer science": {
+    core: ["Computer Science Fundamentals", "Mathematics for Science", "Programming Studio"],
+    electives: ["Data Science", "Software Engineering", "Artificial Intelligence", "Digital Systems"]
+  },
+  engineering: {
+    core: ["Engineering Mathematics", "Mechanics", "Design Fundamentals"],
+    electives: ["Physics", "Chemistry", "Materials Science", "Project Management"]
+  },
+  law: {
+    core: ["Legal Foundations", "Constitutional Law", "Case Analysis"],
+    electives: ["Law", "Academic Writing", "Professional Communication", "Economics"]
+  },
+  psychology: {
+    core: ["Introduction to Psychology", "Research Methods", "Statistics for Behavioural Science"],
+    electives: ["Biology", "Psychology", "Academic Writing", "Project Management"]
+  }
+};
+function makeUniversitySubject(name, category) {
+  return {
+    id: `university-${category}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    curriculumId: "university",
+    gradeId: "university",
+    name,
+    category
+  };
+}
 function makeSubject(name, curriculumId, gradeId, category) {
   return {
     id: `${curriculumId}-${gradeId}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
@@ -160,6 +361,9 @@ function getSubjectsForGrade(curriculumId, grade) {
   return iebFetSubjects;
 }
 function getCurriculumsByCountry(countryId) {
+  if (!hasStructuredSchoolSupport(countryId)) {
+    return [];
+  }
   return onboardingCurriculums.filter((curriculum) => curriculum.countryId === countryId);
 }
 function getGradesByCurriculum(curriculumId) {
@@ -169,6 +373,19 @@ function getSubjectsByCurriculumAndGrade(curriculumId, gradeId) {
   return onboardingSubjects.filter(
     (subject) => subject.curriculumId === curriculumId && subject.gradeId === gradeId
   );
+}
+function getUniversitySubjects(_provider, programme, level) {
+  const normalizedProgramme = programme.trim().toLowerCase();
+  const programmeModules = universityProgrammeModuleMap[normalizedProgramme];
+  const advancedLevel = /\b(3rd|4th|honours|masters|phd|final)\b/i.test(level);
+  const coreModuleNames = programmeModules?.core ?? universityCoreModules;
+  const languageModuleNames = programmeModules?.languages ?? universityLanguageModules;
+  const electiveModuleNames = programmeModules?.electives ?? universityElectiveModules;
+  const levelAwareElectives = advancedLevel ? Array.from(/* @__PURE__ */ new Set([...electiveModuleNames, "Research Methods", "Capstone Project"])) : electiveModuleNames;
+  const core = coreModuleNames.map((name) => makeUniversitySubject(name, "core"));
+  const languages = languageModuleNames.map((name) => makeUniversitySubject(name, "language"));
+  const electives = levelAwareElectives.map((name) => makeUniversitySubject(name, "elective"));
+  return [...core, ...languages, ...electives];
 }
 function getSelectionMode(selectedSubjectIds, customSubjects, isUnsure) {
   if (isUnsure) {
@@ -210,16 +427,30 @@ function getRecommendedSubject(selectedSubjectIds, customSubjects, subjects) {
   };
 }
 export {
+  SUPPORTED_EDUCATION_TYPES,
+  activeCountries,
   defaultSchoolYear,
   defaultTerm,
   getCurriculumsByCountry,
+  getDefaultEducationType,
   getGradesByCurriculum,
+  getLevelForSchool,
+  getProviderForEducationType,
+  getRecommendedCountryId,
   getRecommendedSubject,
   getSelectionMode,
   getSubjectsByCurriculumAndGrade,
+  getUniversitySubjects,
+  hasStructuredSchoolSupport,
+  isSchoolEducationType,
+  isUniversityEducationType,
+  isValidEducationType,
   onboardingCountries,
   onboardingCurriculums,
   onboardingGrades,
   onboardingStepOrder,
-  onboardingSubjects
+  onboardingSubjects,
+  universityCoreModules,
+  universityElectiveModules,
+  universityLanguageModules
 };
