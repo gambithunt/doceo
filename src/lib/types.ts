@@ -502,6 +502,7 @@ export interface TopicDiscoverySuggestion {
   thumbsDownCount: number;
   completionRate: number | null;
   freshness: 'new' | 'rising' | 'stable';
+  textbookContext?: string | null;
 }
 
 export interface DashboardTopicDiscoverySuggestion extends TopicDiscoverySuggestion {

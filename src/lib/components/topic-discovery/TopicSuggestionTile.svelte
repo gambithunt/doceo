@@ -42,6 +42,9 @@
     <span class="topic-badge">{badge}</span>
     <div class="topic-body">
       <strong>{suggestion.topicLabel}</strong>
+      {#if suggestion.textbookContext}
+        <span class="topic-textbook-context">{suggestion.textbookContext}</span>
+      {/if}
     </div>
     <span class="topic-cta">
       {#if launching}
@@ -245,6 +248,13 @@
     line-height: 1.25;
     color: var(--text);
     letter-spacing: -0.015em;
+  }
+
+  .topic-textbook-context {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    line-height: 1.35;
+    color: var(--text-soft);
   }
 
   /* ── CTA ── */

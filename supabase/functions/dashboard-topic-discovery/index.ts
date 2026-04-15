@@ -9,8 +9,10 @@ import {
 import {
   MAX_TOPIC_DISCOVERY_RESULTS,
   normalizeDiscoveryCandidateLabels,
+  normalizeDiscoveryCandidateTopics,
   parseDashboardTopicDiscoveryModelResponse,
-  parseDashboardTopicDiscoveryRequest
+  parseDashboardTopicDiscoveryRequest,
+  type DashboardTopicDiscoveryModelTopic
 } from './validation.ts';
 
 interface GraphTopicRow {
@@ -116,6 +118,46 @@ function buildGithubRequest(model: string, subjectLabel: string, graphTopics: Gr
           existing_aliases: aliases.map((alias) => alias.alias_label).slice(0, 24),
           required_output: {
             topics: ['string']
+          }
+        })
+      }
+    ]
+  };
+}
+
+function buildUniversityGithubRequest(input: {
+  model: string;
+  subjectDisplay: string;
+  level: string;
+  year: string;
+  excludeLabels: string[];
+}) {
+  return {
+    model: input.model,
+    temperature: 0.7,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'You generate textbook-aligned topic suggestions for a university dashboard.',
+          'Return JSON only with exactly one key: topics.',
+          'topics must be an array of 6 to 8 objects with shape { "label": string, "textbookContext": string }.',
+          'Each label must be a specific topic taught in a standard textbook or syllabus for the requested subject and year.',
+          'Each textbookContext must cite the textbook chapter, section, or course module the topic is drawn from (one short sentence).',
+          'Forbidden: generic labels such as "Foundations", "Key Concepts", "Advanced Topics", "Introduction", "Summary", "Practice".',
+          'Forbidden: labels that restate the subject name or are not grounded in a specific textbook or course.',
+          'Avoid duplicates and avoid labels in the exclude_labels list.'
+        ].join(' ')
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          subject: input.subjectDisplay,
+          level: input.level,
+          year: input.year,
+          exclude_labels: input.excludeLabels.slice(0, MAX_TOPIC_DISCOVERY_RESULTS),
+          required_output: {
+            topics: [{ label: 'string', textbookContext: 'string' }]
           }
         })
       }
@@ -273,6 +315,117 @@ function applyRefreshExclusions(
   return [...preferred, ...deprioritized].slice(0, limit);
 }
 
+async function handleUniversityRequest(body: {
+  subjectKey?: string;
+  subjectDisplay?: string;
+  subjectId: string;
+  curriculumId: string;
+  gradeId: string;
+  forceRefresh: boolean;
+  provider?: string;
+  model?: string;
+  excludeTopicSignatures: string[];
+  limit: number;
+}): Promise<Response> {
+  const subjectKey = body.subjectKey ?? '';
+  const subjectDisplay = body.subjectDisplay ?? subjectKey;
+  const level = 'university';
+  const year = body.gradeId;
+  const githubToken = Deno.env.get('GITHUB_MODELS_TOKEN') ?? '';
+  const githubEndpoint = Deno.env.get('GITHUB_MODELS_ENDPOINT') ?? GITHUB_MODELS_ENDPOINT;
+  const model = body.model ?? '';
+
+  if (
+    body.provider !== 'github-models' ||
+    !model ||
+    githubToken.length === 0 ||
+    githubToken.includes('your-github-models-token')
+  ) {
+    return jsonResponse({
+      topics: [],
+      provider: 'subject-catalog',
+      model,
+      refreshed: body.forceRefresh
+    });
+  }
+
+  let modelTopics: DashboardTopicDiscoveryModelTopic[] = [];
+
+  try {
+    const content = await callGithubModels(
+      githubEndpoint,
+      githubToken,
+      buildUniversityGithubRequest({
+        model,
+        subjectDisplay,
+        level,
+        year,
+        excludeLabels: body.excludeTopicSignatures
+      })
+    );
+    const parsedModel = content ? parseDashboardTopicDiscoveryModelResponse(content) : null;
+    modelTopics = normalizeDiscoveryCandidateTopics(parsedModel?.topics ?? []);
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: 'dashboard_topic_discovery_university_model_error',
+        subjectKey,
+        error: error instanceof Error ? error.message : 'unknown'
+      })
+    );
+  }
+
+  const excluded = new Set(body.excludeTopicSignatures);
+
+  const suggestions = modelTopics
+    .map((topic, index) => {
+      const signature = buildTopicSignature({
+        subjectId: subjectKey,
+        curriculumId: level,
+        gradeId: year,
+        topicLabel: topic.label
+      });
+      if (excluded.has(signature)) {
+        return null;
+      }
+      return {
+        topicSignature: signature,
+        topicLabel: topic.label,
+        nodeId: null,
+        source: 'model_candidate' as const,
+        rank: index + 1,
+        reason: 'Textbook-aligned suggestion',
+        sampleSize: 0,
+        thumbsUpCount: 0,
+        thumbsDownCount: 0,
+        completionRate: null,
+        freshness: 'new' as const,
+        textbookContext: topic.textbookContext ?? null
+      };
+    })
+    .filter((value): value is NonNullable<typeof value> => value !== null)
+    .slice(0, Math.min(body.limit, MAX_TOPIC_DISCOVERY_RESULTS))
+    .map((topic, index) => ({ ...topic, rank: index + 1 }));
+
+  console.info(
+    JSON.stringify({
+      event: 'dashboard_topic_discovery_university_success',
+      subjectKey,
+      year,
+      modelCandidateCount: modelTopics.length,
+      topicCount: suggestions.length,
+      refreshed: body.forceRefresh
+    })
+  );
+
+  return jsonResponse({
+    topics: suggestions,
+    provider: 'github-models',
+    model,
+    refreshed: body.forceRefresh
+  });
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed.' }, 405);
@@ -305,6 +458,10 @@ Deno.serve(async (request) => {
 
   const body = parsed.data;
   const client = createClient(supabaseUrl, serviceKey);
+
+  if (body.subjectKey) {
+    return await handleUniversityRequest(body);
+  }
 
   const { data: subject, error: subjectError } = await client
     .from('curriculum_graph_nodes')
@@ -396,7 +553,9 @@ Deno.serve(async (request) => {
           buildGithubRequest(body.model, subject?.label ?? body.subjectId, graphTopics, (aliases ?? []) as GraphAliasRow[], body.forceRefresh)
         );
         const parsedModel = content ? parseDashboardTopicDiscoveryModelResponse(content) : null;
-        modelCandidates = normalizeDiscoveryCandidateLabels(parsedModel?.topics ?? []);
+        modelCandidates = normalizeDiscoveryCandidateLabels(
+          (parsedModel?.topics ?? []).map((topic) => topic.label)
+        );
         provider = 'github-models';
         model = body.model;
       } catch (error) {

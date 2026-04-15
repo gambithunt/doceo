@@ -31,6 +31,7 @@ export interface TopicDiscoveryEventRecord extends TopicDiscoveryScope {
   id: string;
   profileId: string | null;
   nodeId: string | null;
+  subjectKey?: string | null;
   topicSignature: string;
   topicLabel: string;
   source: TopicDiscoverySource;
@@ -46,6 +47,7 @@ export interface RecordTopicDiscoveryEventInput extends TopicDiscoveryScope {
   id?: string;
   profileId?: string | null;
   nodeId?: string | null;
+  subjectKey?: string | null;
   topicSignature?: string;
   topicLabel: string;
   source: TopicDiscoverySource;
@@ -273,8 +275,9 @@ class InMemoryTopicDiscoveryStore implements TopicDiscoveryStore {
   private events = new Map<string, TopicDiscoveryEventRecord>();
 
   async insertEvent(record: TopicDiscoveryEventRecord): Promise<TopicDiscoveryEventRecord> {
-    this.events.set(record.id, { ...record });
-    return record;
+    const eventRecord = { ...record };
+    this.events.set(record.id, eventRecord);
+    return eventRecord;
   }
 
   async listAggregates(scope: TopicDiscoveryScope, options?: { now?: Date }): Promise<TopicDiscoveryAggregate[]> {
@@ -313,7 +316,7 @@ function createSupabaseTopicDiscoveryStore(
 ): TopicDiscoveryStore {
   return {
     async insertEvent(record) {
-      await supabase.from('topic_discovery_events').insert({
+      const insertData: Record<string, unknown> = {
         id: record.id,
         profile_id: record.profileId,
         subject_id: record.subjectId,
@@ -329,7 +332,16 @@ function createSupabaseTopicDiscoveryStore(
         lesson_session_id: record.lessonSessionId,
         metadata: record.metadata,
         created_at: record.createdAt
-      });
+      };
+
+      if ('subjectKey' in record && record.subjectKey) {
+        insertData.subject_key = record.subjectKey;
+        insertData.subject_id = null;
+        insertData.curriculum_id = null;
+        insertData.grade_id = null;
+      }
+
+      await supabase.from('topic_discovery_events').insert(insertData);
 
       return record;
     },

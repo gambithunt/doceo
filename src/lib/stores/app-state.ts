@@ -5,6 +5,7 @@ import type { RevisionTurnScores } from '$lib/types';
 import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
 import { deduplicateSubjects, yearSlug } from '$lib/utils/strings';
 import { getRecommendedCountryId, getSelectionMode } from '$lib/data/onboarding';
+import { findSubjectKey } from '$lib/data/subject-catalog';
 import type { CountryRecommendationSignals } from '$lib/data/onboarding';
 import {
   applyLessonAssistantResponse,
@@ -949,7 +950,8 @@ export function createAppStore(initialState: AppState = readState()) {
     state: AppState,
     topic: DashboardTopicDiscoverySuggestion
   ) {
-    return {
+    const isUniversity = state.profile.curriculumId === 'university';
+    const basePayload = {
       subjectId: state.topicDiscovery.selectedSubjectId,
       curriculumId: state.profile.curriculumId,
       gradeId: state.profile.gradeId,
@@ -960,6 +962,20 @@ export function createAppStore(initialState: AppState = readState()) {
       requestId: state.topicDiscovery.discovery.requestId ?? undefined,
       rankPosition: topic.rank
     };
+
+    if (isUniversity) {
+      const subject = state.curriculum.subjects.find((s) => s.id === state.topicDiscovery.selectedSubjectId);
+      const subjectKey = findSubjectKey(subject?.name ?? '');
+      return {
+        ...basePayload,
+        subjectKey: subjectKey ?? undefined,
+        subjectId: undefined,
+        curriculumId: undefined,
+        gradeId: undefined
+      };
+    }
+
+    return basePayload;
   }
 
   async function postTopicDiscoveryEvent(

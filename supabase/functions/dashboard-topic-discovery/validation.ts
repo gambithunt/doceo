@@ -10,10 +10,17 @@ export interface DashboardTopicDiscoveryRequest {
   model?: string;
   excludeTopicSignatures: string[];
   limit: number;
+  subjectKey?: string;
+  subjectDisplay?: string;
+}
+
+export interface DashboardTopicDiscoveryModelTopic {
+  label: string;
+  textbookContext?: string;
 }
 
 export interface DashboardTopicDiscoveryModelResponse {
-  topics: string[];
+  topics: DashboardTopicDiscoveryModelTopic[];
 }
 
 function cleanLabel(value: string): string {
@@ -102,17 +109,27 @@ export function parseDashboardTopicDiscoveryRequest(
             .filter((item) => item.length > 0)
             .slice(0, MAX_TOPIC_DISCOVERY_RESULTS)
         : [],
-      limit: Math.max(1, Math.min(MAX_TOPIC_DISCOVERY_RESULTS, rawLimit))
+      limit: Math.max(1, Math.min(MAX_TOPIC_DISCOVERY_RESULTS, rawLimit)),
+      subjectKey: isNonEmptyString(body.subjectKey) ? cleanLabel(body.subjectKey) : undefined,
+      subjectDisplay: isNonEmptyString(body.subjectDisplay) ? cleanLabel(body.subjectDisplay) : undefined
     }
   };
 }
 
 export function normalizeDiscoveryCandidateLabels(labels: string[]): string[] {
-  const normalized: string[] = [];
+  return normalizeDiscoveryCandidateTopics(labels.map((label) => ({ label }))).map(
+    (topic) => topic.label
+  );
+}
+
+export function normalizeDiscoveryCandidateTopics(
+  topics: DashboardTopicDiscoveryModelTopic[]
+): DashboardTopicDiscoveryModelTopic[] {
+  const normalized: DashboardTopicDiscoveryModelTopic[] = [];
   const seen = new Set<string>();
 
-  for (const label of labels) {
-    const cleaned = toTopicLabel(label);
+  for (const topic of topics) {
+    const cleaned = toTopicLabel(topic.label ?? '');
     const key = normalizeKey(cleaned);
 
     if (cleaned.length === 0 || key.length === 0 || isGenericTopicLabel(cleaned) || seen.has(key)) {
@@ -120,7 +137,13 @@ export function normalizeDiscoveryCandidateLabels(labels: string[]): string[] {
     }
 
     seen.add(key);
-    normalized.push(cleaned);
+    normalized.push({
+      label: cleaned,
+      textbookContext:
+        typeof topic.textbookContext === 'string' && topic.textbookContext.trim().length > 0
+          ? cleanLabel(topic.textbookContext)
+          : undefined
+    });
 
     if (normalized.length >= MAX_MODEL_CANDIDATES) {
       break;
@@ -138,7 +161,24 @@ export function parseDashboardTopicDiscoveryModelResponse(content: string): Dash
       return null;
     }
 
-    const topics = parsed.topics.filter((item): item is string => typeof item === 'string');
+    const topics: DashboardTopicDiscoveryModelTopic[] = [];
+
+    for (const item of parsed.topics) {
+      if (typeof item === 'string' && item.trim().length > 0) {
+        topics.push({ label: item });
+        continue;
+      }
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>;
+        if (typeof record.label === 'string' && record.label.trim().length > 0) {
+          topics.push({
+            label: record.label,
+            textbookContext:
+              typeof record.textbookContext === 'string' ? record.textbookContext : undefined
+          });
+        }
+      }
+    }
 
     if (topics.length === 0) {
       return null;

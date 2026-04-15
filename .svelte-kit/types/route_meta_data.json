@@ -66,6 +66,9 @@
 	"/api/admin/lesson-artifacts": [
 		"src/routes/api/admin/lesson-artifacts/+server.ts"
 	],
+	"/api/admin/promote-topics": [
+		"src/routes/api/admin/promote-topics/+server.ts"
+	],
 	"/api/ai/institution-verify": [
 		"src/routes/api/ai/institution-verify/+server.ts"
 	],

@@ -10,9 +10,10 @@ import {
 const TopicDiscoverySourceSchema = z.enum(['graph_existing', 'model_candidate']);
 
 const TopicDiscoveryEventBaseSchema = z.object({
-  subjectId: z.string().min(1),
-  curriculumId: z.string().min(1),
-  gradeId: z.string().min(1),
+  subjectId: z.string().min(1).optional(),
+  curriculumId: z.string().min(1).optional(),
+  gradeId: z.string().min(1).optional(),
+  subjectKey: z.string().min(1).optional(),
   topicSignature: z.string().min(1),
   topicLabel: z.string().min(1),
   nodeId: z.string().min(1).nullable().optional(),
@@ -69,9 +70,10 @@ function eventMetadata(input: {
 export async function recordTopicDiscoveryInteraction(input: {
   request: Request;
   body: {
-    subjectId: string;
-    curriculumId: string;
-    gradeId: string;
+    subjectId?: string;
+    curriculumId?: string;
+    gradeId?: string;
+    subjectKey?: string;
     topicSignature: string;
     topicLabel: string;
     nodeId?: string | null;
@@ -91,10 +93,10 @@ export async function recordTopicDiscoveryInteraction(input: {
   }
 
   try {
-    await repository.recordEvent({
-      subjectId: input.body.subjectId,
-      curriculumId: input.body.curriculumId,
-      gradeId: input.body.gradeId,
+    const recordInput: Parameters<typeof repository.recordEvent>[0] = {
+      subjectId: input.body.subjectId ?? '',
+      curriculumId: input.body.curriculumId ?? '',
+      gradeId: input.body.gradeId ?? '',
       profileId: await resolveProfileId(input.request),
       topicSignature: input.body.topicSignature,
       topicLabel: input.body.topicLabel,
@@ -108,7 +110,13 @@ export async function recordTopicDiscoveryInteraction(input: {
         rankPosition: input.body.rankPosition,
         metadata: input.body.metadata
       })
-    });
+    };
+
+    if (input.body.subjectKey) {
+      recordInput.subjectKey = input.body.subjectKey;
+    }
+
+    await repository.recordEvent(recordInput);
 
     return json({ recorded: true });
   } catch (error) {

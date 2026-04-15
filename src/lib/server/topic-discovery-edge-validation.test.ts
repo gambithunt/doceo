@@ -75,7 +75,15 @@ describe('topic discovery edge validation', () => {
 
   it('parses the model JSON contract and rejects malformed payloads', () => {
     expect(parseDashboardTopicDiscoveryModelResponse('{"topics":["Fractions","Ratios"]}')).toEqual({
-      topics: ['Fractions', 'Ratios']
+      topics: [{ label: 'Fractions' }, { label: 'Ratios' }]
+    });
+
+    expect(
+      parseDashboardTopicDiscoveryModelResponse(
+        '{"topics":[{"label":"Limits","textbookContext":"Stewart Ch. 2"}]}'
+      )
+    ).toEqual({
+      topics: [{ label: 'Limits', textbookContext: 'Stewart Ch. 2' }]
     });
 
     expect(parseDashboardTopicDiscoveryModelResponse('{"items":["Fractions"]}')).toBeNull();

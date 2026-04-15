@@ -1,0 +1,1 @@
+SELECT promote_candidate_subject_topics();

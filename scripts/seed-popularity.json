@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-04-13T00:00:00.000Z",
+  "source": "baseline seed - update via scripts/analyze-subject-popularity.ts",
+  "total_students": 0,
+  "total_subject_picks": 0,
+  "subjects": {
+    "computer-science": 10,
+    "mathematics": 9,
+    "physics": 7,
+    "chemistry": 6,
+    "biology": 6,
+    "engineering": 7,
+    "psychology": 6,
+    "economics": 7,
+    "business-management": 8,
+    "law": 5,
+    "accounting": 6,
+    "english": 4,
+    "statistics": 5,
+    "data-science": 6
+  }
+}

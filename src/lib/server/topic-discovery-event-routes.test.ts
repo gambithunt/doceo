@@ -294,4 +294,36 @@ describe('topic discovery interaction routes', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ recorded: false });
   });
+
+  it('records university event with subjectKey and null graph fields', async () => {
+    const repository = createServerTopicDiscoveryRepository();
+    const { POST } = await import('../../routes/api/curriculum/topic-discovery/click/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/curriculum/topic-discovery/click', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subjectKey: 'computer-science',
+          topicSignature: 'abc123def456',
+          topicLabel: 'Data Structures',
+          source: 'graph_existing'
+        })
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toEqual({ recorded: true });
+    expect(repository.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectKey: 'computer-science',
+        topicSignature: 'abc123def456',
+        topicLabel: 'Data Structures',
+        source: 'graph_existing'
+      })
+    );
+  });
 });
