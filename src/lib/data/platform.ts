@@ -631,6 +631,7 @@ export function createInitialState(recommendationSignals: CountryRecommendationS
       activeLessonSessionId: null,
       pendingAssistantSessionId: null,
       composerDraft: '',
+      lessonLaunchQuotaExceeded: false,
       showTopicDiscoveryComposer: false,
       showLessonCloseConfirm: false,
       showRevisionPlanner: false

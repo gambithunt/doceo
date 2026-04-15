@@ -109,6 +109,8 @@ describe('parseAiCost', () => {
     });
     const result = parseAiCost(response, 'openai/gpt-4o-mini');
     expect(result.tokensUsed).toBe(1500);
+    expect(result.inputTokens).toBe(1000);
+    expect(result.outputTokens).toBe(500);
     expect(result.costUsd).toBeCloseTo(0.00045, 5); // 1000*0.15/1M + 500*0.60/1M
   });
 
@@ -128,6 +130,8 @@ describe('parseAiCost', () => {
   it('returns null cost when response has no usage field', () => {
     const result = parseAiCost(JSON.stringify({ content: 'hello' }), 'default');
     expect(result.tokensUsed).toBeNull();
+    expect(result.inputTokens).toBeNull();
+    expect(result.outputTokens).toBeNull();
     expect(result.costUsd).toBeNull();
   });
 
@@ -143,6 +147,32 @@ describe('parseAiCost', () => {
   it('handles null response', () => {
     const result = parseAiCost(null, 'default');
     expect(result.tokensUsed).toBeNull();
+    expect(result.inputTokens).toBeNull();
+    expect(result.outputTokens).toBeNull();
     expect(result.costUsd).toBeNull();
+  });
+
+  it('returns split token fields for OpenAI usage names', () => {
+    const response = {
+      usage: { prompt_tokens: 1200, completion_tokens: 400 }
+    };
+    const result = parseAiCost(response, 'default');
+    expect(result.inputTokens).toBe(1200);
+    expect(result.outputTokens).toBe(400);
+  });
+
+  it('returns null split token fields when usage is missing', () => {
+    const result = parseAiCost({ content: 'hello' }, 'default');
+    expect(result.inputTokens).toBeNull();
+    expect(result.outputTokens).toBeNull();
+  });
+
+  it('returns split token fields for alternative usage names', () => {
+    const response = {
+      usage: { input_tokens: 500, output_tokens: 200 }
+    };
+    const result = parseAiCost(response, 'default');
+    expect(result.inputTokens).toBe(500);
+    expect(result.outputTokens).toBe(200);
   });
 });

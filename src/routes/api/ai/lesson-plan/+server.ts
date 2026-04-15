@@ -10,6 +10,8 @@ import { createServerLessonArtifactRepository } from '$lib/server/lesson-artifac
 import { createLessonLaunchService } from '$lib/server/lesson-launch-service';
 import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 import { createServerTopicDiscoveryRepository } from '$lib/server/topic-discovery-repository';
+import { createServerSupabaseFromRequest } from '$lib/server/supabase';
+import { checkUserQuota, LESSON_COST_ESTIMATES_USD } from '$lib/server/quota-check';
 import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 const LessonPlanBodySchema = z.object({
@@ -109,6 +111,27 @@ export async function POST({ request, fetch }) {
   const artifactRepository = createServerLessonArtifactRepository();
   const dynamicOperations = createServerDynamicOperationsService();
   const startedAt = Date.now();
+
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader) {
+    const supabase = createServerSupabaseFromRequest(request);
+    const authResult = supabase ? await supabase.auth.getUser() : null;
+    const authUserId = authResult?.data.user?.id ?? null;
+
+    if (authUserId) {
+      const quota = await checkUserQuota(authUserId, LESSON_COST_ESTIMATES_USD.thinking);
+      if (!quota.allowed) {
+        return json(
+          {
+            error: 'QUOTA_EXCEEDED',
+            remaining: quota.remainingUsd,
+            budget: quota.budgetUsd
+          },
+          { status: 402 }
+        );
+      }
+    }
+  }
 
   const generateLessonPlan = async (launchRequest: LessonPlanRequest): Promise<LessonPlanResponse> => {
     const aiConfig = await getAiConfig();

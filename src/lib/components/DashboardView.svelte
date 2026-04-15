@@ -3,6 +3,7 @@
   import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
+  import QuotaBadge from '$lib/components/quota/QuotaBadge.svelte';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
   import TopicSuggestionRail from '$lib/components/topic-discovery/TopicSuggestionRail.svelte';
@@ -11,7 +12,7 @@
   import { getStageLabel } from '$lib/lesson-system';
   import { appState } from '$lib/stores/app-state';
   import { countIn } from '$lib/utils/countIn';
-  import type { AppState, LessonSession, ShortlistedTopic } from '$lib/types';
+  import type { AppState, LessonSession, ShortlistedTopic, UserSubscription } from '$lib/types';
 
   const { state: viewState }: { state: AppState } = $props();
 
@@ -22,6 +23,15 @@
   let hintAbortController: AbortController | undefined;
   let lastHintSeed = $state('');
   let cachedHeaders = $state<Record<string, string> | null>(null);
+  let quotaStatus = $state<{
+    budgetUsd: number;
+    spentUsd: number;
+    remainingUsd: number;
+    tier: UserSubscription['tier'];
+    warningThreshold: boolean;
+    exceeded: boolean;
+  } | null>(null);
+  let quotaStatusRequested = $state(false);
 
   const summary = $derived(getCompletionSummary(viewState));
   const availableSubjects = $derived(viewState.curriculum.subjects);
@@ -176,6 +186,17 @@
     }
   }
 
+  async function loadQuotaStatus(): Promise<void> {
+    try {
+      const headers = await getHeaders();
+      const response = await fetch('/api/payments/quota-status', { headers });
+      if (!response.ok) return;
+      quotaStatus = await response.json();
+    } catch {
+      // Additive dashboard status only — keep the dashboard usable if this fails.
+    }
+  }
+
   // Derived hint trigger — changes whenever subject or profile fields change.
   // The $effect below tracks this directly, so any change reliably fires a reload.
   const hintTrigger = $derived(
@@ -195,6 +216,12 @@
     if (discoveryState.status !== 'idle' || discoveryTopics.length > 0) return;
     hasRequestedInitialDiscovery = true;
     void appState.loadTopicDiscovery(selectedSubject.id);
+  });
+
+  $effect(() => {
+    if (!browser || quotaStatusRequested) return;
+    quotaStatusRequested = true;
+    void loadQuotaStatus();
   });
 
   function onInput(event: Event): void {
@@ -302,6 +329,17 @@
           </div>
         </div>
       {/if}
+
+      {#if quotaStatus}
+        <div class="hero-quota">
+          <QuotaBadge
+            budgetUsd={quotaStatus.budgetUsd}
+            spentUsd={quotaStatus.spentUsd}
+            remainingUsd={quotaStatus.remainingUsd}
+            tier={quotaStatus.tier}
+          />
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -391,6 +429,15 @@
 
     {#if viewState.topicDiscovery.shortlist.error}
       <p class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{viewState.topicDiscovery.shortlist.error}</p>
+    {/if}
+
+    {#if viewState.ui.lessonLaunchQuotaExceeded && viewState.backend.lastSyncError}
+      <div class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>
+        <span>{viewState.backend.lastSyncError}</span>
+        <form method="POST" action="/api/payments/checkout?tier=basic">
+          <button type="submit" class="btn btn-secondary btn-compact">Upgrade to continue</button>
+        </form>
+      </div>
     {/if}
 
     {#if viewState.topicDiscovery.shortlist.shortlist}
@@ -526,6 +573,11 @@
   .hero-body {
     display: grid;
     gap: 0.75rem;
+  }
+
+  .hero-quota {
+    display: flex;
+    justify-content: flex-start;
   }
 
   /* Mission card — glass surface */
@@ -1209,6 +1261,14 @@
   .error-note {
     font-size: 0.84rem;
     color: var(--color-error);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .error-note form {
+    margin: 0;
   }
 
   @media (max-width: 700px) {

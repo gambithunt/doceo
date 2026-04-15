@@ -9,6 +9,8 @@ const createServerGraphRepository = vi.fn();
 const createServerLessonArtifactRepository = vi.fn();
 const createServerDynamicOperationsService = vi.fn();
 const createServerTopicDiscoveryRepository = vi.fn();
+const createServerSupabaseFromRequest = vi.fn();
+const checkUserQuota = vi.fn();
 
 vi.mock('$app/environment', () => ({
   dev: false
@@ -52,6 +54,19 @@ vi.mock('$lib/server/topic-discovery-repository', () => ({
   createServerTopicDiscoveryRepository
 }));
 
+vi.mock('$lib/server/supabase', () => ({
+  createServerSupabaseFromRequest
+}));
+
+vi.mock('$lib/server/quota-check', () => ({
+  checkUserQuota,
+  LESSON_COST_ESTIMATES_USD: {
+    fast: 0.002,
+    default: 0.01,
+    thinking: 0.08
+  }
+}));
+
 describe('ai routes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -61,6 +76,21 @@ describe('ai routes', () => {
       recordGenerationEvent: vi.fn()
     });
     createServerTopicDiscoveryRepository.mockReturnValue(null);
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: { id: 'auth-user-1' }
+          }
+        })
+      }
+    });
+    checkUserQuota.mockResolvedValue({
+      allowed: true,
+      remainingUsd: 1.5,
+      budgetUsd: 1.5,
+      warningThreshold: false
+    });
     getAiConfig.mockResolvedValue({
       provider: 'github-models',
       tiers: {
@@ -229,6 +259,60 @@ describe('ai routes', () => {
         status: 'failure'
       })
     );
+  });
+
+  it('lesson plan route returns 402 with a structured quota error when the user is over budget', async () => {
+    checkUserQuota.mockResolvedValue({
+      allowed: false,
+      remainingUsd: 0,
+      budgetUsd: 0.2,
+      warningThreshold: false
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Photosynthesis',
+            topicDescription: 'How plants make food',
+            curriculumReference: 'IEB · Grade 6 · Biology'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toEqual({
+      error: 'QUOTA_EXCEEDED',
+      remaining: 0,
+      budget: 0.2
+    });
+    expect(invokeAuthenticatedAiEdge).not.toHaveBeenCalled();
   });
 
   it('lesson plan route records a successful generation metric with prompt/model lineage', async () => {

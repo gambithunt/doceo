@@ -1825,6 +1825,40 @@ describe('unified lesson launch pipeline', () => {
     expect(state.backend.lastSyncStatus).toBe('error');
     expect(state.backend.lastSyncError).toMatch(/lesson/i);
   });
+
+  it('marks lesson launch as quota-exceeded when the lesson-plan route returns 402', async () => {
+    const baseState = createInitialState();
+    const lesson = baseState.lessons[0]!;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-plan') {
+        return new Response(JSON.stringify({ error: 'QUOTA_EXCEEDED', remaining: 0, budget: 0.2 }), {
+          status: 402,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: []
+    });
+
+    await store.launchLesson(lesson.id);
+
+    const state = get(store);
+
+    expect(state.lessonSessions).toHaveLength(0);
+    expect(state.backend.lastSyncStatus).toBe('error');
+    expect(state.ui.lessonLaunchQuotaExceeded).toBe(true);
+    expect(state.backend.lastSyncError).toMatch(/monthly limit/i);
+  });
 });
 
 describe('lesson artifact ratings', () => {

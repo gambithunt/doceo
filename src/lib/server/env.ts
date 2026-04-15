@@ -13,5 +13,10 @@ export const serverEnv = {
   githubModelsToken: readEnv('GITHUB_MODELS_TOKEN'),
   openaiApiKey: readEnv('OPENAI_API_KEY'),
   anthropicApiKey: readEnv('ANTHROPIC_API_KEY'),
-  kimiApiKey: readEnv('KIMI_API_KEY')
+  kimiApiKey: readEnv('KIMI_API_KEY'),
+  stripeSecretKey: readEnv('STRIPE_SECRET_KEY'),
+  stripeWebhookSecret: readEnv('STRIPE_WEBHOOK_SECRET'),
+  stripePriceIdBasic: readEnv('STRIPE_PRICE_ID_BASIC'),
+  stripePriceIdStandard: readEnv('STRIPE_PRICE_ID_STANDARD'),
+  stripePriceIdPremium: readEnv('STRIPE_PRICE_ID_PREMIUM')
 };

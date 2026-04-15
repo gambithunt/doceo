@@ -112,6 +112,11 @@ interface TopicDiscoveryPayload {
 
 interface LessonPlanPayload extends LessonPlanResponse {}
 
+interface LessonPlanRequestError extends Error {
+  status?: number;
+  code?: string;
+}
+
 interface OptionsResponse<TOption> {
   options: TOption[];
   error?: string;
@@ -804,8 +809,17 @@ export function createAppStore(initialState: AppState = readState()) {
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => ({ error: 'Lesson plan request failed.' }))) as { error?: string };
-      throw new Error(payload.error ?? 'Lesson plan request failed.');
+      const payload = (await response.json().catch(() => ({ error: 'Lesson plan request failed.' }))) as {
+        error?: string;
+      };
+      const error = new Error(
+        response.status === 402 && payload.error === 'QUOTA_EXCEEDED'
+          ? "You've reached your monthly limit. Upgrade to continue."
+          : payload.error ?? 'Lesson plan request failed.'
+      ) as LessonPlanRequestError;
+      error.status = response.status;
+      error.code = payload.error;
+      throw error;
     }
 
     const payload = (await response.json()) as LessonPlanPayload;
@@ -825,8 +839,46 @@ export function createAppStore(initialState: AppState = readState()) {
         lastSyncAt: new Date().toISOString(),
         lastSyncStatus: 'error',
         lastSyncError: message
+      },
+      ui: {
+        ...state.ui,
+        lessonLaunchQuotaExceeded: false
       }
     });
+  }
+
+  function persistQuotaExceededLessonLaunch(state: AppState): AppState {
+    return persistAndSync({
+      ...state,
+      backend: {
+        ...state.backend,
+        lastSyncAt: new Date().toISOString(),
+        lastSyncStatus: 'error',
+        lastSyncError: "You've reached your monthly limit. Upgrade to continue."
+      },
+      ui: {
+        ...state.ui,
+        lessonLaunchQuotaExceeded: true
+      }
+    });
+  }
+
+  function isQuotaExceededError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      (error as LessonPlanRequestError).status === 402 &&
+      (error as LessonPlanRequestError).code === 'QUOTA_EXCEEDED'
+    );
+  }
+
+  function clearLessonLaunchQuotaExceeded(state: AppState): AppState {
+    return {
+      ...state,
+      ui: {
+        ...state.ui,
+        lessonLaunchQuotaExceeded: false
+      }
+    };
   }
 
   function persistOnboardingError(state: AppState, message: string): AppState {
@@ -1331,15 +1383,28 @@ export function createAppStore(initialState: AppState = readState()) {
         }
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to create lesson plan right now.';
       update((state) =>
         persistAndSync({
-          ...state,
+          ...(isQuotaExceededError(error)
+            ? {
+                ...state,
+                backend: {
+                  ...state.backend,
+                  lastSyncAt: new Date().toISOString(),
+                  lastSyncStatus: 'error',
+                  lastSyncError: "You've reached your monthly limit. Upgrade to continue."
+                },
+                ui: {
+                  ...state.ui,
+                  lessonLaunchQuotaExceeded: true
+                }
+              }
+            : clearLessonLaunchQuotaExceeded(state)),
           topicDiscovery: {
             ...state.topicDiscovery,
             discovery: {
               ...state.topicDiscovery.discovery,
-              error: message,
+              error: error instanceof Error ? error.message : 'Unable to create lesson plan right now.',
               status: state.topicDiscovery.discovery.topics.length > 0 ? 'stale' : 'error'
             }
           }
@@ -1371,7 +1436,7 @@ export function createAppStore(initialState: AppState = readState()) {
       const artifacts = upsertLessonArtifacts(state, lessonPlan);
 
       return persistAndSync({
-        ...state,
+        ...clearLessonLaunchQuotaExceeded(state),
         ...artifacts,
         learnerProfile: {
           ...state.learnerProfile,
@@ -1598,8 +1663,14 @@ export function createAppStore(initialState: AppState = readState()) {
           topicId: topic?.id ?? lesson.topicId
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to open the lesson right now.';
-        update((state) => persistLessonLaunchError(state, message));
+        update((state) =>
+          isQuotaExceededError(error)
+            ? persistQuotaExceededLessonLaunch(state)
+            : persistLessonLaunchError(
+                state,
+                error instanceof Error ? error.message : 'Unable to open the lesson right now.'
+              )
+        );
         return;
       }
 
@@ -1619,7 +1690,7 @@ export function createAppStore(initialState: AppState = readState()) {
         const artifacts = upsertLessonArtifacts(state, launched);
 
         return persistAndSync({
-          ...state,
+          ...clearLessonLaunchQuotaExceeded(state),
           ...artifacts,
           learnerProfile: {
             ...state.learnerProfile,
@@ -1938,19 +2009,32 @@ export function createAppStore(initialState: AppState = readState()) {
           nodeId: topic.subtopicId,
           topicId: topic.topicId
         });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to create lesson plan right now.';
-        update((state) =>
-          persistAndSync({
-            ...state,
-            topicDiscovery: {
-              ...state.topicDiscovery,
-              shortlist: {
-                ...state.topicDiscovery.shortlist,
-                error: message,
-                status: 'error'
+    } catch (error) {
+      update((state) =>
+        persistAndSync({
+          ...(isQuotaExceededError(error)
+            ? {
+                ...state,
+                backend: {
+                  ...state.backend,
+                  lastSyncAt: new Date().toISOString(),
+                  lastSyncStatus: 'error',
+                  lastSyncError: "You've reached your monthly limit. Upgrade to continue."
+                },
+                ui: {
+                  ...state.ui,
+                  lessonLaunchQuotaExceeded: true
+                }
               }
+            : clearLessonLaunchQuotaExceeded(state)),
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              error: error instanceof Error ? error.message : 'Unable to create lesson plan right now.',
+              status: 'error'
             }
+          }
           })
         );
         return;
@@ -1972,7 +2056,7 @@ export function createAppStore(initialState: AppState = readState()) {
         const artifacts = upsertLessonArtifacts(state, lessonPlan);
 
         return persistAndSync({
-          ...state,
+          ...clearLessonLaunchQuotaExceeded(state),
           ...artifacts,
           learnerProfile: {
             ...state.learnerProfile,
@@ -2043,21 +2127,34 @@ export function createAppStore(initialState: AppState = readState()) {
           nodeId: shortlistedTopic.subtopicId,
           topicId: shortlistedTopic.topicId
         });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to create lesson plan right now.';
-        update((state) =>
-          persistAndSync({
-            ...state,
-            topicDiscovery: {
-              ...state.topicDiscovery,
-              selectedSubjectId: subject.id,
-              input: sectionName,
-              shortlist: {
-                ...state.topicDiscovery.shortlist,
-                error: message,
-                status: 'error'
+    } catch (error) {
+      update((state) =>
+        persistAndSync({
+          ...(isQuotaExceededError(error)
+            ? {
+                ...state,
+                backend: {
+                  ...state.backend,
+                  lastSyncAt: new Date().toISOString(),
+                  lastSyncStatus: 'error',
+                  lastSyncError: "You've reached your monthly limit. Upgrade to continue."
+                },
+                ui: {
+                  ...state.ui,
+                  lessonLaunchQuotaExceeded: true
+                }
               }
+            : clearLessonLaunchQuotaExceeded(state)),
+          topicDiscovery: {
+            ...state.topicDiscovery,
+            selectedSubjectId: subject.id,
+            input: sectionName,
+            shortlist: {
+              ...state.topicDiscovery.shortlist,
+              error: error instanceof Error ? error.message : 'Unable to create lesson plan right now.',
+              status: 'error'
             }
+          }
           })
         );
         return;
@@ -2079,7 +2176,7 @@ export function createAppStore(initialState: AppState = readState()) {
         const artifacts = upsertLessonArtifacts(state, lessonPlan);
 
         return persistAndSync({
-          ...state,
+          ...clearLessonLaunchQuotaExceeded(state),
           ...artifacts,
           learnerProfile: {
             ...state.learnerProfile,
@@ -2501,8 +2598,14 @@ export function createAppStore(initialState: AppState = readState()) {
           topicId: existing.topicId
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to restart the lesson right now.';
-        update((state) => persistLessonLaunchError(state, message));
+        update((state) =>
+          isQuotaExceededError(error)
+            ? persistQuotaExceededLessonLaunch(state)
+            : persistLessonLaunchError(
+                state,
+                error instanceof Error ? error.message : 'Unable to restart the lesson right now.'
+              )
+        );
         return;
       }
 
@@ -2539,7 +2642,7 @@ export function createAppStore(initialState: AppState = readState()) {
         const artifacts = upsertLessonArtifacts(state, launched);
 
         return persistAndSync({
-          ...state,
+          ...clearLessonLaunchQuotaExceeded(state),
           ...artifacts,
           lessonSessions: [restarted, ...state.lessonSessions],
           ui: {

@@ -40,6 +40,8 @@ export function calculateCost(tokens: TokenCounts, modelOrTier: string): CostRes
 export interface AiCostResult {
   tokensUsed: number | null;
   costUsd: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
 }
 
 /**
@@ -53,17 +55,19 @@ export function parseAiCost(response: unknown, modelOrTier: string): AiCostResul
     try {
       parsed = JSON.parse(response);
     } catch {
-      return { tokensUsed: null, costUsd: null };
+      return { tokensUsed: null, costUsd: null, inputTokens: null, outputTokens: null };
     }
   }
 
   const tokens = extractTokensFromResponse(parsed);
-  if (!tokens) return { tokensUsed: null, costUsd: null };
+  if (!tokens) return { tokensUsed: null, costUsd: null, inputTokens: null, outputTokens: null };
 
   const { costUsd } = calculateCost(tokens, modelOrTier);
   return {
     tokensUsed: tokens.inputTokens + tokens.outputTokens,
-    costUsd
+    costUsd,
+    inputTokens: tokens.inputTokens,
+    outputTokens: tokens.outputTokens
   };
 }
 

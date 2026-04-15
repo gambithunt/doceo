@@ -144,6 +144,15 @@
 	"/api/onboarding/reset": [
 		"src/routes/api/onboarding/reset/+server.ts"
 	],
+	"/api/payments/checkout": [
+		"src/routes/api/payments/checkout/+server.ts"
+	],
+	"/api/payments/quota-status": [
+		"src/routes/api/payments/quota-status/+server.ts"
+	],
+	"/api/payments/webhook": [
+		"src/routes/api/payments/webhook/+server.ts"
+	],
 	"/api/revision/planner-resolve": [
 		"src/routes/api/revision/planner-resolve/+server.ts"
 	],

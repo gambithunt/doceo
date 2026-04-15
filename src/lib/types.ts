@@ -61,6 +61,29 @@ export interface UserProfile {
   recommendedStartSubjectName: string | null;
 }
 
+export interface UserSubscription {
+  id: string | null;
+  userId: string;
+  tier: 'trial' | 'basic' | 'standard' | 'premium';
+  status: 'active' | 'cancelled' | 'past_due' | 'trial';
+  monthlyAiBudgetUsd: number;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface BillingPeriodCost {
+  userId: string;
+  billingPeriod: string;
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  interactionCount: number;
+}
+
 export interface CountryOption {
   id: string;
   name: string;
@@ -816,6 +839,7 @@ export interface AppState {
     activeLessonSessionId: string | null;
     pendingAssistantSessionId: string | null;
     composerDraft: string;
+    lessonLaunchQuotaExceeded: boolean;
     showTopicDiscoveryComposer: boolean;
     showLessonCloseConfirm: boolean;
     showRevisionPlanner: boolean;

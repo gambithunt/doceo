@@ -267,7 +267,7 @@ export async function logAiInteraction(
   };
 
   const modelOrTier = meta?.model ?? meta?.modelTier ?? 'default';
-  const { tokensUsed, costUsd } = parseAiCost(response, modelOrTier);
+  const { tokensUsed, costUsd, inputTokens, outputTokens } = parseAiCost(response, modelOrTier);
 
   await supabase.from('ai_interactions').insert({
     id: crypto.randomUUID(),
@@ -277,6 +277,8 @@ export async function logAiInteraction(
     model_tier: meta?.modelTier ?? null,
     model: meta?.model ?? null,
     tokens_used: tokensUsed,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
     cost_usd: costUsd,
     request_payload: wrapPayload(requestPayload),
     response_payload: wrapPayload(response),
