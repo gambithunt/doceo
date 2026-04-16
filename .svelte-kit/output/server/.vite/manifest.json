@@ -78,7 +78,9 @@
     "file": "chunks/admin-queries.js",
     "name": "admin-queries",
     "imports": [
-      "_supabase.js"
+      "_supabase.js",
+      "_stripe.js",
+      "_subscription-repository.js"
     ]
   },
   "_ai-config.js": {
@@ -385,7 +387,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.CUmupsBx.css"
+      "_app/immutable/assets/_page.BZ3cByOu.css"
     ]
   },
   "src/routes/(app)/lesson/+page.svelte": {
@@ -417,7 +419,7 @@
       "_app-state.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.9ft8y-8k.css"
+      "_app/immutable/assets/_page.DNoLC2Va.css"
     ]
   },
   "src/routes/(app)/progress/+page.svelte": {
@@ -777,7 +779,8 @@
     "src": "src/routes/admin/revenue/+page.server.ts",
     "isEntry": true,
     "imports": [
-      "_supabase.js"
+      "_admin-guard.js",
+      "_admin-queries.js"
     ]
   },
   "src/routes/admin/revenue/+page.svelte": {
@@ -791,7 +794,7 @@
       "_AdminKpiCard.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.AGmcQ7Zt.css"
+      "_app/immutable/assets/_page.CTLwNW74.css"
     ]
   },
   "src/routes/admin/settings/+page.server.ts": {
@@ -855,6 +858,7 @@
     "src": "src/routes/admin/users/+page.server.ts",
     "isEntry": true,
     "imports": [
+      "_admin-guard.js",
       "_admin-queries.js"
     ]
   },
@@ -872,7 +876,7 @@
       "_AdminPageHeader.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.Cr78DofJ.css"
+      "_app/immutable/assets/_page.BAP6i-c-.css"
     ]
   },
   "src/routes/admin/users/[id]/+page.server.ts": {
@@ -881,6 +885,7 @@
     "src": "src/routes/admin/users/[id]/+page.server.ts",
     "isEntry": true,
     "imports": [
+      "_admin-guard.js",
       "_admin-queries.js",
       "_supabase.js"
     ]
@@ -898,8 +903,7 @@
       "_state.svelte.js"
     ],
     "css": [
-      "_app/immutable/assets/_page.CrjTDumC.css",
-      "_app/immutable/assets/AdminPageHeader.CsWYLxGp.css"
+      "_app/immutable/assets/_page.BnM5GNVU.css"
     ]
   },
   "src/routes/api/admin/audit-export/+server.ts": {
@@ -969,6 +973,7 @@
       "_dynamic-operations.js",
       "_topic-discovery-repository.js",
       "_supabase.js",
+      "_stripe.js",
       "_subscription-repository.js"
     ]
   },
@@ -1214,6 +1219,7 @@
     "isEntry": true,
     "imports": [
       "_supabase.js",
+      "_stripe.js",
       "_subscription-repository.js"
     ]
   },

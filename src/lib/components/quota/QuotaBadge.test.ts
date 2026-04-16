@@ -1,7 +1,12 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { describe, expect, it, vi } from 'vitest';
+import { launchCheckout } from '$lib/payments/checkout';
 import QuotaBadge from './QuotaBadge.svelte';
+
+vi.mock('$lib/payments/checkout', () => ({
+  launchCheckout: vi.fn()
+}));
 
 describe('QuotaBadge', () => {
   it('renders the normal usage state without warning text or CTA', () => {
@@ -44,6 +49,40 @@ describe('QuotaBadge', () => {
 
     expect(screen.getByRole('button', { name: /upgrade to continue/i })).toBeInTheDocument();
     expect(container.querySelector('progress')).toBeNull();
+  });
+
+  it('launches checkout from the exceeded CTA', async () => {
+    render(QuotaBadge, {
+      props: {
+        budgetUsd: 1.5,
+        spentUsd: 1.55,
+        remainingUsd: 0,
+        tier: 'basic'
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+
+    expect(launchCheckout).toHaveBeenCalledWith('basic');
+  });
+
+  it('shows an inline error when checkout launch fails', async () => {
+    vi.mocked(launchCheckout).mockRejectedValueOnce(new Error('Authentication required.'));
+
+    render(QuotaBadge, {
+      props: {
+        budgetUsd: 1.5,
+        spentUsd: 1.55,
+        remainingUsd: 0,
+        tier: 'basic'
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/authentication required/i)).toBeInTheDocument();
+    });
   });
 
   it('renders the trial badge alongside the usage summary', () => {

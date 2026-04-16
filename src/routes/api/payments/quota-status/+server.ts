@@ -1,11 +1,8 @@
 import { json } from '@sveltejs/kit';
 import { createServerSupabaseFromRequest } from '$lib/server/supabase';
-import { getUserBillingPeriodCost, getUserSubscription } from '$lib/server/subscription-repository';
+import { getEffectiveBudgetUsd } from '$lib/server/billing';
+import { getUserActiveBillingCost, getUserSubscription } from '$lib/server/subscription-repository';
 import { computeQuotaState } from '$lib/quota/quota-state';
-
-function currentBillingPeriod(now = new Date()): string {
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-}
 
 export async function GET({ request }) {
   const supabase = createServerSupabaseFromRequest(request);
@@ -17,11 +14,12 @@ export async function GET({ request }) {
   }
 
   const subscription = await getUserSubscription(user.id);
-  const billing = await getUserBillingPeriodCost(user.id, currentBillingPeriod());
-  const quota = computeQuotaState(subscription.monthlyAiBudgetUsd, billing.totalCostUsd);
+  const billing = await getUserActiveBillingCost(user.id, subscription);
+  const budgetUsd = getEffectiveBudgetUsd(subscription);
+  const quota = computeQuotaState(budgetUsd, billing.totalCostUsd);
 
   return json({
-    budgetUsd: subscription.monthlyAiBudgetUsd,
+    budgetUsd,
     spentUsd: billing.totalCostUsd,
     remainingUsd: quota.remainingUsd,
     tier: subscription.tier,

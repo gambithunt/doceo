@@ -124,6 +124,48 @@ describe('payments webhook route', () => {
     );
   });
 
+  it('handles checkout.session.completed by storing the Stripe customer for the authenticated user', async () => {
+    const supabase = createSupabaseMock();
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() => ({
+          type: 'checkout.session.completed',
+          data: {
+            object: {
+              id: 'cs_123',
+              customer: 'cus_123',
+              subscription: 'sub_123',
+              client_reference_id: 'auth-user-1',
+              metadata: {}
+            }
+          }
+        }))
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(supabase.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'auth-user-1',
+        stripe_customer_id: 'cus_123',
+        stripe_subscription_id: 'sub_123'
+      }),
+      { onConflict: 'user_id' }
+    );
+  });
+
   it('handles customer.subscription.updated by upserting the past_due status', async () => {
     const supabase = createSupabaseMock();
     createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
@@ -222,6 +264,154 @@ describe('payments webhook route', () => {
       expect.objectContaining({
         status: 'past_due'
       })
+    );
+  });
+
+  it('handles invoice.payment_succeeded by restoring the subscription status to active', async () => {
+    const supabase = createSupabaseMock();
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() => ({
+          type: 'invoice.payment_succeeded',
+          data: {
+            object: {
+              id: 'in_123',
+              customer: 'cus_123',
+              subscription: 'sub_123'
+            }
+          }
+        }))
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(supabase.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'active'
+      })
+    );
+  });
+
+  it('replays invoice.payment_succeeded without changing the resulting write', async () => {
+    const supabase = createSupabaseMock();
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() => ({
+          id: 'evt_replay_123',
+          type: 'invoice.payment_succeeded',
+          data: {
+            object: {
+              id: 'in_123',
+              customer: 'cus_123',
+              subscription: 'sub_123'
+            }
+          }
+        }))
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+
+    const firstResponse = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    const secondResponse = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(supabase.update).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        status: 'active'
+      })
+    );
+    expect(supabase.update).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        status: 'active'
+      })
+    );
+  });
+
+  it('falls back to the existing Stripe customer mapping when subscription metadata is missing', async () => {
+    const supabase = createSupabaseMock();
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        user_id: 'auth-user-1'
+      }
+    });
+    supabase.from.mockImplementation((table: string) => {
+      if (table === 'user_subscriptions') {
+        return {
+          upsert: supabase.upsert,
+          update: supabase.update,
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle
+            }))
+          }))
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() =>
+          createSubscriptionEvent('customer.subscription.updated', {
+            metadata: {}
+          })
+        )
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(supabase.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'auth-user-1',
+        status: 'active'
+      }),
+      { onConflict: 'user_id' }
     );
   });
 

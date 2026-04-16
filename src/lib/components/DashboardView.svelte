@@ -3,6 +3,7 @@
   import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
+  import { launchCheckout } from '$lib/payments/checkout';
   import QuotaBadge from '$lib/components/quota/QuotaBadge.svelte';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
@@ -32,6 +33,7 @@
     exceeded: boolean;
   } | null>(null);
   let quotaStatusRequested = $state(false);
+  let checkoutError = $state('');
 
   const summary = $derived(getCompletionSummary(viewState));
   const availableSubjects = $derived(viewState.curriculum.subjects);
@@ -249,6 +251,16 @@
     void appState.shortlistTopics(selectedSubject.id, viewState.topicDiscovery.input.trim());
   }
 
+  async function handleUpgradeCheckout(): Promise<void> {
+    checkoutError = '';
+
+    try {
+      await launchCheckout('basic');
+    } catch (error) {
+      checkoutError = error instanceof Error ? error.message : 'Unable to start checkout.';
+    }
+  }
+
   function refreshTopicDiscovery(): void {
     if (!selectedSubject) return;
     if (discoveryState.status === 'loading' || discoveryState.status === 'refreshing') return;
@@ -434,9 +446,12 @@
     {#if viewState.ui.lessonLaunchQuotaExceeded && viewState.backend.lastSyncError}
       <div class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>
         <span>{viewState.backend.lastSyncError}</span>
-        <form method="POST" action="/api/payments/checkout?tier=basic">
-          <button type="submit" class="btn btn-secondary btn-compact">Upgrade to continue</button>
-        </form>
+        <button type="button" class="btn btn-secondary btn-compact" onclick={handleUpgradeCheckout}>
+          Upgrade to continue
+        </button>
+        {#if checkoutError}
+          <span>{checkoutError}</span>
+        {/if}
       </div>
     {/if}
 
@@ -1265,10 +1280,6 @@
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
-  }
-
-  .error-note form {
-    margin: 0;
   }
 
   @media (max-width: 700px) {

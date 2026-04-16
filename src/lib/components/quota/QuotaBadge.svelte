@@ -1,5 +1,6 @@
 <script lang="ts">
   import { computeQuotaState } from '$lib/quota/quota-state';
+  import { launchCheckout } from '$lib/payments/checkout';
   import type { UserSubscription } from '$lib/types';
 
   interface Props {
@@ -14,6 +15,17 @@
   const budgetLabel = $derived(`$${budgetUsd.toFixed(2)}`);
   const spentLabel = $derived(`$${spentUsd.toFixed(2)}`);
   const remainingLabel = $derived(`$${remainingUsd.toFixed(2)}`);
+  let checkoutError = $state('');
+
+  async function handleUpgrade(): Promise<void> {
+    checkoutError = '';
+
+    try {
+      await launchCheckout('basic');
+    } catch (error) {
+      checkoutError = error instanceof Error ? error.message : 'Unable to start checkout.';
+    }
+  }
 </script>
 
 <section class="quota-badge" class:warning={quotaState.warningThreshold} class:exceeded={quotaState.exceeded}>
@@ -28,9 +40,12 @@
   {#if quotaState.exceeded}
     <div class="quota-exceeded-copy">
       <p>Upgrade to continue generating lessons.</p>
-      <form method="POST" action="/api/payments/checkout?tier=basic">
-        <button type="submit" class="btn btn-secondary btn-compact">Upgrade to continue</button>
-      </form>
+      <button type="button" class="btn btn-secondary btn-compact" onclick={handleUpgrade}>
+        Upgrade to continue
+      </button>
+      {#if checkoutError}
+        <p class="quota-error">{checkoutError}</p>
+      {/if}
     </div>
   {:else}
     <div class="quota-progress-block">
@@ -151,8 +166,8 @@
     font-size: var(--text-sm);
   }
 
-  .quota-exceeded-copy form {
-    margin: 0;
+  .quota-error {
+    color: var(--color-error);
   }
 
   .warning {

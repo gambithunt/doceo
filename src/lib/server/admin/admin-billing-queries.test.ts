@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { createServerSupabaseAdmin } = vi.hoisted(() => ({
   createServerSupabaseAdmin: vi.fn()
 }));
+const { getUserActiveBillingCost } = vi.hoisted(() => ({
+  getUserActiveBillingCost: vi.fn()
+}));
 
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseAdmin
+}));
+
+vi.mock('$lib/server/subscription-repository', () => ({
+  getUserActiveBillingCost
 }));
 
 function createProfileMaybeSingle(authUserId: string | null) {
@@ -32,6 +39,14 @@ describe('admin billing queries', () => {
     vi.resetModules();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-15T12:00:00.000Z'));
+    getUserActiveBillingCost.mockResolvedValue({
+      userId: 'uuid-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 0
+    });
   });
 
   it('getAdminUserSubscription returns current subscription spend and remaining budget', async () => {
@@ -75,7 +90,7 @@ describe('admin billing queries', () => {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              eq: vi.fn(() => ({ maybeSingle: billingMaybeSingle }))
+              eq: billingMaybeSingle
             }))
           }))
         };
@@ -85,6 +100,14 @@ describe('admin billing queries', () => {
     });
 
     createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockResolvedValueOnce({
+      userId: 'uuid-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 0.5,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 1
+    });
 
     const { getAdminUserSubscription } = await import('./admin-queries');
     const result = await getAdminUserSubscription('profile-abc');
@@ -142,7 +165,7 @@ describe('admin billing queries', () => {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              eq: vi.fn(() => ({ maybeSingle: billingMaybeSingle }))
+              eq: billingMaybeSingle
             }))
           }))
         };
@@ -152,6 +175,14 @@ describe('admin billing queries', () => {
     });
 
     createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockResolvedValueOnce({
+      userId: 'uuid-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 5,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 10
+    });
 
     const { getAdminUserSubscription } = await import('./admin-queries');
     const result = await getAdminUserSubscription('profile-abc');
@@ -163,6 +194,159 @@ describe('admin billing queries', () => {
       spentUsd: 5,
       remainingUsd: 94.99,
       isComped: true,
+      compExpiresAt: null,
+      compBudgetUsd: null
+    });
+  });
+
+  it('getAdminUserSubscription uses a custom comp budget when present', async () => {
+    const profileMaybeSingle = createProfileMaybeSingle('uuid-1');
+    const subscriptionMaybeSingle = createSubscriptionMaybeSingle({
+      user_id: 'uuid-1',
+      tier: 'trial',
+      status: 'trial',
+      monthly_ai_budget_usd: '0.2000',
+      is_comped: true,
+      comp_expires_at: null,
+      comp_budget_usd: '2.0000'
+    });
+    const billingMaybeSingle = createBillingMaybeSingle({
+      user_id: 'uuid-1',
+      billing_period: '2026-04',
+      total_cost_usd: '1.2500',
+      total_input_tokens: 0,
+      total_output_tokens: 0,
+      interaction_count: 4
+    });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'profiles') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: profileMaybeSingle }))
+          }))
+        };
+      }
+
+      if (table === 'user_subscriptions') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: subscriptionMaybeSingle }))
+          }))
+        };
+      }
+
+      if (table === 'user_billing_period_costs') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: billingMaybeSingle
+            }))
+          }))
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockResolvedValueOnce({
+      userId: 'uuid-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 1.25,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 4
+    });
+
+    const { getAdminUserSubscription } = await import('./admin-queries');
+    const result = await getAdminUserSubscription('profile-abc');
+
+    expect(result).toEqual({
+      tier: 'trial',
+      status: 'trial',
+      budgetUsd: 2,
+      spentUsd: 1.25,
+      remainingUsd: 0.75,
+      isComped: true,
+      compExpiresAt: null,
+      compBudgetUsd: 2
+    });
+  });
+
+  it('getAdminUserSubscription uses the active Stripe billing period for mid-month subscriptions', async () => {
+    vi.setSystemTime(new Date('2026-04-20T12:00:00.000Z'));
+    const profileMaybeSingle = createProfileMaybeSingle('uuid-1');
+    const subscriptionMaybeSingle = createSubscriptionMaybeSingle({
+      user_id: 'uuid-1',
+      tier: 'basic',
+      status: 'active',
+      monthly_ai_budget_usd: '1.5000',
+      is_comped: false,
+      comp_expires_at: null,
+      comp_budget_usd: null,
+      current_period_start: '2026-04-16',
+      current_period_end: '2026-05-15'
+    });
+    const aiInteractionsLt = vi.fn().mockResolvedValue({
+      data: [
+        { cost_usd: '0.1000', input_tokens: 100, output_tokens: 20 },
+        { cost_usd: '0.1500', input_tokens: 150, output_tokens: 30 }
+      ]
+    });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'profiles') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: profileMaybeSingle }))
+          }))
+        };
+      }
+
+      if (table === 'user_subscriptions') {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: subscriptionMaybeSingle }))
+          }))
+        };
+      }
+
+      if (table === 'ai_interactions') {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(() => ({
+              gte: vi.fn(() => ({
+                lt: aiInteractionsLt
+              }))
+            }))
+          }))
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockResolvedValueOnce({
+      userId: 'uuid-1',
+      billingPeriod: '2026-04-16/2026-05-15',
+      totalCostUsd: 0.25,
+      totalInputTokens: 250,
+      totalOutputTokens: 50,
+      interactionCount: 2
+    });
+
+    const { getAdminUserSubscription } = await import('./admin-queries');
+    const result = await getAdminUserSubscription('profile-abc');
+
+    expect(result).toEqual({
+      tier: 'basic',
+      status: 'active',
+      budgetUsd: 1.5,
+      spentUsd: 0.25,
+      remainingUsd: 1.25,
+      isComped: false,
       compExpiresAt: null,
       compBudgetUsd: null
     });
@@ -194,7 +378,7 @@ describe('admin billing queries', () => {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              eq: vi.fn(() => ({ maybeSingle: billingMaybeSingle }))
+              eq: billingMaybeSingle
             }))
           }))
         };
@@ -204,6 +388,14 @@ describe('admin billing queries', () => {
     });
 
     createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockResolvedValueOnce({
+      userId: 'uuid-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 0
+    });
 
     const { getAdminUserSubscription } = await import('./admin-queries');
     const result = await getAdminUserSubscription('profile-abc');
@@ -409,7 +601,7 @@ describe('admin billing queries', () => {
       if (table === 'user_billing_period_costs') {
         return {
           select: vi.fn(() => ({
-            in: vi.fn(() => ({
+            eq: vi.fn(() => ({
               eq: vi.fn().mockResolvedValue({
                 data: [{ user_id: 'uuid-1', billing_period: '2026-04', total_cost_usd: '0.5000' }]
               })
@@ -422,6 +614,14 @@ describe('admin billing queries', () => {
     });
 
     createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockImplementation(async (userId: string) => ({
+      userId,
+      billingPeriod: '2026-04',
+      totalCostUsd: userId === 'uuid-1' ? 0.5 : 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: userId === 'uuid-1' ? 1 : 0
+    }));
 
     const { getAdminUsers } = await import('./admin-queries');
     const result = await getAdminUsers({ tier: 'basic' });
@@ -493,7 +693,7 @@ describe('admin billing queries', () => {
       if (table === 'user_billing_period_costs') {
         return {
           select: vi.fn(() => ({
-            in: vi.fn(() => ({
+            eq: vi.fn(() => ({
               eq: vi.fn().mockResolvedValue({
                 data: [{ user_id: 'uuid-1', billing_period: '2026-04', total_cost_usd: '5.0000' }]
               })
@@ -506,6 +706,14 @@ describe('admin billing queries', () => {
     });
 
     createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockImplementation(async (userId: string) => ({
+      userId,
+      billingPeriod: '2026-04',
+      totalCostUsd: userId === 'uuid-1' ? 5 : 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: userId === 'uuid-1' ? 1 : 0
+    }));
 
     const { getAdminUsers } = await import('./admin-queries');
     const result = await getAdminUsers();
@@ -517,6 +725,112 @@ describe('admin billing queries', () => {
         isComped: true,
         spentUsd: 5,
         remainingUsd: 94.99
+      })
+    );
+  });
+
+  it('getAdminUsers uses the active Stripe billing period for non-calendar subscriptions', async () => {
+    vi.setSystemTime(new Date('2026-04-20T12:00:00.000Z'));
+    const orderProfiles = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'profile-1',
+          auth_user_id: 'uuid-1',
+          full_name: 'Midmonth User',
+          email: 'midmonth@example.com',
+          grade: 'Grade 8',
+          curriculum: 'CAPS',
+          role: 'student',
+          created_at: '2026-04-15T12:00:00.000Z'
+        }
+      ],
+      count: 1
+    });
+
+    const from = vi.fn((table: string) => {
+      if (table === 'profiles') {
+        return {
+          select: vi.fn(() => ({
+            range: vi.fn(() => ({ order: orderProfiles })),
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { id: 'profile-1', auth_user_id: 'uuid-1' }
+              })
+            }))
+          }))
+        };
+      }
+
+      if (table === 'lesson_sessions') {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(() => ({
+              order: vi.fn().mockResolvedValue({
+                data: [{ profile_id: 'profile-1', status: 'complete', last_active_at: '2026-04-15T12:00:00.000Z' }]
+              }),
+              data: [{ profile_id: 'profile-1', status: 'complete' }]
+            }))
+          }))
+        };
+      }
+
+      if (table === 'user_subscriptions') {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn().mockResolvedValue({
+              data: [
+                {
+                  user_id: 'uuid-1',
+                  tier: 'basic',
+                  status: 'active',
+                  monthly_ai_budget_usd: '1.5000',
+                  is_comped: false,
+                  comp_expires_at: null,
+                  comp_budget_usd: null,
+                  current_period_start: '2026-04-16',
+                  current_period_end: '2026-05-15'
+                }
+              ]
+            })
+          }))
+        };
+      }
+
+      if (table === 'ai_interactions') {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(() => ({
+              gte: vi.fn(() => ({
+                lt: vi.fn().mockResolvedValue({
+                  data: [{ cost_usd: '0.2500', input_tokens: 100, output_tokens: 20 }]
+                })
+              }))
+            }))
+          }))
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockImplementation(async (userId: string) => ({
+      userId,
+      billingPeriod: '2026-04-16/2026-05-15',
+      totalCostUsd: userId === 'uuid-1' ? 0.25 : 0,
+      totalInputTokens: 100,
+      totalOutputTokens: 20,
+      interactionCount: userId === 'uuid-1' ? 1 : 0
+    }));
+
+    const { getAdminUsers } = await import('./admin-queries');
+    const result = await getAdminUsers();
+
+    expect(result.users[0]).toEqual(
+      expect.objectContaining({
+        id: 'profile-1',
+        spentUsd: 0.25,
+        remainingUsd: 1.25
       })
     );
   });
@@ -592,7 +906,7 @@ describe('admin billing queries', () => {
       if (table === 'user_billing_period_costs') {
         return {
           select: vi.fn(() => ({
-            in: vi.fn(() => ({
+            eq: vi.fn(() => ({
               eq: vi.fn().mockResolvedValue({ data: [] })
             }))
           }))
@@ -603,6 +917,14 @@ describe('admin billing queries', () => {
     });
 
     createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockImplementation(async (userId: string) => ({
+      userId,
+      billingPeriod: '2026-04',
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 0
+    }));
 
     const { getAdminUsers } = await import('./admin-queries');
     const result = await getAdminUsers({ isComped: true });

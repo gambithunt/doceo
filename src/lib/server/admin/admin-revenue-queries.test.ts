@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { createServerSupabaseAdmin } = vi.hoisted(() => ({
   createServerSupabaseAdmin: vi.fn()
 }));
+const { getUserActiveBillingCost } = vi.hoisted(() => ({
+  getUserActiveBillingCost: vi.fn()
+}));
 
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseAdmin
+}));
+
+vi.mock('$lib/server/subscription-repository', () => ({
+  getUserActiveBillingCost
 }));
 
 describe('admin revenue queries', () => {
@@ -22,26 +29,63 @@ describe('admin revenue queries', () => {
         return {
           select: vi.fn().mockResolvedValue({
             data: [
-              { tier: 'basic', status: 'active', monthly_ai_budget_usd: '1.5000', is_comped: false },
-              { tier: 'basic', status: 'active', monthly_ai_budget_usd: '1.5000', is_comped: false },
-              { tier: 'standard', status: 'active', monthly_ai_budget_usd: '3.0000', is_comped: false },
-              { tier: 'trial', status: 'trial', monthly_ai_budget_usd: '0.2000', is_comped: false },
-              { tier: 'trial', status: 'trial', monthly_ai_budget_usd: '0.2000', is_comped: true }
+              {
+                user_id: 'user-basic-1',
+                tier: 'basic',
+                status: 'active',
+                monthly_ai_budget_usd: '1.5000',
+                is_comped: false,
+                comp_expires_at: null,
+                comp_budget_usd: null,
+                current_period_start: '2026-04-16',
+                current_period_end: '2026-05-15'
+              },
+              {
+                user_id: 'user-basic-2',
+                tier: 'basic',
+                status: 'active',
+                monthly_ai_budget_usd: '1.5000',
+                is_comped: false,
+                comp_expires_at: null,
+                comp_budget_usd: null,
+                current_period_start: '2026-04-01',
+                current_period_end: '2026-04-30'
+              },
+              {
+                user_id: 'user-standard-1',
+                tier: 'standard',
+                status: 'active',
+                monthly_ai_budget_usd: '3.0000',
+                is_comped: false,
+                comp_expires_at: null,
+                comp_budget_usd: null,
+                current_period_start: '2026-04-10',
+                current_period_end: '2026-05-09'
+              },
+              {
+                user_id: 'user-trial-1',
+                tier: 'trial',
+                status: 'trial',
+                monthly_ai_budget_usd: '0.2000',
+                is_comped: false,
+                comp_expires_at: null,
+                comp_budget_usd: null,
+                current_period_start: null,
+                current_period_end: null
+              },
+              {
+                user_id: 'user-comped-1',
+                tier: 'trial',
+                status: 'trial',
+                monthly_ai_budget_usd: '0.2000',
+                is_comped: true,
+                comp_expires_at: null,
+                comp_budget_usd: '2.0000',
+                current_period_start: '2026-04-05',
+                current_period_end: '2026-05-04'
+              }
             ]
           })
-        };
-      }
-
-      if (table === 'user_billing_period_costs') {
-        return {
-          select: vi.fn(() => ({
-            eq: vi.fn().mockResolvedValue({
-              data: [
-                { total_cost_usd: '0.7000' },
-                { total_cost_usd: '0.5000' }
-              ]
-            })
-          }))
         };
       }
 
@@ -49,6 +93,21 @@ describe('admin revenue queries', () => {
     });
 
     createServerSupabaseAdmin.mockReturnValue({ from });
+    getUserActiveBillingCost.mockImplementation(async (userId: string) => ({
+      userId,
+      billingPeriod: '2026-04-16/2026-05-15',
+      totalCostUsd:
+        {
+          'user-basic-1': 0.7,
+          'user-basic-2': 0.5,
+          'user-standard-1': 1.1,
+          'user-trial-1': 0.05,
+          'user-comped-1': 0.6
+        }[userId] ?? 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 1
+    }));
 
     const { getRevenueKpis } = await import('./admin-queries');
     const result = await getRevenueKpis();
@@ -56,8 +115,8 @@ describe('admin revenue queries', () => {
     expect(result).toEqual({
       mrrUsd: 6,
       projectedArrUsd: 72,
-      aiSpendMtdUsd: 1.2,
-      grossMarginUsd: 4.8,
+      aiSpendMtdUsd: 2.95,
+      grossMarginUsd: 3.05,
       paidUsers: 3,
       compedUsers: 1,
       trialUsers: 1,
@@ -66,9 +125,10 @@ describe('admin revenue queries', () => {
         { tier: 'standard', count: 1, budgetUsd: 3, totalBudgetUsd: 3 },
         { tier: 'premium', count: 0, budgetUsd: 0, totalBudgetUsd: 0 },
         { tier: 'trial', count: 1, budgetUsd: 0.2, totalBudgetUsd: 0.2 },
-        { tier: 'comped', count: 1, budgetUsd: 0, totalBudgetUsd: 0 }
+        { tier: 'comped', count: 1, budgetUsd: 2, totalBudgetUsd: 2 }
       ]
     });
+    expect(getUserActiveBillingCost).toHaveBeenCalledTimes(5);
   });
 
   it('getRevenueKpis returns zero values when no subscriptions exist', async () => {
@@ -76,14 +136,6 @@ describe('admin revenue queries', () => {
       if (table === 'user_subscriptions') {
         return {
           select: vi.fn().mockResolvedValue({ data: [] })
-        };
-      }
-
-      if (table === 'user_billing_period_costs') {
-        return {
-          select: vi.fn(() => ({
-            eq: vi.fn().mockResolvedValue({ data: [] })
-          }))
         };
       }
 

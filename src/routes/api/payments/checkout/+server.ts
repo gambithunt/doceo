@@ -54,10 +54,5 @@ export async function POST({ request }) {
     return json({ error: 'Stripe checkout unavailable.' }, { status: 502 });
   }
 
-  return new Response(null, {
-    status: 303,
-    headers: {
-      location: session.url
-    }
-  });
+  return json({ url: session.url });
 }

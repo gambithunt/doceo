@@ -25,7 +25,7 @@
       if (response.ok) {
         const data = await response.json();
         registrationMode = data.mode;
-        if (registrationMode !== 'open') {
+        if (registrationMode === 'closed') {
           authMode = 'signin';
         }
       }
@@ -118,13 +118,13 @@
 
   <article class="auth card">
     <div class="tabs">
-      {#if registrationMode === 'open'}
+      {#if registrationMode !== 'closed'}
         <button type="button" class:active={authMode === 'signup'} onclick={() => (authMode = 'signup')}>Create account</button>
       {/if}
       <button type="button" class:active={authMode === 'signin'} onclick={() => (authMode = 'signin')}>Sign in</button>
     </div>
     <h2>{authMode === 'signup' ? 'Create your student account' : 'Sign in to continue'}</h2>
-    {#if authMode === 'signup' && registrationMode === 'open'}
+    {#if authMode === 'signup' && registrationMode !== 'closed'}
       <div class="name-grid">
         <label>
           <span>First name</span>
@@ -135,8 +135,11 @@
           <input bind:value={lastName} />
         </label>
       </div>
+      {#if registrationMode === 'invite_only'}
+        <p class="mode-notice">An invitation is required to create an account.</p>
+      {/if}
     {/if}
-    {#if modeLoaded && registrationMode !== 'open' && authMode === 'signup'}
+    {#if modeLoaded && registrationMode === 'closed' && authMode === 'signup'}
       <p class="mode-notice">{getModeMessage(registrationMode)}</p>
     {:else}
       <label>

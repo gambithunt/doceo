@@ -2,6 +2,8 @@ import type Stripe from 'stripe';
 import type { BillingPeriodCost, UserSubscription } from '$lib/types';
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
 import { getTierFromPriceId } from '$lib/server/stripe';
+import { normalizeStripeSubscriptionStatus, TRIAL_BUDGET_USD } from '$lib/server/billing';
+import { resolveActiveBillingPeriod } from '$lib/server/billing-period';
 
 interface UserSubscriptionRow {
   id: string;
@@ -29,28 +31,10 @@ interface BillingPeriodCostRow {
   interaction_count: number | string;
 }
 
-const DEFAULT_TRIAL_BUDGET_USD = 0.2;
-
 function toIsoDate(value: number | null | undefined): string | null {
   return typeof value === 'number'
     ? new Date(value * 1000).toISOString().slice(0, 10)
     : null;
-}
-
-function mapStripeStatus(status: string): UserSubscription['status'] {
-  if (status === 'trialing') {
-    return 'trial';
-  }
-
-  if (status === 'past_due') {
-    return 'past_due';
-  }
-
-  if (status === 'canceled' || status === 'cancelled') {
-    return 'cancelled';
-  }
-
-  return 'active';
 }
 
 function primaryPriceId(subscription: Stripe.Subscription): string | null {
@@ -75,7 +59,7 @@ function createDefaultSubscription(userId: string): UserSubscription {
     userId,
     tier: 'trial',
     status: 'trial',
-    monthlyAiBudgetUsd: DEFAULT_TRIAL_BUDGET_USD,
+    monthlyAiBudgetUsd: TRIAL_BUDGET_USD,
     isComped: false,
     compExpiresAt: null,
     compBudgetUsd: null,
@@ -129,6 +113,25 @@ function mapBillingPeriodCost(row: BillingPeriodCostRow): BillingPeriodCost {
   };
 }
 
+async function findUserIdByStripeLinks(input: {
+  stripeCustomerId: string | null;
+  stripeSubscriptionId?: string | null;
+}): Promise<string | null> {
+  const supabase = createServerSupabaseAdmin();
+
+  if (!supabase || !input.stripeCustomerId) {
+    return null;
+  }
+
+  const query = supabase
+    .from('user_subscriptions')
+    .select('user_id')
+    .eq('stripe_customer_id', input.stripeCustomerId);
+
+  const { data } = await query.maybeSingle<{ user_id: string }>();
+  return data?.user_id ?? null;
+}
+
 export async function getUserSubscription(userId: string): Promise<UserSubscription> {
   const supabase = createServerSupabaseAdmin();
 
@@ -174,6 +177,52 @@ export async function getUserBillingPeriodCost(
   return data ? mapBillingPeriodCost(data) : createZeroBillingPeriodCost(userId, billingPeriod);
 }
 
+export async function getUserActiveBillingCost(
+  userId: string,
+  subscription: Pick<UserSubscription, 'tier' | 'status' | 'currentPeriodStart' | 'currentPeriodEnd'>,
+  now = new Date()
+): Promise<BillingPeriodCost> {
+  const period = resolveActiveBillingPeriod(subscription, now);
+  const supabase = createServerSupabaseAdmin();
+
+  if (!supabase) {
+    return createZeroBillingPeriodCost(userId, period.billingPeriod);
+  }
+
+  if (period.billingPeriod.length === 7) {
+    return getUserBillingPeriodCost(userId, period.billingPeriod);
+  }
+
+  const profilesResult = await supabase.from('profiles').select('id').eq('auth_user_id', userId);
+  const profileIds = ((profilesResult.data ?? []) as Array<{ id: string }>).map((row) => row.id);
+
+  if (profileIds.length === 0) {
+    return createZeroBillingPeriodCost(userId, period.billingPeriod);
+  }
+
+  const { data } = await supabase
+    .from('ai_interactions')
+    .select('cost_usd, input_tokens, output_tokens')
+    .in('profile_id', profileIds)
+    .gte('created_at', `${period.startDate}T00:00:00.000Z`)
+    .lt('created_at', `${period.endDate}T00:00:00.000Z`);
+
+  const rows = (data ?? []) as Array<{
+    cost_usd: number | string | null;
+    input_tokens: number | null;
+    output_tokens: number | null;
+  }>;
+
+  return {
+    userId,
+    billingPeriod: period.billingPeriod,
+    totalCostUsd: rows.reduce((sum, row) => sum + toNumber(row.cost_usd), 0),
+    totalInputTokens: rows.reduce((sum, row) => sum + toNumber(row.input_tokens), 0),
+    totalOutputTokens: rows.reduce((sum, row) => sum + toNumber(row.output_tokens), 0),
+    interactionCount: rows.length
+  };
+}
+
 export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise<void> {
   const supabase = createServerSupabaseAdmin();
 
@@ -181,8 +230,37 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
     return;
   }
 
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const userId =
+      session.metadata?.supabase_user_id ??
+      (typeof session.client_reference_id === 'string' ? session.client_reference_id : null);
+    const stripeCustomerId =
+      typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null;
+    const stripeSubscriptionId =
+      typeof session.subscription === 'string' ? session.subscription : session.subscription?.id ?? null;
+
+    if (!userId || !stripeCustomerId) {
+      return;
+    }
+
+    await supabase.from('user_subscriptions').upsert(
+      {
+        user_id: userId,
+        stripe_customer_id: stripeCustomerId,
+        stripe_subscription_id: stripeSubscriptionId,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'user_id' }
+    );
+    return;
+  }
+
   if (event.type === 'invoice.payment_failed') {
-    const invoice = event.data.object as Stripe.Invoice;
+    const invoice = event.data.object as {
+      subscription?: string | { id?: string | null } | null;
+      customer?: string | { id?: string | null } | null;
+    };
     const stripeSubscriptionId =
       typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id ?? null;
     const stripeCustomerId =
@@ -204,16 +282,48 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
     return;
   }
 
-  const subscription = event.data.object as Stripe.Subscription;
-  const userId = subscription.metadata?.supabase_user_id;
+  if (event.type === 'invoice.payment_succeeded') {
+    const invoice = event.data.object as {
+      subscription?: string | { id?: string | null } | null;
+      customer?: string | { id?: string | null } | null;
+    };
+    const stripeSubscriptionId =
+      typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id ?? null;
+    const stripeCustomerId =
+      typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id ?? null;
+
+    if (!stripeSubscriptionId || !stripeCustomerId) {
+      return;
+    }
+
+    await supabase
+      .from('user_subscriptions')
+      .update({
+        status: 'active',
+        updated_at: new Date().toISOString()
+      })
+      .eq('stripe_subscription_id', stripeSubscriptionId)
+      .eq('stripe_customer_id', stripeCustomerId);
+
+    return;
+  }
+
+  const subscription = event.data.object as Stripe.Subscription & {
+    current_period_start?: number | null;
+    current_period_end?: number | null;
+  };
+  const stripeCustomerId =
+    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id ?? null;
+  const stripeSubscriptionId = subscription.id;
+  const userId =
+    subscription.metadata?.supabase_user_id ??
+    (await findUserIdByStripeLinks({
+      stripeCustomerId
+    }));
 
   if (!userId) {
     return;
   }
-
-  const stripeCustomerId =
-    typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id ?? null;
-  const stripeSubscriptionId = subscription.id;
 
   if (event.type === 'customer.subscription.deleted') {
     await supabase.from('user_subscriptions').upsert(
@@ -221,7 +331,7 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
         user_id: userId,
         tier: 'trial',
         status: 'cancelled',
-        monthly_ai_budget_usd: DEFAULT_TRIAL_BUDGET_USD,
+        monthly_ai_budget_usd: TRIAL_BUDGET_USD,
         stripe_customer_id: stripeCustomerId,
         stripe_subscription_id: stripeSubscriptionId,
         current_period_start: toIsoDate(subscription.current_period_start),
@@ -239,11 +349,17 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
     throw new Error('Unknown Stripe price id.');
   }
 
+  const normalizedStatus = normalizeStripeSubscriptionStatus(subscription.status);
+
+  if (!normalizedStatus) {
+    throw new Error(`Unsupported Stripe subscription status: ${subscription.status}`);
+  }
+
   await supabase.from('user_subscriptions').upsert(
     {
       user_id: userId,
       tier: tierConfig.tier,
-      status: mapStripeStatus(subscription.status),
+      status: normalizedStatus,
       monthly_ai_budget_usd: tierConfig.budgetUsd,
       stripe_customer_id: stripeCustomerId,
       stripe_subscription_id: stripeSubscriptionId,

@@ -4,10 +4,12 @@ import { upsertSubscriptionFromStripe } from '$lib/server/subscription-repositor
 import { getStripe } from '$lib/server/stripe';
 
 const SUPPORTED_EVENTS = new Set([
+  'checkout.session.completed',
   'customer.subscription.created',
   'customer.subscription.updated',
   'customer.subscription.deleted',
-  'invoice.payment_failed'
+  'invoice.payment_failed',
+  'invoice.payment_succeeded'
 ]);
 
 export async function POST({ request }) {

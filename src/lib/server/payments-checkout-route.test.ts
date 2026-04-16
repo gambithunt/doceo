@@ -88,8 +88,31 @@ describe('payments checkout route', () => {
         }
       })
     );
-    expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toBe('https://checkout.stripe.test/session_123');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      url: 'https://checkout.stripe.test/session_123'
+    });
+  });
+
+  it('returns 401 when no authenticated user is present', async () => {
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: null
+          }
+        })
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/checkout/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/checkout?tier=basic', {
+        method: 'POST'
+      })
+    } as never);
+
+    expect(response.status).toBe(401);
   });
 
   it('returns 400 for an invalid tier without calling Stripe', async () => {

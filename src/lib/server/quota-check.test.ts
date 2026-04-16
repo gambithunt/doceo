@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getUserSubscription, getUserBillingPeriodCost } = vi.hoisted(() => ({
+const { getUserSubscription, getUserActiveBillingCost } = vi.hoisted(() => ({
   getUserSubscription: vi.fn(),
-  getUserBillingPeriodCost: vi.fn()
+  getUserActiveBillingCost: vi.fn()
 }));
 
 vi.mock('$lib/server/subscription-repository', () => ({
   getUserSubscription,
-  getUserBillingPeriodCost
+  getUserActiveBillingCost
 }));
 
 describe('checkUserQuota', () => {
@@ -24,9 +24,9 @@ describe('checkUserQuota', () => {
       status: 'active',
       monthlyAiBudgetUsd: 1.5
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'user-1',
-      billingPeriod: '2026-04',
+      billingPeriod: '2026-04-16..2026-05-15',
       totalCostUsd: 0.2,
       totalInputTokens: 0,
       totalOutputTokens: 0,
@@ -51,7 +51,7 @@ describe('checkUserQuota', () => {
       status: 'trial',
       monthlyAiBudgetUsd: 0.2
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'user-1',
       billingPeriod: '2026-04',
       totalCostUsd: 0.2,
@@ -78,9 +78,9 @@ describe('checkUserQuota', () => {
       status: 'active',
       monthlyAiBudgetUsd: 1.5
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'user-1',
-      billingPeriod: '2026-04',
+      billingPeriod: '2026-04-16..2026-05-15',
       totalCostUsd: 1.35,
       totalInputTokens: 0,
       totalOutputTokens: 0,
@@ -105,9 +105,9 @@ describe('checkUserQuota', () => {
       status: 'active',
       monthlyAiBudgetUsd: 1.5
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'user-1',
-      billingPeriod: '2026-04',
+      billingPeriod: '2026-04-16..2026-05-15',
       totalCostUsd: 1.35,
       totalInputTokens: 0,
       totalOutputTokens: 0,
@@ -135,7 +135,7 @@ describe('checkUserQuota', () => {
       compExpiresAt: null,
       compBudgetUsd: null
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'user-1',
       billingPeriod: '2026-04',
       totalCostUsd: 5,
@@ -165,7 +165,7 @@ describe('checkUserQuota', () => {
       compExpiresAt: '2026-05-01',
       compBudgetUsd: null
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'user-1',
       billingPeriod: '2026-04',
       totalCostUsd: 5,
@@ -195,7 +195,7 @@ describe('checkUserQuota', () => {
       compExpiresAt: '2026-03-01',
       compBudgetUsd: null
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'user-1',
       billingPeriod: '2026-04',
       totalCostUsd: 0.2,
@@ -211,6 +211,36 @@ describe('checkUserQuota', () => {
       allowed: false,
       remainingUsd: 0,
       budgetUsd: 0.2,
+      warningThreshold: false
+    });
+  });
+
+  it('uses a custom comp budget when one is set', async () => {
+    getUserSubscription.mockResolvedValue({
+      userId: 'user-1',
+      tier: 'trial',
+      status: 'trial',
+      monthlyAiBudgetUsd: 0.2,
+      isComped: true,
+      compExpiresAt: null,
+      compBudgetUsd: 2
+    });
+    getUserActiveBillingCost.mockResolvedValue({
+      userId: 'user-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 1.25,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 4
+    });
+
+    const { checkUserQuota } = await import('./quota-check');
+    const result = await checkUserQuota('user-1', 0.5);
+
+    expect(result).toEqual({
+      allowed: true,
+      remainingUsd: 0.75,
+      budgetUsd: 2,
       warningThreshold: false
     });
   });

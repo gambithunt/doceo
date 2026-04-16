@@ -154,4 +154,67 @@ describe('subscription repository', () => {
       interactionCount: 0
     });
   });
+
+  it('getUserActiveBillingCost sums ai_interactions for a custom Stripe billing period', async () => {
+    const profilesEq = vi.fn().mockResolvedValue({
+      data: [{ id: 'profile-1' }]
+    });
+    const aiInteractionsLt = vi.fn().mockResolvedValue({
+      data: [
+        {
+          cost_usd: 0.12,
+          input_tokens: 120,
+          output_tokens: 30
+        },
+        {
+          cost_usd: '0.08',
+          input_tokens: 80,
+          output_tokens: 20
+        }
+      ]
+    });
+    const aiInteractionsGte = vi.fn(() => ({ lt: aiInteractionsLt }));
+    const aiInteractionsIn = vi.fn(() => ({ gte: aiInteractionsGte }));
+    const aiInteractionsSelect = vi.fn(() => ({ in: aiInteractionsIn }));
+    const from = vi.fn((table: string) => {
+      if (table === 'profiles') {
+        return {
+          select: vi.fn(() => ({
+            eq: profilesEq
+          }))
+        };
+      }
+
+      if (table === 'ai_interactions') {
+        return {
+          select: aiInteractionsSelect
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+
+    const { getUserActiveBillingCost } = await import('./subscription-repository');
+    const result = await getUserActiveBillingCost(
+      'user-1',
+      {
+        tier: 'basic',
+        status: 'active',
+        currentPeriodStart: '2026-04-16',
+        currentPeriodEnd: '2026-05-15'
+      },
+      new Date('2026-04-20T12:00:00.000Z')
+    );
+
+    expect(result).toEqual({
+      userId: 'user-1',
+      billingPeriod: '2026-04-16..2026-05-15',
+      totalCostUsd: 0.2,
+      totalInputTokens: 200,
+      totalOutputTokens: 50,
+      interactionCount: 2
+    });
+  });
 });

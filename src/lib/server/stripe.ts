@@ -1,6 +1,11 @@
 import Stripe from 'stripe';
 import { serverEnv } from '$lib/server/env';
 import type { UserSubscription } from '$lib/types';
+import {
+  getPriceTierMap as buildPriceTierMap,
+  getTierConfigForPriceId,
+  getTierConfigForTier
+} from '$lib/server/billing';
 
 type PaidSubscriptionTier = Exclude<UserSubscription['tier'], 'trial'>;
 
@@ -16,31 +21,17 @@ export function getStripe(): Stripe {
 }
 
 export function getPriceTierMap(): Record<string, { tier: PaidSubscriptionTier; budgetUsd: number }> {
-  return {
-    [serverEnv.stripePriceIdBasic]: { tier: 'basic', budgetUsd: 1.5 },
-    [serverEnv.stripePriceIdStandard]: { tier: 'standard', budgetUsd: 3 },
-    [serverEnv.stripePriceIdPremium]: { tier: 'premium', budgetUsd: 5 }
-  };
+  return buildPriceTierMap({
+    stripePriceIdBasic: serverEnv.stripePriceIdBasic,
+    stripePriceIdStandard: serverEnv.stripePriceIdStandard,
+    stripePriceIdPremium: serverEnv.stripePriceIdPremium
+  });
 }
 
 export function getTierConfig(tier: PaidSubscriptionTier): { priceId: string; budgetUsd: number } | null {
-  const priceTierMap = getPriceTierMap();
-  const entry = Object.entries(priceTierMap).find(([, value]) => value.tier === tier);
-
-  if (!entry || !entry[0]) {
-    return null;
-  }
-
-  return {
-    priceId: entry[0],
-    budgetUsd: entry[1].budgetUsd
-  };
+  return getTierConfigForTier(getPriceTierMap(), tier);
 }
 
 export function getTierFromPriceId(priceId: string | null | undefined): { tier: PaidSubscriptionTier; budgetUsd: number } | null {
-  if (!priceId) {
-    return null;
-  }
-
-  return getPriceTierMap()[priceId] ?? null;
+  return getTierConfigForPriceId(getPriceTierMap(), priceId);
 }

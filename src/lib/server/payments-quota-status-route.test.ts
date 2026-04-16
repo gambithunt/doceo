@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createServerSupabaseFromRequest, getUserSubscription, getUserBillingPeriodCost } = vi.hoisted(() => ({
+const { createServerSupabaseFromRequest, getUserSubscription, getUserActiveBillingCost } = vi.hoisted(() => ({
   createServerSupabaseFromRequest: vi.fn(),
   getUserSubscription: vi.fn(),
-  getUserBillingPeriodCost: vi.fn()
+  getUserActiveBillingCost: vi.fn()
 }));
 
 vi.mock('$lib/server/supabase', () => ({
@@ -12,7 +12,7 @@ vi.mock('$lib/server/supabase', () => ({
 
 vi.mock('$lib/server/subscription-repository', () => ({
   getUserSubscription,
-  getUserBillingPeriodCost
+  getUserActiveBillingCost
 }));
 
 describe('payments quota-status route', () => {
@@ -38,9 +38,9 @@ describe('payments quota-status route', () => {
       tier: 'basic',
       monthlyAiBudgetUsd: 1.5
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'auth-user-1',
-      billingPeriod: '2026-04',
+      billingPeriod: '2026-04-16..2026-05-15',
       totalCostUsd: 0.3
     });
 
@@ -82,9 +82,9 @@ describe('payments quota-status route', () => {
       tier,
       monthlyAiBudgetUsd: budgetUsd
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'auth-user-1',
-      billingPeriod: '2026-04',
+      billingPeriod: '2026-04-16..2026-05-15',
       totalCostUsd: spentUsd
     });
 
@@ -134,7 +134,7 @@ describe('payments quota-status route', () => {
       tier: 'trial',
       monthlyAiBudgetUsd: 0.2
     });
-    getUserBillingPeriodCost.mockResolvedValue({
+    getUserActiveBillingCost.mockResolvedValue({
       userId: 'auth-user-1',
       billingPeriod: '2026-04',
       totalCostUsd: 0.25

@@ -32,7 +32,11 @@ function LandingView($$renderer, $$props) {
     $$renderer2.push(`<!--]--> <button type="button"${attr_class("svelte-stkfxm", void 0, { "active": authMode === "signin" })}>Sign in</button></div> <h2 class="svelte-stkfxm">${escape_html("Create your student account")}</h2> `);
     {
       $$renderer2.push("<!--[0-->");
-      $$renderer2.push(`<div class="name-grid svelte-stkfxm"><label class="svelte-stkfxm"><span class="svelte-stkfxm">First name</span> <input${attr("value", firstName)} class="svelte-stkfxm"/></label> <label class="svelte-stkfxm"><span class="svelte-stkfxm">Last name</span> <input${attr("value", lastName)} class="svelte-stkfxm"/></label></div>`);
+      $$renderer2.push(`<div class="name-grid svelte-stkfxm"><label class="svelte-stkfxm"><span class="svelte-stkfxm">First name</span> <input${attr("value", firstName)} class="svelte-stkfxm"/></label> <label class="svelte-stkfxm"><span class="svelte-stkfxm">Last name</span> <input${attr("value", lastName)} class="svelte-stkfxm"/></label></div> `);
+      {
+        $$renderer2.push("<!--[-1-->");
+      }
+      $$renderer2.push(`<!--]-->`);
     }
     $$renderer2.push(`<!--]--> `);
     {
