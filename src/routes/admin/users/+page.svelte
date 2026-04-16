@@ -3,11 +3,22 @@
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
   import type { AdminUser } from '$lib/server/admin/admin-queries';
 
-  const { data } = $props();
-  const { users, total }: { users: AdminUser[]; total: number } = data;
+  const props = $props<{
+    data: {
+      users: AdminUser[];
+      total: number;
+      search?: string;
+      tier?: string;
+      isComped?: boolean;
+    };
+  }>();
 
-  let search = $state(data.search ?? '');
+  let search = $state(props.data.search ?? '');
   let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    search = props.data.search ?? '';
+  });
 
   function updateUrl(updates: {
     search?: string | null;
@@ -33,7 +44,7 @@
     search = val;
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
-      updateUrl({ search: val, tier: data.tier ?? null, isComped: data.isComped ? '1' : null });
+      updateUrl({ search: val, tier: props.data.tier ?? null, isComped: props.data.isComped ? '1' : null });
     }, 350);
   }
 
@@ -68,7 +79,7 @@
 <div class="page">
   <AdminPageHeader
     title="Users"
-    description="{total.toLocaleString()} total users"
+    description="{props.data.total.toLocaleString()} total users"
     showTimeRange={false}
   />
 
@@ -89,7 +100,7 @@
       <div class="filter-chips">
         <button
           type="button"
-          class:active-chip={!data.tier && !data.isComped}
+          class:active-chip={!props.data.tier && !props.data.isComped}
           class="chip filter-chip"
           onclick={() => applyTierFilter(null, false)}
         >
@@ -97,7 +108,7 @@
         </button>
         <button
           type="button"
-          class:active-chip={data.tier === 'trial'}
+          class:active-chip={props.data.tier === 'trial'}
           class="chip filter-chip"
           onclick={() => applyTierFilter('trial')}
         >
@@ -105,7 +116,7 @@
         </button>
         <button
           type="button"
-          class:active-chip={data.tier === 'basic'}
+          class:active-chip={props.data.tier === 'basic'}
           class="chip filter-chip"
           onclick={() => applyTierFilter('basic')}
         >
@@ -113,7 +124,7 @@
         </button>
         <button
           type="button"
-          class:active-chip={data.tier === 'standard'}
+          class:active-chip={props.data.tier === 'standard'}
           class="chip filter-chip"
           onclick={() => applyTierFilter('standard')}
         >
@@ -121,7 +132,7 @@
         </button>
         <button
           type="button"
-          class:active-chip={data.tier === 'premium'}
+          class:active-chip={props.data.tier === 'premium'}
           class="chip filter-chip"
           onclick={() => applyTierFilter('premium')}
         >
@@ -129,13 +140,13 @@
         </button>
         <button
           type="button"
-          class:active-chip={data.isComped}
+          class:active-chip={props.data.isComped}
           class="chip filter-chip comped-filter"
           onclick={() => applyTierFilter(null, true)}
         >
           Comped
         </button>
-        <span class="results-count">{total.toLocaleString()} users</span>
+        <span class="results-count">{props.data.total.toLocaleString()} users</span>
       </div>
     </div>
 
@@ -159,12 +170,12 @@
           </tr>
         </thead>
         <tbody>
-          {#if users.length === 0}
+          {#if props.data.users.length === 0}
             <tr>
               <td colspan="12" class="empty">No users found matching your filters.</td>
             </tr>
           {:else}
-            {#each users as user}
+            {#each props.data.users as user}
               <tr onclick={() => goto(`/admin/users/${user.id}`)}>
                 <td class="name-cell">
                   <a href="/admin/users/{user.id}" class="user-link" onclick={(e) => e.stopPropagation()}>

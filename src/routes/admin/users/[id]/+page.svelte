@@ -1,5 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { invalidate } from '$app/navigation';
+  import { createAdminCompFormEnhance } from '$lib/components/admin/comp-action-enhance';
   import type { BillingPeriodCost } from '$lib/types';
   import type {
     AdminUserBilling,
@@ -8,26 +10,24 @@
     MessageRow
   } from '$lib/server/admin/admin-queries';
 
-  const { data } = $props();
-  const {
-    user,
-    billing,
-    billingHistory,
-    sessions,
-    messages,
-    signals,
-    learnerProfile,
-    profileId
-  }: {
-    user: AdminUserDetail;
-    billing: AdminUserBilling;
-    billingHistory: BillingPeriodCost[];
-    sessions: LessonSessionRow[];
-    messages: MessageRow[];
-    signals: Array<Record<string, unknown>>;
-    learnerProfile: Record<string, unknown> | null;
-    profileId: string;
-  } = data;
+  const props = $props<{
+    data: {
+      user: AdminUserDetail;
+      billing: AdminUserBilling;
+      billingHistory: BillingPeriodCost[];
+      sessions: LessonSessionRow[];
+      messages: MessageRow[];
+      signals: Array<Record<string, unknown>>;
+      learnerProfile: Record<string, unknown> | null;
+      profileId: string;
+    };
+    form?: {
+      success?: boolean;
+      error?: string;
+      message?: string;
+      action?: string;
+    } | null;
+  }>();
 
   let activeTab = $state<'profile' | 'history' | 'messages' | 'signals' | 'billing'>('profile');
   let confirmAction = $state<string | null>(null);
@@ -84,10 +84,16 @@
   }
 
   const billingUsageRatio = $derived(
-    billing.budgetUsd > 0 ? Math.min(1, billing.spentUsd / billing.budgetUsd) : 0
+    props.data.billing.budgetUsd > 0 ? Math.min(1, props.data.billing.spentUsd / props.data.billing.budgetUsd) : 0
   );
 
-  const completedCount = $derived(sessions.filter((s) => s.status === 'complete').length);
+  const completedCount = $derived(
+    props.data.sessions.filter((s: LessonSessionRow) => s.status === 'complete').length
+  );
+
+  const enhanceCompForm = createAdminCompFormEnhance(() =>
+    invalidate((url) => url.pathname === '/admin/users')
+  );
 </script>
 
 <div class="page">
@@ -97,24 +103,33 @@
     </div>
     <div class="user-hero">
       <div class="user-avatar" aria-hidden="true">
-        {(user.fullName || '?').charAt(0).toUpperCase()}
+        {(props.data.user.fullName || '?').charAt(0).toUpperCase()}
       </div>
       <div class="user-info">
-        <h1 class="user-name">{user.fullName || 'Unknown User'}</h1>
-        <p class="user-meta">{user.email} · {user.grade} · {user.curriculum}</p>
+        <h1 class="user-name">{props.data.user.fullName || 'Unknown User'}</h1>
+        <p class="user-meta">{props.data.user.email} · {props.data.user.grade} · {props.data.user.curriculum}</p>
       </div>
       <div class="user-badges">
-        <span class="role-badge role-{user.role}">{user.role}</span>
+        <span class="role-badge role-{props.data.user.role}">{props.data.user.role}</span>
+        {#if isActiveComp(props.data.billing)}
+          <span class="role-badge role-admin">Comped</span>
+        {/if}
       </div>
     </div>
   </div>
+
+  {#if props.form?.success || props.form?.error}
+    <div class:feedback-error={Boolean(props.form?.error)} class="feedback-banner">
+      {props.form?.error ?? props.form?.message ?? 'Update saved.'}
+    </div>
+  {/if}
 
   <!-- Tabs -->
   <div class="tabs">
     {#each [
       { id: 'profile', label: 'Profile' },
-      { id: 'history', label: `Lesson History (${sessions.length})` },
-      { id: 'messages', label: `Messages (${messages.length})` },
+      { id: 'history', label: `Lesson History (${props.data.sessions.length})` },
+      { id: 'messages', label: `Messages (${props.data.messages.length})` },
       { id: 'signals', label: 'Signals' },
       { id: 'billing', label: 'Billing' }
     ] as tab}
@@ -138,14 +153,15 @@
         <div class="info-card">
           <h2 class="card-title">Account Details</h2>
           <div class="field-list">
-            <div class="field"><span class="field-label">Name</span><span class="field-val">{user.fullName || '—'}</span></div>
-            <div class="field"><span class="field-label">Email</span><span class="field-val">{user.email || '—'}</span></div>
-            <div class="field"><span class="field-label">Grade</span><span class="field-val">{user.grade || '—'}</span></div>
-            <div class="field"><span class="field-label">Curriculum</span><span class="field-val">{user.curriculum || '—'}</span></div>
-            <div class="field"><span class="field-label">Country</span><span class="field-val">{user.country || '—'}</span></div>
-            <div class="field"><span class="field-label">School Year</span><span class="field-val">{user.schoolYear || '—'}</span></div>
-            <div class="field"><span class="field-label">Term</span><span class="field-val">{user.term || '—'}</span></div>
-            <div class="field"><span class="field-label">Joined</span><span class="field-val">{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</span></div>
+            <div class="field"><span class="field-label">Name</span><span class="field-val">{props.data.user.fullName || '—'}</span></div>
+            <div class="field"><span class="field-label">Email</span><span class="field-val">{props.data.user.email || '—'}</span></div>
+            <div class="field"><span class="field-label">Grade</span><span class="field-val">{props.data.user.grade || '—'}</span></div>
+            <div class="field"><span class="field-label">Curriculum</span><span class="field-val">{props.data.user.curriculum || '—'}</span></div>
+            <div class="field"><span class="field-label">Country</span><span class="field-val">{props.data.user.country || '—'}</span></div>
+            <div class="field"><span class="field-label">School Year</span><span class="field-val">{props.data.user.schoolYear || '—'}</span></div>
+            <div class="field"><span class="field-label">Term</span><span class="field-val">{props.data.user.term || '—'}</span></div>
+            <div class="field"><span class="field-label">Joined</span><span class="field-val">{props.data.user.createdAt ? new Date(props.data.user.createdAt).toLocaleDateString() : '—'}</span></div>
+            <div class="field"><span class="field-label">Complimentary access</span><span class="field-val">{isActiveComp(props.data.billing) ? (props.data.billing.compExpiresAt ? `Until ${props.data.billing.compExpiresAt}` : 'Indefinite') : 'Not active'}</span></div>
           </div>
         </div>
 
@@ -153,7 +169,7 @@
           <h2 class="card-title">Learning Stats</h2>
           <div class="stats-row">
             <div class="mini-stat">
-              <span class="mini-val">{sessions.length}</span>
+              <span class="mini-val">{props.data.sessions.length}</span>
               <span class="mini-label">Total Lessons</span>
             </div>
             <div class="mini-stat">
@@ -161,15 +177,15 @@
               <span class="mini-label">Completed</span>
             </div>
             <div class="mini-stat">
-              <span class="mini-val">{sessions.length > 0 ? Math.round((completedCount / sessions.length) * 100) : 0}%</span>
+              <span class="mini-val">{props.data.sessions.length > 0 ? Math.round((completedCount / props.data.sessions.length) * 100) : 0}%</span>
               <span class="mini-label">Completion Rate</span>
             </div>
           </div>
-          {#if learnerProfile}
+          {#if props.data.learnerProfile}
             <div class="learner-profile">
               <h3 class="sub-title">Learner Profile</h3>
               <div class="field-list">
-                {#each Object.entries(learnerProfile).slice(0, 8) as [key, val]}
+                {#each Object.entries(props.data.learnerProfile).slice(0, 8) as [key, val]}
                   {#if val !== null && val !== undefined && key !== 'studentId'}
                     <div class="field">
                       <span class="field-label">{key.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>
@@ -221,10 +237,10 @@
             </tr>
           </thead>
           <tbody>
-            {#if sessions.length === 0}
+        {#if props.data.sessions.length === 0}
               <tr><td colspan="6" class="empty">No lessons yet.</td></tr>
             {:else}
-              {#each sessions as session}
+              {#each props.data.sessions as session}
                 <tr onclick={() => window.location.href = `/admin/messages/${session.id}`} style="cursor:pointer">
                   <td>
                     <span class="subject-pill">{session.subject ?? '—'}</span>
@@ -246,10 +262,10 @@
     <!-- Messages Tab -->
     {#if activeTab === 'messages'}
       <div class="messages-list">
-        {#if messages.length === 0}
+        {#if props.data.messages.length === 0}
           <div class="empty-state">No messages yet.</div>
         {:else}
-          {#each messages as msg}
+          {#each props.data.messages as msg}
             <div class="message-card">
               <div class="msg-context">
                 <span class="msg-subject">{msg.subject ?? '—'}</span>
@@ -272,10 +288,10 @@
     <!-- Signals Tab -->
     {#if activeTab === 'signals'}
       <div class="signals-list">
-        {#if signals.length === 0}
+        {#if props.data.signals.length === 0}
           <div class="empty-state">No signals recorded yet.</div>
         {:else}
-          {#each signals as signal}
+          {#each props.data.signals as signal}
             <div class="signal-row">
               <span class="signal-time">{relativeTime(String(signal.created_at ?? ''))}</span>
               <span class="signal-action action-{signal.action as string}">{String(signal.action ?? '—')}</span>
@@ -298,19 +314,19 @@
           <div class="billing-card-header">
             <h2 class="card-title">Subscription</h2>
             <div class="billing-badges">
-              <span class="status-chip status-{billing.status}">{billing.status}</span>
-              <span class="status-chip tier-{billing.tier}">{billing.tier}</span>
-              {#if isActiveComp(billing)}
+              <span class="status-chip status-{props.data.billing.status}">{props.data.billing.status}</span>
+              <span class="status-chip tier-{props.data.billing.tier}">{props.data.billing.tier}</span>
+              {#if isActiveComp(props.data.billing)}
                 <span class="role-badge role-admin">Comped</span>
               {/if}
             </div>
           </div>
 
           <div class="field-list">
-            <div class="field"><span class="field-label">Budget</span><span class="field-val">{formatUsd(billing.budgetUsd)}</span></div>
-            <div class="field"><span class="field-label">Spent this month</span><span class="field-val">{formatUsd(billing.spentUsd)}</span></div>
-            <div class="field"><span class="field-label">Remaining</span><span class:danger-text={billing.remainingUsd <= 0} class="field-val">{formatUsd(billing.remainingUsd)}</span></div>
-            <div class="field"><span class="field-label">Comp expiry</span><span class="field-val">{billing.compExpiresAt ?? 'Indefinite'}</span></div>
+            <div class="field"><span class="field-label">Budget</span><span class="field-val">{formatUsd(props.data.billing.budgetUsd)}</span></div>
+            <div class="field"><span class="field-label">Spent this month</span><span class="field-val">{formatUsd(props.data.billing.spentUsd)}</span></div>
+            <div class="field"><span class="field-label">Remaining</span><span class:danger-text={props.data.billing.remainingUsd <= 0} class="field-val">{formatUsd(props.data.billing.remainingUsd)}</span></div>
+            <div class="field"><span class="field-label">Comp expiry</span><span class="field-val">{props.data.billing.compExpiresAt ?? 'Indefinite'}</span></div>
           </div>
 
           <div class="usage-block">
@@ -324,14 +340,14 @@
 
         <div class="info-card">
           <h2 class="card-title">Complimentary Access</h2>
-          {#if isActiveComp(billing)}
+          {#if isActiveComp(props.data.billing)}
             <p class="danger-desc">This user currently has complimentary access. Revoking it restores normal quota checks immediately.</p>
-            <form method="POST" action="?/revokeComp" use:enhance>
+            <form method="POST" action="?/revokeComp" use:enhance={enhanceCompForm}>
               <button type="submit" class="danger-btn">Revoke comp</button>
             </form>
           {:else}
             <p class="danger-desc">Grant complimentary access indefinitely or until a specific date. Leaving budget blank keeps the default comp budget.</p>
-            <form method="POST" action="?/grantComp" use:enhance class="comp-form">
+            <form method="POST" action="?/grantComp" use:enhance={enhanceCompForm} class="comp-form">
               <div class="radio-row">
                 <label class="radio-pill">
                   <input type="radio" name="type" value="indefinite" bind:group={compType} />
@@ -380,10 +396,10 @@
             </tr>
           </thead>
           <tbody>
-            {#if billingHistory.length === 0}
+            {#if props.data.billingHistory.length === 0}
               <tr><td colspan="5" class="empty">No billing history yet.</td></tr>
             {:else}
-              {#each billingHistory as row}
+              {#each props.data.billingHistory as row}
                 <tr>
                   <td>{row.billingPeriod}</td>
                   <td class="num-col">{formatInteger(row.interactionCount)}</td>
@@ -407,7 +423,7 @@
     <div class="modal" onclick={(e) => e.stopPropagation()}>
       <h3 class="modal-title">Confirm Action</h3>
       <p class="modal-desc">
-        This will permanently {confirmAction === 'resetProgress' ? 'delete all lesson history, messages, and signals' : 'reset onboarding progress'} for {user.fullName}.
+        This will permanently {confirmAction === 'resetProgress' ? 'delete all lesson history, messages, and signals' : 'reset onboarding progress'} for {props.data.user.fullName}.
       </p>
       <p class="modal-instruction">Type <strong>RESET</strong> to confirm:</p>
       <input
@@ -501,6 +517,23 @@
     background: var(--color-yellow-dim);
     border-color: color-mix(in srgb, var(--color-yellow) 30%, transparent);
     color: var(--color-yellow);
+  }
+
+  .feedback-banner {
+    margin: 0 1.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.9rem;
+    background: var(--accent-dim);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--accent);
+    font-size: 0.84rem;
+    font-weight: 600;
+  }
+
+  .feedback-error {
+    background: var(--color-red-dim);
+    border-color: color-mix(in srgb, var(--color-error) 30%, transparent);
+    color: var(--color-error);
   }
 
   /* Tabs */
@@ -1018,6 +1051,7 @@
   }
 
   @media (max-width: 900px) {
+    .feedback-banner,
     .page-header-row,
     .tab-content,
     .tabs {

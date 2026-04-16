@@ -62,7 +62,7 @@ describe('admin comp actions', () => {
       },
       { onConflict: 'user_id' }
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, action: 'grantComp', message: 'Complimentary access granted.' });
   });
 
   it('grantComp with until_date mode upserts the expiry and custom budget', async () => {
@@ -109,7 +109,7 @@ describe('admin comp actions', () => {
       },
       { onConflict: 'user_id' }
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, action: 'grantComp', message: 'Complimentary access granted.' });
   });
 
   it('grantComp with until_date mode rejects a missing expiry date', async () => {
@@ -186,6 +186,6 @@ describe('admin comp actions', () => {
       },
       { onConflict: 'user_id' }
     );
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, action: 'revokeComp', message: 'Complimentary access revoked.' });
   });
 });

@@ -90,7 +90,7 @@ export const actions = {
       supabase.from('revision_topics').delete().eq('profile_id', profileId)
     ]);
 
-    return { success: true };
+    return { success: true, action: 'resetProgress', message: 'Progress reset.' };
   },
 
   resetOnboarding: async ({ params, request }: { params: { id: string }; request: Request }) => {
@@ -101,7 +101,7 @@ export const actions = {
 
     await supabase.from('student_onboarding').delete().eq('profile_id', profileId);
 
-    return { success: true };
+    return { success: true, action: 'resetOnboarding', message: 'Onboarding reset.' };
   },
 
   grantComp: async ({ params, request }: { params: { id: string }; request: Request }) => {
@@ -141,7 +141,7 @@ export const actions = {
       { onConflict: 'user_id' }
     );
 
-    return { success: true };
+    return { success: true, action: 'grantComp', message: 'Complimentary access granted.' };
   },
 
   revokeComp: async ({ params, request }: { params: { id: string }; request: Request }) => {
@@ -165,6 +165,6 @@ export const actions = {
       { onConflict: 'user_id' }
     );
 
-    return { success: true };
+    return { success: true, action: 'revokeComp', message: 'Complimentary access revoked.' };
   }
 };
