@@ -1276,7 +1276,6 @@
   }
 
   .bubble.user.compact-reply {
-    width: fit-content;
     max-width: min(100%, 24rem);
     min-height: 0;
     padding: 0.78rem 1rem;
@@ -1290,11 +1289,12 @@
     color: var(--text);
     box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 8%, rgba(15, 23, 42, 0.08));
     backdrop-filter: none;
+    line-height: 1.35;
   }
 
   .bubble.user.compact-reply .bubble-body {
     display: block;
-    width: fit-content;
+    width: auto;
   }
 
   .bubble.user.compact-reply .bubble-body :global(p) {
