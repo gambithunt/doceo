@@ -1,3 +1,4 @@
+import type { BillingPeriodCost, UserSubscription } from '$lib/types';
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
 
 export interface AdminUser {
@@ -11,8 +12,40 @@ export interface AdminUser {
   lastActiveAt: string | null;
   lessonCount: number;
   completedCount: number;
-  plan: 'free' | 'pro';
+  tier: UserSubscription['tier'];
+  spentUsd: number;
+  remainingUsd: number;
+  isComped: boolean;
   status: 'active' | 'suspended';
+}
+
+export interface AdminUserBilling {
+  tier: UserSubscription['tier'];
+  status: UserSubscription['status'];
+  budgetUsd: number;
+  spentUsd: number;
+  remainingUsd: number;
+  isComped: boolean;
+  compExpiresAt: string | null;
+  compBudgetUsd: number | null;
+}
+
+export interface RevenueTierBreakdown {
+  tier: UserSubscription['tier'] | 'comped';
+  count: number;
+  budgetUsd: number;
+  totalBudgetUsd: number;
+}
+
+export interface RevenueKpis {
+  mrrUsd: number;
+  projectedArrUsd: number;
+  aiSpendMtdUsd: number;
+  grossMarginUsd: number;
+  paidUsers: number;
+  compedUsers: number;
+  trialUsers: number;
+  tierBreakdown: RevenueTierBreakdown[];
 }
 
 export interface AdminKpi {
@@ -223,6 +256,8 @@ export interface UserListOptions {
   search?: string;
   grade?: string;
   curriculum?: string;
+  tier?: string;
+  isComped?: boolean;
   status?: string;
   page?: number;
   pageSize?: number;
@@ -230,17 +265,301 @@ export interface UserListOptions {
   sortDir?: 'asc' | 'desc';
 }
 
+interface ProfileBillingRef {
+  id: string;
+  auth_user_id: string | null;
+}
+
+interface AdminSubscriptionRow {
+  user_id: string;
+  tier: UserSubscription['tier'];
+  status: UserSubscription['status'];
+  monthly_ai_budget_usd: number | string;
+  is_comped: boolean;
+  comp_expires_at: string | null;
+  comp_budget_usd: number | string | null;
+}
+
+interface BillingPeriodCostRow {
+  user_id: string;
+  billing_period: string;
+  total_cost_usd: number | string;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  interaction_count: number | string;
+}
+
+const DEFAULT_TRIAL_BUDGET_USD = 0.2;
+const DEFAULT_COMP_BUDGET_USD = 99.99;
+
+function currentBillingPeriod(now = new Date()): string {
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function toNumber(value: number | string | null | undefined): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.length > 0) {
+    return Number(value);
+  }
+
+  return 0;
+}
+
+function roundUsd(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function isActiveComp(subscription: {
+  is_comped: boolean;
+  comp_expires_at: string | null;
+}): boolean {
+  if (!subscription.is_comped) {
+    return false;
+  }
+
+  if (!subscription.comp_expires_at) {
+    return true;
+  }
+
+  return subscription.comp_expires_at >= new Date().toISOString().slice(0, 10);
+}
+
+function getEffectiveBudgetUsd(subscription: AdminSubscriptionRow | null | undefined): number {
+  if (!subscription) {
+    return DEFAULT_TRIAL_BUDGET_USD;
+  }
+
+  if (isActiveComp(subscription)) {
+    return subscription.comp_budget_usd === null ? DEFAULT_COMP_BUDGET_USD : toNumber(subscription.comp_budget_usd);
+  }
+
+  return toNumber(subscription.monthly_ai_budget_usd);
+}
+
+function defaultAdminUserBilling(): AdminUserBilling {
+  return {
+    tier: 'trial',
+    status: 'trial',
+    budgetUsd: DEFAULT_TRIAL_BUDGET_USD,
+    spentUsd: 0,
+    remainingUsd: DEFAULT_TRIAL_BUDGET_USD,
+    isComped: false,
+    compExpiresAt: null,
+    compBudgetUsd: null
+  };
+}
+
+function mapBillingPeriodCost(row: BillingPeriodCostRow): BillingPeriodCost {
+  return {
+    userId: row.user_id,
+    billingPeriod: row.billing_period,
+    totalCostUsd: toNumber(row.total_cost_usd),
+    totalInputTokens: toNumber(row.total_input_tokens),
+    totalOutputTokens: toNumber(row.total_output_tokens),
+    interactionCount: toNumber(row.interaction_count)
+  };
+}
+
+async function resolveAuthUserId(profileId: string): Promise<string | null> {
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase) {
+    return null;
+  }
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, auth_user_id')
+    .eq('id', profileId)
+    .maybeSingle<ProfileBillingRef>();
+
+  return data?.auth_user_id ?? null;
+}
+
+export async function getAdminUserSubscription(profileId: string): Promise<AdminUserBilling> {
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase) {
+    return defaultAdminUserBilling();
+  }
+
+  const authUserId = await resolveAuthUserId(profileId);
+  if (!authUserId) {
+    return defaultAdminUserBilling();
+  }
+
+  const billingPeriod = currentBillingPeriod();
+
+  const [subscriptionResult, billingResult] = await Promise.all([
+    supabase
+      .from('user_subscriptions')
+      .select('user_id, tier, status, monthly_ai_budget_usd, is_comped, comp_expires_at, comp_budget_usd')
+      .eq('user_id', authUserId)
+      .maybeSingle<AdminSubscriptionRow>(),
+    supabase
+      .from('user_billing_period_costs')
+      .select(
+        'user_id, billing_period, total_cost_usd, total_input_tokens, total_output_tokens, interaction_count'
+      )
+      .eq('user_id', authUserId)
+      .eq('billing_period', billingPeriod)
+      .maybeSingle<BillingPeriodCostRow>()
+  ]);
+
+  const spentUsd = billingResult.data ? toNumber(billingResult.data.total_cost_usd) : 0;
+  if (!subscriptionResult.data) {
+    return {
+      ...defaultAdminUserBilling(),
+      spentUsd,
+      remainingUsd: roundUsd(Math.max(0, DEFAULT_TRIAL_BUDGET_USD - spentUsd))
+    };
+  }
+
+  const budgetUsd = getEffectiveBudgetUsd(subscriptionResult.data);
+  return {
+    tier: subscriptionResult.data.tier,
+    status: subscriptionResult.data.status,
+    budgetUsd,
+    spentUsd,
+    remainingUsd: roundUsd(Math.max(0, budgetUsd - spentUsd)),
+    isComped: subscriptionResult.data.is_comped,
+    compExpiresAt: subscriptionResult.data.comp_expires_at,
+    compBudgetUsd:
+      subscriptionResult.data.comp_budget_usd === null ? null : toNumber(subscriptionResult.data.comp_budget_usd)
+  };
+}
+
+export async function getAdminUserBillingHistory(profileId: string): Promise<BillingPeriodCost[]> {
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase) {
+    return [];
+  }
+
+  const authUserId = await resolveAuthUserId(profileId);
+  if (!authUserId) {
+    return [];
+  }
+
+  // Verified by 20260416000003_fix_user_billing_period_costs_view_auth_user_id.sql:
+  // the billing view exposes profiles.auth_user_id as user_id, so admin queries join on the auth UUID.
+  const { data } = await supabase
+    .from('user_billing_period_costs')
+    .select('user_id, billing_period, total_cost_usd, total_input_tokens, total_output_tokens, interaction_count')
+    .eq('user_id', authUserId)
+    .order('billing_period', { ascending: false })
+    .limit(6);
+
+  return (data ?? []).map(mapBillingPeriodCost);
+}
+
+export async function getRevenueKpis(): Promise<RevenueKpis> {
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase) {
+    return {
+      mrrUsd: 0,
+      projectedArrUsd: 0,
+      aiSpendMtdUsd: 0,
+      grossMarginUsd: 0,
+      paidUsers: 0,
+      compedUsers: 0,
+      trialUsers: 0,
+      tierBreakdown: []
+    };
+  }
+
+  const [subscriptionsResult, spendResult] = await Promise.all([
+    supabase.from('user_subscriptions').select('tier, status, monthly_ai_budget_usd, is_comped'),
+    supabase
+      .from('user_billing_period_costs')
+      .select('total_cost_usd')
+      .eq('billing_period', currentBillingPeriod())
+  ]);
+
+  const subscriptions = (subscriptionsResult.data ?? []) as Array<{
+    tier: UserSubscription['tier'];
+    status: UserSubscription['status'];
+    monthly_ai_budget_usd: number | string;
+    is_comped: boolean;
+  }>;
+  const aiSpendMtdUsd = roundUsd(
+    ((spendResult.data ?? []) as Array<{ total_cost_usd: number | string | null }>).reduce(
+      (sum, row) => sum + toNumber(row.total_cost_usd),
+      0
+    )
+  );
+
+  const nonCompedSubscriptions = subscriptions.filter((row) => !row.is_comped);
+  const paidSubscriptions = nonCompedSubscriptions.filter((row) => row.status === 'active' && row.tier !== 'trial');
+  const trialSubscriptions = nonCompedSubscriptions.filter((row) => row.tier === 'trial');
+  const compedUsers = subscriptions.filter((row) => row.is_comped).length;
+  const tierOrder: Array<RevenueTierBreakdown['tier']> = ['basic', 'standard', 'premium', 'trial', 'comped'];
+  const breakdownMap = new Map<RevenueTierBreakdown['tier'], RevenueTierBreakdown>();
+
+  for (const subscription of nonCompedSubscriptions) {
+    const budgetUsd = toNumber(subscription.monthly_ai_budget_usd);
+    const row = breakdownMap.get(subscription.tier) ?? {
+      tier: subscription.tier,
+      count: 0,
+      budgetUsd,
+      totalBudgetUsd: 0
+    };
+
+    row.count += 1;
+    row.budgetUsd = budgetUsd;
+    row.totalBudgetUsd = roundUsd(row.totalBudgetUsd + budgetUsd);
+    breakdownMap.set(subscription.tier, row);
+  }
+
+  if (compedUsers > 0) {
+    breakdownMap.set('comped', {
+      tier: 'comped',
+      count: compedUsers,
+      budgetUsd: 0,
+      totalBudgetUsd: 0
+    });
+  }
+
+  for (const tier of tierOrder) {
+    if (!breakdownMap.has(tier)) {
+      breakdownMap.set(tier, {
+        tier,
+        count: 0,
+        budgetUsd: 0,
+        totalBudgetUsd: 0
+      });
+    }
+  }
+
+  const mrrUsd = roundUsd(
+    paidSubscriptions.reduce((sum, row) => sum + toNumber(row.monthly_ai_budget_usd), 0)
+  );
+
+  return {
+    mrrUsd,
+    projectedArrUsd: roundUsd(mrrUsd * 12),
+    aiSpendMtdUsd,
+    grossMarginUsd: roundUsd(mrrUsd - aiSpendMtdUsd),
+    paidUsers: paidSubscriptions.length,
+    compedUsers,
+    trialUsers: trialSubscriptions.length,
+    tierBreakdown: tierOrder
+      .map((tier) => breakdownMap.get(tier))
+      .filter((row): row is RevenueTierBreakdown => Boolean(row))
+  };
+}
+
 export async function getAdminUsers(opts: UserListOptions = {}): Promise<{ users: AdminUser[]; total: number }> {
   const supabase = createServerSupabaseAdmin();
   if (!supabase) return { users: [], total: 0 };
 
-  const { page = 0, pageSize = 50, search = '', grade, curriculum } = opts;
+  const { page = 0, pageSize = 50, search = '', grade, curriculum, tier, isComped } = opts;
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
   let query = supabase
     .from('profiles')
-    .select('id, full_name, email, grade, curriculum, role, created_at', { count: 'exact' })
+    .select('id, auth_user_id, full_name, email, grade, curriculum, role, created_at', { count: 'exact' })
     .range(from, to)
     .order('created_at', { ascending: false });
 
@@ -255,6 +574,9 @@ export async function getAdminUsers(opts: UserListOptions = {}): Promise<{ users
   if (!data) return { users: [], total: 0 };
 
   const userIds = data.map((p) => p.id);
+  const authUserIds = data
+    .map((p) => p.auth_user_id)
+    .filter((authUserId): authUserId is string => typeof authUserId === 'string' && authUserId.length > 0);
   const { data: sessionCounts } = await supabase
     .from('lesson_sessions')
     .select('profile_id, status')
@@ -265,6 +587,23 @@ export async function getAdminUsers(opts: UserListOptions = {}): Promise<{ users
     .select('profile_id, last_active_at')
     .in('profile_id', userIds)
     .order('last_active_at', { ascending: false });
+
+  const currentPeriod = currentBillingPeriod();
+  const [subscriptionsResult, billingResult] = authUserIds.length > 0
+    ? await Promise.all([
+        supabase
+          .from('user_subscriptions')
+          .select('user_id, tier, status, monthly_ai_budget_usd, is_comped, comp_expires_at, comp_budget_usd')
+          .in('user_id', authUserIds),
+        supabase
+          .from('user_billing_period_costs')
+          .select(
+            'user_id, billing_period, total_cost_usd, total_input_tokens, total_output_tokens, interaction_count'
+          )
+          .in('user_id', authUserIds)
+          .eq('billing_period', currentPeriod)
+      ])
+    : [{ data: [] }, { data: [] }];
 
   const sessionsByUser = new Map<string, typeof sessionCounts>();
   (sessionCounts ?? []).forEach((s) => {
@@ -280,9 +619,21 @@ export async function getAdminUsers(opts: UserListOptions = {}): Promise<{ users
     }
   });
 
+  const subscriptionsByUser = new Map(
+    ((subscriptionsResult.data ?? []) as AdminSubscriptionRow[]).map((row) => [row.user_id, row])
+  );
+  const billingByUser = new Map(
+    ((billingResult.data ?? []) as BillingPeriodCostRow[]).map((row) => [row.user_id, row])
+  );
+
   const users: AdminUser[] = data.map((p) => {
     const sessions = sessionsByUser.get(p.id) ?? [];
     const completed = sessions.filter((s) => s.status === 'complete').length;
+    const subscription = p.auth_user_id ? subscriptionsByUser.get(p.auth_user_id) : undefined;
+    const billing = p.auth_user_id ? billingByUser.get(p.auth_user_id) : undefined;
+    const budgetUsd = getEffectiveBudgetUsd(subscription);
+    const spentUsd = billing ? toNumber(billing.total_cost_usd) : 0;
+
     return {
       id: p.id,
       fullName: p.full_name ?? '',
@@ -294,12 +645,33 @@ export async function getAdminUsers(opts: UserListOptions = {}): Promise<{ users
       lastActiveAt: lastActiveByUser.get(p.id) ?? null,
       lessonCount: sessions.length,
       completedCount: completed,
-      plan: 'free',
+      tier: subscription?.tier ?? 'trial',
+      spentUsd: roundUsd(spentUsd),
+      remainingUsd: roundUsd(Math.max(0, budgetUsd - spentUsd)),
+      isComped: subscription?.is_comped ?? false,
       status: 'active'
     };
   });
 
-  return { users, total: count ?? 0 };
+  // Phase 3 intentionally applies tier/comp filters after merging the current page.
+  // This keeps the implementation simple for page sizes <= 50, but totals are page-scoped
+  // rather than full-dataset accurate until a future DB-level filter is added.
+  const filteredUsers = users.filter((user) => {
+    if (tier && user.tier !== tier) {
+      return false;
+    }
+
+    if (isComped === true && !user.isComped) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return {
+    users: filteredUsers,
+    total: tier || isComped ? filteredUsers.length : count ?? 0
+  };
 }
 
 export interface AdminUserDetail {

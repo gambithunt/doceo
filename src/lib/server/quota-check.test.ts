@@ -124,4 +124,94 @@ describe('checkUserQuota', () => {
       warningThreshold: true
     });
   });
+
+  it('allows lesson generation for an indefinitely comped user', async () => {
+    getUserSubscription.mockResolvedValue({
+      userId: 'user-1',
+      tier: 'trial',
+      status: 'trial',
+      monthlyAiBudgetUsd: 0.2,
+      isComped: true,
+      compExpiresAt: null,
+      compBudgetUsd: null
+    });
+    getUserBillingPeriodCost.mockResolvedValue({
+      userId: 'user-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 5,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 10
+    });
+
+    const { checkUserQuota } = await import('./quota-check');
+    const result = await checkUserQuota('user-1', 0.08);
+
+    expect(result).toEqual({
+      allowed: true,
+      remainingUsd: 94.99,
+      budgetUsd: 99.99,
+      warningThreshold: false
+    });
+  });
+
+  it('allows lesson generation for a comped user with a future expiry date', async () => {
+    getUserSubscription.mockResolvedValue({
+      userId: 'user-1',
+      tier: 'trial',
+      status: 'trial',
+      monthlyAiBudgetUsd: 0.2,
+      isComped: true,
+      compExpiresAt: '2026-05-01',
+      compBudgetUsd: null
+    });
+    getUserBillingPeriodCost.mockResolvedValue({
+      userId: 'user-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 5,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 10
+    });
+
+    const { checkUserQuota } = await import('./quota-check');
+    const result = await checkUserQuota('user-1', 0.08);
+
+    expect(result).toEqual({
+      allowed: true,
+      remainingUsd: 94.99,
+      budgetUsd: 99.99,
+      warningThreshold: false
+    });
+  });
+
+  it('falls back to the tier budget when a comp has expired', async () => {
+    getUserSubscription.mockResolvedValue({
+      userId: 'user-1',
+      tier: 'trial',
+      status: 'trial',
+      monthlyAiBudgetUsd: 0.2,
+      isComped: true,
+      compExpiresAt: '2026-03-01',
+      compBudgetUsd: null
+    });
+    getUserBillingPeriodCost.mockResolvedValue({
+      userId: 'user-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: 0.2,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      interactionCount: 1
+    });
+
+    const { checkUserQuota } = await import('./quota-check');
+    const result = await checkUserQuota('user-1', 0.08);
+
+    expect(result).toEqual({
+      allowed: false,
+      remainingUsd: 0,
+      budgetUsd: 0.2,
+      warningThreshold: false
+    });
+  });
 });

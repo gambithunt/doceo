@@ -9,6 +9,9 @@ interface UserSubscriptionRow {
   tier: UserSubscription['tier'];
   status: UserSubscription['status'];
   monthly_ai_budget_usd: number | string;
+  is_comped: boolean;
+  comp_expires_at: string | null;
+  comp_budget_usd: number | string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   current_period_start: string | null;
@@ -73,6 +76,9 @@ function createDefaultSubscription(userId: string): UserSubscription {
     tier: 'trial',
     status: 'trial',
     monthlyAiBudgetUsd: DEFAULT_TRIAL_BUDGET_USD,
+    isComped: false,
+    compExpiresAt: null,
+    compBudgetUsd: null,
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     currentPeriodStart: null,
@@ -89,6 +95,9 @@ function mapUserSubscription(row: UserSubscriptionRow): UserSubscription {
     tier: row.tier,
     status: row.status,
     monthlyAiBudgetUsd: toNumber(row.monthly_ai_budget_usd),
+    isComped: row.is_comped,
+    compExpiresAt: row.comp_expires_at,
+    compBudgetUsd: row.comp_budget_usd === null ? null : toNumber(row.comp_budget_usd),
     stripeCustomerId: row.stripe_customer_id,
     stripeSubscriptionId: row.stripe_subscription_id,
     currentPeriodStart: row.current_period_start,
@@ -135,7 +144,7 @@ export async function getUserSubscription(userId: string): Promise<UserSubscript
   const { data } = await supabase
     .from('user_subscriptions')
     .select(
-      'id, user_id, tier, status, monthly_ai_budget_usd, stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, created_at, updated_at'
+      'id, user_id, tier, status, monthly_ai_budget_usd, is_comped, comp_expires_at, comp_budget_usd, stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, created_at, updated_at'
     )
     .eq('user_id', userId)
     .maybeSingle<UserSubscriptionRow>();

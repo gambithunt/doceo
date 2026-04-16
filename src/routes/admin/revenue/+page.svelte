@@ -3,6 +3,10 @@
   import AdminKpiCard from '$lib/components/admin/AdminKpiCard.svelte';
 
   const { data } = $props();
+
+  function formatUsd(value: number): string {
+    return `$${value.toFixed(2)}`;
+  }
 </script>
 
 <div class="page">
@@ -14,32 +18,46 @@
 
   <div class="page-body">
     <div class="kpi-grid">
-      <AdminKpiCard label="MRR"             value="$0"                                    icon="$" color="accent" />
-      <AdminKpiCard label="ARR"             value="$0"                                    icon="$" color="accent" />
-      <AdminKpiCard label="Total Users"     value={data.totalUsers.toLocaleString()}      icon="◉" color="blue"   />
-      <AdminKpiCard label="New This Month"  value={data.newUsersThisMonth.toLocaleString()} icon="↗" color="purple" />
-      <AdminKpiCard label="Paid Users"      value={data.paidUsers}                        icon="✓" color="yellow" />
-      <AdminKpiCard label="Conversion Rate" value="0%"                                    icon="◎" color="accent" />
+      <AdminKpiCard label="Budget MRR" value={formatUsd(data.revenue.mrrUsd)} icon="$" color="accent" />
+      <AdminKpiCard label="Projected ARR" value={formatUsd(data.revenue.projectedArrUsd)} icon="12x" color="blue" />
+      <AdminKpiCard label="AI Spend MTD" value={formatUsd(data.revenue.aiSpendMtdUsd)} icon="◎" color="orange" />
+      <AdminKpiCard
+        label="Gross Margin"
+        value={formatUsd(data.revenue.grossMarginUsd)}
+        icon="↗"
+        color={data.revenue.grossMarginUsd < 0 ? 'red' : 'accent'}
+      />
+      <AdminKpiCard label="Paid Users" value={data.revenue.paidUsers} icon="✓" color="yellow" />
+      <AdminKpiCard label="Comped Users" value={data.revenue.compedUsers} icon="★" color="purple" />
     </div>
 
-    <div class="placeholder-card">
-      <div class="placeholder-icon" aria-hidden="true">$</div>
-      <h2 class="placeholder-title">Revenue tracking coming soon</h2>
-      <p class="placeholder-desc">
-        Connect a payment provider (Stripe, Paddle, or LemonSqueezy) to see MRR, ARR, churn,
-        and transaction history here. User growth metrics are already tracked — billing data
-        will populate once a payment provider is integrated.
-      </p>
-      <div class="placeholder-stats">
-        <div class="pstat">
-          <span class="pstat-val">{data.totalUsers.toLocaleString()}</span>
-          <span class="pstat-label">Total users registered</span>
-        </div>
-        <div class="pstat">
-          <span class="pstat-val">{data.newUsersThisMonth.toLocaleString()}</span>
-          <span class="pstat-label">New this month</span>
-        </div>
-      </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th class="num-col">Users</th>
+            <th class="num-col">Budget / User</th>
+            <th class="num-col">Budget Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#if data.revenue.tierBreakdown.length === 0}
+            <tr>
+              <td colspan="4" class="empty">No revenue data yet.</td>
+            </tr>
+          {:else}
+            {#each data.revenue.tierBreakdown as row}
+              <tr>
+                <td><span class="tier-chip tier-{row.tier}">{row.tier}</span></td>
+                <td class="num-col">{row.count}</td>
+                <td class="num-col">{formatUsd(row.budgetUsd)}</td>
+                <td class="num-col">{formatUsd(row.totalBudgetUsd)}</td>
+              </tr>
+            {/each}
+          {/if}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -68,63 +86,101 @@
 
   @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 
-  .placeholder-card {
+  .table-wrap {
     background: var(--surface);
     border: 1px solid var(--border-strong);
     border-radius: 1rem;
-    padding: 3rem 2rem;
-    text-align: center;
-    box-shadow: var(--shadow);
+    overflow: hidden;
+    overflow-x: auto;
   }
 
-  .placeholder-icon {
-    font-size: 2.5rem;
-    color: var(--accent);
-    margin-bottom: 1rem;
-    line-height: 1;
-    opacity: 0.6;
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
   }
 
-  .placeholder-title {
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: var(--text);
-    margin: 0 0 0.65rem;
-    letter-spacing: -0.02em;
-  }
+  thead { background: var(--surface-strong); }
 
-  .placeholder-desc {
-    font-size: 0.9rem;
-    color: var(--text-soft);
-    line-height: 1.65;
-    max-width: 480px;
-    margin: 0 auto 2rem;
-  }
-
-  .placeholder-stats {
-    display: flex;
-    justify-content: center;
-    gap: 3rem;
-  }
-
-  .pstat { text-align: center; }
-
-  .pstat-val {
-    display: block;
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--accent);
-    line-height: 1;
-    letter-spacing: -0.04em;
-  }
-
-  .pstat-label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 600;
+  th {
+    padding: 0.7rem 1rem;
+    font-size: 0.7rem;
+    font-weight: 700;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-top: 0.35rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  td {
+    padding: 0.75rem 1rem;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  .num-col { text-align: right; }
+
+  .tier-chip {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .tier-basic {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .tier-standard {
+    background: var(--color-blue-dim);
+    color: var(--color-blue);
+    border: 1px solid color-mix(in srgb, var(--color-blue) 30%, transparent);
+  }
+
+  .tier-premium {
+    background: var(--color-purple-dim);
+    color: var(--color-purple);
+    border: 1px solid color-mix(in srgb, var(--color-purple) 30%, transparent);
+  }
+
+  .tier-trial {
+    background: var(--border);
+    color: var(--muted);
+    border: 1px solid var(--border-strong);
+  }
+
+  .tier-comped {
+    background: var(--color-yellow-dim);
+    color: var(--color-yellow);
+    border: 1px solid color-mix(in srgb, var(--color-yellow) 30%, transparent);
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 2.5rem 1rem;
+  }
+
+  @media (max-width: 640px) {
+    .page-body {
+      padding: 1rem;
+    }
+
+    .kpi-grid {
+      grid-template-columns: 1fr;
+    }
+
+    th,
+    td {
+      padding: 0.65rem 0.75rem;
+    }
   }
 </style>

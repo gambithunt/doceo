@@ -26,8 +26,12 @@ export async function checkUserQuota(
 }> {
   const subscription = await getUserSubscription(userId);
   const billing = await getUserBillingPeriodCost(userId, currentBillingPeriod());
+  const today = new Date().toISOString().slice(0, 10);
+  const hasActiveComp =
+    subscription.isComped &&
+    (!subscription.compExpiresAt || subscription.compExpiresAt >= today);
 
-  const budgetUsd = subscription.monthlyAiBudgetUsd;
+  const budgetUsd = hasActiveComp ? subscription.compBudgetUsd ?? 99.99 : subscription.monthlyAiBudgetUsd;
   const remainingUsd = Math.max(0, roundUsd(budgetUsd - billing.totalCostUsd));
   const warningThreshold = remainingUsd > 0 && remainingUsd < budgetUsd * 0.2;
   const allowed = remainingUsd > 0 && estimatedCostUsd <= remainingUsd;

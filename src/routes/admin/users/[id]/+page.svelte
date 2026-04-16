@@ -1,11 +1,18 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
-  import type { AdminUserDetail, LessonSessionRow, MessageRow } from '$lib/server/admin/admin-queries';
+  import type { BillingPeriodCost } from '$lib/types';
+  import type {
+    AdminUserBilling,
+    AdminUserDetail,
+    LessonSessionRow,
+    MessageRow
+  } from '$lib/server/admin/admin-queries';
 
   const { data } = $props();
   const {
     user,
+    billing,
+    billingHistory,
     sessions,
     messages,
     signals,
@@ -13,6 +20,8 @@
     profileId
   }: {
     user: AdminUserDetail;
+    billing: AdminUserBilling;
+    billingHistory: BillingPeriodCost[];
     sessions: LessonSessionRow[];
     messages: MessageRow[];
     signals: Array<Record<string, unknown>>;
@@ -20,9 +29,10 @@
     profileId: string;
   } = data;
 
-  let activeTab = $state<'profile' | 'history' | 'messages' | 'signals'>('profile');
+  let activeTab = $state<'profile' | 'history' | 'messages' | 'signals' | 'billing'>('profile');
   let confirmAction = $state<string | null>(null);
   let confirmInput = $state('');
+  let compType = $state<'indefinite' | 'until_date'>('indefinite');
 
   const CONFIRM_PHRASES: Record<string, string> = {
     resetProgress: 'RESET',
@@ -59,6 +69,24 @@
     return (meta.action as string) ?? null;
   }
 
+  function formatUsd(value: number): string {
+    return `$${value.toFixed(2)}`;
+  }
+
+  function formatInteger(value: number): string {
+    return value.toLocaleString();
+  }
+
+  function isActiveComp(subscription: AdminUserBilling): boolean {
+    if (!subscription.isComped) return false;
+    if (!subscription.compExpiresAt) return true;
+    return subscription.compExpiresAt >= new Date().toISOString().slice(0, 10);
+  }
+
+  const billingUsageRatio = $derived(
+    billing.budgetUsd > 0 ? Math.min(1, billing.spentUsd / billing.budgetUsd) : 0
+  );
+
   const completedCount = $derived(sessions.filter((s) => s.status === 'complete').length);
 </script>
 
@@ -87,7 +115,8 @@
       { id: 'profile', label: 'Profile' },
       { id: 'history', label: `Lesson History (${sessions.length})` },
       { id: 'messages', label: `Messages (${messages.length})` },
-      { id: 'signals', label: 'Signals' }
+      { id: 'signals', label: 'Signals' },
+      { id: 'billing', label: 'Billing' }
     ] as tab}
       <button
         type="button"
@@ -260,6 +289,112 @@
             </div>
           {/each}
         {/if}
+      </div>
+    {/if}
+
+    {#if activeTab === 'billing'}
+      <div class="profile-grid">
+        <div class="info-card">
+          <div class="billing-card-header">
+            <h2 class="card-title">Subscription</h2>
+            <div class="billing-badges">
+              <span class="status-chip status-{billing.status}">{billing.status}</span>
+              <span class="status-chip tier-{billing.tier}">{billing.tier}</span>
+              {#if isActiveComp(billing)}
+                <span class="role-badge role-admin">Comped</span>
+              {/if}
+            </div>
+          </div>
+
+          <div class="field-list">
+            <div class="field"><span class="field-label">Budget</span><span class="field-val">{formatUsd(billing.budgetUsd)}</span></div>
+            <div class="field"><span class="field-label">Spent this month</span><span class="field-val">{formatUsd(billing.spentUsd)}</span></div>
+            <div class="field"><span class="field-label">Remaining</span><span class:danger-text={billing.remainingUsd <= 0} class="field-val">{formatUsd(billing.remainingUsd)}</span></div>
+            <div class="field"><span class="field-label">Comp expiry</span><span class="field-val">{billing.compExpiresAt ?? 'Indefinite'}</span></div>
+          </div>
+
+          <div class="usage-block">
+            <div class="usage-meta">
+              <span>Current month usage</span>
+              <span>{Math.round(billingUsageRatio * 100)}%</span>
+            </div>
+            <progress class="usage-bar" max="1" value={billingUsageRatio}></progress>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <h2 class="card-title">Complimentary Access</h2>
+          {#if isActiveComp(billing)}
+            <p class="danger-desc">This user currently has complimentary access. Revoking it restores normal quota checks immediately.</p>
+            <form method="POST" action="?/revokeComp" use:enhance>
+              <button type="submit" class="danger-btn">Revoke comp</button>
+            </form>
+          {:else}
+            <p class="danger-desc">Grant complimentary access indefinitely or until a specific date. Leaving budget blank keeps the default comp budget.</p>
+            <form method="POST" action="?/grantComp" use:enhance class="comp-form">
+              <div class="radio-row">
+                <label class="radio-pill">
+                  <input type="radio" name="type" value="indefinite" bind:group={compType} />
+                  <span>Indefinite</span>
+                </label>
+                <label class="radio-pill">
+                  <input type="radio" name="type" value="until_date" bind:group={compType} />
+                  <span>Until date</span>
+                </label>
+              </div>
+
+              {#if compType === 'until_date'}
+                <label class="form-field">
+                  <span class="field-label">Expiry date</span>
+                  <input type="date" name="expiresAt" class="form-input" />
+                </label>
+              {/if}
+
+              <label class="form-field">
+                <span class="field-label">Custom budget (optional)</span>
+                <input
+                  type="number"
+                  name="budgetUsd"
+                  class="form-input"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="e.g. 2.00"
+                />
+              </label>
+
+              <button type="submit" class="confirm-btn grant-btn">Grant comp</button>
+            </form>
+          {/if}
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th class="num-col">Interactions</th>
+              <th class="num-col">Input Tokens</th>
+              <th class="num-col">Output Tokens</th>
+              <th class="num-col">Cost USD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#if billingHistory.length === 0}
+              <tr><td colspan="5" class="empty">No billing history yet.</td></tr>
+            {:else}
+              {#each billingHistory as row}
+                <tr>
+                  <td>{row.billingPeriod}</td>
+                  <td class="num-col">{formatInteger(row.interactionCount)}</td>
+                  <td class="num-col">{formatInteger(row.totalInputTokens)}</td>
+                  <td class="num-col">{formatInteger(row.totalOutputTokens)}</td>
+                  <td class="num-col">{formatUsd(row.totalCostUsd)}</td>
+                </tr>
+              {/each}
+            {/if}
+          </tbody>
+        </table>
       </div>
     {/if}
 
@@ -577,6 +712,13 @@
   .status-complete { background: var(--accent-dim); color: var(--accent); }
   .status-active { background: var(--color-blue-dim); color: var(--color-blue); }
   .status-archived { background: var(--border); color: var(--muted); }
+  .status-trial { background: var(--border); color: var(--muted); }
+  .status-past_due { background: var(--color-yellow-dim); color: var(--color-yellow); }
+  .status-cancelled { background: var(--color-red-dim); color: var(--color-error); }
+  .tier-trial { background: var(--border); color: var(--muted); text-transform: capitalize; }
+  .tier-basic { background: var(--accent-dim); color: var(--accent); text-transform: capitalize; }
+  .tier-standard { background: var(--color-blue-dim); color: var(--color-blue); text-transform: capitalize; }
+  .tier-premium { background: var(--color-purple-dim); color: var(--color-purple); text-transform: capitalize; }
 
   .empty {
     text-align: center;
@@ -662,6 +804,118 @@
     padding: 3rem 0;
     font-size: 0.875rem;
   }
+
+  .billing-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+    flex-wrap: wrap;
+  }
+
+  .billing-badges {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .usage-block {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .usage-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--text-soft);
+  }
+
+  .usage-bar {
+    width: 100%;
+    height: 0.55rem;
+    appearance: none;
+    border: none;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--surface-strong);
+  }
+
+  .usage-bar::-webkit-progress-bar {
+    background: var(--surface-strong);
+    border-radius: 999px;
+  }
+
+  .usage-bar::-webkit-progress-value {
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, white));
+    border-radius: 999px;
+  }
+
+  .usage-bar::-moz-progress-bar {
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, white));
+    border-radius: 999px;
+  }
+
+  .comp-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .radio-row {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .radio-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.8rem;
+    color: var(--text);
+  }
+
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .form-input {
+    width: 100%;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    font: inherit;
+    color: var(--text);
+    box-sizing: border-box;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .grant-btn {
+    align-self: flex-start;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .num-col { text-align: right; }
+  .danger-text { color: var(--color-error); }
 
   /* Modal */
   .modal-overlay {
@@ -761,5 +1015,30 @@
 
   .confirm-btn:not(:disabled):hover {
     background: color-mix(in srgb, var(--color-error) 25%, transparent);
+  }
+
+  @media (max-width: 900px) {
+    .page-header-row,
+    .tab-content,
+    .tabs {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    .profile-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .user-hero {
+      flex-wrap: wrap;
+    }
+
+    .user-badges {
+      margin-left: 0;
+    }
+
+    .stats-row {
+      flex-direction: column;
+    }
   }
 </style>

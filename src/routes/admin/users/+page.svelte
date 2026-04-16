@@ -9,16 +9,44 @@
   let search = $state(data.search ?? '');
   let searchTimeout: ReturnType<typeof setTimeout> | undefined;
 
+  function updateUrl(updates: {
+    search?: string | null;
+    tier?: string | null;
+    isComped?: string | null;
+  }) {
+    const url = new URL(window.location.href);
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) {
+        url.searchParams.set(key, value);
+      } else {
+        url.searchParams.delete(key);
+      }
+    }
+
+    url.searchParams.set('page', '0');
+    void goto(url.toString(), { replaceState: true });
+  }
+
   function handleSearch(e: Event) {
     const val = (e.target as HTMLInputElement).value;
     search = val;
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
-      const url = new URL(window.location.href);
-      url.searchParams.set('search', val);
-      url.searchParams.set('page', '0');
-      void goto(url.toString(), { replaceState: true });
+      updateUrl({ search: val, tier: data.tier ?? null, isComped: data.isComped ? '1' : null });
     }, 350);
+  }
+
+  function applyTierFilter(nextTier: string | null, nextIsComped = false) {
+    updateUrl({
+      search,
+      tier: nextTier,
+      isComped: nextIsComped ? '1' : null
+    });
+  }
+
+  function formatUsd(value: number): string {
+    return `$${value.toFixed(2)}`;
   }
 
   function relativeTime(isoStr: string | null): string {
@@ -59,6 +87,54 @@
         />
       </div>
       <div class="filter-chips">
+        <button
+          type="button"
+          class:active-chip={!data.tier && !data.isComped}
+          class="chip filter-chip"
+          onclick={() => applyTierFilter(null, false)}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          class:active-chip={data.tier === 'trial'}
+          class="chip filter-chip"
+          onclick={() => applyTierFilter('trial')}
+        >
+          Trial
+        </button>
+        <button
+          type="button"
+          class:active-chip={data.tier === 'basic'}
+          class="chip filter-chip"
+          onclick={() => applyTierFilter('basic')}
+        >
+          Basic
+        </button>
+        <button
+          type="button"
+          class:active-chip={data.tier === 'standard'}
+          class="chip filter-chip"
+          onclick={() => applyTierFilter('standard')}
+        >
+          Standard
+        </button>
+        <button
+          type="button"
+          class:active-chip={data.tier === 'premium'}
+          class="chip filter-chip"
+          onclick={() => applyTierFilter('premium')}
+        >
+          Premium
+        </button>
+        <button
+          type="button"
+          class:active-chip={data.isComped}
+          class="chip filter-chip comped-filter"
+          onclick={() => applyTierFilter(null, true)}
+        >
+          Comped
+        </button>
         <span class="results-count">{total.toLocaleString()} users</span>
       </div>
     </div>
@@ -76,13 +152,16 @@
             <th>Last Active</th>
             <th class="num-col">Lessons</th>
             <th class="num-col">Completed</th>
-            <th>Plan</th>
+            <th>Tier</th>
+            <th class="num-col">Spent</th>
+            <th class="num-col">Remaining</th>
+            <th>Comped</th>
           </tr>
         </thead>
         <tbody>
           {#if users.length === 0}
             <tr>
-              <td colspan="9" class="empty">No users found matching your search.</td>
+              <td colspan="12" class="empty">No users found matching your filters.</td>
             </tr>
           {:else}
             {#each users as user}
@@ -101,7 +180,14 @@
                 </td>
                 <td class="num-col">{user.lessonCount}</td>
                 <td class="num-col">{user.completedCount}</td>
-                <td><span class="plan-chip plan-{user.plan}">{user.plan}</span></td>
+                <td><span class="plan-chip plan-{user.tier}">{user.tier}</span></td>
+                <td class="num-col">{formatUsd(user.spentUsd)}</td>
+                <td class:inactive={user.remainingUsd <= 0} class="num-col">{formatUsd(user.remainingUsd)}</td>
+                <td>
+                  {#if user.isComped}
+                    <span class="plan-chip plan-comped">✓</span>
+                  {/if}
+                </td>
               </tr>
             {/each}
           {/if}
@@ -167,6 +253,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
   .results-count {
@@ -251,23 +338,75 @@
     color: var(--text-soft);
   }
 
+  .filter-chip {
+    cursor: pointer;
+    transition: border-color 150ms, background 150ms, color 150ms;
+  }
+
+  .active-chip {
+    background: var(--accent-dim);
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--accent);
+  }
+
+  .comped-filter.active-chip {
+    background: var(--color-yellow-dim);
+    border-color: color-mix(in srgb, var(--color-yellow) 30%, transparent);
+    color: var(--color-yellow);
+  }
+
   .plan-chip {
     display: inline-block;
     border-radius: 999px;
     padding: 0.15rem 0.55rem;
     font-size: 0.72rem;
     font-weight: 700;
+    text-transform: capitalize;
   }
 
-  .plan-free {
+  .plan-trial {
     background: var(--border);
     color: var(--muted);
     border: 1px solid var(--border-strong);
   }
 
-  .plan-pro {
+  .plan-basic {
     background: var(--accent-dim);
     color: var(--accent);
     border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .plan-standard {
+    background: var(--color-blue-dim);
+    color: var(--color-blue);
+    border: 1px solid color-mix(in srgb, var(--color-blue) 30%, transparent);
+  }
+
+  .plan-premium {
+    background: var(--color-purple-dim);
+    color: var(--color-purple);
+    border: 1px solid color-mix(in srgb, var(--color-purple) 30%, transparent);
+  }
+
+  .plan-comped {
+    background: var(--color-yellow-dim);
+    color: var(--color-yellow);
+    border: 1px solid color-mix(in srgb, var(--color-yellow) 30%, transparent);
+  }
+
+  @media (max-width: 900px) {
+    .page-body {
+      padding: 1rem 1rem 1.5rem;
+    }
+
+    th,
+    td {
+      padding: 0.65rem 0.75rem;
+    }
+
+    .search-wrap {
+      max-width: none;
+      width: 100%;
+    }
   }
 </style>

@@ -67,6 +67,9 @@ export interface UserSubscription {
   tier: 'trial' | 'basic' | 'standard' | 'premium';
   status: 'active' | 'cancelled' | 'past_due' | 'trial';
   monthlyAiBudgetUsd: number;
+  isComped: boolean;
+  compExpiresAt: string | null;
+  compBudgetUsd: number | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   currentPeriodStart: string | null;

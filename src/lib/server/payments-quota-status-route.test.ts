@@ -64,6 +64,50 @@ describe('payments quota-status route', () => {
     });
   });
 
+  it.each([
+    { tier: 'standard', budgetUsd: 3, spentUsd: 0.8, remainingUsd: 2.2 },
+    { tier: 'premium', budgetUsd: 5, spentUsd: 1.1, remainingUsd: 3.9 }
+  ])('returns the quota status shape for the $tier tier', async ({ tier, budgetUsd, spentUsd, remainingUsd }) => {
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: { id: 'auth-user-1' }
+          }
+        })
+      }
+    });
+    getUserSubscription.mockResolvedValue({
+      userId: 'auth-user-1',
+      tier,
+      monthlyAiBudgetUsd: budgetUsd
+    });
+    getUserBillingPeriodCost.mockResolvedValue({
+      userId: 'auth-user-1',
+      billingPeriod: '2026-04',
+      totalCostUsd: spentUsd
+    });
+
+    const { GET } = await import('../../routes/api/payments/quota-status/+server');
+    const response = await GET({
+      request: new Request('http://localhost/api/payments/quota-status', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      budgetUsd,
+      spentUsd,
+      remainingUsd,
+      tier,
+      warningThreshold: false,
+      exceeded: false
+    });
+  });
+
   it('returns 401 when no authenticated user is present', async () => {
     createServerSupabaseFromRequest.mockReturnValue(null);
 
