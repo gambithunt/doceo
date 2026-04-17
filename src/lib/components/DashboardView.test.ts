@@ -207,11 +207,11 @@ describe('DashboardView', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: /start lesson on equivalent fractions/i }));
 
-    expect(screen.queryByText('Mission Briefing')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Equivalent Fractions' })).not.toBeInTheDocument();
 
     await vi.advanceTimersByTimeAsync(899);
 
-    expect(screen.queryByText('Mission Briefing')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Equivalent Fractions' })).not.toBeInTheDocument();
 
     pendingLaunch.resolve();
   });
@@ -233,9 +233,8 @@ describe('DashboardView', () => {
     await fireEvent.click(screen.getByRole('button', { name: /start lesson on equivalent fractions/i }));
     await vi.advanceTimersByTimeAsync(900);
 
-    expect(screen.getByText('Mission Briefing')).toBeInTheDocument();
-    expect(screen.getByText('Equivalent Fractions')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: loadingCopy.headline })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /equivalent fractions/i })).toBeInTheDocument();
+    expect(screen.getAllByText(loadingCopy.headline).length).toBeGreaterThan(0);
 
     pendingLaunch.resolve();
   });
@@ -256,7 +255,7 @@ describe('DashboardView', () => {
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(900);
 
-    expect(screen.queryByText('Mission Briefing')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Equivalent Fractions' })).not.toBeInTheDocument();
   });
 
   it('renders the quota exceeded upgrade prompt in the existing inline error area', () => {

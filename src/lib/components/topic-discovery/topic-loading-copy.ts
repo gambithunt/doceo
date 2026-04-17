@@ -137,3 +137,7 @@ export function selectTopicLoadingCopy(input: TopicLoadingCopyInput): TopicLoadi
     supportingLine: SUPPORTING_LINE
   };
 }
+
+export function getTopicLoadingPhraseBank(family: TopicLoadingCopyFamily): string[] {
+  return [...(PHRASE_BANKS[family] ?? PHRASE_BANKS.generic)];
+}

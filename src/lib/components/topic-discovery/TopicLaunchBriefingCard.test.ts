@@ -25,10 +25,11 @@ describe('TopicLaunchBriefingCard', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it('renders the mathematics motif variant', () => {
+  it('does not render the mission briefing label', () => {
     render(TopicLaunchBriefingCard, {
       props: {
         family: 'mathematics',
@@ -38,36 +39,24 @@ describe('TopicLaunchBriefingCard', () => {
       }
     });
 
-    expect(screen.getByTestId('launch-briefing-motif')).toHaveAttribute('data-family', 'mathematics');
+    expect(screen.queryByText('Mission Briefing')).not.toBeInTheDocument();
   });
 
-  it('renders the language motif variant', () => {
+  it('renders the topic title as the primary heading with secondary status text beneath it', () => {
     render(TopicLaunchBriefingCard, {
       props: {
-        family: 'language',
-        headline: 'Inferring verbs...',
-        topicTitle: 'Parts of Speech',
+        family: 'mathematics',
+        headline: 'Synthesizing equations...',
+        topicTitle: 'Equivalent Fractions',
         supportingLine: 'Finding the clearest way in.'
       }
     });
 
-    expect(screen.getByTestId('launch-briefing-motif')).toHaveAttribute('data-family', 'language');
+    expect(screen.getByRole('heading', { name: 'Equivalent Fractions' })).toBeInTheDocument();
+    expect(screen.getByText('Synthesizing equations...')).toBeInTheDocument();
   });
 
-  it('renders the generic fallback motif variant', () => {
-    render(TopicLaunchBriefingCard, {
-      props: {
-        family: 'generic',
-        headline: 'Mapping the way in...',
-        topicTitle: 'Note Taking',
-        supportingLine: 'Finding the clearest way in.'
-      }
-    });
-
-    expect(screen.getByTestId('launch-briefing-motif')).toHaveAttribute('data-family', 'generic');
-  });
-
-  it('suppresses the richer motion nodes when reduced motion is preferred', () => {
+  it('keeps the content visible when reduced motion is preferred', () => {
     mockReducedMotion(true);
 
     render(TopicLaunchBriefingCard, {
@@ -79,8 +68,101 @@ describe('TopicLaunchBriefingCard', () => {
       }
     });
 
-    expect(screen.getByTestId('launch-briefing-motif')).toHaveAttribute('data-reduced-motion', 'true');
-    expect(screen.queryAllByTestId('launch-briefing-motion-node')).toHaveLength(0);
-    expect(screen.getByText('Mission Briefing')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Equivalent Fractions' })).toBeInTheDocument();
+    expect(screen.getByText('Synthesizing equations...')).toBeInTheDocument();
+  });
+
+  it('rotates the overlay spinner phrase after 1.5 seconds', async () => {
+    vi.useFakeTimers();
+
+    render(TopicLaunchBriefingCard, {
+      props: {
+        family: 'mathematics',
+        headline: 'Synthesizing equations...',
+        topicTitle: 'Equivalent Fractions',
+        supportingLine: 'Finding the clearest way in.'
+      }
+    });
+
+    expect(screen.getByText('Synthesizing equations...')).toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(screen.getByText('Calculating patterns...')).toBeInTheDocument();
+  });
+
+  it('keeps phrase rotation inside the current subject family', async () => {
+    vi.useFakeTimers();
+
+    const { rerender } = render(TopicLaunchBriefingCard, {
+      props: {
+        family: 'mathematics',
+        headline: 'Synthesizing equations...',
+        topicTitle: 'Equivalent Fractions',
+        supportingLine: 'Finding the clearest way in.'
+      }
+    });
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(screen.getByText('Crunching variables...')).toBeInTheDocument();
+
+    rerender({
+      family: 'language',
+      headline: 'Perusing themes...',
+      topicTitle: 'Parts of Speech',
+      supportingLine: 'Finding the clearest way in.'
+    });
+
+    expect(screen.getByText('Perusing themes...')).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(screen.getByText('Inferring verbs...')).toBeInTheDocument();
+  });
+
+  it('keeps the animated dots rendered beside the status line while phrases rotate', async () => {
+    vi.useFakeTimers();
+
+    render(TopicLaunchBriefingCard, {
+      props: {
+        family: 'mathematics',
+        headline: 'Synthesizing equations...',
+        topicTitle: 'Equivalent Fractions',
+        supportingLine: 'Finding the clearest way in.'
+      }
+    });
+
+    expect(screen.getByTestId('launch-briefing-status-dots')).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(screen.getByTestId('launch-briefing-status-dots')).toBeInTheDocument();
+  });
+
+  it('exposes the full-bleed loader layout and border-glow treatment instead of the old motif surface', () => {
+    render(TopicLaunchBriefingCard, {
+      props: {
+        family: 'mathematics',
+        headline: 'Synthesizing equations...',
+        topicTitle: 'Equivalent Fractions',
+        supportingLine: 'Finding the clearest way in.'
+      }
+    });
+
+    expect(screen.getByTestId('launch-briefing-layout')).toHaveAttribute('data-full-bleed', 'true');
+    expect(screen.getByTestId('launch-briefing-border-glow')).toBeInTheDocument();
+    expect(screen.queryByTestId('launch-briefing-motif')).not.toBeInTheDocument();
+  });
+
+  it('simplifies the border glow when reduced motion is preferred', () => {
+    mockReducedMotion(true);
+
+    render(TopicLaunchBriefingCard, {
+      props: {
+        family: 'mathematics',
+        headline: 'Synthesizing equations...',
+        topicTitle: 'Equivalent Fractions',
+        supportingLine: 'Finding the clearest way in.'
+      }
+    });
+
+    expect(screen.getByTestId('launch-briefing-border-glow')).toHaveAttribute('data-reduced-motion', 'true');
+    expect(screen.getByRole('heading', { name: 'Equivalent Fractions' })).toBeInTheDocument();
   });
 });
