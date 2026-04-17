@@ -82,22 +82,34 @@
   }
 
   .plan-card {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 0.9rem;
+    align-items: stretch;
+    min-height: 100%;
     padding: 1.1rem;
     border-radius: var(--radius-xl);
-    border: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
-    box-shadow: var(--shadow);
+    border: 1px solid color-mix(in srgb, var(--color-border-strong) 52%, transparent);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-surface-high) 82%, transparent),
+      color-mix(in srgb, var(--color-surface) 96%, transparent)
+    );
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .plan-card--selected {
-    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow);
+    border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-border));
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-accent) 16%, transparent),
+      0 10px 28px rgba(0, 0, 0, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .plan-card--current {
-    border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+    border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
   }
 
   .plan-card-head {
@@ -117,13 +129,13 @@
 
   .plan-eyebrow {
     font-size: 0.72rem;
-    color: var(--muted);
+    color: var(--color-text-soft);
     letter-spacing: 0.04em;
   }
 
   h3 {
     font-size: 1.15rem;
-    color: var(--text);
+    color: var(--color-text);
   }
 
   .plan-badge {
@@ -131,9 +143,9 @@
     align-items: center;
     padding: 0.32rem 0.7rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-    border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
-    color: var(--accent);
+    background: color-mix(in srgb, var(--color-accent-dim) 92%, var(--color-surface));
+    border: 1px solid color-mix(in srgb, var(--color-accent) 20%, var(--color-border));
+    color: color-mix(in srgb, var(--color-accent) 82%, var(--color-text));
     font-size: 0.72rem;
     font-weight: 700;
     white-space: nowrap;
@@ -142,21 +154,39 @@
   .plan-budget {
     font-size: 1.45rem;
     font-weight: 800;
-    color: var(--text);
+    color: var(--color-text);
     letter-spacing: -0.03em;
   }
 
   .plan-budget span,
   .plan-summary {
-    color: var(--text-soft);
+    color: var(--color-text-soft);
     font-size: 0.9rem;
     font-weight: 400;
     letter-spacing: normal;
+    line-height: 1.5;
   }
 
   .btn {
     width: 100%;
     justify-content: center;
+    min-height: 2.75rem;
+    margin-top: auto;
+  }
+
+  .btn.btn-secondary {
+    border-color: color-mix(in srgb, var(--color-blue) 14%, var(--color-border));
+    background: color-mix(in srgb, var(--color-surface-high) 82%, var(--color-surface));
+    color: var(--color-text);
+  }
+
+  .btn.btn-secondary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-blue-dim) 88%, var(--color-surface));
+    border-color: color-mix(in srgb, var(--color-blue) 24%, var(--color-border-strong));
+  }
+
+  .btn:disabled {
+    opacity: 1;
   }
 
   @media (max-width: 640px) {

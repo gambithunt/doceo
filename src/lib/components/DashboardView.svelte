@@ -7,6 +7,7 @@
   import PlanPickerOverlay from '$lib/components/PlanPickerOverlay.svelte';
   import { launchCheckout } from '$lib/payments/checkout';
   import QuotaBadge from '$lib/components/quota/QuotaBadge.svelte';
+  import { deriveDashboardHeroState } from '$lib/components/dashboard-hero';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
   import TopicLaunchBriefingCard from '$lib/components/topic-discovery/TopicLaunchBriefingCard.svelte';
@@ -105,6 +106,14 @@
   );
   const currentSessionDate = $derived(
     currentSession ? relativeTime(currentSession.lastActiveAt) : ''
+  );
+  const heroState = $derived(
+    deriveDashboardHeroState({
+      currentSession,
+      selectedSubject,
+      discoveryTopics,
+      summary
+    })
   );
 
   // Pre-compute emoji + color maps — avoid repeated string comparisons per tile render
@@ -401,11 +410,36 @@
 
   let pathSectionEl = $state<HTMLElement | null>(null);
 
+  function scrollToPathSection(): void {
+    pathSectionEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function jumpToSubject(subjectId: string): void {
     selectSubject(subjectId);
     setTimeout(() => {
-      pathSectionEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      scrollToPathSection();
     }, 80);
+  }
+
+  function handleHeroPrimaryAction(): void {
+    if (hasPendingDashboardLaunch) return;
+
+    if (heroState.mode === 'resume' && currentSession) {
+      startFromBanner(currentSession);
+      return;
+    }
+
+    if (heroState.mode === 'recommended') {
+      startDiscoveredTopic(heroState.suggestion);
+      return;
+    }
+
+    scrollToPathSection();
+  }
+
+  function handleHeroSecondaryAction(): void {
+    if (hasPendingDashboardLaunch) return;
+    scrollToPathSection();
   }
 </script>
 
@@ -432,29 +466,56 @@
     </div>
 
     <div class="hero-body">
-      {#if currentSession}
+      {#if heroState.mode === 'resume'}
         <div class="mission-card">
           <div class="mission-card-inner">
-            <p class="mission-kicker">Current Mission</p>
-            <h3 class="mission-title">{toSentenceCase(currentSession.topicTitle)}</h3>
+            <p class="mission-kicker">{heroState.kicker}</p>
+            <h3 class="mission-title">{toSentenceCase(heroState.title)}</h3>
             <p class="mission-meta">{currentSession.subject} · {currentSessionStageLabel}</p>
             <div class="mission-progress-bar">
               <div class="mission-progress-fill" style="--progress: {currentSessionProgress / 100};"></div>
             </div>
             <div class="mission-footer">
-              <button type="button" class="btn btn-primary resume-btn" onclick={() => startFromBanner(currentSession)}>
-                Resume <span class="resume-arrow">→</span>
+              <button
+                type="button"
+                class="btn btn-primary resume-btn"
+                onclick={handleHeroPrimaryAction}
+                disabled={hasPendingDashboardLaunch}
+              >
+                {heroState.primaryCtaLabel.replace(/\s*→$/, '')}
+                {#if heroState.primaryCtaLabel.trim().endsWith('→')}
+                  <span class="resume-arrow">→</span>
+                {/if}
               </button>
               <span class="mission-timestamp">Last opened {currentSessionDate}</span>
             </div>
           </div>
         </div>
       {:else}
-        <div class="mission-card mission-card--empty">
+        <div class="mission-card" class:mission-card--empty={heroState.mode === 'guided_start'}>
           <div class="mission-card-inner">
-            <p class="mission-kicker">Ready to start?</p>
-            <h3 class="mission-title">Pick a topic below</h3>
-            <p class="mission-meta">Choose a subject and describe what you want to learn. We'll find the perfect lesson.</p>
+            <p class="mission-kicker">{heroState.kicker}</p>
+            <h3 class="mission-title">{heroState.title}</h3>
+            <p class="mission-meta">{heroState.supportingLine}</p>
+            {#if heroState.recommendationReason}
+              <p class="mission-reason">{heroState.recommendationReason}</p>
+            {/if}
+            <div class="mission-footer mission-footer--hero-actions">
+              <button
+                type="button"
+                class="btn btn-primary"
+                onclick={handleHeroPrimaryAction}
+                disabled={hasPendingDashboardLaunch}
+              >{heroState.primaryCtaLabel}</button>
+              {#if heroState.secondaryCtaLabel}
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick={handleHeroSecondaryAction}
+                  disabled={hasPendingDashboardLaunch}
+                >{heroState.secondaryCtaLabel}</button>
+              {/if}
+            </div>
           </div>
         </div>
       {/if}
@@ -835,9 +896,19 @@
     flex-wrap: wrap;
   }
 
+  .mission-footer--hero-actions {
+    margin-top: 0.6rem;
+  }
+
   .mission-timestamp {
     font-size: 0.78rem;
     color: var(--muted);
+  }
+
+  .mission-reason {
+    font-size: 0.85rem;
+    color: var(--text-soft);
+    line-height: 1.45;
   }
 
   /* Resume button arrow nudge on hover */

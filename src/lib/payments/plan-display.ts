@@ -13,18 +13,18 @@ export interface PlanDisplay {
 const PLAN_COPY: Record<PaidSubscriptionTier, Pick<PlanDisplay, 'name' | 'summary' | 'highlight'>> = {
   basic: {
     name: 'Basic',
-    summary: 'A steady monthly lesson budget.',
-    highlight: 'Good for regular study'
+    summary: 'Steady support for regular schoolwork and quick topic help.',
+    highlight: 'Best for a few study sessions each week'
   },
   standard: {
     name: 'Standard',
-    summary: 'More room for deeper lesson work.',
-    highlight: 'Balanced for weekly progress'
+    summary: 'More room for revision, deeper explanations, and consistent weekly practice.',
+    highlight: 'Best if Doceo is part of your weekly routine'
   },
   premium: {
     name: 'Premium',
-    summary: 'The largest monthly lesson budget.',
-    highlight: 'Best for heavy use'
+    summary: 'Complete tutor support with the highest lesson capacity for daily learning and exam prep.',
+    highlight: 'Best if Doceo is your main study partner'
   }
 };
 

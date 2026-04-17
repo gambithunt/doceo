@@ -25,4 +25,26 @@ describe('plan display helper', () => {
       })
     ]);
   });
+
+  it('returns richer shared plan descriptions for billing surfaces', async () => {
+    const { getPaidPlanDisplay } = await import('./plan-display');
+
+    expect(getPaidPlanDisplay('USD')).toEqual([
+      expect.objectContaining({
+        tier: 'basic',
+        summary: 'Steady support for regular schoolwork and quick topic help.',
+        highlight: 'Best for a few study sessions each week'
+      }),
+      expect.objectContaining({
+        tier: 'standard',
+        summary: 'More room for revision, deeper explanations, and consistent weekly practice.',
+        highlight: 'Best if Doceo is part of your weekly routine'
+      }),
+      expect.objectContaining({
+        tier: 'premium',
+        summary: 'Complete tutor support with the highest lesson capacity for daily learning and exam prep.',
+        highlight: 'Best if Doceo is your main study partner'
+      })
+    ]);
+  });
 });
