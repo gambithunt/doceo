@@ -31,6 +31,24 @@ interface BillingPeriodCostRow {
   interaction_count: number | string;
 }
 
+interface RecordStripeWebhookEventInput {
+  eventId: string;
+  eventType: string;
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripeCreatedAt?: string | null;
+}
+
+type StripeWebhookProcessingStatus = 'processed' | 'failed' | 'ignored_stale';
+
+function truncateErrorMessage(message: string): string {
+  return message.slice(0, 500);
+}
+
+function isStaleProtectedEventType(eventType: string): boolean {
+  return eventType !== 'checkout.session.completed';
+}
+
 function toIsoDate(value: number | null | undefined): string | null {
   return typeof value === 'number'
     ? new Date(value * 1000).toISOString().slice(0, 10)
@@ -223,12 +241,118 @@ export async function getUserActiveBillingCost(
   };
 }
 
-export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise<void> {
+export async function recordStripeWebhookEvent(input: RecordStripeWebhookEventInput): Promise<{
+  recorded: boolean;
+  duplicate: boolean;
+}> {
+  const supabase = createServerSupabaseAdmin();
+
+  if (!supabase) {
+    return { recorded: false, duplicate: false };
+  }
+
+  const { error } = await supabase.from('stripe_webhook_events').insert({
+    event_id: input.eventId,
+    event_type: input.eventType,
+    processing_status: 'received',
+    stripe_customer_id: input.stripeCustomerId ?? null,
+    stripe_subscription_id: input.stripeSubscriptionId ?? null,
+    stripe_created_at: input.stripeCreatedAt ?? null
+  });
+
+  if (error && error.code === '23505') {
+    return { recorded: false, duplicate: true };
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  return { recorded: true, duplicate: false };
+}
+
+export async function markStripeWebhookEventProcessed(eventId: string): Promise<void> {
+  await markStripeWebhookEventStatus(eventId, 'processed');
+}
+
+async function markStripeWebhookEventStatus(
+  eventId: string,
+  status: StripeWebhookProcessingStatus,
+  errorMessage?: string | null
+): Promise<void> {
   const supabase = createServerSupabaseAdmin();
 
   if (!supabase) {
     return;
   }
+
+  const { error } = await supabase
+    .from('stripe_webhook_events')
+    .update({
+      processing_status: status,
+      processed_at: status === 'processed' ? new Date().toISOString() : null,
+      failed_at: status === 'failed' ? new Date().toISOString() : null,
+      error_message: errorMessage ?? null
+    })
+    .eq('event_id', eventId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function markStripeWebhookEventFailed(eventId: string, errorMessage: string): Promise<void> {
+  await markStripeWebhookEventStatus(eventId, 'failed', truncateErrorMessage(errorMessage));
+}
+
+export async function markStripeWebhookEventIgnoredStale(eventId: string): Promise<void> {
+  await markStripeWebhookEventStatus(eventId, 'ignored_stale');
+}
+
+export async function isStripeWebhookEventStale(input: RecordStripeWebhookEventInput): Promise<boolean> {
+  const supabase = createServerSupabaseAdmin();
+
+  if (
+    !supabase ||
+    !isStaleProtectedEventType(input.eventType) ||
+    !input.stripeCreatedAt ||
+    (!input.stripeSubscriptionId && !input.stripeCustomerId)
+  ) {
+    return false;
+  }
+
+  let query = supabase
+    .from('stripe_webhook_events')
+    .select('event_id, stripe_created_at')
+    .eq('processing_status', 'processed');
+
+  query = input.stripeSubscriptionId
+    ? query.eq('stripe_subscription_id', input.stripeSubscriptionId)
+    : query.eq('stripe_customer_id', input.stripeCustomerId ?? '');
+
+  const { data, error } = await query.order('stripe_created_at', { ascending: false }).limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  const latestProcessedCreatedAt = (data?.[0] as { stripe_created_at?: string | null } | undefined)?.stripe_created_at;
+
+  if (!latestProcessedCreatedAt) {
+    return false;
+  }
+
+  return new Date(latestProcessedCreatedAt).getTime() > new Date(input.stripeCreatedAt).getTime();
+}
+
+export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise<'applied' | 'ignored_stale'> {
+  const supabase = createServerSupabaseAdmin();
+
+  if (!supabase) {
+    return 'applied';
+  }
+
+  const eventCreatedAt = typeof event.created === 'number' ? new Date(event.created * 1000).toISOString() : null;
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
@@ -241,7 +365,7 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
       typeof session.subscription === 'string' ? session.subscription : session.subscription?.id ?? null;
 
     if (!userId || !stripeCustomerId) {
-      return;
+      return 'applied';
     }
 
     await supabase.from('user_subscriptions').upsert(
@@ -253,7 +377,7 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
       },
       { onConflict: 'user_id' }
     );
-    return;
+    return 'applied';
   }
 
   if (event.type === 'invoice.payment_failed') {
@@ -267,7 +391,19 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
       typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id ?? null;
 
     if (!stripeSubscriptionId || !stripeCustomerId) {
-      return;
+      return 'applied';
+    }
+
+    if (
+      await isStripeWebhookEventStale({
+        eventId: event.id,
+        eventType: event.type,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        stripeCreatedAt: eventCreatedAt
+      })
+    ) {
+      return 'ignored_stale';
     }
 
     await supabase
@@ -279,7 +415,7 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
       .eq('stripe_subscription_id', stripeSubscriptionId)
       .eq('stripe_customer_id', stripeCustomerId);
 
-    return;
+    return 'applied';
   }
 
   if (event.type === 'invoice.payment_succeeded') {
@@ -293,7 +429,19 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
       typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id ?? null;
 
     if (!stripeSubscriptionId || !stripeCustomerId) {
-      return;
+      return 'applied';
+    }
+
+    if (
+      await isStripeWebhookEventStale({
+        eventId: event.id,
+        eventType: event.type,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        stripeCreatedAt: eventCreatedAt
+      })
+    ) {
+      return 'ignored_stale';
     }
 
     await supabase
@@ -305,7 +453,7 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
       .eq('stripe_subscription_id', stripeSubscriptionId)
       .eq('stripe_customer_id', stripeCustomerId);
 
-    return;
+    return 'applied';
   }
 
   const subscription = event.data.object as Stripe.Subscription & {
@@ -322,7 +470,19 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
     }));
 
   if (!userId) {
-    return;
+    return 'applied';
+  }
+
+  if (
+    await isStripeWebhookEventStale({
+      eventId: event.id,
+      eventType: event.type,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      stripeCreatedAt: eventCreatedAt
+    })
+  ) {
+    return 'ignored_stale';
   }
 
   if (event.type === 'customer.subscription.deleted') {
@@ -340,7 +500,7 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
       },
       { onConflict: 'user_id' }
     );
-    return;
+    return 'applied';
   }
 
   const tierConfig = getTierFromPriceId(primaryPriceId(subscription));
@@ -369,4 +529,5 @@ export async function upsertSubscriptionFromStripe(event: Stripe.Event): Promise
     },
     { onConflict: 'user_id' }
   );
+  return 'applied';
 }

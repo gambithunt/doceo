@@ -6,6 +6,7 @@ const mockFindInviteByNormalizedEmail = vi.fn();
 const mockAcceptInvite = vi.fn();
 const mockCreateServerSupabaseAdmin = vi.fn();
 const mockSignUp = vi.fn();
+const mockCreateProfileOnRegistration = vi.fn();
 
 vi.mock('$lib/server/invite-system', () => ({
   getRegistrationMode: mockGetRegistrationMode,
@@ -16,6 +17,10 @@ vi.mock('$lib/server/invite-system', () => ({
 
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseAdmin: mockCreateServerSupabaseAdmin
+}));
+
+vi.mock('$lib/server/register-profile', () => ({
+  createProfileOnRegistration: mockCreateProfileOnRegistration
 }));
 
 describe('invite hardening', () => {
@@ -142,6 +147,50 @@ describe('invite hardening', () => {
       await POST({ request } as never);
 
       expect(mockAcceptInvite).not.toHaveBeenCalled();
+    });
+
+    it('creates a profile after successful signup', async () => {
+      mockGetRegistrationMode.mockResolvedValue('open');
+      mockSignUp.mockResolvedValue({
+        data: { user: { id: 'user-1' }, session: null },
+        error: null
+      });
+      mockCreateProfileOnRegistration.mockResolvedValue({ error: null });
+
+      const { POST } = await import('../../routes/api/auth/register/+server');
+      const request = new Request('http://localhost/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'test@example.com', password: 'password123', fullName: 'Test User' })
+      });
+
+      await POST({ request } as never);
+
+      expect(mockCreateProfileOnRegistration).toHaveBeenCalledWith(
+        mockSupabase,
+        'user-1',
+        'Test User',
+        'test@example.com'
+      );
+    });
+
+    it('does not create a profile when signup fails', async () => {
+      mockGetRegistrationMode.mockResolvedValue('open');
+      mockSignUp.mockResolvedValue({
+        data: { user: null, session: null },
+        error: { message: 'Signup failed' }
+      });
+
+      const { POST } = await import('../../routes/api/auth/register/+server');
+      const request = new Request('http://localhost/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'test@example.com', password: 'password123', fullName: 'Test User' })
+      });
+
+      await POST({ request } as never);
+
+      expect(mockCreateProfileOnRegistration).not.toHaveBeenCalled();
     });
   });
 

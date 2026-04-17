@@ -217,4 +217,122 @@ describe('subscription repository', () => {
       interactionCount: 2
     });
   });
+
+  it('records a new Stripe webhook event row', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const from = vi.fn((table: string) => {
+      if (table === 'stripe_webhook_events') {
+        return { insert };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+
+    const { recordStripeWebhookEvent } = await import('./subscription-repository');
+    const result = await recordStripeWebhookEvent({
+      eventId: 'evt_123',
+      eventType: 'customer.subscription.updated',
+      stripeCustomerId: 'cus_123',
+      stripeSubscriptionId: 'sub_123',
+      stripeCreatedAt: '2026-04-16T10:00:00.000Z'
+    });
+
+    expect(result).toEqual({ recorded: true, duplicate: false });
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_id: 'evt_123',
+        event_type: 'customer.subscription.updated',
+        processing_status: 'received',
+        stripe_customer_id: 'cus_123',
+        stripe_subscription_id: 'sub_123',
+        stripe_created_at: '2026-04-16T10:00:00.000Z'
+      })
+    );
+  });
+
+  it('marks a Stripe webhook event row as processed', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn(() => ({ eq }));
+    const from = vi.fn((table: string) => {
+      if (table === 'stripe_webhook_events') {
+        return { update };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+
+    const { markStripeWebhookEventProcessed } = await import('./subscription-repository');
+    await markStripeWebhookEventProcessed('evt_123');
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processing_status: 'processed'
+      })
+    );
+    expect(eq).toHaveBeenCalledWith('event_id', 'evt_123');
+  });
+
+  it('marks a Stripe webhook event row as failed with a safe error message', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn(() => ({ eq }));
+    const from = vi.fn((table: string) => {
+      if (table === 'stripe_webhook_events') {
+        return { update };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+
+    const { markStripeWebhookEventFailed } = await import('./subscription-repository');
+    await markStripeWebhookEventFailed('evt_123', 'x'.repeat(600));
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        processing_status: 'failed',
+        error_message: 'x'.repeat(500)
+      })
+    );
+    expect(eq).toHaveBeenCalledWith('event_id', 'evt_123');
+  });
+
+  it('treats an older Stripe webhook event as stale when a newer processed event exists for the subscription', async () => {
+    const limit = vi.fn().mockResolvedValue({
+      data: [
+        {
+          event_id: 'evt_newer_123',
+          stripe_created_at: '2026-04-16T12:00:00.000Z'
+        }
+      ]
+    });
+    const order = vi.fn(() => ({ limit }));
+    const eqSubscription = vi.fn(() => ({ order }));
+    const eqStatus = vi.fn(() => ({ eq: eqSubscription }));
+    const select = vi.fn(() => ({ eq: eqStatus }));
+    const from = vi.fn((table: string) => {
+      if (table === 'stripe_webhook_events') {
+        return { select };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    createServerSupabaseAdmin.mockReturnValue({ from });
+
+    const { isStripeWebhookEventStale } = await import('./subscription-repository');
+    const result = await isStripeWebhookEventStale({
+      eventId: 'evt_old_123',
+      eventType: 'customer.subscription.updated',
+      stripeCustomerId: 'cus_123',
+      stripeSubscriptionId: 'sub_123',
+      stripeCreatedAt: '2026-04-16T10:00:00.000Z'
+    });
+
+    expect(result).toBe(true);
+  });
 });

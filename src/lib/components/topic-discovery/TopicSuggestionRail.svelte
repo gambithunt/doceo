@@ -6,11 +6,13 @@
   interface Props {
     title: string;
     subtitle: string;
+    subjectName: string;
     status: TopicDiscoveryResultState['status'];
     suggestions: DashboardTopicDiscoverySuggestion[];
     refreshed?: boolean;
     error?: string | null;
     launchingSignature?: string | null;
+    launchLocked?: boolean;
     onRefresh?: () => void;
     onLaunch?: (topicSignature: string) => void;
     onFeedback?: (topicSignature: string, feedback: 'up' | 'down') => void;
@@ -19,11 +21,13 @@
   let {
     title,
     subtitle,
+    subjectName,
     status,
     suggestions,
     refreshed = false,
     error = null,
     launchingSignature = null,
+    launchLocked = false,
     onRefresh,
     onLaunch,
     onFeedback
@@ -33,6 +37,7 @@
   const showEmpty = $derived(status === 'empty' && suggestions.length === 0);
   const showError = $derived(status === 'error' && suggestions.length === 0);
   const showStaleError = $derived(status === 'stale' && Boolean(error));
+  const isLaunchLocked = $derived(launchLocked || Boolean(launchingSignature));
 </script>
 
 <section class="rail" aria-live="polite">
@@ -46,7 +51,7 @@
       <RefreshTopicsButton
         refreshing={status === 'refreshing'}
         refreshed={refreshed}
-        disabled={status === 'refreshing'}
+        disabled={status === 'refreshing' || isLaunchLocked}
         onRefresh={onRefresh}
       />
     {/if}
@@ -66,7 +71,9 @@
       {#each suggestions as suggestion (suggestion.topicSignature)}
         <TopicSuggestionTile
           suggestion={suggestion}
+          subjectName={subjectName}
           launching={launchingSignature === suggestion.topicSignature}
+          disabled={isLaunchLocked && launchingSignature !== suggestion.topicSignature}
           onLaunch={onLaunch}
           onFeedback={onFeedback}
         />

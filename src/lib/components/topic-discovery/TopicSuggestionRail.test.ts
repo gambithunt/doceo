@@ -35,6 +35,7 @@ describe('TopicSuggestionRail', () => {
       props: {
         title: 'Suggested topics',
         subtitle: 'More ideas for Mathematics',
+        subjectName: 'Mathematics',
         status: 'ready',
         suggestions: [
           createSuggestion(),
@@ -74,6 +75,7 @@ describe('TopicSuggestionRail', () => {
       props: {
         title: 'Suggested topics',
         subtitle: 'More ideas for Mathematics',
+        subjectName: 'Mathematics',
         status: 'loading',
         suggestions: [],
         refreshed: false,
@@ -88,6 +90,7 @@ describe('TopicSuggestionRail', () => {
     rerender({
       title: 'Suggested topics',
       subtitle: 'More ideas for Mathematics',
+      subjectName: 'Mathematics',
       status: 'empty',
       suggestions: [],
       refreshed: false,
@@ -101,6 +104,7 @@ describe('TopicSuggestionRail', () => {
     rerender({
       title: 'Suggested topics',
       subtitle: 'More ideas for Mathematics',
+      subjectName: 'Mathematics',
       status: 'error',
       suggestions: [],
       refreshed: false,
@@ -118,6 +122,7 @@ describe('TopicSuggestionRail', () => {
       props: {
         title: 'Suggested topics',
         subtitle: 'More ideas for Mathematics',
+        subjectName: 'Mathematics',
         status: 'ready',
         suggestions: [
           createSuggestion({
@@ -135,5 +140,33 @@ describe('TopicSuggestionRail', () => {
     expect(screen.getByText('Saving your feedback…')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /thumbs up for equivalent fractions/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /start lesson on equivalent fractions/i })).toBeEnabled();
+  });
+
+  it('disables non-selected suggestion tiles while one signature is launching', () => {
+    render(TopicSuggestionRail, {
+      props: {
+        title: 'Suggested topics',
+        subtitle: 'More ideas for Mathematics',
+        subjectName: 'Mathematics',
+        status: 'ready',
+        suggestions: [
+          createSuggestion(),
+          createSuggestion({
+            topicSignature: 'subject-1::caps::grade-6::ratio tables',
+            topicLabel: 'Ratio Tables',
+            rank: 2
+          })
+        ],
+        refreshed: false,
+        launchingSignature: 'subject-1::caps::grade-6::equivalent fractions',
+        onRefresh: vi.fn(),
+        onLaunch: vi.fn(),
+        onFeedback: vi.fn()
+      }
+    });
+
+    expect(screen.getByRole('button', { name: /start lesson on equivalent fractions/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /start lesson on ratio tables/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /refresh topics/i })).toBeDisabled();
   });
 });

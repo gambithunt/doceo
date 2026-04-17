@@ -1,17 +1,22 @@
 <script lang="ts">
   import TopicSuggestionFeedback from './TopicSuggestionFeedback.svelte';
+  import { selectTopicLoadingCopy } from './topic-loading-copy';
   import type { DashboardTopicDiscoverySuggestion } from '$lib/types';
 
   interface Props {
     suggestion: DashboardTopicDiscoverySuggestion;
+    subjectName: string;
     launching?: boolean;
+    disabled?: boolean;
     onLaunch?: (topicSignature: string) => void;
     onFeedback?: (topicSignature: string, feedback: 'up' | 'down') => void;
   }
 
   let {
     suggestion,
+    subjectName,
     launching = false,
+    disabled = false,
     onLaunch,
     onFeedback
   }: Props = $props();
@@ -29,6 +34,11 @@
     if (suggestion.freshness === 'new' || suggestion.freshness === 'rising') return 'Try something new';
     return 'Ready now';
   });
+
+  const loadingCopy = $derived(selectTopicLoadingCopy({
+    subjectName,
+    topicTitle: suggestion.topicLabel
+  }));
 </script>
 
 <article class={`topic-tile topic-tile--${tone}`} style="--i: {suggestion.rank};">
@@ -37,6 +47,7 @@
     class="topic-launch"
     aria-label={`Start lesson on ${suggestion.topicLabel}`}
     aria-busy={launching}
+    disabled={disabled}
     onclick={() => onLaunch?.(suggestion.topicSignature)}
   >
     <span class="topic-badge">{badge}</span>
@@ -53,7 +64,7 @@
           <span class="topic-busy-dot"></span>
           <span class="topic-busy-dot"></span>
         </span>
-        <span>Starting&hellip;</span>
+        <span>{loadingCopy.headline}</span>
       {:else}
         <span>Start lesson</span>
       {/if}
@@ -64,6 +75,7 @@
     topicLabel={suggestion.topicLabel}
     feedback={suggestion.feedback}
     pending={suggestion.feedbackPending}
+    disabled={disabled || launching}
     onFeedback={(feedback) => onFeedback?.(suggestion.topicSignature, feedback)}
   />
 </article>
@@ -180,6 +192,12 @@
     border-color: color-mix(in srgb, var(--accent) 28%, var(--tile-border));
   }
 
+  .topic-tile:has(.topic-launch:disabled):not(:has(.topic-launch[aria-busy='true'])) {
+    opacity: 0.64;
+    transform: none;
+    box-shadow: var(--shadow-sm);
+  }
+
   .topic-tile:has(.topic-launch:active) {
     transform: translateY(-1px) scale(0.985);
     box-shadow: var(--shadow-sm);
@@ -218,6 +236,10 @@
 
   .topic-launch:focus-visible {
     outline: none;
+  }
+
+  .topic-launch:disabled {
+    cursor: not-allowed;
   }
 
   /* ── Badge pill ── */

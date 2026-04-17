@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
+import { createProfileOnRegistration } from '$lib/server/register-profile';
 import {
   getRegistrationMode,
   findInviteByNormalizedEmail,
@@ -56,6 +57,10 @@ export async function POST({ request }) {
 
   if (data.user && mode === 'invite_only') {
     await acceptInvite(supabase, normalizedEmail);
+  }
+
+  if (data.user) {
+    await createProfileOnRegistration(supabase, data.user.id, fullName, email);
   }
 
   return json({

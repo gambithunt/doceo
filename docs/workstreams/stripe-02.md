@@ -70,9 +70,9 @@ Excluded:
 - UI or admin reporting for webhook events.
 
 ### Tasks
-- [ ] Add a migration for `stripe_webhook_events` with a unique key on Stripe `event_id`.
-- [ ] Add repository helpers in `src/lib/server/subscription-repository.ts` or a closely related server module for basic event ledger writes.
-- [ ] Add focused repository tests for event-ledger insert and status-update behavior.
+- [x] Add a migration for `stripe_webhook_events` with a unique key on Stripe `event_id`.
+- [x] Add repository helpers in `src/lib/server/subscription-repository.ts` or a closely related server module for basic event ledger writes.
+- [x] Add focused repository tests for event-ledger insert and status-update behavior.
 
 ### TDD Plan
 RED
@@ -123,9 +123,9 @@ Excluded:
 - Dashboard or admin visibility into duplicate events.
 
 ### Tasks
-- [ ] Add route tests for duplicate delivery of each currently handled event path being ignored after first processing.
-- [ ] Update webhook processing flow to gate on unique `event_id`.
-- [ ] Mark event rows processed or failed around the existing subscription sync call.
+- [x] Add route tests for duplicate delivery of each currently handled event path being ignored after first processing.
+- [x] Update webhook processing flow to gate on unique `event_id`.
+- [x] Mark event rows processed or failed around the existing subscription sync call.
 
 ### TDD Plan
 RED
@@ -176,9 +176,9 @@ Excluded:
 - Changes to quota, checkout, or admin billing logic.
 
 ### Tasks
-- [ ] Define and document the minimal freshness source for handled events, using Stripe event creation time and existing subscription linkage.
-- [ ] Add repository logic to detect stale events before applying subscription state changes.
-- [ ] Add route/repository tests for older events arriving after newer ones.
+- [x] Define and document the minimal freshness source for handled events, using Stripe event creation time and existing subscription linkage.
+- [x] Add repository logic to detect stale events before applying subscription state changes.
+- [x] Add route/repository tests for older events arriving after newer ones.
 
 ### TDD Plan
 RED
@@ -235,9 +235,9 @@ Excluded:
 - UI changes.
 
 ### Tasks
-- [ ] Add replay tests for every handled event type.
-- [ ] Add out-of-order tests for the stale-event cases defined in Phase 3.
-- [ ] Update any affected workstream checklist wording only if it must be narrowed to match the implemented behavior.
+- [x] Add replay tests for every handled event type.
+- [x] Add out-of-order tests for the stale-event cases defined in Phase 3.
+- [x] Update any affected workstream checklist wording only if it must be narrowed to match the implemented behavior.
 
 ### TDD Plan
 RED

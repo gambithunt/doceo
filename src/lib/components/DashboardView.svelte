@@ -7,7 +7,9 @@
   import QuotaBadge from '$lib/components/quota/QuotaBadge.svelte';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
   import { extractHintChipLabels } from '$lib/components/dashboard-hints';
+  import TopicLaunchBriefingCard from '$lib/components/topic-discovery/TopicLaunchBriefingCard.svelte';
   import TopicSuggestionRail from '$lib/components/topic-discovery/TopicSuggestionRail.svelte';
+  import { selectTopicLoadingCopy } from '$lib/components/topic-discovery/topic-loading-copy';
   import { resolveSubjectHints } from '$lib/ai/subject-hints';
   import { getCompletionSummary } from '$lib/data/platform';
   import { getStageLabel } from '$lib/lesson-system';
@@ -16,10 +18,21 @@
   import type { AppState, LessonSession, ShortlistedTopic, UserSubscription } from '$lib/types';
 
   const { state: viewState }: { state: AppState } = $props();
+  const LAUNCH_BRIEFING_DELAY_MS = 900;
+
+  interface PendingDashboardLaunch {
+    kind: 'discovery' | 'shortlist';
+    topicTitle: string;
+    subjectName: string;
+    discoverySignature?: string;
+    shortlistId?: string;
+  }
 
   let topicInputFocused = $state(false);
-  let pendingDiscoverySignature = $state<string | null>(null);
+  let pendingDashboardLaunch = $state<PendingDashboardLaunch | null>(null);
+  let launchBriefingVisible = $state(false);
   let hasRequestedInitialDiscovery = $state(false);
+  let launchBriefingTimer: ReturnType<typeof setTimeout> | null = null;
   let latestHintRequest = 0;
   let hintAbortController: AbortController | undefined;
   let lastHintSeed = $state('');
@@ -87,6 +100,16 @@
   );
   const selectedSubjectEmoji = $derived(subjectEmojiMap[selectedSubject?.id ?? ''] ?? '📚');
   const selectedSubjectColor = $derived(subjectColorMap[selectedSubject?.id ?? ''] ?? 'blue');
+  const pendingDiscoverySignature = $derived(pendingDashboardLaunch?.discoverySignature ?? null);
+  const hasPendingDashboardLaunch = $derived(Boolean(pendingDashboardLaunch));
+  const pendingLaunchCopy = $derived(
+    pendingDashboardLaunch
+      ? selectTopicLoadingCopy({
+          subjectName: pendingDashboardLaunch.subjectName,
+          topicTitle: pendingDashboardLaunch.topicTitle
+        })
+      : null
+  );
 
   function toSentenceCase(str: string): string {
     if (!str) return str;
@@ -226,6 +249,34 @@
     void loadQuotaStatus();
   });
 
+  function clearLaunchBriefingTimer(): void {
+    if (launchBriefingTimer) {
+      clearTimeout(launchBriefingTimer);
+      launchBriefingTimer = null;
+    }
+  }
+
+  $effect(() => {
+    const currentPendingLaunch = pendingDashboardLaunch;
+    clearLaunchBriefingTimer();
+
+    if (!currentPendingLaunch) {
+      launchBriefingVisible = false;
+      return;
+    }
+
+    launchBriefingVisible = false;
+    launchBriefingTimer = setTimeout(() => {
+      if (pendingDashboardLaunch === currentPendingLaunch) {
+        launchBriefingVisible = true;
+      }
+    }, LAUNCH_BRIEFING_DELAY_MS);
+
+    return () => {
+      clearLaunchBriefingTimer();
+    };
+  });
+
   function onInput(event: Event): void {
     appState.setTopicDiscoveryInput((event.currentTarget as HTMLTextAreaElement).value);
   }
@@ -234,19 +285,21 @@
   function onTopicBlur(): void { topicInputFocused = false; }
 
   function selectSubject(subjectId: string): void {
+    if (hasPendingDashboardLaunch) return;
     lastHintSeed = '';
     appState.setTopicDiscoveryInput('');
     appState.selectSubject(subjectId);
   }
 
   function resetTopicDiscovery(): void {
+    if (hasPendingDashboardLaunch) return;
     lastHintSeed = '';
-    pendingDiscoverySignature = null;
     appState.resetTopicDiscovery();
   }
 
 
   function runShortlist(): void {
+    if (hasPendingDashboardLaunch) return;
     if (!selectedSubject || viewState.topicDiscovery.input.trim().length === 0) return;
     void appState.shortlistTopics(selectedSubject.id, viewState.topicDiscovery.input.trim());
   }
@@ -262,23 +315,42 @@
   }
 
   function refreshTopicDiscovery(): void {
+    if (hasPendingDashboardLaunch) return;
     if (!selectedSubject) return;
     if (discoveryState.status === 'loading' || discoveryState.status === 'refreshing') return;
     void appState.refreshTopicDiscovery(selectedSubject.id);
   }
 
   function startTopic(topic: ShortlistedTopic): void {
-    void appState.startLessonFromShortlist(topic);
+    if (hasPendingDashboardLaunch || !selectedSubject) return;
+    pendingDashboardLaunch = {
+      kind: 'shortlist',
+      topicTitle: topic.title,
+      subjectName: selectedSubject.name,
+      shortlistId: topic.id
+    };
+    void (async () => {
+      try {
+        await appState.startLessonFromShortlist(topic);
+      } finally {
+        pendingDashboardLaunch = null;
+      }
+    })();
   }
 
   function startDiscoveredTopic(topic: AppState['topicDiscovery']['discovery']['topics'][number]): void {
-    if (pendingDiscoverySignature) return;
-    pendingDiscoverySignature = topic.topicSignature;
+    if (hasPendingDashboardLaunch || !selectedSubject) return;
+    pendingDashboardLaunch = {
+      kind: 'discovery',
+      topicTitle: topic.topicLabel,
+      subjectName: selectedSubject.name,
+      discoverySignature: topic.topicSignature
+    };
     void (async () => {
       try {
         await appState.startLessonFromTopicDiscovery(topic.topicSignature);
       } finally {
-        pendingDiscoverySignature = null;
+        pendingDashboardLaunch = null;
       }
     })();
   }
@@ -370,6 +442,7 @@
             style="--i: {i};"
             onclick={() => jumpToSubject(subject.id)}
             aria-pressed={subject.id === selectedSubject?.id}
+            disabled={hasPendingDashboardLaunch}
           >
             <div class="subject-card-icon icon-block icon-block--{subjectColorMap[subject.id] ?? 'blue'}" aria-hidden="true">
               {subjectEmojiMap[subject.id] ?? '📚'}
@@ -398,11 +471,13 @@
     <TopicSuggestionRail
       title="Suggested topics"
       subtitle={`More ideas for ${selectedSubject?.name ?? 'this subject'}`}
+      subjectName={selectedSubject?.name ?? 'this subject'}
       status={discoveryState.status}
       suggestions={discoveryTopics}
       refreshed={discoveryState.refreshed}
       error={discoveryState.error}
       launchingSignature={pendingDiscoverySignature}
+      launchLocked={hasPendingDashboardLaunch}
       onRefresh={refreshTopicDiscovery}
       onLaunch={(topicSignature) => {
         const topic = discoveryTopics.find((item) => item.topicSignature === topicSignature);
@@ -419,6 +494,7 @@
         class="search-input"
         placeholder="Or describe exactly what you want to learn..."
         value={viewState.topicDiscovery.input}
+        disabled={hasPendingDashboardLaunch}
         oninput={onInput}
         onfocus={onTopicFocus}
         onblur={onTopicBlur}
@@ -428,13 +504,13 @@
           type="button"
           class="btn btn-primary"
           aria-busy={viewState.topicDiscovery.shortlist.status === 'loading'}
-          disabled={viewState.topicDiscovery.shortlist.status === 'loading' || Boolean(pendingDiscoverySignature)}
+          disabled={viewState.topicDiscovery.shortlist.status === 'loading' || hasPendingDashboardLaunch}
           onclick={runShortlist}
         >
           {viewState.topicDiscovery.shortlist.status === 'loading' ? 'Finding matches...' : "Let's go →"}
         </button>
         {#if viewState.topicDiscovery.shortlist.shortlist}
-          <button type="button" class="btn btn-secondary" onclick={resetTopicDiscovery}>Start over</button>
+          <button type="button" class="btn btn-secondary" disabled={hasPendingDashboardLaunch} onclick={resetTopicDiscovery}>Start over</button>
         {/if}
       </div>
     </div>
@@ -463,13 +539,34 @@
         </div>
         <div class="topic-grid">
           {#each viewState.topicDiscovery.shortlist.shortlist.subtopics as topic, i}
-            <button type="button" class="topic-tile" onclick={() => startTopic(topic)}>
+            <button
+              type="button"
+              class="topic-tile"
+              class:launching={pendingDashboardLaunch?.shortlistId === topic.id}
+              disabled={hasPendingDashboardLaunch}
+              aria-busy={pendingDashboardLaunch?.shortlistId === topic.id}
+              onclick={() => startTopic(topic)}
+            >
               <span class="topic-index">{String(i + 1).padStart(2, '0')}</span>
               <div class="topic-tile-body">
                 <strong>{toSentenceCase(topic.title)}</strong>
-                <p>{topic.description}</p>
+                <p>
+                  {pendingDashboardLaunch?.shortlistId === topic.id && pendingLaunchCopy
+                    ? pendingLaunchCopy.headline
+                    : topic.description}
+                </p>
               </div>
-              <span class="topic-tile-arrow" aria-hidden="true">→</span>
+              <span class="topic-tile-arrow" aria-hidden="true">
+                {#if pendingDashboardLaunch?.shortlistId === topic.id}
+                  <span class="path-tile-indicator">
+                    <span class="busy-dot"></span>
+                    <span class="busy-dot"></span>
+                    <span class="busy-dot"></span>
+                  </span>
+                {:else}
+                  →
+                {/if}
+              </span>
             </button>
           {/each}
         </div>
@@ -536,6 +633,15 @@
   {/if}
 
 </section>
+
+{#if launchBriefingVisible && pendingDashboardLaunch && pendingLaunchCopy}
+  <TopicLaunchBriefingCard
+    family={pendingLaunchCopy.family}
+    headline={pendingLaunchCopy.headline}
+    topicTitle={toSentenceCase(pendingDashboardLaunch.topicTitle)}
+    supportingLine={pendingLaunchCopy.supportingLine}
+  />
+{/if}
 
 <style>
   /* ── Root ── */
@@ -868,9 +974,18 @@
     border-color: var(--accent);
   }
 
+  .subject-card:disabled {
+    cursor: wait;
+    opacity: 0.62;
+  }
+
   .subject-card:active {
     transform: translateY(0) scale(0.97);
     transition-duration: 80ms;
+  }
+
+  .subject-card:disabled:active {
+    transform: none;
   }
 
   .subject-card-icon {
@@ -1024,6 +1139,11 @@
     color: var(--muted);
   }
 
+  .search-input:disabled {
+    cursor: wait;
+    opacity: 0.72;
+  }
+
   .search-actions {
     display: flex;
     gap: 0.6rem;
@@ -1085,10 +1205,29 @@
     border-color: var(--accent);
   }
 
+  .topic-tile:disabled {
+    cursor: wait;
+  }
+
+  .topic-tile:disabled:not(.launching) {
+    opacity: 0.62;
+    transform: none;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .topic-tile.launching {
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--border-strong));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-md);
+  }
+
   .topic-tile:active {
     transform: translateY(-1px) scale(0.99);
     box-shadow: var(--shadow-sm);
     transition: transform 80ms ease-in, box-shadow 80ms ease-in;
+  }
+
+  .topic-tile:disabled:active {
+    transform: none;
   }
 
   .topic-index {
@@ -1122,6 +1261,12 @@
   }
 
   .topic-tile:hover .topic-tile-arrow {
+    opacity: 1;
+    transform: translateX(0);
+    color: var(--accent);
+  }
+
+  .topic-tile.launching .topic-tile-arrow {
     opacity: 1;
     transform: translateX(0);
     color: var(--accent);

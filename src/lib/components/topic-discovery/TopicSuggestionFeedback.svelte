@@ -3,6 +3,7 @@
     topicLabel: string;
     feedback: 'up' | 'down' | null;
     pending?: boolean;
+    disabled?: boolean;
     onFeedback?: (feedback: 'up' | 'down') => void;
   }
 
@@ -10,6 +11,7 @@
     topicLabel,
     feedback,
     pending = false,
+    disabled = false,
     onFeedback
   }: Props = $props();
 
@@ -33,7 +35,7 @@
       class:dimmed={feedback !== null && feedback !== 'up'}
       aria-label={`Thumbs up for ${topicLabel}`}
       aria-pressed={feedback === 'up'}
-      disabled={pending}
+      disabled={pending || disabled}
       onclick={() => onFeedback?.('up')}
     >
       👍
@@ -45,7 +47,7 @@
       class:dimmed={feedback !== null && feedback !== 'down'}
       aria-label={`Thumbs down for ${topicLabel}`}
       aria-pressed={feedback === 'down'}
-      disabled={pending}
+      disabled={pending || disabled}
       onclick={() => onFeedback?.('down')}
     >
       👎

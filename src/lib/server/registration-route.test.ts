@@ -6,6 +6,7 @@ const mockFindInviteByNormalizedEmail = vi.fn();
 const mockAcceptInvite = vi.fn();
 const mockCreateServerSupabaseAdmin = vi.fn();
 const mockSignUp = vi.fn();
+const mockCreateProfileOnRegistration = vi.fn();
 
 vi.mock('$lib/server/invite-system', () => ({
   getRegistrationMode: mockGetRegistrationMode,
@@ -16,6 +17,10 @@ vi.mock('$lib/server/invite-system', () => ({
 
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseAdmin: mockCreateServerSupabaseAdmin
+}));
+
+vi.mock('$lib/server/register-profile', () => ({
+  createProfileOnRegistration: mockCreateProfileOnRegistration
 }));
 
 describe('registration route', () => {

@@ -26,26 +26,82 @@ vi.mock('$lib/server/stripe', () => ({
   }
 }));
 
-function createSupabaseMock() {
+function createSupabaseMock({
+  ledgerInsertResults,
+  ledgerUpdateResult,
+  ledgerLatestProcessedRows
+}: {
+  ledgerInsertResults?: Array<{ error: null | { code?: string; message?: string } }>;
+  ledgerUpdateResult?: { error: null | { message?: string } };
+  ledgerLatestProcessedRows?: Array<Record<string, unknown>>;
+} = {}) {
   const upsert = vi.fn().mockResolvedValue({ error: null });
   const update = vi.fn(() => ({
     eq: vi.fn(() => ({
       eq: vi.fn().mockResolvedValue({ error: null })
     }))
   }));
+  const ledgerInsertQueue = [...(ledgerInsertResults ?? [{ error: null }])];
+  const ledgerInsert = vi.fn().mockImplementation(() => {
+    const next = ledgerInsertQueue.shift() ?? { error: null };
+    return Promise.resolve(next);
+  });
+  const ledgerUpdateEq = vi.fn().mockResolvedValue(ledgerUpdateResult ?? { error: null });
+  const ledgerUpdate = vi.fn(() => ({ eq: ledgerUpdateEq }));
+  const ledgerSelectLimit = vi.fn().mockResolvedValue({
+    data: ledgerLatestProcessedRows ?? []
+  });
+  const ledgerSelectOrder = vi.fn(() => ({ limit: ledgerSelectLimit }));
+  const ledgerSelectEqSubscription = vi.fn(() => ({ order: ledgerSelectOrder }));
+  const ledgerSelectEqCustomer = vi.fn(() => ({ order: ledgerSelectOrder }));
+  const ledgerSelectEqStatus = vi.fn((column: string) => {
+    if (column === 'stripe_subscription_id') {
+      return { order: ledgerSelectOrder };
+    }
+
+    if (column === 'stripe_customer_id') {
+      return { order: ledgerSelectOrder };
+    }
+
+    return { eq: ledgerSelectEqSubscription };
+  });
+  const ledgerSelect = vi.fn(() => ({ eq: ledgerSelectEqStatus }));
 
   const from = vi.fn((table: string) => {
+    if (table === 'user_subscriptions') {
+      return {
+        upsert,
+        update
+      };
+    }
+
+    if (table === 'stripe_webhook_events') {
+      return {
+        insert: ledgerInsert,
+        update: ledgerUpdate,
+        select: ledgerSelect
+      };
+    }
+
     if (table !== 'user_subscriptions') {
       throw new Error(`Unexpected table: ${table}`);
     }
-
-    return {
-      upsert,
-      update
-    };
   });
 
-  return { from, upsert, update };
+  return {
+    from,
+    upsert,
+    update,
+    ledgerInsert,
+    ledgerUpdate,
+    ledgerUpdateEq,
+    ledgerSelect,
+    ledgerSelectEqStatus,
+    ledgerSelectEqSubscription,
+    ledgerSelectEqCustomer,
+    ledgerSelectOrder,
+    ledgerSelectLimit
+  };
 }
 
 function createSubscriptionEvent(
@@ -53,6 +109,8 @@ function createSubscriptionEvent(
   overrides: Partial<Record<string, unknown>> = {}
 ) {
   return {
+    id: 'evt_sub_123',
+    created: 1776333600,
     type,
     data: {
       object: {
@@ -361,6 +419,286 @@ describe('payments webhook route', () => {
     );
   });
 
+  it.each([
+    {
+      name: 'checkout.session.completed',
+      event: {
+        id: 'evt_checkout_123',
+        created: 1776333600,
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_123',
+            customer: 'cus_123',
+            subscription: 'sub_123',
+            client_reference_id: 'auth-user-1',
+            metadata: {}
+          }
+        }
+      },
+      assertion: (supabase: ReturnType<typeof createSupabaseMock>) => {
+        expect(supabase.upsert).toHaveBeenCalledTimes(1);
+        expect(supabase.update).not.toHaveBeenCalled();
+      }
+    },
+    {
+      name: 'customer.subscription.created',
+      event: createSubscriptionEvent('customer.subscription.created', {
+        id: 'evt_created_123'
+      }),
+      assertion: (supabase: ReturnType<typeof createSupabaseMock>) => {
+        expect(supabase.upsert).toHaveBeenCalledTimes(1);
+        expect(supabase.update).not.toHaveBeenCalled();
+      }
+    },
+    {
+      name: 'customer.subscription.updated',
+      event: createSubscriptionEvent('customer.subscription.updated', {
+        id: 'evt_updated_123',
+        status: 'past_due'
+      }),
+      assertion: (supabase: ReturnType<typeof createSupabaseMock>) => {
+        expect(supabase.upsert).toHaveBeenCalledTimes(1);
+        expect(supabase.update).not.toHaveBeenCalled();
+      }
+    },
+    {
+      name: 'customer.subscription.deleted',
+      event: createSubscriptionEvent('customer.subscription.deleted', {
+        id: 'evt_deleted_123'
+      }),
+      assertion: (supabase: ReturnType<typeof createSupabaseMock>) => {
+        expect(supabase.upsert).toHaveBeenCalledTimes(1);
+        expect(supabase.update).not.toHaveBeenCalled();
+      }
+    },
+    {
+      name: 'invoice.payment_failed',
+      event: {
+        id: 'evt_failed_123',
+        created: 1776333600,
+        type: 'invoice.payment_failed',
+        data: {
+          object: {
+            id: 'in_failed_123',
+            customer: 'cus_123',
+            subscription: 'sub_123'
+          }
+        }
+      },
+      assertion: (supabase: ReturnType<typeof createSupabaseMock>) => {
+        expect(supabase.update).toHaveBeenCalledTimes(1);
+        expect(supabase.upsert).not.toHaveBeenCalled();
+      }
+    },
+    {
+      name: 'invoice.payment_succeeded',
+      event: {
+        id: 'evt_succeeded_123',
+        created: 1776333600,
+        type: 'invoice.payment_succeeded',
+        data: {
+          object: {
+            id: 'in_succeeded_123',
+            customer: 'cus_123',
+            subscription: 'sub_123'
+          }
+        }
+      },
+      assertion: (supabase: ReturnType<typeof createSupabaseMock>) => {
+        expect(supabase.update).toHaveBeenCalledTimes(1);
+        expect(supabase.upsert).not.toHaveBeenCalled();
+      }
+    }
+  ])('ignores duplicate delivery for $name after the first processing', async ({ event, assertion }) => {
+    const supabase = createSupabaseMock({
+      ledgerInsertResults: [{ error: null }, { error: { code: '23505', message: 'duplicate key value' } }]
+    });
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() => event)
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+
+    const firstResponse = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    const secondResponse = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expect(supabase.ledgerInsert).toHaveBeenCalledTimes(2);
+    assertion(supabase);
+  });
+
+  it('returns success for unsupported events without applying business writes', async () => {
+    const supabase = createSupabaseMock();
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() => ({
+          id: 'evt_unsupported_123',
+          created: 1776333600,
+          type: 'invoice.upcoming',
+          data: {
+            object: {
+              id: 'in_unsupported_123'
+            }
+          }
+        }))
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(supabase.ledgerInsert).not.toHaveBeenCalled();
+    expect(supabase.upsert).not.toHaveBeenCalled();
+    expect(supabase.update).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older customer.subscription.updated event when a newer subscription event was already processed', async () => {
+    const supabase = createSupabaseMock({
+      ledgerLatestProcessedRows: [
+        {
+          event_id: 'evt_newer_123',
+          stripe_created_at: '2026-04-16T12:00:00.000Z'
+        }
+      ]
+    });
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() =>
+          createSubscriptionEvent('customer.subscription.updated', {
+            id: 'evt_older_123',
+            created: 1776314400,
+            status: 'past_due'
+          })
+        )
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(supabase.upsert).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older invoice.payment_failed event when a newer recovery event was already processed', async () => {
+    const supabase = createSupabaseMock({
+      ledgerLatestProcessedRows: [
+        {
+          event_id: 'evt_newer_123',
+          stripe_created_at: '2026-04-16T12:00:00.000Z'
+        }
+      ]
+    });
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() => ({
+          id: 'evt_failed_older_123',
+          created: 1776314400,
+          type: 'invoice.payment_failed',
+          data: {
+            object: {
+              id: 'in_failed_123',
+              customer: 'cus_123',
+              subscription: 'sub_123'
+            }
+          }
+        }))
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(supabase.update).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older customer.subscription.deleted event when a newer reactivation event was already processed', async () => {
+    const supabase = createSupabaseMock({
+      ledgerLatestProcessedRows: [
+        {
+          event_id: 'evt_newer_123',
+          stripe_created_at: '2026-04-16T12:00:00.000Z'
+        }
+      ]
+    });
+    createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
+    getStripe.mockReturnValue({
+      webhooks: {
+        constructEvent: vi.fn(() =>
+          createSubscriptionEvent('customer.subscription.deleted', {
+            id: 'evt_deleted_older_123',
+            created: 1776314400
+          })
+        )
+      }
+    });
+
+    const { POST } = await import('../../routes/api/payments/webhook/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/webhook', {
+        method: 'POST',
+        headers: {
+          'stripe-signature': 'signature'
+        },
+        body: 'raw-body'
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(supabase.upsert).not.toHaveBeenCalled();
+  });
+
   it('falls back to the existing Stripe customer mapping when subscription metadata is missing', async () => {
     const supabase = createSupabaseMock();
     const maybeSingle = vi.fn().mockResolvedValue({
@@ -378,6 +716,14 @@ describe('payments webhook route', () => {
               maybeSingle
             }))
           }))
+        };
+      }
+
+       if (table === 'stripe_webhook_events') {
+        return {
+          insert: supabase.ledgerInsert,
+          update: supabase.ledgerUpdate,
+          select: supabase.ledgerSelect
         };
       }
 
