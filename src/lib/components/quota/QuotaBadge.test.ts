@@ -15,11 +15,17 @@ describe('QuotaBadge', () => {
         budgetUsd: 1.5,
         spentUsd: 0.3,
         remainingUsd: 1.2,
-        tier: 'basic'
+        tier: 'basic',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R0.30',
+        remainingDisplay: 'R1.20'
       }
     });
 
-    expect(screen.getByText(/1\.20 left this month/i)).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === 'R1.20 left this month')).toBeInTheDocument();
+    expect(screen.queryByText(/ai budget/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/basic/i)).toBeInTheDocument();
+    expect(screen.queryByText(/used of/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/running low/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /upgrade to continue/i })).not.toBeInTheDocument();
   });
@@ -30,7 +36,10 @@ describe('QuotaBadge', () => {
         budgetUsd: 1.5,
         spentUsd: 1.32,
         remainingUsd: 0.18,
-        tier: 'basic'
+        tier: 'basic',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.32',
+        remainingDisplay: 'R0.18'
       }
     });
 
@@ -43,7 +52,10 @@ describe('QuotaBadge', () => {
         budgetUsd: 1.5,
         spentUsd: 1.55,
         remainingUsd: 0,
-        tier: 'basic'
+        tier: 'basic',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.55',
+        remainingDisplay: 'R0.00'
       }
     });
 
@@ -57,7 +69,10 @@ describe('QuotaBadge', () => {
         budgetUsd: 1.5,
         spentUsd: 1.55,
         remainingUsd: 0,
-        tier: 'basic'
+        tier: 'basic',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.55',
+        remainingDisplay: 'R0.00'
       }
     });
 
@@ -74,7 +89,10 @@ describe('QuotaBadge', () => {
         budgetUsd: 1.5,
         spentUsd: 1.55,
         remainingUsd: 0,
-        tier: 'basic'
+        tier: 'basic',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.55',
+        remainingDisplay: 'R0.00'
       }
     });
 
@@ -91,7 +109,10 @@ describe('QuotaBadge', () => {
         budgetUsd: 0.2,
         spentUsd: 0.05,
         remainingUsd: 0.15,
-        tier: 'trial'
+        tier: 'trial',
+        budgetDisplay: '$0.20',
+        spentDisplay: '$0.05',
+        remainingDisplay: '$0.15'
       }
     });
 

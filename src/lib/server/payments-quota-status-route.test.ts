@@ -31,7 +31,18 @@ describe('payments quota-status route', () => {
             user: { id: 'auth-user-1' }
           }
         })
-      }
+      },
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                country_id: 'za'
+              }
+            })
+          })
+        })
+      })
     });
     getUserSubscription.mockResolvedValue({
       userId: 'auth-user-1',
@@ -59,6 +70,10 @@ describe('payments quota-status route', () => {
       spentUsd: 0.3,
       remainingUsd: 1.2,
       tier: 'basic',
+      currencyCode: 'ZAR',
+      budgetDisplay: 'R1.50',
+      spentDisplay: 'R0.30',
+      remainingDisplay: 'R1.20',
       warningThreshold: false,
       exceeded: false
     });
@@ -75,7 +90,18 @@ describe('payments quota-status route', () => {
             user: { id: 'auth-user-1' }
           }
         })
-      }
+      },
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                country_id: 'us'
+              }
+            })
+          })
+        })
+      })
     });
     getUserSubscription.mockResolvedValue({
       userId: 'auth-user-1',
@@ -103,6 +129,10 @@ describe('payments quota-status route', () => {
       spentUsd,
       remainingUsd,
       tier,
+      currencyCode: 'USD',
+      budgetDisplay: `$${budgetUsd.toFixed(2)}`,
+      spentDisplay: `$${spentUsd.toFixed(2)}`,
+      remainingDisplay: `$${remainingUsd.toFixed(2)}`,
       warningThreshold: false,
       exceeded: false
     });
@@ -127,7 +157,18 @@ describe('payments quota-status route', () => {
             user: { id: 'auth-user-1' }
           }
         })
-      }
+      },
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                country_id: 'za'
+              }
+            })
+          })
+        })
+      })
     });
     getUserSubscription.mockResolvedValue({
       userId: 'auth-user-1',
@@ -155,6 +196,10 @@ describe('payments quota-status route', () => {
       spentUsd: 0.25,
       remainingUsd: 0,
       tier: 'trial',
+      currencyCode: 'ZAR',
+      budgetDisplay: 'R0.20',
+      spentDisplay: 'R0.25',
+      remainingDisplay: 'R0.00',
       warningThreshold: false,
       exceeded: true
     });

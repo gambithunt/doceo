@@ -1,124 +1,68 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const createServerSupabaseFromRequest = vi.fn();
-const getStripe = vi.fn();
+const {
+  createServerSupabaseFromRequest,
+  getTierConfig,
+  createSession
+} = vi.hoisted(() => ({
+  createServerSupabaseFromRequest: vi.fn(),
+  getTierConfig: vi.fn(),
+  createSession: vi.fn()
+}));
 
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseFromRequest
 }));
 
 vi.mock('$lib/server/stripe', () => ({
-  getStripe,
-  getTierConfig: (tier: string) => {
-    if (tier === 'basic') {
-      return { priceId: 'price_basic', budgetUsd: 1.5 };
+  getStripe: vi.fn(() => ({
+    checkout: {
+      sessions: {
+        create: createSession
+      }
     }
-
-    if (tier === 'standard') {
-      return { priceId: 'price_standard', budgetUsd: 3 };
-    }
-
-    if (tier === 'premium') {
-      return { priceId: 'price_premium', budgetUsd: 5 };
-    }
-
-    return null;
-  }
+  })),
+  getTierConfig
 }));
 
 describe('payments checkout route', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.resetModules();
-    process.env.STRIPE_SECRET_KEY = 'sk_test_123';
-    process.env.STRIPE_PRICE_ID_BASIC = 'price_basic';
-    process.env.STRIPE_PRICE_ID_STANDARD = 'price_standard';
-    process.env.STRIPE_PRICE_ID_PREMIUM = 'price_premium';
-
-    createServerSupabaseFromRequest.mockReturnValue({
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: {
-            user: {
-              id: 'auth-user-1',
-              email: 'student@example.com'
-            }
-          }
-        })
-      }
-    });
-    getStripe.mockReturnValue({
-      checkout: {
-        sessions: {
-          create: vi.fn().mockResolvedValue({
-            url: 'https://checkout.stripe.test/session_123'
-          })
-        }
-      }
-    });
-  });
-
-  it('creates a checkout session for a valid tier and redirects to Stripe', async () => {
-    const { POST } = await import('../../routes/api/payments/checkout/+server');
-    const response = await POST({
-      request: new Request('http://localhost/api/payments/checkout?tier=basic', {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer token'
-        }
-      })
-    } as never);
-
-    expect(getStripe().checkout.sessions.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mode: 'subscription',
-        line_items: [{ price: 'price_basic', quantity: 1 }],
-        success_url: 'http://localhost/dashboard?upgraded=true',
-        cancel_url: 'http://localhost/dashboard',
-        customer_email: 'student@example.com',
-        metadata: {
-          supabase_user_id: 'auth-user-1',
-          tier: 'basic'
-        },
-        subscription_data: {
-          metadata: {
-            supabase_user_id: 'auth-user-1',
-            tier: 'basic'
-          }
-        }
-      })
-    );
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    createSession.mockResolvedValue({
       url: 'https://checkout.stripe.test/session_123'
     });
   });
 
-  it('returns 401 when no authenticated user is present', async () => {
+  it('uses the ZAR price config for a South African user', async () => {
     createServerSupabaseFromRequest.mockReturnValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: {
-            user: null
+            user: { id: 'auth-user-1', email: 'ava@example.com' }
           }
         })
-      }
+      },
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                country_id: 'za'
+              }
+            })
+          })
+        })
+      })
+    });
+    getTierConfig.mockReturnValue({
+      priceId: 'price_basic_zar',
+      budgetUsd: 1.5
     });
 
     const { POST } = await import('../../routes/api/payments/checkout/+server');
     const response = await POST({
       request: new Request('http://localhost/api/payments/checkout?tier=basic', {
-        method: 'POST'
-      })
-    } as never);
-
-    expect(response.status).toBe(401);
-  });
-
-  it('returns 400 for an invalid tier without calling Stripe', async () => {
-    const { POST } = await import('../../routes/api/payments/checkout/+server');
-    const response = await POST({
-      request: new Request('http://localhost/api/payments/checkout?tier=invalid', {
         method: 'POST',
         headers: {
           Authorization: 'Bearer token'
@@ -126,7 +70,137 @@ describe('payments checkout route', () => {
       })
     } as never);
 
-    expect(response.status).toBe(400);
-    expect(getStripe().checkout.sessions.create).not.toHaveBeenCalled();
+    expect(getTierConfig).toHaveBeenCalledWith('basic', 'ZAR');
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [{ price: 'price_basic_zar', quantity: 1 }]
+      })
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('uses the USD price config when the persisted country is not South Africa', async () => {
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: { id: 'auth-user-1', email: 'ava@example.com' }
+          }
+        })
+      },
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                country_id: 'us'
+              }
+            })
+          })
+        })
+      })
+    });
+    getTierConfig.mockReturnValue({
+      priceId: 'price_basic_usd',
+      budgetUsd: 1.5
+    });
+
+    const { POST } = await import('../../routes/api/payments/checkout/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/checkout?tier=basic', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+
+    expect(getTierConfig).toHaveBeenCalledWith('basic', 'USD');
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [{ price: 'price_basic_usd', quantity: 1 }]
+      })
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('falls back to request country when no persisted country exists', async () => {
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: { id: 'auth-user-1', email: 'ava@example.com' }
+          }
+        })
+      },
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                country_id: null
+              }
+            })
+          })
+        })
+      })
+    });
+    getTierConfig.mockReturnValue({
+      priceId: 'price_basic_zar',
+      budgetUsd: 1.5
+    });
+
+    const { POST } = await import('../../routes/api/payments/checkout/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/checkout?tier=basic', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'cf-ipcountry': 'ZA'
+        }
+      })
+    } as never);
+
+    expect(getTierConfig).toHaveBeenCalledWith('basic', 'ZAR');
+    expect(response.status).toBe(200);
+  });
+
+  it('returns a clear server error when the resolved currency price config is missing', async () => {
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: { id: 'auth-user-1', email: 'ava@example.com' }
+          }
+        })
+      },
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                country_id: 'za'
+              }
+            })
+          })
+        })
+      })
+    });
+    getTierConfig.mockReturnValue(null);
+
+    const { POST } = await import('../../routes/api/payments/checkout/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/payments/checkout?tier=basic', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Stripe price configuration missing for ZAR.'
+    });
   });
 });

@@ -8,13 +8,14 @@
     spentUsd: number;
     remainingUsd: number;
     tier: UserSubscription['tier'];
+    budgetDisplay: string;
+    spentDisplay: string;
+    remainingDisplay: string;
   }
 
-  const { budgetUsd, spentUsd, remainingUsd, tier }: Props = $props();
+  const { budgetUsd, spentUsd, remainingUsd, tier, budgetDisplay: _budgetDisplay, spentDisplay: _spentDisplay, remainingDisplay }: Props = $props();
   const quotaState = $derived(computeQuotaState(budgetUsd, spentUsd));
-  const budgetLabel = $derived(`$${budgetUsd.toFixed(2)}`);
-  const spentLabel = $derived(`$${spentUsd.toFixed(2)}`);
-  const remainingLabel = $derived(`$${remainingUsd.toFixed(2)}`);
+  const meterValue = $derived(quotaState.exceeded ? 1 : quotaState.usageRatio);
   let checkoutError = $state('');
 
   async function handleUpgrade(): Promise<void> {
@@ -29,12 +30,15 @@
 </script>
 
 <section class="quota-badge" class:warning={quotaState.warningThreshold} class:exceeded={quotaState.exceeded}>
-  <div class="quota-topline">
-    <div class="quota-copy">
-      <p class="quota-kicker">AI budget</p>
-      <h3>{remainingLabel} left this month</h3>
+  <div class="quota-meter" aria-hidden="true">
+    <div class="quota-meter-fill" style:transform={`scaleX(${meterValue})`}></div>
+  </div>
+
+  <div class="quota-main-row">
+    <div class="quota-primary-group">
+      <h3>{remainingDisplay} <span class="quota-primary-label">left this month</span></h3>
+      <span class={`quota-tier quota-tier--${tier}`}>{tier}</span>
     </div>
-    <span class="quota-tier">{tier}</span>
   </div>
 
   {#if quotaState.exceeded}
@@ -48,106 +52,134 @@
       {/if}
     </div>
   {:else}
-    <div class="quota-progress-block">
-      <progress max="1" value={quotaState.usageRatio} aria-label="Monthly AI usage"></progress>
+    {#if quotaState.warningThreshold}
       <div class="quota-meta">
-        <span>{spentLabel} used of {budgetLabel}</span>
-        {#if quotaState.warningThreshold}
-          <strong>Running low</strong>
-        {/if}
+        <strong>Running low</strong>
       </div>
-    </div>
+    {/if}
   {/if}
 </section>
 
 <style>
   .quota-badge {
     display: grid;
-    gap: 0.8rem;
-    padding: 1rem 1.05rem;
+    gap: 0.4rem;
+    padding: 0.8rem 0.95rem 0.75rem;
     border-radius: var(--radius-lg);
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    box-shadow: var(--shadow-sm);
-    min-width: min(100%, 21rem);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--color-surface-high) 42%, transparent), transparent 55%),
+      color-mix(in srgb, var(--color-surface) 88%, var(--color-bg));
+    border: 1px solid color-mix(in srgb, var(--color-border-strong, var(--color-border)) 85%, transparent);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 6px 18px rgba(0, 0, 0, 0.14);
+    min-width: 100%;
+    overflow: hidden;
+    position: relative;
   }
 
-  .quota-topline {
+  .quota-meter {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 0.24rem;
+    background: color-mix(in srgb, var(--color-surface-high) 72%, transparent);
+    overflow: hidden;
+  }
+
+  .quota-meter-fill {
+    height: 100%;
+    width: 100%;
+    transform-origin: left center;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 72%, white 8%), var(--color-accent));
+    transition: transform 220ms var(--ease-soft, ease), background 160ms ease;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent) 24%, transparent);
+  }
+
+  .quota-main-row {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.75rem;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.45rem;
+    min-height: 1.9rem;
+    padding-top: 0.1rem;
   }
 
-  .quota-copy {
-    display: grid;
-    gap: 0.2rem;
-  }
-
-  .quota-kicker {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: var(--color-text-soft);
+  .quota-primary-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    min-width: 0;
+    flex-wrap: wrap;
   }
 
   h3 {
     margin: 0;
-    font-size: var(--text-lg);
-    line-height: 1.15;
+    font-size: 1rem;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     color: var(--color-text);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.38rem;
+    flex-wrap: wrap;
+  }
+
+  .quota-primary-label {
+    font-size: var(--text-sm);
+    color: var(--color-text-soft);
+    white-space: nowrap;
   }
 
   .quota-tier {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.32rem 0.6rem;
+    padding: 0.23rem 0.52rem;
     border-radius: var(--radius-pill);
-    background: var(--color-accent-dim);
-    color: var(--color-accent);
-    font-size: var(--text-xs);
+    font-size: 0.68rem;
     font-weight: 700;
+    letter-spacing: 0.01em;
     text-transform: capitalize;
+    border: 1px solid transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition:
+      transform 140ms ease-out,
+      background 140ms ease,
+      border-color 140ms ease,
+      color 140ms ease;
   }
 
-  .quota-progress-block {
-    display: grid;
-    gap: 0.45rem;
+  .quota-tier--trial {
+    background: color-mix(in srgb, var(--color-purple) 14%, transparent);
+    border-color: color-mix(in srgb, var(--color-purple) 28%, transparent);
+    color: var(--color-purple);
   }
 
-  progress {
-    width: 100%;
-    height: 0.55rem;
-    appearance: none;
-    overflow: hidden;
-    border: 0;
-    border-radius: var(--radius-pill);
-    background: var(--color-surface-high);
+  .quota-tier--basic {
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+    color: var(--color-accent);
   }
 
-  progress::-webkit-progress-bar {
-    background: var(--color-surface-high);
-    border-radius: var(--radius-pill);
+  .quota-tier--standard {
+    background: color-mix(in srgb, var(--color-blue) 15%, transparent);
+    border-color: color-mix(in srgb, var(--color-blue) 30%, transparent);
+    color: var(--color-blue);
   }
 
-  progress::-webkit-progress-value {
-    background: var(--color-accent);
-    border-radius: var(--radius-pill);
-  }
-
-  progress::-moz-progress-bar {
-    background: var(--color-accent);
-    border-radius: var(--radius-pill);
+  .quota-tier--premium {
+    background: color-mix(in srgb, var(--color-xp) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-xp) 34%, transparent);
+    color: var(--color-xp);
   }
 
   .quota-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    font-size: var(--text-sm);
+    display: inline-flex;
+    justify-content: flex-start;
+    font-size: 0.74rem;
     color: var(--color-text-soft);
+    min-height: 1rem;
   }
 
   .quota-meta strong {
@@ -175,12 +207,9 @@
     background: color-mix(in srgb, var(--color-warning-dim, var(--color-yellow-dim)) 45%, var(--color-surface));
   }
 
-  .warning progress::-webkit-progress-value {
-    background: var(--color-warning);
-  }
-
-  .warning progress::-moz-progress-bar {
-    background: var(--color-warning);
+  .warning .quota-meter-fill {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--color-warning) 72%, white 8%), var(--color-warning));
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-warning) 24%, transparent);
   }
 
   .exceeded {
@@ -188,14 +217,25 @@
     background: color-mix(in srgb, var(--color-red-dim) 40%, var(--color-surface));
   }
 
-  .exceeded .quota-tier {
-    background: color-mix(in srgb, var(--color-error) 14%, transparent);
-    color: var(--color-error);
+  .exceeded .quota-meter-fill {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--color-error) 72%, white 8%), var(--color-error));
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-error) 24%, transparent);
   }
 
   @media (max-width: 640px) {
     .quota-badge {
       min-width: 100%;
+      padding: 0.85rem 0.9rem 0.8rem;
+    }
+
+    .quota-main-row {
+      align-items: flex-start;
+      gap: 0.35rem;
+      min-height: unset;
+    }
+
+    .quota-primary-group {
+      gap: 0.38rem;
     }
   }
 </style>

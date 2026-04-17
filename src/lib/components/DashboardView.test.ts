@@ -7,12 +7,25 @@ import { createInitialState } from '$lib/data/platform';
 import { selectTopicLoadingCopy } from './topic-discovery/topic-loading-copy';
 import type { DashboardTopicDiscoverySuggestion, ShortlistedTopic } from '$lib/types';
 
+const { environmentState, getAuthenticatedHeaders } = vi.hoisted(() => ({
+  environmentState: {
+    browser: false
+  },
+  getAuthenticatedHeaders: vi.fn()
+}));
+
 vi.mock('$app/environment', () => ({
-  browser: false
+  get browser() {
+    return environmentState.browser;
+  }
 }));
 
 vi.mock('$lib/payments/checkout', () => ({
   launchCheckout: vi.fn()
+}));
+
+vi.mock('$lib/authenticated-fetch', () => ({
+  getAuthenticatedHeaders
 }));
 
 const { mockAppState } = vi.hoisted(() => ({
@@ -335,8 +348,43 @@ describe('DashboardView', () => {
     });
   });
 
+  it('renders the usage bar above the hero with the tier pill and route-provided currency labels', () => {
+    const state = createDashboardState();
+    const { container } = render(DashboardView, {
+      props: {
+        state,
+        preloadedQuotaStatus: {
+          budgetUsd: 1.5,
+          spentUsd: 0.3,
+          remainingUsd: 1.2,
+          tier: 'basic',
+          currencyCode: 'ZAR',
+          budgetDisplay: 'R1.50',
+          spentDisplay: 'R0.30',
+          remainingDisplay: 'R1.20',
+          warningThreshold: false,
+          exceeded: false
+        }
+      }
+    });
+
+    expect(screen.getByText((_, element) => element?.textContent === 'R1.20 left this month')).toBeInTheDocument();
+    expect(screen.getByText(/basic/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ai budget/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/used of/i)).not.toBeInTheDocument();
+
+    const usageBar = container.querySelector('.dashboard-usage-bar');
+    const hero = container.querySelector('.hero');
+
+    expect(usageBar).not.toBeNull();
+    expect(hero).not.toBeNull();
+    expect(Boolean(usageBar && hero && (usageBar.compareDocumentPosition(hero) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    environmentState.browser = false;
   });
 });

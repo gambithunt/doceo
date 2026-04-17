@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { createServerSupabaseFromRequest } from '$lib/server/supabase';
 import { getStripe, getTierConfig } from '$lib/server/stripe';
+import { resolveDisplayCurrency } from '$lib/server/billing';
 
 const TierSchema = z.enum(['basic', 'standard', 'premium']);
 
@@ -22,10 +23,21 @@ export async function POST({ request }) {
   }
 
   const tier = parsed.data;
-  const tierConfig = getTierConfig(tier);
+  const profileResult = supabase
+    ? await supabase
+        .from('profiles')
+        .select('country_id')
+        .eq('auth_user_id', user.id)
+        .maybeSingle<{ country_id: string | null }>()
+    : null;
+  const currencyCode = resolveDisplayCurrency({
+    persistedCountryId: profileResult?.data?.country_id ?? null,
+    requestCountryId: request.headers.get('cf-ipcountry')
+  });
+  const tierConfig = getTierConfig(tier, currencyCode);
 
   if (!tierConfig) {
-    return json({ error: 'Stripe price configuration missing.' }, { status: 500 });
+    return json({ error: `Stripe price configuration missing for ${currencyCode}.` }, { status: 500 });
   }
 
   const stripe = getStripe();

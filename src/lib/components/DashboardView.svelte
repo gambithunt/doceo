@@ -17,7 +17,26 @@
   import { countIn } from '$lib/utils/countIn';
   import type { AppState, LessonSession, ShortlistedTopic, UserSubscription } from '$lib/types';
 
-  const { state: viewState }: { state: AppState } = $props();
+  interface DashboardQuotaStatus {
+    budgetUsd: number;
+    spentUsd: number;
+    remainingUsd: number;
+    tier: UserSubscription['tier'];
+    currencyCode: 'USD' | 'ZAR';
+    budgetDisplay: string;
+    spentDisplay: string;
+    remainingDisplay: string;
+    warningThreshold: boolean;
+    exceeded: boolean;
+  }
+
+  const {
+    state: viewState,
+    preloadedQuotaStatus = null
+  }: {
+    state: AppState;
+    preloadedQuotaStatus?: DashboardQuotaStatus | null;
+  } = $props();
   const LAUNCH_BRIEFING_DELAY_MS = 900;
 
   interface PendingDashboardLaunch {
@@ -37,16 +56,10 @@
   let hintAbortController: AbortController | undefined;
   let lastHintSeed = $state('');
   let cachedHeaders = $state<Record<string, string> | null>(null);
-  let quotaStatus = $state<{
-    budgetUsd: number;
-    spentUsd: number;
-    remainingUsd: number;
-    tier: UserSubscription['tier'];
-    warningThreshold: boolean;
-    exceeded: boolean;
-  } | null>(null);
+  let quotaStatus = $state<DashboardQuotaStatus | null>(null);
   let quotaStatusRequested = $state(false);
   let checkoutError = $state('');
+  const hasPreloadedQuotaStatus = $derived(preloadedQuotaStatus !== null);
 
   const summary = $derived(getCompletionSummary(viewState));
   const availableSubjects = $derived(viewState.curriculum.subjects);
@@ -244,7 +257,17 @@
   });
 
   $effect(() => {
+    if (preloadedQuotaStatus) {
+      quotaStatus = preloadedQuotaStatus;
+    }
+  });
+
+  $effect(() => {
     if (!browser || quotaStatusRequested) return;
+    if (hasPreloadedQuotaStatus) {
+      quotaStatusRequested = true;
+      return;
+    }
     quotaStatusRequested = true;
     void loadQuotaStatus();
   });
@@ -378,6 +401,19 @@
 </script>
 
 <section class="view">
+  {#if quotaStatus}
+    <div class="dashboard-usage-bar">
+      <QuotaBadge
+        budgetUsd={quotaStatus.budgetUsd}
+        spentUsd={quotaStatus.spentUsd}
+        remainingUsd={quotaStatus.remainingUsd}
+        tier={quotaStatus.tier}
+        budgetDisplay={quotaStatus.budgetDisplay}
+        spentDisplay={quotaStatus.spentDisplay}
+        remainingDisplay={quotaStatus.remainingDisplay}
+      />
+    </div>
+  {/if}
 
   <!-- ── HERO ── -->
   <div class="hero">
@@ -411,17 +447,6 @@
             <h3 class="mission-title">Pick a topic below</h3>
             <p class="mission-meta">Choose a subject and describe what you want to learn. We'll find the perfect lesson.</p>
           </div>
-        </div>
-      {/if}
-
-      {#if quotaStatus}
-        <div class="hero-quota">
-          <QuotaBadge
-            budgetUsd={quotaStatus.budgetUsd}
-            spentUsd={quotaStatus.spentUsd}
-            remainingUsd={quotaStatus.remainingUsd}
-            tier={quotaStatus.tier}
-          />
         </div>
       {/if}
     </div>
@@ -660,6 +685,11 @@
     animation: section-enter 0.35s var(--ease-soft) both;
   }
 
+  .dashboard-usage-bar {
+    display: grid;
+    animation: section-enter 0.3s var(--ease-soft) both;
+  }
+
   @keyframes section-enter {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -694,11 +724,6 @@
   .hero-body {
     display: grid;
     gap: 0.75rem;
-  }
-
-  .hero-quota {
-    display: flex;
-    justify-content: flex-start;
   }
 
   /* Mission card — glass surface */

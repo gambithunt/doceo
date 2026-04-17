@@ -18,5 +18,8 @@ export const serverEnv = {
   stripeWebhookSecret: readEnv('STRIPE_WEBHOOK_SECRET'),
   stripePriceIdBasic: readEnv('STRIPE_PRICE_ID_BASIC'),
   stripePriceIdStandard: readEnv('STRIPE_PRICE_ID_STANDARD'),
-  stripePriceIdPremium: readEnv('STRIPE_PRICE_ID_PREMIUM')
+  stripePriceIdPremium: readEnv('STRIPE_PRICE_ID_PREMIUM'),
+  stripePriceIdBasicZar: readEnv('STRIPE_PRICE_ID_BASIC_ZAR'),
+  stripePriceIdStandardZar: readEnv('STRIPE_PRICE_ID_STANDARD_ZAR'),
+  stripePriceIdPremiumZar: readEnv('STRIPE_PRICE_ID_PREMIUM_ZAR')
 };

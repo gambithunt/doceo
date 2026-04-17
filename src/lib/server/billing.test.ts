@@ -11,25 +11,54 @@ describe('billing domain helpers', () => {
   });
 
   it('maps configured Stripe price ids to their paid tiers', async () => {
-    const { getPriceTierMap, getTierConfigForPriceId, getTierConfigForTier } = await import('./billing');
+    const {
+      getPriceTierMap,
+      getTierConfigForPriceId,
+      getTierConfigForTier,
+      resolveDisplayCurrency
+    } = await import('./billing');
 
     const priceTierMap = getPriceTierMap({
-      stripePriceIdBasic: 'price_basic',
-      stripePriceIdStandard: 'price_standard',
-      stripePriceIdPremium: 'price_premium'
+      usd: {
+        stripePriceIdBasic: 'price_basic_usd',
+        stripePriceIdStandard: 'price_standard_usd',
+        stripePriceIdPremium: 'price_premium_usd'
+      },
+      zar: {
+        stripePriceIdBasic: 'price_basic_zar',
+        stripePriceIdStandard: 'price_standard_zar',
+        stripePriceIdPremium: 'price_premium_zar'
+      }
     });
 
     expect(priceTierMap).toEqual({
-      price_basic: { tier: 'basic', budgetUsd: 1.5 },
-      price_standard: { tier: 'standard', budgetUsd: 3 },
-      price_premium: { tier: 'premium', budgetUsd: 5 }
+      USD: {
+        price_basic_usd: { tier: 'basic', budgetUsd: 1.5 },
+        price_standard_usd: { tier: 'standard', budgetUsd: 3 },
+        price_premium_usd: { tier: 'premium', budgetUsd: 5 }
+      },
+      ZAR: {
+        price_basic_zar: { tier: 'basic', budgetUsd: 1.5 },
+        price_standard_zar: { tier: 'standard', budgetUsd: 3 },
+        price_premium_zar: { tier: 'premium', budgetUsd: 5 }
+      }
     });
-    expect(getTierConfigForPriceId(priceTierMap, 'price_basic')).toEqual({
+
+    expect(resolveDisplayCurrency({ persistedCountryId: 'za' })).toBe('ZAR');
+    expect(resolveDisplayCurrency({ persistedCountryId: 'us' })).toBe('USD');
+    expect(resolveDisplayCurrency({ requestCountryId: 'za' })).toBe('ZAR');
+    expect(resolveDisplayCurrency({ persistedCountryId: 'us', requestCountryId: 'za' })).toBe('USD');
+
+    expect(getTierConfigForPriceId(priceTierMap.USD, 'price_basic_usd')).toEqual({
       tier: 'basic',
       budgetUsd: 1.5
     });
-    expect(getTierConfigForTier(priceTierMap, 'premium')).toEqual({
-      priceId: 'price_premium',
+    expect(getTierConfigForTier(priceTierMap[resolveDisplayCurrency({ persistedCountryId: 'za' })], 'premium')).toEqual({
+      priceId: 'price_premium_zar',
+      budgetUsd: 5
+    });
+    expect(getTierConfigForTier(priceTierMap[resolveDisplayCurrency({ persistedCountryId: 'gb' })], 'premium')).toEqual({
+      priceId: 'price_premium_usd',
       budgetUsd: 5
     });
   });

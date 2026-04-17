@@ -2,6 +2,7 @@ import type { UserSubscription } from '$lib/types';
 
 type PaidSubscriptionTier = Exclude<UserSubscription['tier'], 'trial'>;
 type NormalizedSubscriptionStatus = UserSubscription['status'];
+export type BillingCurrencyCode = 'USD' | 'ZAR';
 
 export const TRIAL_BUDGET_USD = 0.2;
 export const DEFAULT_COMP_BUDGET_USD = 99.99;
@@ -13,10 +14,15 @@ const TIER_BUDGET_USD: Record<UserSubscription['tier'], number> = {
   premium: 5
 };
 
-export interface PriceIdConfig {
+export interface CurrencyPriceIdConfig {
   stripePriceIdBasic: string;
   stripePriceIdStandard: string;
   stripePriceIdPremium: string;
+}
+
+export interface PriceIdConfig {
+  usd: CurrencyPriceIdConfig;
+  zar: CurrencyPriceIdConfig;
 }
 
 export interface TierConfig {
@@ -36,16 +42,42 @@ export interface EffectiveBudgetInput {
   compBudgetUsd: number | null;
 }
 
+export interface CurrencyResolutionInput {
+  persistedCountryId?: string | null;
+  requestCountryId?: string | null;
+}
+
 export function getTierBudgetUsd(tier: UserSubscription['tier']): number {
   return TIER_BUDGET_USD[tier];
 }
 
-export function getPriceTierMap(priceIds: PriceIdConfig): Record<string, TierConfig> {
+function buildCurrencyPriceTierMap(priceIds: CurrencyPriceIdConfig): Record<string, TierConfig> {
   return {
     [priceIds.stripePriceIdBasic]: { tier: 'basic', budgetUsd: getTierBudgetUsd('basic') },
     [priceIds.stripePriceIdStandard]: { tier: 'standard', budgetUsd: getTierBudgetUsd('standard') },
     [priceIds.stripePriceIdPremium]: { tier: 'premium', budgetUsd: getTierBudgetUsd('premium') }
   };
+}
+
+export function getPriceTierMap(priceIds: PriceIdConfig): Record<BillingCurrencyCode, Record<string, TierConfig>> {
+  return {
+    USD: buildCurrencyPriceTierMap(priceIds.usd),
+    ZAR: buildCurrencyPriceTierMap(priceIds.zar)
+  };
+}
+
+export function resolveDisplayCurrency({
+  persistedCountryId,
+  requestCountryId
+}: CurrencyResolutionInput): BillingCurrencyCode {
+  const normalizedCountryId = (persistedCountryId ?? requestCountryId ?? '').trim().toLowerCase();
+  return normalizedCountryId === 'za' ? 'ZAR' : 'USD';
+}
+
+export function formatUsageAmount(amount: number, currencyCode: BillingCurrencyCode): string {
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  const symbol = currencyCode === 'ZAR' ? 'R' : '$';
+  return `${symbol}${safeAmount.toFixed(2)}`;
 }
 
 export function getTierConfigForPriceId(
