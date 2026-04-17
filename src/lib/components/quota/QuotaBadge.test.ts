@@ -46,13 +46,45 @@ describe('QuotaBadge', () => {
     expect(screen.getByText(/running low/i)).toBeInTheDocument();
   });
 
+  it('shows the 3-lessons warning copy when about three lessons remain', () => {
+    render(QuotaBadge, {
+      props: {
+        budgetUsd: 1.5,
+        spentUsd: 1.26,
+        remainingUsd: 0.24,
+        tier: 'basic',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.26',
+        remainingDisplay: 'R0.24'
+      }
+    });
+
+    expect(screen.getByText(/about 3 lessons left this month\. learn what you need most\./i)).toBeInTheDocument();
+  });
+
+  it('shows the final-lesson warning copy when about one lesson remains', () => {
+    render(QuotaBadge, {
+      props: {
+        budgetUsd: 1.5,
+        spentUsd: 1.42,
+        remainingUsd: 0.08,
+        tier: 'basic',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.42',
+        remainingDisplay: 'R0.08'
+      }
+    });
+
+    expect(screen.getByText(/you've got one lesson left this month\. make it count\./i)).toBeInTheDocument();
+  });
+
   it('renders the exceeded state with an upgrade CTA and no usage progress bar', () => {
     const { container } = render(QuotaBadge, {
       props: {
         budgetUsd: 1.5,
         spentUsd: 1.55,
         remainingUsd: 0,
-        tier: 'basic',
+        tier: 'trial',
         budgetDisplay: 'R1.50',
         spentDisplay: 'R1.55',
         remainingDisplay: 'R0.00'
@@ -63,7 +95,7 @@ describe('QuotaBadge', () => {
     expect(container.querySelector('progress')).toBeNull();
   });
 
-  it('launches checkout from the exceeded CTA', async () => {
+  it('opens the plan picker instead of launching checkout immediately', async () => {
     render(QuotaBadge, {
       props: {
         budgetUsd: 1.5,
@@ -78,7 +110,68 @@ describe('QuotaBadge', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
 
-    expect(launchCheckout).toHaveBeenCalledWith('basic');
+    expect(screen.getByRole('dialog', { name: /choose a plan/i })).toBeInTheDocument();
+    expect(launchCheckout).not.toHaveBeenCalled();
+  });
+
+  it.each(['basic', 'standard', 'premium'] as const)(
+    'launches checkout for the selected %s tier from the picker',
+    async (tier) => {
+      render(QuotaBadge, {
+        props: {
+          budgetUsd: 1.5,
+          spentUsd: 1.55,
+          remainingUsd: 0,
+          tier: 'trial',
+          budgetDisplay: 'R1.50',
+          spentDisplay: 'R1.55',
+          remainingDisplay: 'R0.00'
+        }
+      });
+
+      await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+      await fireEvent.click(screen.getByRole('button', { name: new RegExp(`choose ${tier}`, 'i') }));
+
+      expect(launchCheckout).toHaveBeenCalledWith(tier);
+    }
+  );
+
+  it('dismisses the picker and leaves the quota badge stable', async () => {
+    render(QuotaBadge, {
+      props: {
+        budgetUsd: 1.5,
+        spentUsd: 1.55,
+        remainingUsd: 0,
+        tier: 'trial',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.55',
+        remainingDisplay: 'R0.00'
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /close plan picker/i }));
+
+    expect(screen.queryByRole('dialog', { name: /choose a plan/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /upgrade to continue/i })).toBeInTheDocument();
+  });
+
+  it('marks the current tier and disables choosing it again in the picker', async () => {
+    render(QuotaBadge, {
+      props: {
+        budgetUsd: 1.5,
+        spentUsd: 1.55,
+        remainingUsd: 0,
+        tier: 'standard',
+        budgetDisplay: 'R1.50',
+        spentDisplay: 'R1.55',
+        remainingDisplay: 'R0.00'
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+
+    expect(screen.getByRole('button', { name: /current plan standard/i })).toBeDisabled();
   });
 
   it('shows an inline error when checkout launch fails', async () => {
@@ -89,7 +182,7 @@ describe('QuotaBadge', () => {
         budgetUsd: 1.5,
         spentUsd: 1.55,
         remainingUsd: 0,
-        tier: 'basic',
+        tier: 'trial',
         budgetDisplay: 'R1.50',
         spentDisplay: 'R1.55',
         remainingDisplay: 'R0.00'
@@ -97,10 +190,13 @@ describe('QuotaBadge', () => {
     });
 
     await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /choose basic/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/authentication required/i)).toBeInTheDocument();
     });
+
+    expect(screen.getByRole('dialog', { name: /choose a plan/i })).toBeInTheDocument();
   });
 
   it('renders the trial badge alongside the usage summary', () => {

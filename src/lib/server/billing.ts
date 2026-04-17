@@ -1,18 +1,18 @@
 import type { UserSubscription } from '$lib/types';
+import {
+  formatUsageAmount,
+  resolveDisplayCurrency,
+  type BillingCurrencyCode,
+  type CurrencyResolutionInput
+} from '$lib/billing/currency';
+import { getTierBudgetUsd, type PaidSubscriptionTier } from '$lib/billing/tiers';
+export { formatUsageAmount, resolveDisplayCurrency, getTierBudgetUsd };
+export type { BillingCurrencyCode, CurrencyResolutionInput };
 
-type PaidSubscriptionTier = Exclude<UserSubscription['tier'], 'trial'>;
 type NormalizedSubscriptionStatus = UserSubscription['status'];
-export type BillingCurrencyCode = 'USD' | 'ZAR';
 
 export const TRIAL_BUDGET_USD = 0.2;
 export const DEFAULT_COMP_BUDGET_USD = 99.99;
-
-const TIER_BUDGET_USD: Record<UserSubscription['tier'], number> = {
-  trial: TRIAL_BUDGET_USD,
-  basic: 1.5,
-  standard: 3,
-  premium: 5
-};
 
 export interface CurrencyPriceIdConfig {
   stripePriceIdBasic: string;
@@ -42,15 +42,6 @@ export interface EffectiveBudgetInput {
   compBudgetUsd: number | null;
 }
 
-export interface CurrencyResolutionInput {
-  persistedCountryId?: string | null;
-  requestCountryId?: string | null;
-}
-
-export function getTierBudgetUsd(tier: UserSubscription['tier']): number {
-  return TIER_BUDGET_USD[tier];
-}
-
 function buildCurrencyPriceTierMap(priceIds: CurrencyPriceIdConfig): Record<string, TierConfig> {
   return {
     [priceIds.stripePriceIdBasic]: { tier: 'basic', budgetUsd: getTierBudgetUsd('basic') },
@@ -64,20 +55,6 @@ export function getPriceTierMap(priceIds: PriceIdConfig): Record<BillingCurrency
     USD: buildCurrencyPriceTierMap(priceIds.usd),
     ZAR: buildCurrencyPriceTierMap(priceIds.zar)
   };
-}
-
-export function resolveDisplayCurrency({
-  persistedCountryId,
-  requestCountryId
-}: CurrencyResolutionInput): BillingCurrencyCode {
-  const normalizedCountryId = (persistedCountryId ?? requestCountryId ?? '').trim().toLowerCase();
-  return normalizedCountryId === 'za' ? 'ZAR' : 'USD';
-}
-
-export function formatUsageAmount(amount: number, currencyCode: BillingCurrencyCode): string {
-  const safeAmount = Number.isFinite(amount) ? amount : 0;
-  const symbol = currencyCode === 'ZAR' ? 'R' : '$';
-  return `${symbol}${safeAmount.toFixed(2)}`;
 }
 
 export function getTierConfigForPriceId(

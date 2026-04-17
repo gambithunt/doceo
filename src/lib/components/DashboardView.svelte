@@ -3,6 +3,8 @@
   import { cubicOut } from 'svelte/easing';
   import { browser } from '$app/environment';
   import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
+  import type { PaidSubscriptionTier } from '$lib/billing/tiers';
+  import PlanPickerOverlay from '$lib/components/PlanPickerOverlay.svelte';
   import { launchCheckout } from '$lib/payments/checkout';
   import QuotaBadge from '$lib/components/quota/QuotaBadge.svelte';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
@@ -59,6 +61,7 @@
   let quotaStatus = $state<DashboardQuotaStatus | null>(null);
   let quotaStatusRequested = $state(false);
   let checkoutError = $state('');
+  let quotaPickerOpen = $state(false);
   const hasPreloadedQuotaStatus = $derived(preloadedQuotaStatus !== null);
 
   const summary = $derived(getCompletionSummary(viewState));
@@ -327,11 +330,17 @@
     void appState.shortlistTopics(selectedSubject.id, viewState.topicDiscovery.input.trim());
   }
 
-  async function handleUpgradeCheckout(): Promise<void> {
+  function handleUpgradeCheckout(): void {
+    quotaPickerOpen = true;
+    checkoutError = '';
+  }
+
+  async function handleQuotaPlanAction(tier: PaidSubscriptionTier): Promise<void> {
     checkoutError = '';
 
     try {
-      await launchCheckout('basic');
+      await launchCheckout(tier);
+      quotaPickerOpen = false;
     } catch (error) {
       checkoutError = error instanceof Error ? error.message : 'Unable to start checkout.';
     }
@@ -667,6 +676,18 @@
     supportingLine={pendingLaunchCopy.supportingLine}
   />
 {/if}
+
+<PlanPickerOverlay
+  open={quotaPickerOpen}
+  currentTier={quotaStatus?.tier ?? null}
+  currencyCode={quotaStatus?.currencyCode ?? 'USD'}
+  error={checkoutError}
+  onClose={() => {
+    quotaPickerOpen = false;
+    checkoutError = '';
+  }}
+  onPlanAction={handleQuotaPlanAction}
+/>
 
 <style>
   /* ── Root ── */

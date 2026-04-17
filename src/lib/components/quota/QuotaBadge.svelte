@@ -1,5 +1,8 @@
 <script lang="ts">
+  import type { PaidSubscriptionTier } from '$lib/billing/tiers';
+  import PlanPickerOverlay from '$lib/components/PlanPickerOverlay.svelte';
   import { computeQuotaState } from '$lib/quota/quota-state';
+  import { ESTIMATED_LESSON_COST_USD } from '$lib/quota/lesson-cost';
   import { launchCheckout } from '$lib/payments/checkout';
   import type { UserSubscription } from '$lib/types';
 
@@ -16,13 +19,33 @@
   const { budgetUsd, spentUsd, remainingUsd, tier, budgetDisplay: _budgetDisplay, spentDisplay: _spentDisplay, remainingDisplay }: Props = $props();
   const quotaState = $derived(computeQuotaState(budgetUsd, spentUsd));
   const meterValue = $derived(quotaState.exceeded ? 1 : quotaState.usageRatio);
+  const remainingLessonCount = $derived(
+    remainingUsd > 0 ? Math.floor((remainingUsd + 0.0001) / ESTIMATED_LESSON_COST_USD) : 0
+  );
+  const lessonWarningCopy = $derived.by(() => {
+    if (quotaState.exceeded) return '';
+    if (remainingLessonCount <= 1 && remainingLessonCount > 0) {
+      return "You've got one lesson left this month. Make it count.";
+    }
+    if (remainingLessonCount <= 3 && remainingLessonCount > 1) {
+      return 'About 3 lessons left this month. Learn what you need most.';
+    }
+    return '';
+  });
   let checkoutError = $state('');
+  let pickerOpen = $state(false);
 
-  async function handleUpgrade(): Promise<void> {
+  function handleUpgrade(): void {
+    pickerOpen = true;
+    checkoutError = '';
+  }
+
+  async function handlePlanAction(selectedTier: PaidSubscriptionTier): Promise<void> {
     checkoutError = '';
 
     try {
-      await launchCheckout('basic');
+      await launchCheckout(selectedTier);
+      pickerOpen = false;
     } catch (error) {
       checkoutError = error instanceof Error ? error.message : 'Unable to start checkout.';
     }
@@ -38,6 +61,9 @@
     <div class="quota-primary-group">
       <h3>{remainingDisplay} <span class="quota-primary-label">left this month</span></h3>
       <span class={`quota-tier quota-tier--${tier}`}>{tier}</span>
+      {#if lessonWarningCopy}
+        <p class="quota-lesson-warning">{lessonWarningCopy}</p>
+      {/if}
     </div>
   </div>
 
@@ -59,6 +85,18 @@
     {/if}
   {/if}
 </section>
+
+<PlanPickerOverlay
+  open={pickerOpen}
+  currentTier={tier}
+  currencyCode="USD"
+  error={checkoutError}
+  onClose={() => {
+    pickerOpen = false;
+    checkoutError = '';
+  }}
+  onPlanAction={handlePlanAction}
+/>
 
 <style>
   .quota-badge {
@@ -174,6 +212,13 @@
     color: var(--color-xp);
   }
 
+  .quota-lesson-warning {
+    margin: 0;
+    font-size: 0.76rem;
+    color: color-mix(in srgb, var(--color-warning) 82%, var(--color-text));
+    white-space: nowrap;
+  }
+
   .quota-meta {
     display: inline-flex;
     justify-content: flex-start;
@@ -236,6 +281,13 @@
 
     .quota-primary-group {
       gap: 0.38rem;
+    }
+
+    .quota-lesson-warning {
+      white-space: normal;
+      flex-basis: 100%;
+      font-size: 0.74rem;
+      padding-top: 0.08rem;
     }
   }
 </style>

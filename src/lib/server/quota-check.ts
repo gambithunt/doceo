@@ -1,11 +1,12 @@
 import type { ModelTier } from '$lib/ai/model-tiers';
 import { getEffectiveBudgetUsd } from '$lib/server/billing';
 import { getUserActiveBillingCost, getUserSubscription } from '$lib/server/subscription-repository';
+import { ESTIMATED_LESSON_COST_USD } from '$lib/quota/lesson-cost';
 
 export const LESSON_COST_ESTIMATES_USD: Record<ModelTier, number> = {
   fast: 0.002,
   default: 0.01,
-  thinking: 0.08
+  thinking: ESTIMATED_LESSON_COST_USD
 };
 
 function roundUsd(value: number): number {

@@ -61,9 +61,9 @@ Excluded:
 - Billing history or payment method UI.
 
 ### Tasks
-- [ ] Add a small shared plan display helper that derives the three paid tiers from existing billing utilities.
-- [ ] Add a reusable `PlanPicker` or similarly named Svelte component for rendering the plan cards.
-- [ ] Add focused component tests for plan rendering, selection, and current-plan disabled state.
+- [x] Add a small shared plan display helper that derives the three paid tiers from existing billing utilities.
+- [x] Add a reusable `PlanPicker` or similarly named Svelte component for rendering the plan cards.
+- [x] Add focused component tests for plan rendering, selection, and current-plan disabled state.
 
 ### TDD Plan
 RED
@@ -118,10 +118,10 @@ Excluded:
 - Cancellation or downgrade management.
 
 ### Tasks
-- [ ] Add a Billing card/section to `SettingsView`.
-- [ ] Surface current plan and lightweight usage context using existing subscription/quota data patterns.
-- [ ] Wire the Settings plan picker action to the existing `launchCheckout(selectedTier)` helper.
-- [ ] Add or update Settings component tests for the Billing section and checkout launch behavior.
+- [x] Add a Billing card/section to `SettingsView`.
+- [x] Surface current plan and lightweight usage context using existing subscription/quota data patterns.
+- [x] Wire the Settings plan picker action to the existing `launchCheckout(selectedTier)` helper.
+- [x] Add or update Settings component tests for the Billing section and checkout launch behavior.
 
 ### TDD Plan
 RED
@@ -177,9 +177,9 @@ Excluded:
 - Customer portal or billing management actions.
 
 ### Tasks
-- [ ] Replace the direct `launchCheckout('basic')` behavior in `QuotaBadge` with opening the shared plan picker overlay.
-- [ ] Replace the direct `launchCheckout('basic')` behavior in `DashboardView` with the same overlay flow.
-- [ ] Add component tests for modal/sheet opening, plan selection, and checkout launch from both entry points.
+- [x] Replace the direct `launchCheckout('basic')` behavior in `QuotaBadge` with opening the shared plan picker overlay.
+- [x] Replace the direct `launchCheckout('basic')` behavior in `DashboardView` with the same overlay flow.
+- [x] Add component tests for modal/sheet opening, plan selection, and checkout launch from both entry points.
 
 ### TDD Plan
 RED
@@ -237,9 +237,9 @@ Excluded:
 - New server-side subscription endpoints.
 
 ### Tasks
-- [ ] Thread current-tier state through all plan picker usages.
-- [ ] Add tests for disabled current-plan CTA behavior in Settings and quota contexts.
-- [ ] Add tests confirming checkout failures still surface inline and do not close the picker unexpectedly.
+- [x] Thread current-tier state through all plan picker usages.
+- [x] Add tests for disabled current-plan CTA behavior in Settings and quota contexts.
+- [x] Add tests confirming checkout failures still surface inline and do not close the picker unexpectedly.
 
 ### TDD Plan
 RED

@@ -1,10 +1,72 @@
 <script lang="ts">
+  import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
+  import PlanPicker from '$lib/components/PlanPicker.svelte';
+  import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
+  import { type BillingCurrencyCode } from '$lib/billing/currency';
+  import { getPaidPlanDisplay } from '$lib/payments/plan-display';
+  import { launchCheckout } from '$lib/payments/checkout';
   import { appState } from '$lib/stores/app-state';
   import { onboardingPath } from '$lib/routing';
-  import type { AppState, OnboardingStep } from '$lib/types';
+  import type { AppState, OnboardingStep, UserSubscription } from '$lib/types';
 
-  const { state }: { state: AppState } = $props();
+  interface BillingStatus {
+    budgetUsd: number;
+    spentUsd: number;
+    remainingUsd: number;
+    tier: UserSubscription['tier'];
+    currencyCode: BillingCurrencyCode;
+    budgetDisplay: string;
+    spentDisplay: string;
+    remainingDisplay: string;
+    warningThreshold: boolean;
+    exceeded: boolean;
+  }
+
+  const {
+    state: viewState,
+    preloadedBillingStatus = null
+  }: {
+    state: AppState;
+    preloadedBillingStatus?: BillingStatus | null;
+  } = $props();
+
+  let billingStatus = $state<BillingStatus | null>(null);
+  let billingRequested = $state(false);
+  let checkoutError = $state('');
+
+  const planCurrency = $derived(billingStatus?.currencyCode ?? 'USD');
+  const plans = $derived(getPaidPlanDisplay(planCurrency));
+  const currentPlanLabel = $derived(
+    billingStatus ? `${billingStatus.tier.charAt(0).toUpperCase()}${billingStatus.tier.slice(1)} plan` : 'Plan unavailable'
+  );
+
+  $effect(() => {
+    billingStatus = preloadedBillingStatus;
+  });
+
+  $effect(() => {
+    if (!browser || billingRequested || preloadedBillingStatus) {
+      return;
+    }
+
+    billingRequested = true;
+
+    void (async () => {
+      try {
+        const headers = await getAuthenticatedHeaders();
+        const response = await fetch('/api/payments/quota-status', { headers });
+
+        if (!response.ok) {
+          return;
+        }
+
+        billingStatus = await response.json();
+      } catch {
+        // Keep Settings usable if billing data is temporarily unavailable.
+      }
+    })();
+  });
 
   function editOnboarding(step: OnboardingStep): void {
     appState.setOnboardingStep(step);
@@ -13,6 +75,16 @@
 
   function percent(value: number): string {
     return `${Math.round(value * 100)}%`;
+  }
+
+  async function handlePlanAction(tier: 'basic' | 'standard' | 'premium'): Promise<void> {
+    checkoutError = '';
+
+    try {
+      await launchCheckout(tier);
+    } catch (error) {
+      checkoutError = error instanceof Error ? error.message : 'Unable to start checkout.';
+    }
   }
 </script>
 
@@ -32,38 +104,74 @@
   <div class="grid">
     <article class="card">
       <p class="eyebrow">School context</p>
-      <div class="row"><span>Country</span><strong>{state.profile.country}</strong></div>
-      <div class="row"><span>Curriculum</span><strong>{state.profile.curriculum}</strong></div>
-      <div class="row"><span>Grade</span><strong>{state.profile.grade}</strong></div>
-      <div class="row"><span>School year</span><strong>{state.profile.schoolYear}</strong></div>
-      <div class="row"><span>Term</span><strong>{state.profile.term}</strong></div>
+      <div class="row"><span>Country</span><strong>{viewState.profile.country}</strong></div>
+      <div class="row"><span>Curriculum</span><strong>{viewState.profile.curriculum}</strong></div>
+      <div class="row"><span>Grade</span><strong>{viewState.profile.grade}</strong></div>
+      <div class="row"><span>School year</span><strong>{viewState.profile.schoolYear}</strong></div>
+      <div class="row"><span>Term</span><strong>{viewState.profile.term}</strong></div>
       <button type="button" class="btn btn-secondary" onclick={() => editOnboarding('academic')}>Update school context</button>
     </article>
 
     <article class="card">
       <p class="eyebrow">Subjects</p>
       <div class="subject-pills">
-        {#each state.onboarding.selectedSubjectNames as subject}
+        {#each viewState.onboarding.selectedSubjectNames as subject}
           <span>{subject}</span>
         {/each}
-        {#each state.onboarding.customSubjects as subject}
+        {#each viewState.onboarding.customSubjects as subject}
           <span class="soft">{subject}</span>
         {/each}
       </div>
       <div class="row">
         <span>Recommended start</span>
-        <strong>{state.profile.recommendedStartSubjectName ?? 'Not set'}</strong>
+        <strong>{viewState.profile.recommendedStartSubjectName ?? 'Not set'}</strong>
       </div>
       <button type="button" class="btn btn-secondary" onclick={() => editOnboarding('subjects')}>Edit subjects</button>
     </article>
 
     <article class="card">
+      <p class="eyebrow">Billing</p>
+      <h3>Billing</h3>
+      <div class="billing-summary">
+        <div class="row">
+          <span>Current plan</span>
+          <strong>{currentPlanLabel}</strong>
+        </div>
+      <div class="row">
+        <span>Usage left</span>
+        <strong>
+          {#if billingStatus}
+            {billingStatus.remainingDisplay} left this month
+          {:else}
+            Unavailable right now
+          {/if}
+        </strong>
+      </div>
+        {#if billingStatus}
+          <div class="row">
+            <span>Monthly budget</span>
+            <strong>{billingStatus.budgetDisplay}</strong>
+          </div>
+        {/if}
+      </div>
+      <p class="billing-note">Choose a plan before checkout. The active plan stays marked here.</p>
+      <PlanPicker
+        plans={plans}
+        currentTier={billingStatus?.tier ?? null}
+        onPlanAction={handlePlanAction}
+      />
+      {#if checkoutError}
+        <p class="billing-error">{checkoutError}</p>
+      {/if}
+    </article>
+
+    <article class="card">
       <p class="eyebrow">Adaptive profile</p>
       <h3>How the tutor is adjusting</h3>
-      <div class="row"><span>Real-world examples</span><strong>{percent(state.learnerProfile.real_world_examples)}</strong></div>
-      <div class="row"><span>Step-by-step teaching</span><strong>{percent(state.learnerProfile.step_by_step)}</strong></div>
-      <div class="row"><span>Analogy preference</span><strong>{percent(state.learnerProfile.analogies_preference)}</strong></div>
-      <div class="row"><span>Needs repetition</span><strong>{percent(state.learnerProfile.needs_repetition)}</strong></div>
+      <div class="row"><span>Real-world examples</span><strong>{percent(viewState.learnerProfile.real_world_examples)}</strong></div>
+      <div class="row"><span>Step-by-step teaching</span><strong>{percent(viewState.learnerProfile.step_by_step)}</strong></div>
+      <div class="row"><span>Analogy preference</span><strong>{percent(viewState.learnerProfile.analogies_preference)}</strong></div>
+      <div class="row"><span>Needs repetition</span><strong>{percent(viewState.learnerProfile.needs_repetition)}</strong></div>
     </article>
   </div>
 </section>
@@ -135,6 +243,25 @@
     background: var(--surface-soft);
   }
 
+  .billing-summary {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .billing-note,
+  .billing-error {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+
+  .billing-note {
+    color: var(--text-soft);
+  }
+
+  .billing-error {
+    color: var(--color-error, var(--danger));
+  }
+
   .btn {
     justify-self: start;
   }
@@ -181,9 +308,5 @@
       justify-content: center;
     }
 
-    select,
-    input {
-      font-size: 16px;
-    }
   }
 </style>

@@ -5,7 +5,7 @@ import { launchCheckout } from '$lib/payments/checkout';
 import DashboardView from './DashboardView.svelte';
 import { createInitialState } from '$lib/data/platform';
 import { selectTopicLoadingCopy } from './topic-discovery/topic-loading-copy';
-import type { DashboardTopicDiscoverySuggestion, ShortlistedTopic } from '$lib/types';
+import type { AppState, DashboardTopicDiscoverySuggestion, ShortlistedTopic } from '$lib/types';
 
 const { environmentState, getAuthenticatedHeaders } = vi.hoisted(() => ({
   environmentState: {
@@ -86,7 +86,7 @@ function createShortlistedTopic(overrides: Partial<ShortlistedTopic> = {}): Shor
   };
 }
 
-function createDashboardState() {
+function createDashboardState(): AppState {
   const state = createInitialState();
   return {
     ...state,
@@ -295,7 +295,7 @@ describe('DashboardView', () => {
     expect(screen.getByRole('button', { name: /upgrade to continue/i })).toBeInTheDocument();
   });
 
-  it('launches checkout from the quota exceeded prompt', async () => {
+  it('opens the shared plan picker from the quota exceeded prompt', async () => {
     const state = createInitialState();
 
     render(DashboardView, {
@@ -317,7 +317,101 @@ describe('DashboardView', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
 
-    expect(launchCheckout).toHaveBeenCalledWith('basic');
+    expect(screen.getByRole('dialog', { name: /choose a plan/i })).toBeInTheDocument();
+    expect(launchCheckout).not.toHaveBeenCalled();
+  });
+
+  it.each(['basic', 'standard', 'premium'] as const)(
+    'launches checkout for the selected %s tier from the dashboard quota picker',
+    async (tier) => {
+      const state = createInitialState();
+
+      render(DashboardView, {
+        props: {
+          state: {
+            ...state,
+            ui: {
+              ...state.ui,
+              lessonLaunchQuotaExceeded: true
+            },
+            backend: {
+              ...state.backend,
+              lastSyncStatus: 'error',
+              lastSyncError: "You've reached your monthly limit. Upgrade to continue."
+            }
+          }
+        }
+      });
+
+      await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+      await fireEvent.click(screen.getByRole('button', { name: new RegExp(`choose ${tier}`, 'i') }));
+
+      expect(launchCheckout).toHaveBeenCalledWith(tier);
+    }
+  );
+
+  it('dismisses the quota picker without destabilizing the dashboard prompt', async () => {
+    const state = createInitialState();
+
+    render(DashboardView, {
+      props: {
+        state: {
+          ...state,
+          ui: {
+            ...state.ui,
+            lessonLaunchQuotaExceeded: true
+          },
+          backend: {
+            ...state.backend,
+            lastSyncStatus: 'error',
+            lastSyncError: "You've reached your monthly limit. Upgrade to continue."
+          }
+        }
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /close plan picker/i }));
+
+    expect(screen.queryByRole('dialog', { name: /choose a plan/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /upgrade to continue/i })).toBeInTheDocument();
+  });
+
+  it('marks the current quota tier and disables choosing it again in the dashboard picker', async () => {
+    const state = createDashboardState();
+
+    render(DashboardView, {
+      props: {
+        state: {
+          ...state,
+          ui: {
+            ...state.ui,
+            lessonLaunchQuotaExceeded: true
+          },
+          backend: {
+            ...state.backend,
+            lastSyncStatus: 'error',
+            lastSyncError: "You've reached your monthly limit. Upgrade to continue."
+          }
+        },
+        preloadedQuotaStatus: {
+          budgetUsd: 3,
+          spentUsd: 3,
+          remainingUsd: 0,
+          tier: 'standard',
+          currencyCode: 'USD',
+          budgetDisplay: '$3.00',
+          spentDisplay: '$3.00',
+          remainingDisplay: '$0.00',
+          warningThreshold: false,
+          exceeded: true
+        }
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+
+    expect(screen.getByRole('button', { name: /current plan standard/i })).toBeDisabled();
   });
 
   it('surfaces checkout launch failures in the existing inline error area', async () => {
@@ -342,10 +436,13 @@ describe('DashboardView', () => {
     });
 
     await fireEvent.click(screen.getByRole('button', { name: /upgrade to continue/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /choose basic/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/authentication required/i)).toBeInTheDocument();
     });
+
+    expect(screen.getByRole('dialog', { name: /choose a plan/i })).toBeInTheDocument();
   });
 
   it('renders the usage bar above the hero with the tier pill and route-provided currency labels', () => {
