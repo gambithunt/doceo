@@ -126,7 +126,6 @@
 <section class="view">
   <header class="card hero mission-card">
     <div class="hero-copy">
-      <p class="eyebrow">Settings</p>
       <h2>Academic profile</h2>
       <p>Revisit onboarding if your school year, term, curriculum, or subjects change.</p>
     </div>
@@ -140,7 +139,6 @@
     <article class="card section-card section-card--school mission-card">
       <div class="section-top">
         <div class="section-heading">
-          <p class="eyebrow">School context</p>
           <h3 class="section-title">School context</h3>
           <p class="section-copy">Your current school setup shapes lessons, examples, and recommended starting points.</p>
         </div>
@@ -173,7 +171,6 @@
     <article class="card section-card section-card--subjects mission-card">
       <div class="section-top">
         <div class="section-heading">
-          <p class="eyebrow">Subjects</p>
           <h3 class="section-title">Subjects</h3>
           <p class="section-copy">These subjects shape your lesson path and help Doceo keep recommendations relevant.</p>
         </div>
@@ -203,7 +200,6 @@
     <article class="card section-card section-card--billing mission-card">
       <div class="section-top section-top--stacked">
         <div class="section-heading">
-          <p class="eyebrow">Billing</p>
           <h3 class="section-title">Billing</h3>
           <p class="section-copy">Choose how much help you want each month. Every plan includes the full tutor experience, with higher tiers giving you more lesson capacity.</p>
         </div>
@@ -263,7 +259,6 @@
     <article class="card section-card section-card--adaptive mission-card">
       <div class="section-top section-top--stacked">
         <div class="section-heading">
-          <p class="eyebrow">Adaptive profile</p>
           <h3 class="section-title">How the tutor is adjusting</h3>
           <p class="section-copy">This is how Doceo is currently tuning lessons to fit how you learn best.</p>
         </div>
@@ -371,6 +366,18 @@
     box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   }
 
+  .section-card--school:hover {
+    transform: none;
+    border-color: color-mix(in srgb, var(--color-blue) 20%, var(--glass-border));
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.13);
+  }
+
+  .section-card--subjects:hover {
+    transform: none;
+    border-color: color-mix(in srgb, var(--color-purple) 20%, var(--glass-border));
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.13);
+  }
+
   .section-top {
     display: flex;
     justify-content: space-between;
@@ -401,7 +408,7 @@
   }
 
   .section-card--adaptive {
-    border-color: color-mix(in srgb, var(--color-accent) 20%, var(--glass-border));
+    border-color: color-mix(in srgb, var(--color-accent) 28%, var(--glass-border));
   }
 
   .section-title,
@@ -479,6 +486,24 @@
     transform: translateY(-2px);
     border-color: var(--accent);
     box-shadow: var(--shadow-md);
+  }
+
+  .section-card--school .settings-tile:hover {
+    transform: none;
+    border-color: var(--border-strong);
+    box-shadow: var(--glass-inset-tile);
+  }
+
+  .section-card--subjects .settings-tile:hover {
+    transform: none;
+    border-color: var(--border-strong);
+    box-shadow: var(--glass-inset-tile);
+  }
+
+  .section-card--billing .settings-tile:hover {
+    transform: none;
+    border-color: var(--border-strong);
+    box-shadow: var(--glass-inset-tile);
   }
 
   .field-label {
@@ -584,6 +609,11 @@
     box-shadow: var(--shadow-md);
   }
 
+  .section-card--subjects .settings-chip:hover {
+    transform: none;
+    box-shadow: var(--glass-inset-tile);
+  }
+
   .tile-note {
     margin: 0.12rem 0 0;
     color: var(--text-soft);
@@ -616,11 +646,14 @@
     color: var(--text-soft);
     font-size: 0.82rem;
     font-weight: 700;
+    letter-spacing: 0.01em;
   }
 
   .summary-value--plan {
-    font-size: 1.22rem;
-    line-height: 1.05;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
   }
 
   .billing-value-group {
