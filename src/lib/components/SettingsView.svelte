@@ -89,22 +89,26 @@
     {
       label: 'Real-world examples',
       value: viewState.learnerProfile.real_world_examples,
-      tone: 'blue' as const
+      tone: 'blue' as const,
+      summary: 'Uses practical examples to anchor new topics quickly.'
     },
     {
       label: 'Step-by-step teaching',
       value: viewState.learnerProfile.step_by_step,
-      tone: 'teal' as const
+      tone: 'teal' as const,
+      summary: 'Breaks tougher ideas into smaller moves before speeding up.'
     },
     {
       label: 'Analogy preference',
       value: viewState.learnerProfile.analogies_preference,
-      tone: 'purple' as const
+      tone: 'purple' as const,
+      summary: 'Links new work to patterns and examples you already recognize.'
     },
     {
       label: 'Needs repetition',
       value: viewState.learnerProfile.needs_repetition,
-      tone: 'orange' as const
+      tone: 'orange' as const,
+      summary: 'Revisits key ideas more often until they feel steady.'
     }
   ]);
 
@@ -120,7 +124,7 @@
 </script>
 
 <section class="view">
-  <header class="card hero">
+  <header class="card hero mission-card">
     <div class="hero-copy">
       <p class="eyebrow">Settings</p>
       <h2>Academic profile</h2>
@@ -133,114 +137,146 @@
   </header>
 
   <div class="sections">
-    <article class="card section-card section-card--school">
-      <p class="eyebrow">School context</p>
-      <h3 class="section-title">School context</h3>
-      <p class="section-copy">Your current school setup shapes lessons, examples, and recommended starting points.</p>
+    <article class="card section-card section-card--school mission-card">
+      <div class="section-top">
+        <div class="section-heading">
+          <p class="eyebrow">School context</p>
+          <h3 class="section-title">School context</h3>
+          <p class="section-copy">Your current school setup shapes lessons, examples, and recommended starting points.</p>
+        </div>
+        <button type="button" class="btn btn-secondary section-action" onclick={() => editOnboarding('academic')}>Update school context</button>
+      </div>
       <div class="detail-grid">
-        <div class="detail-item">
+        <div class="detail-item recent-card settings-tile">
           <span class="field-label">Country</span>
           <strong class="field-value">{viewState.profile.country}</strong>
         </div>
-        <div class="detail-item">
+        <div class="detail-item recent-card settings-tile">
           <span class="field-label">Curriculum</span>
           <strong class="field-value">{viewState.profile.curriculum}</strong>
         </div>
-        <div class="detail-item">
+        <div class="detail-item recent-card settings-tile">
           <span class="field-label">Grade</span>
           <strong class="field-value">{viewState.profile.grade}</strong>
         </div>
-        <div class="detail-item">
+        <div class="detail-item recent-card settings-tile">
           <span class="field-label">School year</span>
           <strong class="field-value">{viewState.profile.schoolYear}</strong>
         </div>
-        <div class="detail-item">
+        <div class="detail-item recent-card settings-tile">
           <span class="field-label">Term</span>
           <strong class="field-value">{viewState.profile.term}</strong>
         </div>
       </div>
-      <button type="button" class="btn btn-secondary section-action" onclick={() => editOnboarding('academic')}>Update school context</button>
     </article>
 
-    <article class="card section-card section-card--subjects">
-      <p class="eyebrow">Subjects</p>
-      <h3 class="section-title">Subjects</h3>
-      <p class="section-copy">These subjects shape your lesson path and help Doceo keep recommendations relevant.</p>
+    <article class="card section-card section-card--subjects mission-card">
+      <div class="section-top">
+        <div class="section-heading">
+          <p class="eyebrow">Subjects</p>
+          <h3 class="section-title">Subjects</h3>
+          <p class="section-copy">These subjects shape your lesson path and help Doceo keep recommendations relevant.</p>
+        </div>
+        <button type="button" class="btn btn-secondary section-action" onclick={() => editOnboarding('subjects')}>Edit subjects</button>
+      </div>
       <div class="subject-pills" aria-label="Selected subjects">
         {#each viewState.onboarding.selectedSubjectNames as subject}
-          <span class={`subject-pill subject-pill--${subjectColorClass(subject)}`}>
+          <span class={`subject-pill settings-chip subject-pill--${subjectColorClass(subject)}`}>
             <span class="subject-pill-orb" aria-hidden="true"></span>
             {subject}
           </span>
         {/each}
         {#each viewState.onboarding.customSubjects as subject}
-          <span class={`subject-pill subject-pill--${subjectColorClass(subject)} soft`}>
+          <span class={`subject-pill settings-chip subject-pill--${subjectColorClass(subject)} soft`}>
             <span class="subject-pill-orb" aria-hidden="true"></span>
             {subject}
           </span>
         {/each}
       </div>
-      <div class="recommended-start">
+      <div class="recommended-start recent-card settings-tile">
         <span class="field-label">Recommended start</span>
         <strong class="field-value">{viewState.profile.recommendedStartSubjectName ?? 'Not set'}</strong>
+        <p class="tile-note">Start here first when you come back for a focused lesson.</p>
       </div>
-      <button type="button" class="btn btn-secondary section-action" onclick={() => editOnboarding('subjects')}>Edit subjects</button>
     </article>
 
-    <article class="card section-card section-card--billing">
-      <p class="eyebrow">Billing</p>
-      <h3 class="section-title">Billing</h3>
-      <p class="section-copy">Choose how much help you want each month. Every plan includes the full tutor experience, with higher tiers giving you more lesson capacity.</p>
-      <div class="billing-summary">
-        <div class="row billing-row billing-row--current">
-          <span class="billing-label">Current plan</span>
-          <div class="billing-value-group">
-            <strong class="summary-value">{currentPlanLabel}</strong>
-            {#if currentTier}
-              <span class={`tier-pill tier-pill--${currentTier}`} aria-label={`Current billing tier ${currentTier}`}>{currentTier}</span>
-            {/if}
-          </div>
+    <article class="card section-card section-card--billing mission-card">
+      <div class="section-top section-top--stacked">
+        <div class="section-heading">
+          <p class="eyebrow">Billing</p>
+          <h3 class="section-title">Billing</h3>
+          <p class="section-copy">Choose how much help you want each month. Every plan includes the full tutor experience, with higher tiers giving you more lesson capacity.</p>
         </div>
-        <div class="row billing-row">
-          <span class="billing-label">Usage left</span>
-          <strong class="summary-value">
-            {#if billingStatus}
-              {billingStatus.remainingDisplay} left this month
-            {:else}
-              Unavailable right now
-            {/if}
-          </strong>
-        </div>
-        {#if billingStatus}
-          <div class="row billing-row">
-            <span class="billing-label">Monthly budget</span>
-            <strong class="summary-value">{billingStatus.budgetDisplay}</strong>
-          </div>
-        {/if}
       </div>
-      <p class="billing-note">You’re currently on {currentPlanLabel}. Choose a different plan below before checkout if you need more room this month.</p>
-      <PlanPicker
-        plans={plans}
-        currentTier={billingStatus?.tier ?? null}
-        onPlanAction={handlePlanAction}
-      />
+      <div class="billing-layout">
+        <div class="billing-summary recent-card settings-tile">
+          <div class="row billing-row billing-row--current">
+            <span class="billing-label">Current plan</span>
+            <div class="billing-value-group">
+              <strong class="summary-value summary-value--plan">{currentPlanLabel}</strong>
+              {#if currentTier}
+                <span class={`tier-pill tier-pill--${currentTier}`} aria-label={`Current billing tier ${currentTier}`}>{currentTier}</span>
+              {/if}
+            </div>
+          </div>
+          <p class="billing-note">You’re currently on {currentPlanLabel}. Switch before checkout if you need more room this month.</p>
+        </div>
+        <div class="billing-metrics">
+          <div class="billing-stat recent-card settings-tile">
+            <span class="field-label">Usage left</span>
+            <strong class="summary-value">
+              {#if billingStatus}
+                {billingStatus.remainingDisplay} left this month
+              {:else}
+                Unavailable right now
+              {/if}
+            </strong>
+          </div>
+          <div class="billing-stat recent-card settings-tile">
+            <span class="field-label">Monthly budget</span>
+            <strong class="summary-value">
+              {#if billingStatus}
+                {billingStatus.budgetDisplay}
+              {:else}
+                Unavailable right now
+              {/if}
+            </strong>
+          </div>
+        </div>
+      </div>
+      <div class="billing-compare">
+        <div class="billing-compare-head">
+          <p class="billing-compare-title">Compare plans</p>
+          <p class="billing-compare-copy">Pick the monthly lesson capacity that matches how often you study with Doceo.</p>
+        </div>
+        <PlanPicker
+          plans={plans}
+          currentTier={billingStatus?.tier ?? null}
+          onPlanAction={handlePlanAction}
+        />
+      </div>
       {#if checkoutError}
         <p class="billing-error">{checkoutError}</p>
       {/if}
     </article>
 
-    <article class="card section-card section-card--adaptive">
-      <p class="eyebrow">Adaptive profile</p>
-      <h3 class="section-title">How the tutor is adjusting</h3>
-      <p class="section-copy">This is how Doceo is currently tuning lessons to fit how you learn best.</p>
+    <article class="card section-card section-card--adaptive mission-card">
+      <div class="section-top section-top--stacked">
+        <div class="section-heading">
+          <p class="eyebrow">Adaptive profile</p>
+          <h3 class="section-title">How the tutor is adjusting</h3>
+          <p class="section-copy">This is how Doceo is currently tuning lessons to fit how you learn best.</p>
+        </div>
+      </div>
       <div class="adaptive-grid">
         {#each adaptiveTraits as trait}
-          <div class={`adaptive-card adaptive-card--${trait.tone}`}>
+          <div class={`adaptive-card recent-card settings-tile adaptive-card--${trait.tone}`}>
             <div class="adaptive-card-head">
               <span class="field-label">{trait.label}</span>
               <span class="adaptive-cue">{profileCue(trait.value)}</span>
             </div>
             <strong class="adaptive-value">{percent(trait.value)}</strong>
+            <p class="adaptive-summary">{trait.summary}</p>
             <div class="adaptive-meter" aria-hidden="true">
               <span class="adaptive-meter-fill" style:width={percent(trait.value)}></span>
             </div>
@@ -287,25 +323,41 @@
   }
 
   .sections {
-    gap: 1.15rem;
+    gap: 1rem;
   }
 
   .card {
     display: grid;
     gap: 0.65rem;
-    border: 1px solid color-mix(in srgb, var(--color-border-strong) 58%, transparent);
     border-radius: var(--radius-xl);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-high) 78%, transparent), var(--color-surface));
     padding: 1rem 1.05rem;
-    box-shadow:
-      0 8px 24px rgba(0, 0, 0, 0.12),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .mission-card {
+    position: relative;
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--glass-border));
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.13);
+    overflow: hidden;
+  }
+
+  .mission-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      ellipse 80% 60% at 30% 20%,
+      rgba(255, 255, 255, 0.05) 0%,
+      transparent 70%
+    );
+    pointer-events: none;
   }
 
   .section-card {
-    gap: 0.8rem;
-    position: relative;
-    overflow: hidden;
+    gap: 0.9rem;
     transition:
       transform 180ms ease,
       border-color 180ms ease,
@@ -313,53 +365,43 @@
       background 180ms ease;
   }
 
-  .section-card::before {
-    content: '';
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 0.28rem;
-    border-radius: 999px;
-    background: transparent;
-    opacity: 0.9;
+  .section-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   }
 
-  .section-card:hover {
-    transform: translateY(-1px);
-    box-shadow:
-      0 12px 28px rgba(0, 0, 0, 0.16),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  .section-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .section-top--stacked {
+    justify-content: start;
+  }
+
+  .section-heading {
+    display: grid;
+    gap: 0.28rem;
+    min-width: 0;
   }
 
   .section-card--school {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--color-blue-dim) 90%, var(--color-surface)), var(--color-surface));
+    border-color: color-mix(in srgb, var(--color-blue) 20%, var(--glass-border));
   }
 
   .section-card--subjects {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--color-purple-dim) 90%, var(--color-surface)), var(--color-surface));
+    border-color: color-mix(in srgb, var(--color-purple) 20%, var(--glass-border));
   }
 
   .section-card--billing {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--color-yellow-dim) 88%, var(--color-surface)), var(--color-surface));
+    border-color: color-mix(in srgb, var(--color-xp) 20%, var(--glass-border));
   }
 
   .section-card--adaptive {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent-dim) 88%, var(--color-surface)), var(--color-surface));
-  }
-
-  .section-card--school::before {
-    background: linear-gradient(180deg, var(--color-blue), color-mix(in srgb, var(--color-blue) 24%, transparent));
-  }
-
-  .section-card--subjects::before {
-    background: linear-gradient(180deg, var(--color-purple), color-mix(in srgb, var(--color-purple) 24%, transparent));
-  }
-
-  .section-card--billing::before {
-    background: linear-gradient(180deg, var(--color-xp), color-mix(in srgb, var(--color-xp) 24%, transparent));
-  }
-
-  .section-card--adaptive::before {
-    background: linear-gradient(180deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 24%, transparent));
+    border-color: color-mix(in srgb, var(--color-accent) 20%, var(--glass-border));
   }
 
   .section-title,
@@ -371,7 +413,7 @@
   }
 
   .eyebrow {
-    color: color-mix(in srgb, var(--color-text-soft) 86%, var(--color-text));
+    color: var(--text-soft);
     font-size: var(--text-xs);
     font-weight: 600;
     letter-spacing: 0.06em;
@@ -380,12 +422,12 @@
   .hero-copy h2 {
     font-size: var(--text-2xl);
     font-weight: 800;
-    color: var(--color-text);
+    color: var(--text);
     letter-spacing: -0.03em;
   }
 
   .hero-copy p:last-child {
-    color: var(--color-text-soft);
+    color: var(--text-soft);
     font-size: var(--text-base);
     max-width: 44rem;
   }
@@ -393,14 +435,14 @@
   .section-title {
     font-size: 1.18rem;
     font-weight: 700;
-    color: var(--color-text);
+    color: var(--text);
     letter-spacing: -0.02em;
     line-height: 1.1;
   }
 
   .section-copy,
   .billing-note {
-    color: var(--color-text-soft);
+    color: var(--text-soft);
     font-size: var(--text-sm);
     line-height: 1.45;
     max-width: 42rem;
@@ -408,40 +450,51 @@
 
   .detail-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.7rem;
   }
 
   .detail-item,
-  .recommended-start {
+  .recommended-start,
+  .billing-stat {
     display: grid;
-    gap: 0.18rem;
-    padding: 0.75rem 0.85rem;
+    gap: 0.16rem;
+    padding: 0.75rem 0.85rem 0.8rem;
     border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--color-border-strong) 52%, transparent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 92%, white 2%), color-mix(in srgb, var(--color-surface-high) 50%, transparent));
+    border: 1px solid var(--border-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
+    box-shadow: var(--glass-inset-tile);
   }
 
-  .section-card--school .detail-item,
-  .section-card--subjects .recommended-start,
-  .section-card--billing .billing-summary,
-  .section-card--adaptive .adaptive-card {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  .settings-tile {
+    transition:
+      transform 200ms var(--ease-spring),
+      box-shadow 200ms var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft);
+  }
+
+  .settings-tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
   }
 
   .field-label {
-    color: color-mix(in srgb, var(--color-text-soft) 92%, var(--color-text));
+    color: var(--text-soft);
     font-size: var(--text-xs);
     font-weight: 600;
+    line-height: 1.1;
   }
 
   .field-value,
   .summary-value {
-    color: var(--color-text);
-    font-size: 1.02rem;
+    color: var(--text);
+    font-size: 1rem;
     font-weight: 700;
     letter-spacing: -0.02em;
-    line-height: 1.15;
+    line-height: 1.2;
   }
 
   .row {
@@ -463,12 +516,19 @@
     gap: 0.5rem;
     padding: 0.65rem 0.95rem;
     border-radius: 999px;
-    border: 1px solid transparent;
-    color: var(--color-text);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
     font-size: 0.95rem;
     font-weight: 600;
     line-height: 1.3;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
+    box-shadow: var(--glass-inset-tile);
+    transition:
+      transform 200ms var(--ease-spring),
+      border-color var(--motion-fast) var(--ease-soft),
+      box-shadow 200ms var(--ease-soft);
   }
 
   .subject-pill.soft {
@@ -484,58 +544,83 @@
   }
 
   .subject-pill--blue {
-    background: color-mix(in srgb, var(--color-blue-dim) 96%, var(--color-surface));
-    border-color: color-mix(in srgb, var(--color-blue) 18%, var(--color-border));
-    color: color-mix(in srgb, var(--color-blue) 64%, var(--color-text));
+    background: color-mix(in srgb, var(--color-blue-dim) 88%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--color-blue) 18%, var(--border-strong));
+    color: color-mix(in srgb, var(--color-blue) 68%, var(--text));
   }
 
   .subject-pill--purple {
-    background: color-mix(in srgb, var(--color-purple-dim) 96%, var(--color-surface));
-    border-color: color-mix(in srgb, var(--color-purple) 18%, var(--color-border));
-    color: color-mix(in srgb, var(--color-purple) 64%, var(--color-text));
+    background: color-mix(in srgb, var(--color-purple-dim) 88%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--color-purple) 18%, var(--border-strong));
+    color: color-mix(in srgb, var(--color-purple) 68%, var(--text));
   }
 
   .subject-pill--orange {
-    background: color-mix(in srgb, var(--color-orange-dim) 96%, var(--color-surface));
-    border-color: color-mix(in srgb, var(--color-orange) 18%, var(--color-border));
-    color: color-mix(in srgb, var(--color-orange) 64%, var(--color-text));
+    background: color-mix(in srgb, var(--color-orange-dim) 88%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--color-orange) 18%, var(--border-strong));
+    color: color-mix(in srgb, var(--color-orange) 68%, var(--text));
   }
 
   .subject-pill--green {
-    background: color-mix(in srgb, var(--color-green-dim) 96%, var(--color-surface));
-    border-color: color-mix(in srgb, var(--color-green) 18%, var(--color-border));
-    color: color-mix(in srgb, var(--color-green) 64%, var(--color-text));
+    background: color-mix(in srgb, var(--color-green-dim) 88%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--color-green) 18%, var(--border-strong));
+    color: color-mix(in srgb, var(--color-green) 68%, var(--text));
   }
 
   .subject-pill--red {
-    background: color-mix(in srgb, var(--color-red-dim) 96%, var(--color-surface));
-    border-color: color-mix(in srgb, var(--color-red) 18%, var(--color-border));
-    color: color-mix(in srgb, var(--color-red) 64%, var(--color-text));
+    background: color-mix(in srgb, var(--color-red-dim) 88%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--color-red) 18%, var(--border-strong));
+    color: color-mix(in srgb, var(--color-red) 68%, var(--text));
   }
 
   .subject-pill--yellow {
-    background: color-mix(in srgb, var(--color-yellow-dim) 96%, var(--color-surface));
-    border-color: color-mix(in srgb, var(--color-yellow) 18%, var(--color-border));
-    color: color-mix(in srgb, var(--color-yellow) 64%, var(--color-text));
+    background: color-mix(in srgb, var(--color-yellow-dim) 88%, var(--glass-bg-tile));
+    border-color: color-mix(in srgb, var(--color-yellow) 18%, var(--border-strong));
+    color: color-mix(in srgb, var(--color-yellow) 68%, var(--text));
+  }
+
+  .settings-chip:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .tile-note {
+    margin: 0.12rem 0 0;
+    color: var(--text-soft);
+    font-size: var(--text-xs);
+    line-height: 1.35;
+  }
+
+  .billing-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(230px, 0.85fr);
+    gap: 0.8rem;
+    align-items: stretch;
   }
 
   .billing-summary {
     display: grid;
-    gap: 0.3rem;
-    padding: 0.8rem 0.9rem;
+    gap: 0.55rem;
+    padding: 0.95rem 1rem;
     border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--color-xp) 24%, var(--color-border));
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 90%, white 2%), color-mix(in srgb, var(--color-xp) 10%, transparent));
+    border: 1px solid color-mix(in srgb, var(--color-xp) 26%, var(--border-strong));
+    background: color-mix(in srgb, var(--color-xp) 10%, var(--glass-bg-tile));
   }
 
   .billing-row {
-    min-height: 2.6rem;
+    min-height: 2.2rem;
+    align-items: center;
   }
 
   .billing-label {
-    color: color-mix(in srgb, var(--color-text-soft) 74%, var(--color-text));
+    color: var(--text-soft);
     font-size: 0.82rem;
     font-weight: 700;
+  }
+
+  .summary-value--plan {
+    font-size: 1.22rem;
+    line-height: 1.05;
   }
 
   .billing-value-group {
@@ -584,6 +669,39 @@
     color: var(--color-xp);
   }
 
+  .billing-metrics {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .billing-stat {
+    align-content: start;
+  }
+
+  .billing-compare {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .billing-compare-head {
+    display: grid;
+    gap: 0.18rem;
+  }
+
+  .billing-compare-title {
+    color: var(--color-text);
+    font-size: var(--text-base);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .billing-compare-copy {
+    color: var(--color-text-soft);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+    margin: 0;
+  }
+
   .billing-error {
     margin: 0;
     font-size: var(--text-sm);
@@ -604,8 +722,11 @@
     gap: 0.65rem;
     padding: 1rem;
     border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--color-border-strong) 75%, transparent);
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface-high) 72%, transparent), transparent);
+    border: 1px solid var(--border-strong);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
+    box-shadow: var(--glass-inset-tile);
   }
 
   .adaptive-card-head {
@@ -622,22 +743,29 @@
     border-radius: 999px;
     font-size: var(--text-xs);
     font-weight: 700;
-    color: var(--color-text);
-    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-border-strong) 70%, transparent);
+    color: var(--text);
+    background: var(--glass-bg-tile);
+    border: 1px solid var(--border-strong);
   }
 
   .adaptive-value {
-    color: var(--color-text);
+    color: var(--text);
     font-size: var(--text-xl);
     font-weight: 800;
     letter-spacing: -0.03em;
   }
 
+  .adaptive-summary {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+
   .adaptive-meter {
     height: 0.55rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--color-surface-high) 90%, transparent);
+    background: var(--border-strong);
     overflow: hidden;
   }
 
@@ -649,7 +777,7 @@
   }
 
   .adaptive-card--blue {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-blue-dim) 88%, transparent), transparent);
+    background: color-mix(in srgb, var(--color-blue-dim) 72%, var(--glass-bg-tile));
   }
 
   .adaptive-card--blue .adaptive-meter-fill {
@@ -657,7 +785,7 @@
   }
 
   .adaptive-card--teal {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent-dim) 88%, transparent), transparent);
+    background: color-mix(in srgb, var(--color-accent-dim) 72%, var(--glass-bg-tile));
   }
 
   .adaptive-card--teal .adaptive-meter-fill {
@@ -665,7 +793,7 @@
   }
 
   .adaptive-card--purple {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-purple-dim) 88%, transparent), transparent);
+    background: color-mix(in srgb, var(--color-purple-dim) 72%, var(--glass-bg-tile));
   }
 
   .adaptive-card--purple .adaptive-meter-fill {
@@ -673,7 +801,7 @@
   }
 
   .adaptive-card--orange {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--color-orange-dim) 88%, transparent), transparent);
+    background: color-mix(in srgb, var(--color-orange-dim) 72%, var(--glass-bg-tile));
   }
 
   .adaptive-card--orange .adaptive-meter-fill {
@@ -689,14 +817,27 @@
     padding-inline: 1rem;
     border-radius: var(--radius-pill);
     justify-content: center;
-    background: var(--color-text);
-    color: var(--color-bg);
-    border-color: transparent;
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.14);
+    background: var(--glass-bg-tile);
+    backdrop-filter: var(--glass-blur-tile);
+    -webkit-backdrop-filter: var(--glass-blur-tile);
+    color: var(--text);
+    border-color: var(--border-strong);
+    box-shadow: var(--glass-inset-tile);
+    transition:
+      transform 140ms ease,
+      box-shadow 140ms ease,
+      background 140ms ease,
+      border-color 140ms ease;
   }
 
-  :root[data-theme='light'] .section-action {
-    color: var(--color-surface);
+  .section-action:hover {
+    transform: translateY(-1px);
+    border-color: var(--accent);
+    box-shadow: var(--shadow-md);
+  }
+
+  .section-action:active {
+    transform: translateY(0) scale(0.985);
   }
 
   @media (max-width: 840px) {
@@ -708,11 +849,15 @@
       justify-content: flex-start;
     }
 
-    .detail-grid {
-      grid-template-columns: 1fr;
+    .section-top {
+      flex-direction: column;
     }
 
     .adaptive-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .billing-layout {
       grid-template-columns: 1fr;
     }
   }
@@ -737,6 +882,7 @@
     .detail-item,
     .recommended-start,
     .billing-summary,
+    .billing-stat,
     .adaptive-card {
       padding: 0.75rem;
     }
@@ -762,6 +908,10 @@
 
     .section-action {
       width: 100%;
+    }
+
+    .detail-grid {
+      grid-template-columns: 1fr;
     }
   }
 </style>

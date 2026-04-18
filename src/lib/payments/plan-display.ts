@@ -5,7 +5,8 @@ export interface PlanDisplay {
   tier: PaidSubscriptionTier;
   name: string;
   budgetUsd: number;
-  budgetDisplay: string;
+  priceAmount: number;
+  priceDisplay: string;
   summary: string;
   highlight: string;
 }
@@ -28,16 +29,31 @@ const PLAN_COPY: Record<PaidSubscriptionTier, Pick<PlanDisplay, 'name' | 'summar
   }
 };
 
+const PLAN_PRICE: Record<BillingCurrencyCode, Record<PaidSubscriptionTier, number>> = {
+  USD: {
+    basic: 1.5,
+    standard: 3,
+    premium: 5
+  },
+  ZAR: {
+    basic: 400,
+    standard: 800,
+    premium: 1600
+  }
+};
+
 export function getPaidPlanDisplay(currencyCode: BillingCurrencyCode): PlanDisplay[] {
   return PAID_PLAN_TIERS.map((tier) => {
     const budgetUsd = getTierBudgetUsd(tier);
+    const priceAmount = PLAN_PRICE[currencyCode][tier];
     const copy = PLAN_COPY[tier];
 
     return {
       tier,
       name: copy.name,
       budgetUsd,
-      budgetDisplay: formatUsageAmount(budgetUsd, currencyCode),
+      priceAmount,
+      priceDisplay: formatUsageAmount(priceAmount, currencyCode),
       summary: copy.summary,
       highlight: copy.highlight
     };

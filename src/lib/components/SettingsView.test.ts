@@ -88,6 +88,7 @@ describe('SettingsView', () => {
     expect(screen.getByRole('heading', { name: /subjects/i })).toBeInTheDocument();
     expect(screen.getAllByText('Mathematics').length).toBeGreaterThan(0);
     expect(screen.getByText(/^recommended start$/i)).toBeInTheDocument();
+    expect(screen.getByText(/start here first when you come back for a focused lesson/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /edit subjects/i })).toBeInTheDocument();
   });
 
@@ -128,6 +129,7 @@ describe('SettingsView', () => {
     expect(
       screen.getByText(/choose how much help you want each month/i)
     ).toBeInTheDocument();
+    expect(screen.getByText(/compare plans/i)).toBeInTheDocument();
     expect(
       screen.getByText(/steady support for regular schoolwork and quick topic help\./i)
     ).toBeInTheDocument();
@@ -168,6 +170,7 @@ describe('SettingsView', () => {
     expect(screen.getByText(/^step-by-step teaching$/i)).toBeInTheDocument();
     expect(screen.getByText(/^analogy preference$/i)).toBeInTheDocument();
     expect(screen.getByText(/^needs repetition$/i)).toBeInTheDocument();
+    expect(screen.getByText(/uses practical examples to anchor new topics quickly/i)).toBeInTheDocument();
   });
 
   it('disables the current plan action in settings', () => {

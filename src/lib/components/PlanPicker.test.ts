@@ -8,7 +8,8 @@ const plans = [
     tier: 'basic',
     name: 'Basic',
     budgetUsd: 1.5,
-    budgetDisplay: '$1.50',
+    priceAmount: 1.5,
+    priceDisplay: '$1.50',
     summary: 'A steady monthly lesson budget.',
     highlight: 'Good for regular study'
   },
@@ -16,7 +17,8 @@ const plans = [
     tier: 'standard',
     name: 'Standard',
     budgetUsd: 3,
-    budgetDisplay: '$3.00',
+    priceAmount: 3,
+    priceDisplay: '$3.00',
     summary: 'More room for deeper lesson work.',
     highlight: 'Balanced for weekly progress'
   },
@@ -24,7 +26,8 @@ const plans = [
     tier: 'premium',
     name: 'Premium',
     budgetUsd: 5,
-    budgetDisplay: '$5.00',
+    priceAmount: 5,
+    priceDisplay: '$5.00',
     summary: 'The largest monthly lesson budget.',
     highlight: 'Best for heavy use'
   }

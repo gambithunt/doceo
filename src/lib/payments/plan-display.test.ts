@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 describe('plan display helper', () => {
-  it('derives the paid plans in billing order with currency-formatted budgets', async () => {
+  it('derives the paid plans in billing order with currency-formatted prices', async () => {
     const { getPaidPlanDisplay } = await import('./plan-display');
 
     expect(getPaidPlanDisplay('USD')).toEqual([
@@ -9,19 +9,44 @@ describe('plan display helper', () => {
         tier: 'basic',
         name: 'Basic',
         budgetUsd: 1.5,
-        budgetDisplay: '$1.50'
+        priceAmount: 1.5,
+        priceDisplay: '$1.50'
       }),
       expect.objectContaining({
         tier: 'standard',
         name: 'Standard',
         budgetUsd: 3,
-        budgetDisplay: '$3.00'
+        priceAmount: 3,
+        priceDisplay: '$3.00'
       }),
       expect.objectContaining({
         tier: 'premium',
         name: 'Premium',
         budgetUsd: 5,
-        budgetDisplay: '$5.00'
+        priceAmount: 5,
+        priceDisplay: '$5.00'
+      })
+    ]);
+  });
+
+  it('uses the corrected South African plan prices for ZAR displays', async () => {
+    const { getPaidPlanDisplay } = await import('./plan-display');
+
+    expect(getPaidPlanDisplay('ZAR')).toEqual([
+      expect.objectContaining({
+        tier: 'basic',
+        priceAmount: 400,
+        priceDisplay: 'R400.00'
+      }),
+      expect.objectContaining({
+        tier: 'standard',
+        priceAmount: 800,
+        priceDisplay: 'R800.00'
+      }),
+      expect.objectContaining({
+        tier: 'premium',
+        priceAmount: 1600,
+        priceDisplay: 'R1600.00'
       })
     ]);
   });

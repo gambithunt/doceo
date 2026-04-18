@@ -30,7 +30,7 @@
   <div class="plan-overlay">
     <button type="button" class="plan-overlay-backdrop" aria-label="Dismiss plan picker backdrop" onclick={onClose}></button>
 
-    <div class="plan-overlay-panel" role="dialog" aria-modal="true" aria-label={title}>
+    <div class="plan-overlay-panel mission-card" role="dialog" aria-modal="true" aria-label={title}>
       <div class="plan-overlay-header">
         <div>
           <p class="plan-overlay-eyebrow">Billing</p>
@@ -70,9 +70,28 @@
     gap: 1rem;
     padding: 1.2rem;
     border-radius: var(--radius-xl);
-    border: 1px solid var(--border);
-    background: linear-gradient(180deg, var(--surface-strong), var(--surface));
-    box-shadow: var(--shadow);
+  }
+
+  .mission-card {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--glass-border));
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.13);
+    overflow: hidden;
+  }
+
+  .mission-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      ellipse 80% 60% at 30% 20%,
+      rgba(255, 255, 255, 0.05) 0%,
+      transparent 70%
+    );
+    pointer-events: none;
   }
 
   .plan-overlay-header {
@@ -90,7 +109,7 @@
   .plan-overlay-eyebrow {
     font-size: 0.72rem;
     letter-spacing: 0.04em;
-    color: var(--muted);
+    color: var(--text-soft);
   }
 
   h2 {
