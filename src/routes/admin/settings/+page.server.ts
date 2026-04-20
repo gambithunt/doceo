@@ -1,4 +1,5 @@
 import { getAiConfig, saveAiConfig, getProviders, saveProviderModels } from '$lib/server/ai-config';
+import { getTtsConfig, saveTtsConfig } from '$lib/server/tts-config';
 import { runModelScan } from '$lib/server/model-scan';
 import type { AiConfig } from '$lib/server/ai-config';
 import type { ProviderId } from '$lib/ai/providers';
@@ -7,6 +8,7 @@ import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
 import { getRegistrationMode, normalizeEmail, type RegistrationMode } from '$lib/server/invite-system';
+import { createTtsObservability } from '$lib/server/tts-observability';
 
 const ROUTE_MODES: AiMode[] = [
   'lesson-chat', 'lesson-plan', 'topic-shortlist', 'lesson-selector', 'subject-hints'
@@ -16,7 +18,8 @@ const VALID_MODES: RegistrationMode[] = ['open', 'invite_only', 'closed'];
 const REGISTRATION_MODE_KEY = 'registration_mode';
 
 export async function load() {
-  const [aiConfig, providers] = await Promise.all([getAiConfig(), getProviders()]);
+  const [aiConfig, providers, ttsConfig] = await Promise.all([getAiConfig(), getProviders(), getTtsConfig()]);
+  const ttsFallbackSummary = await createTtsObservability().getFallbackSummary(ttsConfig.fallbackProvider !== null);
   const supabase = createServerSupabaseAdmin();
 
   let registrationMode: RegistrationMode = 'open';
@@ -41,6 +44,8 @@ export async function load() {
 
   return {
     aiConfig,
+    ttsConfig,
+    ttsFallbackSummary,
     providers,
     budgetCapUsd: 50,
     alertThresholds: { errorRatePct: 5, spendPct: 75, latencyP95Ms: 3000 },
@@ -94,6 +99,61 @@ export const actions = {
         nextConfig: config
       }
     });
+    return { success: true };
+  },
+
+  saveTtsConfig: async ({ request }: { request: Request }) => {
+    const adminSession = await requireAdminSession(request);
+    const formData = await request.formData();
+    const previousConfig = await getTtsConfig();
+
+    const nextConfig = {
+      enabled: formData.get('enabled') === 'on',
+      defaultProvider: formData.get('defaultProvider'),
+      fallbackProvider: formData.get('fallbackProvider') || null,
+      previewEnabled: formData.get('previewEnabled') === 'on',
+      previewMaxChars: Number(formData.get('previewMaxChars') || previousConfig.previewMaxChars),
+      cacheEnabled: previousConfig.cacheEnabled,
+      languageDefault: previousConfig.languageDefault,
+      rolloutScope: previousConfig.rolloutScope,
+      openai: {
+        enabled: formData.get('openaiEnabled') === 'on',
+        model: formData.get('openaiModel'),
+        voice: formData.get('openaiVoice'),
+        speed: Number(formData.get('openaiSpeed') || previousConfig.openai.speed),
+        styleInstruction: formData.get('openaiStyleInstruction') || null,
+        format: formData.get('openaiFormat'),
+        timeoutMs: previousConfig.openai.timeoutMs,
+        retries: previousConfig.openai.retries
+      },
+      elevenlabs: {
+        enabled: formData.get('elevenlabsEnabled') === 'on',
+        model: formData.get('elevenlabsModel'),
+        voiceId: formData.get('elevenlabsVoiceId'),
+        format: formData.get('elevenlabsFormat'),
+        languageCode: formData.get('elevenlabsLanguageCode') || null,
+        stability: Number(formData.get('elevenlabsStability') || previousConfig.elevenlabs.stability),
+        similarityBoost: Number(
+          formData.get('elevenlabsSimilarityBoost') || previousConfig.elevenlabs.similarityBoost
+        ),
+        style: Number(formData.get('elevenlabsStyle') || previousConfig.elevenlabs.style),
+        speakerBoost: formData.get('elevenlabsSpeakerBoost') === 'on',
+        timeoutMs: previousConfig.elevenlabs.timeoutMs,
+        retries: previousConfig.elevenlabs.retries
+      }
+    };
+
+    await saveTtsConfig(nextConfig);
+    await createServerDynamicOperationsService()?.recordGovernanceAction({
+      actionType: 'tts_config_updated',
+      actorId: adminSession.profileId,
+      reason: 'Updated TTS provider, voice, preview, or fallback settings.',
+      payload: {
+        previousConfig,
+        nextConfig
+      }
+    });
+
     return { success: true };
   },
 

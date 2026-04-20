@@ -1,14 +1,22 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { applyAction } from '$app/forms';
+  import { onDestroy } from 'svelte';
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
   import type { ProviderDefinition, ModelOption, ProviderId } from '$lib/ai/providers';
   import type { AiConfig } from '$lib/server/ai-config';
+  import type { AppTtsSettings } from '$lib/server/tts-config';
   import type { RegistrationMode } from '$lib/server/invite-system';
 
   const { data, form } = $props<{
     data: {
       aiConfig: AiConfig;
+      ttsConfig: AppTtsSettings;
+      ttsFallbackSummary: {
+        enabled: boolean;
+        lastOccurredAt: string | null;
+        lastResultSummary: string | null;
+      };
       providers: ProviderDefinition[];
       budgetCapUsd: number;
       alertThresholds: { errorRatePct: number; spendPct: number };
@@ -60,15 +68,47 @@
   let modeSaveState  = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
   let inviteSaveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
   let inviteError    = $state<string | null>(null);
+  let ttsSaveState   = $state<'idle' | 'saving' | 'saved'>('idle');
+  let ttsPreviewText = $state('Preview the current teaching voice.');
+  let ttsPreviewState = $state<'idle' | 'loading' | 'playing' | 'error'>('idle');
+  let ttsPreviewError = $state<string | null>(null);
+  let previewAudioUrl = $state<string | null>(null);
+  let previewAudio = $state<HTMLAudioElement | null>(null);
 
   const selectedProvider = $derived(
-    data.providers.find((provider: ProviderDefinition) => provider.id === selectedProviderId) ?? data.providers[0]
+    data.providers.find((provider: ProviderDefinition) => provider.id === selectedProviderId) ?? data.providers[0] ?? null
   );
 
-  const allModels = $derived(selectedProvider.models);
+  const allModels = $derived(selectedProvider?.models ?? []);
+
+  let ttsEnabled = $state(data.ttsConfig.enabled);
+  let ttsDefaultProvider = $state(data.ttsConfig.defaultProvider);
+  let ttsFallbackProvider = $state(data.ttsConfig.fallbackProvider ?? '');
+  let ttsPreviewEnabled = $state(data.ttsConfig.previewEnabled);
+  let ttsPreviewMaxChars = $state(data.ttsConfig.previewMaxChars);
+  let openaiEnabled = $state(data.ttsConfig.openai.enabled);
+  let openaiModel = $state(data.ttsConfig.openai.model);
+  let openaiVoice = $state(data.ttsConfig.openai.voice);
+  let openaiSpeed = $state(String(data.ttsConfig.openai.speed));
+  let openaiStyleInstruction = $state(data.ttsConfig.openai.styleInstruction ?? '');
+  let openaiFormat = $state(data.ttsConfig.openai.format);
+  let elevenlabsEnabled = $state(data.ttsConfig.elevenlabs.enabled);
+  let elevenlabsModel = $state(data.ttsConfig.elevenlabs.model);
+  let elevenlabsVoiceId = $state(data.ttsConfig.elevenlabs.voiceId);
+  let elevenlabsFormat = $state(data.ttsConfig.elevenlabs.format);
+  let elevenlabsLanguageCode = $state(data.ttsConfig.elevenlabs.languageCode ?? '');
+  let elevenlabsStability = $state(String(data.ttsConfig.elevenlabs.stability));
+  let elevenlabsSimilarityBoost = $state(String(data.ttsConfig.elevenlabs.similarityBoost));
+  let elevenlabsStyle = $state(String(data.ttsConfig.elevenlabs.style));
+  let elevenlabsSpeakerBoost = $state(data.ttsConfig.elevenlabs.speakerBoost);
 
   function onProviderChange() {
-    const provider = data.providers.find((provider: ProviderDefinition) => provider.id === selectedProviderId) ?? selectedProvider;
+    const provider =
+      data.providers.find((provider: ProviderDefinition) => provider.id === selectedProviderId) ?? selectedProvider;
+    if (!provider) {
+      return;
+    }
+
     tierModels = {
       fast:     provider.models.find((model: ModelOption) => model.tier === 'fast')?.id     ?? '',
       default:  provider.models.find((model: ModelOption) => model.tier === 'default')?.id  ?? '',
@@ -77,7 +117,7 @@
   }
 
   function getModelCost(tier: 'fast' | 'default' | 'thinking'): string {
-    const model = selectedProvider.models.find((item: ModelOption) => item.id === tierModels[tier]);
+    const model = selectedProvider?.models.find((item: ModelOption) => item.id === tierModels[tier]);
     if (!model) return '';
     return `$${model.inputPer1M.toFixed(2)} in / $${model.outputPer1M.toFixed(2)} out`;
   }
@@ -106,6 +146,69 @@
   const pendingInvites = $derived(
     data.invites.filter((inv: Invite) => inv.status === 'pending')
   );
+
+  function cleanupPreviewAudio() {
+    previewAudio?.pause();
+    previewAudio = null;
+    if (previewAudioUrl) {
+      URL.revokeObjectURL(previewAudioUrl);
+      previewAudioUrl = null;
+    }
+  }
+
+  async function previewTtsVoice() {
+    const content = ttsPreviewText.trim();
+    if (!content) {
+      ttsPreviewError = 'Preview text is required.';
+      ttsPreviewState = 'error';
+      return;
+    }
+
+    cleanupPreviewAudio();
+    ttsPreviewState = 'loading';
+    ttsPreviewError = null;
+
+    try {
+      const response = await fetch('/api/admin/tts/preview', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? 'Preview unavailable.');
+      }
+
+      const mimeType = response.headers.get('content-type') ?? 'audio/mpeg';
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+      const audio = new Audio(audioUrl);
+      previewAudioUrl = audioUrl;
+      previewAudio = audio;
+      audio.onended = () => {
+        ttsPreviewState = 'idle';
+        cleanupPreviewAudio();
+      };
+      audio.onerror = () => {
+        ttsPreviewState = 'error';
+        ttsPreviewError = 'Preview playback failed.';
+        cleanupPreviewAudio();
+      };
+      await audio.play();
+      ttsPreviewState = 'playing';
+    } catch (error) {
+      ttsPreviewState = 'error';
+      ttsPreviewError = error instanceof Error ? error.message : 'Preview unavailable.';
+      cleanupPreviewAudio();
+    }
+  }
+
+  onDestroy(() => {
+    cleanupPreviewAudio();
+  });
 </script>
 
 <div class="page">
@@ -228,6 +331,320 @@
           {/if}
         </button>
         <p class="save-note">Takes effect within 30 seconds on all routes.</p>
+      </div>
+    </form>
+
+    <form
+      method="POST"
+      action="?/saveTtsConfig"
+      use:enhance={() => {
+        ttsSaveState = 'saving';
+        return async ({ update }) => {
+          await update({ reset: false });
+          ttsSaveState = 'saved';
+          setTimeout(() => (ttsSaveState = 'idle'), 2200);
+        };
+      }}
+      class="settings-form"
+    >
+      <div class="settings-section">
+        <h2 class="section-title">Text to Speech</h2>
+        <p class="section-desc">
+          Configure the lesson teaching voice, preview cap, and fallback behavior for the server-backed TTS path.
+        </p>
+
+        <div class="field-row field-row--stacked">
+          <label class="checkbox-row">
+            <input type="checkbox" name="enabled" bind:checked={ttsEnabled} />
+            <span>Enable lesson TTS</span>
+          </label>
+          <label class="checkbox-row">
+            <input type="checkbox" name="previewEnabled" bind:checked={ttsPreviewEnabled} />
+            <span>Allow admin preview</span>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field-label" for="tts-default-provider">Default Provider</label>
+          <div class="select-wrap">
+            <select
+              id="tts-default-provider"
+              name="defaultProvider"
+              class="setting-select"
+              bind:value={ttsDefaultProvider}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="elevenlabs">ElevenLabs</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label class="field-label" for="tts-fallback-provider">Fallback Provider</label>
+          <div class="select-wrap">
+            <select
+              id="tts-fallback-provider"
+              name="fallbackProvider"
+              class="setting-select"
+              bind:value={ttsFallbackProvider}
+            >
+              <option value="">Disabled</option>
+              <option value="openai">OpenAI</option>
+              <option value="elevenlabs">ElevenLabs</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label class="field-label" for="tts-preview-max-chars">Preview Max Chars</label>
+          <input
+            id="tts-preview-max-chars"
+            name="previewMaxChars"
+            type="number"
+            min="1"
+            max="2000"
+            class="setting-input narrow"
+            bind:value={ttsPreviewMaxChars}
+          />
+        </div>
+
+        <div class="tts-provider-grid">
+          <section class="tts-provider-card">
+            <div class="tts-provider-header">
+              <h3>OpenAI</h3>
+              <label class="checkbox-row checkbox-row--compact">
+                <input type="checkbox" name="openaiEnabled" bind:checked={openaiEnabled} />
+                <span>Enabled</span>
+              </label>
+            </div>
+
+            <div class="field-stack">
+              <label class="field-stack-label" for="tts-openai-model">Model</label>
+              <div class="select-wrap select-wrap--full">
+                <select id="tts-openai-model" name="openaiModel" class="setting-select setting-select--full" bind:value={openaiModel}>
+                  <option value="gpt-4o-mini-tts">gpt-4o-mini-tts</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field-stack">
+              <label class="field-stack-label" for="tts-openai-voice">Voice</label>
+              <div class="select-wrap select-wrap--full">
+                <select id="tts-openai-voice" name="openaiVoice" class="setting-select setting-select--full" bind:value={openaiVoice}>
+                  <option value="alloy">alloy</option>
+                  <option value="ash">ash</option>
+                  <option value="ballad">ballad</option>
+                  <option value="coral">coral</option>
+                  <option value="echo">echo</option>
+                  <option value="fable">fable</option>
+                  <option value="nova">nova</option>
+                  <option value="onyx">onyx</option>
+                  <option value="sage">sage</option>
+                  <option value="shimmer">shimmer</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="tts-inline-fields">
+              <div class="field-stack">
+                <label class="field-stack-label" for="tts-openai-format">Format</label>
+                <div class="select-wrap select-wrap--full">
+                  <select id="tts-openai-format" name="openaiFormat" class="setting-select setting-select--full" bind:value={openaiFormat}>
+                    <option value="mp3">mp3</option>
+                    <option value="wav">wav</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field-stack">
+                <label class="field-stack-label" for="tts-openai-speed">Speed</label>
+                <input id="tts-openai-speed" name="openaiSpeed" type="number" min="0.25" max="4" step="0.05" class="setting-input" bind:value={openaiSpeed} />
+              </div>
+            </div>
+
+            <div class="field-stack">
+              <label class="field-stack-label" for="tts-openai-style">Style Instruction</label>
+              <input id="tts-openai-style" name="openaiStyleInstruction" type="text" class="setting-input" bind:value={openaiStyleInstruction} />
+            </div>
+          </section>
+
+          <section class="tts-provider-card">
+            <div class="tts-provider-header">
+              <h3>ElevenLabs</h3>
+              <label class="checkbox-row checkbox-row--compact">
+                <input type="checkbox" name="elevenlabsEnabled" bind:checked={elevenlabsEnabled} />
+                <span>Enabled</span>
+              </label>
+            </div>
+
+            <div class="field-stack">
+              <label class="field-stack-label" for="tts-elevenlabs-model">Model</label>
+              <div class="select-wrap select-wrap--full">
+                <select
+                  id="tts-elevenlabs-model"
+                  name="elevenlabsModel"
+                  class="setting-select setting-select--full"
+                  bind:value={elevenlabsModel}
+                >
+                  <option value="eleven_multilingual_v2">eleven_multilingual_v2</option>
+                  <option value="eleven_flash_v2_5">eleven_flash_v2_5</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field-stack">
+              <label class="field-stack-label" for="tts-elevenlabs-voice">Voice ID</label>
+              <div class="select-wrap select-wrap--full">
+                <select
+                  id="tts-elevenlabs-voice"
+                  name="elevenlabsVoiceId"
+                  class="setting-select setting-select--full"
+                  bind:value={elevenlabsVoiceId}
+                >
+                  <option value="JBFqnCBsd6RMkjVDRZzb">JBFqnCBsd6RMkjVDRZzb</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="tts-inline-fields">
+              <div class="field-stack">
+                <label class="field-stack-label" for="tts-elevenlabs-format">Format</label>
+                <div class="select-wrap select-wrap--full">
+                  <select
+                    id="tts-elevenlabs-format"
+                    name="elevenlabsFormat"
+                    class="setting-select setting-select--full"
+                    bind:value={elevenlabsFormat}
+                  >
+                    <option value="mp3">mp3</option>
+                    <option value="wav">wav</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field-stack">
+                <label class="field-stack-label" for="tts-elevenlabs-language">Language</label>
+                <div class="select-wrap select-wrap--full">
+                  <select
+                    id="tts-elevenlabs-language"
+                    name="elevenlabsLanguageCode"
+                    class="setting-select setting-select--full"
+                    bind:value={elevenlabsLanguageCode}
+                  >
+                    <option value="en">en</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="tts-inline-fields">
+              <div class="field-stack">
+                <label class="field-stack-label" for="tts-elevenlabs-stability">Stability</label>
+                <input id="tts-elevenlabs-stability" name="elevenlabsStability" type="number" min="0" max="1" step="0.05" class="setting-input" bind:value={elevenlabsStability} />
+              </div>
+              <div class="field-stack">
+                <label class="field-stack-label" for="tts-elevenlabs-similarity">Similarity Boost</label>
+                <input
+                  id="tts-elevenlabs-similarity"
+                  name="elevenlabsSimilarityBoost"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  class="setting-input"
+                  bind:value={elevenlabsSimilarityBoost}
+                />
+              </div>
+            </div>
+
+            <div class="tts-inline-fields">
+              <div class="field-stack">
+                <label class="field-stack-label" for="tts-elevenlabs-style">Style</label>
+                <input id="tts-elevenlabs-style" name="elevenlabsStyle" type="number" min="0" max="1" step="0.05" class="setting-input" bind:value={elevenlabsStyle} />
+              </div>
+              <label class="checkbox-row checkbox-row--panel">
+                <input type="checkbox" name="elevenlabsSpeakerBoost" bind:checked={elevenlabsSpeakerBoost} />
+                <span>Speaker Boost</span>
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <div class="tts-preview-panel">
+          <div class="tts-preview-copy">
+            <h3>Preview Voice</h3>
+            <p class="section-desc section-desc--tight">
+              Preview uses the active provider and fallback settings, capped before synthesis to control cost.
+            </p>
+          </div>
+
+          <label class="field-stack" for="tts-preview-text">
+            <span class="field-stack-label">Preview Text</span>
+            <textarea
+              id="tts-preview-text"
+              class="setting-input setting-textarea"
+              bind:value={ttsPreviewText}
+              maxlength={ttsPreviewMaxChars}
+            ></textarea>
+          </label>
+
+          <div class="tts-preview-footer">
+            <span class="char-count">{ttsPreviewText.trim().length}/{ttsPreviewMaxChars}</span>
+            <button
+              type="button"
+              class="scan-btn"
+              onclick={previewTtsVoice}
+              disabled={!ttsPreviewEnabled || ttsPreviewState === 'loading'}
+            >
+              {#if ttsPreviewState === 'loading'}
+                <span class="spinner" aria-hidden="true"></span>
+                <span>Loading…</span>
+              {:else if ttsPreviewState === 'playing'}
+                Preview Voice
+              {:else}
+                Preview Voice
+              {/if}
+            </button>
+          </div>
+
+          {#if ttsPreviewError}
+            <p class="error-text">{ttsPreviewError}</p>
+          {/if}
+        </div>
+
+        <div class="tts-status-grid">
+          <div class="status-card">
+            <span class="status-label">Fallback Enabled</span>
+            <strong>{data.ttsFallbackSummary.enabled ? 'Yes' : 'No'}</strong>
+          </div>
+          <div class="status-card">
+            <span class="status-label">Last Fallback</span>
+            <strong>{data.ttsFallbackSummary.lastResultSummary ?? 'No fallback recorded yet.'}</strong>
+            {#if data.ttsFallbackSummary.lastOccurredAt}
+              <span class="status-meta">{formatDate(data.ttsFallbackSummary.lastOccurredAt)}</span>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <div class="form-footer">
+        <button
+          type="submit"
+          class="save-btn save-btn--{ttsSaveState}"
+          disabled={ttsSaveState === 'saving'}
+          aria-label={ttsSaveState === 'saved' ? 'TTS settings saved' : 'Save TTS Settings'}
+        >
+          {#if ttsSaveState === 'saving'}
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span>Saving…</span>
+          {:else if ttsSaveState === 'saved'}
+            <span class="btn-check" aria-hidden="true">✓</span>
+            <span>Saved!</span>
+          {:else}
+            Save TTS Settings
+          {/if}
+        </button>
+        <p class="save-note">Updates apply to lesson teaching-bubble playback and admin preview.</p>
       </div>
     </form>
 
@@ -494,6 +911,8 @@
   }
   .setting-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
   .compact-select { min-width: unset; width: 100%; font-size: 0.78rem; }
+  .setting-select--full { width: 100%; min-width: 0; }
+  .select-wrap--full { width: 100%; }
 
   /* Tier table */
   .tier-config { display: flex; flex-direction: column; margin-bottom: 1rem; }
@@ -559,6 +978,127 @@
   .setting-input.narrow { width: 6rem; }
   .input-wrap .setting-input { border: none; border-radius: 0; }
   .setting-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+  .setting-textarea { min-height: 7rem; resize: vertical; }
+
+  .field-row--stacked {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .checkbox-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.84rem;
+    color: var(--text);
+  }
+
+  .checkbox-row input {
+    accent-color: var(--accent);
+  }
+
+  .checkbox-row--compact {
+    font-size: 0.78rem;
+    color: var(--text-soft);
+  }
+
+  .checkbox-row--panel {
+    align-self: end;
+    min-height: 2.5rem;
+  }
+
+  .field-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .field-stack-label {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-soft);
+  }
+
+  .tts-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .tts-provider-card,
+  .tts-preview-panel,
+  .status-card {
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: 0.9rem;
+    padding: 1rem;
+  }
+
+  .tts-provider-header,
+  .tts-preview-footer,
+  .tts-status-grid {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .tts-provider-header {
+    margin-bottom: 0.85rem;
+  }
+
+  .tts-provider-header h3,
+  .tts-preview-copy h3 {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--text);
+  }
+
+  .tts-inline-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.8rem;
+  }
+
+  .tts-preview-panel {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .section-desc--tight {
+    margin-bottom: 0;
+  }
+
+  .char-count,
+  .status-label,
+  .status-meta {
+    font-size: 0.76rem;
+    color: var(--muted);
+  }
+
+  .tts-status-grid {
+    margin-top: 1rem;
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .status-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .status-card strong {
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
 
   /* Footer */
   .form-footer { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
@@ -716,5 +1256,45 @@
   .status-revoked {
     background: color-mix(in srgb, var(--muted) 15%, transparent);
     color: var(--muted);
+  }
+
+  @media (max-width: 760px) {
+    .page-body {
+      padding: 1.25rem 1rem 2rem;
+    }
+
+    .field-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .select-wrap,
+    .setting-select,
+    .input-wrap {
+      width: 100%;
+    }
+
+    .tier-config-header,
+    .tier-config-row,
+    .override-row,
+    .overrides-header,
+    .invites-header,
+    .invite-row,
+    .tts-provider-grid,
+    .tts-inline-fields,
+    .tts-status-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .tts-preview-footer,
+    .tts-provider-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .checkbox-row--panel {
+      align-self: start;
+      min-height: 0;
+    }
   }
 </style>

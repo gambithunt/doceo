@@ -12,6 +12,7 @@ export const serverEnv = {
   supabaseServiceRoleKey: readEnv('SUPABASE_SERVICE_ROLE_KEY'),
   githubModelsToken: readEnv('GITHUB_MODELS_TOKEN'),
   openaiApiKey: readEnv('OPENAI_API_KEY'),
+  elevenlabsApiKey: readEnv('ELEVENLABS_API_KEY'),
   anthropicApiKey: readEnv('ANTHROPIC_API_KEY'),
   kimiApiKey: readEnv('KIMI_API_KEY'),
   stripeSecretKey: readEnv('STRIPE_SECRET_KEY'),

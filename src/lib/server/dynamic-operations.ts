@@ -44,7 +44,11 @@ export interface DynamicOperationIncidentSummary {
   detail: string;
 }
 
-export type DynamicGovernanceActionType = 'lesson_lineage_preferred' | 'ai_config_updated' | 'ai_route_override_reset';
+export type DynamicGovernanceActionType =
+  | 'lesson_lineage_preferred'
+  | 'ai_config_updated'
+  | 'ai_route_override_reset'
+  | 'tts_config_updated';
 
 export interface DynamicGovernanceActionRecord {
   id: string;

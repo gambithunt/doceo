@@ -69,6 +69,9 @@
 	"/api/admin/promote-topics": [
 		"src/routes/api/admin/promote-topics/+server.ts"
 	],
+	"/api/admin/tts/preview": [
+		"src/routes/api/admin/tts/preview/+server.ts"
+	],
 	"/api/ai/institution-verify": [
 		"src/routes/api/ai/institution-verify/+server.ts"
 	],
@@ -164,6 +167,9 @@
 	],
 	"/api/subjects/verify": [
 		"src/routes/api/subjects/verify/+server.ts"
+	],
+	"/api/tts/lesson": [
+		"src/routes/api/tts/lesson/+server.ts"
 	],
 	"/(app)/dashboard": [],
 	"/(app)/lesson": [],

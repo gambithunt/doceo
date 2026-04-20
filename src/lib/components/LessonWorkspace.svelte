@@ -1,29 +1,41 @@
 <script lang="ts">
+  import { dev } from '$app/environment';
   import { getActiveLessonSession } from '$lib/data/platform';
-  import { deriveLessonProgressDisplay, getNextStage, getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
+  import { deriveLessonProgressDisplay, getStageLabel, getStageNumber } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
+  import { createLessonTts, type LessonTtsState } from '$lib/audio/lesson-tts';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
+  import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
+  import {
+    getNextStepPrompt,
+    getStageContextCopy,
+    getVisibleQuickActionDefinitions,
+    LESSON_WORKSPACE_VISIBLE_STAGES,
+    type VisibleLessonStage
+  } from '$lib/components/lesson-workspace-ui';
   import { appState } from '$lib/stores/app-state';
   import type { AppState, ConceptItem, LessonMessage, LessonStage } from '$lib/types';
-  import { dev } from '$app/environment';
 
   const { state: viewState }: { state: AppState } = $props();
   const lessonSession = $derived(getActiveLessonSession(viewState));
+  const lessonTts = createLessonTts();
   let composer = $state('');
   let chatElement = $state<HTMLDivElement | null>(null);
   let expandedConcepts = $state(new Set<string>());
   let composerFocused = $state(false);
   let showScrollDown = $state(false);
   let celebratingStage = $state<LessonStage | null>(null);
+  let hasTrackedCompletedStages = $state(false);
+  let activeTtsMessageId = $state<string | null>(null);
+  let activeTtsState = $state<LessonTtsState>('idle');
+  let ttsPlaybackRequest = 0;
   let prevCompleted: LessonStage[] = [];
-  let railExpanded = $state(false);
-  let railOpen = $state<'next' | 'mission' | null>(null);
-  let railPulse = $state(true);
   let usefulness = $state<number | null>(null);
   let clarity = $state<number | null>(null);
   let confidenceGain = $state<number | null>(null);
   let ratingNote = $state('');
   let ratingPending = $state(false);
+  let useDesktopActionRow = $state(false);
   const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
 
   function toSentenceCase(str: string): string {
@@ -67,7 +79,7 @@
     };
   }
 
-  const visibleStages = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete');
+  const visibleStages = LESSON_WORKSPACE_VISIBLE_STAGES;
   const lessonProgressDisplay = $derived(
     lessonSession
       ? deriveLessonProgressDisplay(lessonSession)
@@ -77,10 +89,6 @@
           progressPercent: 0
         }
   );
-  const currentStageNumber = $derived(lessonProgressDisplay.stageNumber);
-  const nextStage = $derived(lessonSession ? getNextStage(lessonSession.currentStage) : null);
-  const lessonProgressPercent = $derived(lessonProgressDisplay.progressPercent);
-  const arcProgress = $derived(Math.max(4, Math.min(100, lessonProgressPercent)));
   const hasInput = $derived(composer.trim().length > 0);
 
   const lastAssistantMessage = $derived(
@@ -93,6 +101,26 @@
   const canSubmitRating = $derived(
     usefulness !== null && clarity !== null && confidenceGain !== null && !ratingPending
   );
+  const visibleQuickActions = $derived(
+    lessonSession && lessonSession.currentStage !== 'complete'
+      ? getVisibleQuickActionDefinitions(lessonSession.currentStage as VisibleLessonStage)
+      : []
+  );
+  const supportAnchorIndex = $derived.by(() => {
+    if (!lessonSession || lessonSession.status === 'complete') {
+      return null;
+    }
+
+    for (let index = lessonSession.messages.length - 1; index >= 0; index -= 1) {
+      const message = lessonSession.messages[index];
+      if (!message || message.role === 'user' || message.type === 'stage_start') {
+        continue;
+      }
+      return index;
+    }
+
+    return null;
+  });
 
   $effect(() => {
     composer = viewState.ui.composerDraft;
@@ -104,11 +132,6 @@
     if (chatElement && !showScrollDown) {
       chatElement.scrollTo({ top: chatElement.scrollHeight, behavior: 'smooth' });
     }
-  });
-
-  $effect(() => {
-    const timer = setTimeout(() => { railPulse = false; }, 2500);
-    return () => clearTimeout(timer);
   });
 
   $effect(() => {
@@ -128,6 +151,11 @@
 
   $effect(() => {
     const completed = lessonSession?.stagesCompleted ?? [];
+    if (!hasTrackedCompletedStages) {
+      prevCompleted = [...completed];
+      hasTrackedCompletedStages = true;
+      return;
+    }
     const newlyCompleted = completed.find((s) => !prevCompleted.includes(s));
     if (newlyCompleted) {
       celebratingStage = newlyCompleted;
@@ -136,6 +164,37 @@
       }, 700);
     }
     prevCompleted = [...completed];
+  });
+
+  $effect(() => {
+    return () => {
+      lessonTts.destroy();
+    };
+  });
+
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      useDesktopActionRow = false;
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(min-width: 900px)');
+    const syncDesktopActionRow = (): void => {
+      useDesktopActionRow = mediaQuery.matches;
+    };
+
+    syncDesktopActionRow();
+
+    const addListener = mediaQuery.addEventListener?.bind(mediaQuery);
+    const removeListener = mediaQuery.removeEventListener?.bind(mediaQuery);
+
+    if (addListener && removeListener) {
+      addListener('change', syncDesktopActionRow);
+      return () => removeListener('change', syncDesktopActionRow);
+    }
+
+    mediaQuery.addListener?.(syncDesktopActionRow);
+    return () => mediaQuery.removeListener?.(syncDesktopActionRow);
   });
 
   function onChatScroll(e: Event): void {
@@ -161,15 +220,6 @@
     return lessonSession.currentStage === stage ? 'active' : 'upcoming';
   }
 
-  function toggleRail(): void {
-    railExpanded = !railExpanded;
-    if (!railExpanded) railOpen = null;
-  }
-
-  function toggleRailCard(card: 'next' | 'mission'): void {
-    railOpen = railOpen === card ? null : card;
-  }
-
   function submit(): void {
     if (composer.trim().length === 0) {
       return;
@@ -178,8 +228,6 @@
     void appState.sendLessonMessage(composer.trim());
     composer = '';
     composerFocused = false;
-    railOpen = null;
-    railExpanded = false;
   }
 
   function onInput(event: Event): void {
@@ -254,25 +302,6 @@
     return '⭐';
   }
 
-  function stagePrompt(stage: LessonStage): string {
-    if (stage === 'orientation') return 'Get the big picture before you dive into the details.';
-    if (stage === 'concepts') return 'Unpack the core ideas one by one and connect them.';
-    if (stage === 'construction') return 'Build the logic together so the pattern sticks.';
-    if (stage === 'examples') return 'See the idea working in real situations.';
-    if (stage === 'practice') return 'Try it yourself and check the moves you choose.';
-    if (stage === 'check') return 'Show what has landed and spot anything that still feels shaky.';
-    return 'Keep going and build on what you already know.';
-  }
-
-  function helperPrompt(stage: LessonStage): string {
-    if (stage === 'orientation') return 'Give me a real-world example for this topic.';
-    if (stage === 'concepts') return 'Compare two of these concepts for me.';
-    if (stage === 'construction') return 'Walk me through this step by step.';
-    if (stage === 'examples') return 'Show me a simpler example first.';
-    if (stage === 'practice') return 'Give me a hint instead of the answer.';
-    return 'Quiz me on this before we move on.';
-  }
-
   function conceptEmoji(concept: ConceptItem, index: number): string {
     const name = concept.name.toLowerCase();
     if (name.includes('competition')) return '🍎';
@@ -282,6 +311,84 @@
     if (name.includes('control')) return '🎛️';
     const fallback = ['💡', '🧩', '✨', '📘', '🎯'];
     return fallback[index % fallback.length];
+  }
+
+  function canPlayTutorBubble(message: LessonMessage): boolean {
+    return message.role === 'assistant' && message.type === 'teaching';
+  }
+
+  function ttsStateForMessage(message: LessonMessage): LessonTtsState {
+    return activeTtsMessageId === message.id ? activeTtsState : 'idle';
+  }
+
+  function ttsLabelForState(state: LessonTtsState): string {
+    if (state === 'playing') {
+      return 'Stop tutor audio';
+    }
+
+    if (state === 'paused') {
+      return 'Resume tutor audio';
+    }
+
+    return 'Play tutor audio';
+  }
+
+  function updateTtsState(messageId: string, nextState: LessonTtsState): void {
+    if (nextState === 'idle') {
+      if (activeTtsMessageId === messageId) {
+        activeTtsMessageId = null;
+        activeTtsState = 'idle';
+      }
+      return;
+    }
+
+    activeTtsMessageId = messageId;
+    activeTtsState = nextState;
+  }
+
+  async function playTutorBubble(message: LessonMessage): Promise<void> {
+    if (!lessonSession) {
+      return;
+    }
+
+    const requestToken = ++ttsPlaybackRequest;
+    const started = await lessonTts.play({
+      lessonSessionId: lessonSession.id,
+      lessonMessageId: message.id,
+      content: message.content
+    }, {
+      onStateChange: (nextState) => updateTtsState(message.id, nextState)
+    });
+
+    if (started && requestToken === ttsPlaybackRequest) {
+      activeTtsMessageId = message.id;
+      activeTtsState = 'playing';
+    }
+  }
+
+  async function toggleTutorBubbleAudio(message: LessonMessage): Promise<void> {
+    if (!canPlayTutorBubble(message)) {
+      return;
+    }
+
+    const state = ttsStateForMessage(message);
+    if (state === 'playing') {
+      ttsPlaybackRequest += 1;
+      lessonTts.stop();
+      activeTtsMessageId = null;
+      activeTtsState = 'idle';
+      return;
+    }
+
+    if (state === 'paused') {
+      if (await lessonTts.resume()) {
+        activeTtsMessageId = message.id;
+        activeTtsState = 'playing';
+        return;
+      }
+    }
+
+    await playTutorBubble(message);
   }
 </script>
 
@@ -312,14 +419,18 @@
           {#if i > 0}
             <div
               class="stage-connector"
+              data-stage-connector-after={visibleStages[i - 1]}
               class:filled={statusForStage(visibleStages[i - 1]) === 'completed'}
+              class:resolving={visibleStages[i - 1] === celebratingStage}
             ></div>
           {/if}
           <div
             class="stage-node"
+            data-stage={stage}
             class:completed={statusForStage(stage) === 'completed'}
             class:active={statusForStage(stage) === 'active'}
             class:celebrating={celebratingStage === stage}
+            class:activating={i > 0 && visibleStages[i - 1] === celebratingStage && statusForStage(stage) === 'active'}
           >
             <div class="node-dot">
               {#if statusForStage(stage) === 'completed'}
@@ -340,7 +451,7 @@
       <!-- Chat area -->
       <div class="chat-wrap">
         <div class="chat-area" bind:this={chatElement} onscroll={onChatScroll}>
-          {#each lessonSession.messages as message}
+          {#each lessonSession.messages as message, messageIndex}
             {#if message.type === 'stage_start'}
               <div class="stage-transition" aria-hidden="true">
                 <span class="stage-transition-pill">
@@ -350,11 +461,11 @@
             {:else if message.type === 'concept_cards'}
               <div class="concept-cards-panel">
                 <p class="concept-cards-label">Pick a concept to go deeper 🔍</p>
-                {#each message.conceptItems ?? [] as concept, i}
-                  {@const key = `${message.id}-${i}`}
+                {#each message.conceptItems ?? [] as concept, conceptIndex}
+                  {@const key = `${message.id}-${conceptIndex}`}
                   <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
                     <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
-                      <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, i)}</span>
+                      <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
                       <div class="concept-card-title">
                         <span class="concept-name">{concept.name}</span>
                         <span class="concept-summary">{concept.summary}</span>
@@ -379,30 +490,106 @@
                   </div>
                 {/each}
               </div>
+              {#if supportAnchorIndex === messageIndex}
+                <section class="lesson-support-object" aria-label="Lesson support">
+                  <p class="lesson-support-copy">{getStageContextCopy(lessonSession.currentStage)}</p>
+                  {#if !useDesktopActionRow}
+                    <div class="lesson-support-actions">
+                      <button
+                        type="button"
+                        class="btn btn-primary lesson-support-cta"
+                        onclick={() => sendQuickReply(getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage))}
+                      >
+                        <span>Next step</span>
+                        <span class="next-step-arrow" aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  {/if}
+                </section>
+              {/if}
             {:else}
-              <article
-                class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
-                class:compact-reply={isCompactUserReply(message)}
+              <div
+                class="message-support-cluster"
+                class:is-support-anchor={supportAnchorIndex === messageIndex}
               >
-                {#if message.type === 'question'}
-                  {@const questionCard = parseQuestionCard(message.content)}
-                  <div class="question-kicker">
-                    <span class="question-icon" aria-hidden="true">?</span>
-                    <small>Question</small>
-                  </div>
-                  {#if questionCard.concept}
-                    <span class="question-chip">{questionCard.concept}</span>
+                <article
+                  class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
+                  class:compact-reply={isCompactUserReply(message)}
+                  class:bubble-with-tts={canPlayTutorBubble(message)}
+                >
+                  {#if message.type === 'question'}
+                    {@const questionCard = parseQuestionCard(message.content)}
+                    <div class="question-kicker">
+                      <span class="question-icon" aria-hidden="true">?</span>
+                      <small>Question</small>
+                    </div>
+                    {#if questionCard.concept}
+                      <span class="question-chip">{questionCard.concept}</span>
+                    {/if}
+                    <div class="bubble-body question-body">
+                      <p>{questionCard.prompt}</p>
+                    </div>
+                  {:else}
+                    {#if message.type === 'side_thread'}
+                      <small>↳ Side thread</small>
+                    {/if}
+                    {#if canPlayTutorBubble(message)}
+                      {@const ttsState = ttsStateForMessage(message)}
+                      <button
+                        type="button"
+                        class="bubble-tts-control"
+                        data-tts-state={ttsState}
+                        aria-label={ttsLabelForState(ttsState)}
+                        aria-pressed={ttsState !== 'idle'}
+                        onclick={() => toggleTutorBubbleAudio(message)}
+                      >
+                        <span class="sr-only">{ttsLabelForState(ttsState)}</span>
+                        <svg class="bubble-tts-icon" viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            d="M3 10v4h4l5 4V6L7 10H3Zm12.5 2a3.5 3.5 0 0 0-2-3.15v6.29A3.5 3.5 0 0 0 15.5 12Z"
+                            fill="currentColor"
+                          />
+                          <path
+                            d="M16 6.5a7 7 0 0 1 0 11"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-linecap="round"
+                            stroke-width="1.8"
+                          />
+                        </svg>
+                      </button>
+                    {/if}
+                    {@const promptSplit =
+                      message.role === 'assistant' && message.type === 'teaching'
+                        ? splitTutorPrompt(message.content)
+                        : { body: message.content, prompt: null }}
+                    <div class="bubble-body">
+                      {@html renderSimpleMarkdown(promptSplit.body)}
+                      {#if promptSplit.prompt}
+                        <div class="bubble-prompt">{@html renderSimpleMarkdown(promptSplit.prompt)}</div>
+                      {/if}
+                    </div>
                   {/if}
-                  <div class="bubble-body question-body">
-                    <p>{questionCard.prompt}</p>
-                  </div>
-                {:else}
-                  {#if message.type === 'side_thread'}
-                    <small>↳ Side thread</small>
-                  {/if}
-                  <div class="bubble-body">{@html renderSimpleMarkdown(message.content)}</div>
+                </article>
+
+                {#if supportAnchorIndex === messageIndex}
+                  <section class="lesson-support-object" aria-label="Lesson support">
+                    <p class="lesson-support-copy">{getStageContextCopy(lessonSession.currentStage)}</p>
+                    {#if !useDesktopActionRow}
+                      <div class="lesson-support-actions">
+                        <button
+                          type="button"
+                          class="btn btn-primary lesson-support-cta"
+                          onclick={() => sendQuickReply(getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage))}
+                        >
+                          <span>Next step</span>
+                          <span class="next-step-arrow" aria-hidden="true">→</span>
+                        </button>
+                      </div>
+                    {/if}
+                  </section>
                 {/if}
-              </article>
+              </div>
             {/if}
           {/each}
 
@@ -413,185 +600,12 @@
           {/if}
         </div>
 
-        <!-- Mobile FAB popup cards — positioned relative to chat-wrap, not the button -->
-        {#if railOpen === 'next' && nextStage}
-          <div class="fab-popup">
-            <p class="fab-popup-kicker">Up next</p>
-            <h3>{stageEmoji(nextStage)} {toSentenceCase(getStageLabel(nextStage))}</h3>
-            <p>{stagePrompt(nextStage)}</p>
-            <button
-              type="button"
-              class="btn btn-primary next-stage-button"
-              onclick={() => sendQuickReply("I'm ready for the next step.")}
-            >
-              <span>Let's keep going</span>
-              <span class="next-stage-arrow" aria-hidden="true">→</span>
-            </button>
-          </div>
-        {/if}
-
-        {#if railOpen === 'mission'}
-          <div class="fab-popup">
-            <p class="fab-popup-kicker">Your mission</p>
-            <div class="mission-content">
-              <div class="mission-text">
-                <h3>{stageEmoji(lessonSession.currentStage)} {toSentenceCase(getStageLabel(lessonSession.currentStage))}</h3>
-                <p>{stagePrompt(lessonSession.currentStage)}</p>
-                <span class="stage-count">Stage {currentStageNumber} of {visibleStages.length}</span>
-              </div>
-              <div class="arc-wrapper" aria-hidden="true">
-                <svg viewBox="0 0 36 36" class="circular-arc">
-                  <circle class="arc-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8" />
-                  <circle
-                    class="arc-fill"
-                    cx="18"
-                    cy="18"
-                    r="15.9"
-                    fill="none"
-                    stroke-width="2.8"
-                    stroke-dasharray="100"
-                    style="stroke-dashoffset: {100 - arcProgress};"
-                  />
-                </svg>
-                <span class="arc-label">{lessonProgressPercent}%</span>
-              </div>
-            </div>
-          </div>
-        {/if}
-
-        <!-- Mobile floating rail FABs (hidden on desktop via CSS) -->
-        <div class="rail-fab-group">
-          {#if nextStage}
-            <div class="fab-dial-item" class:fab-visible={railExpanded} style="transition-delay: 60ms">
-              <button
-                type="button"
-                class="fab-dial-btn"
-                class:fab-active={railOpen === 'next'}
-                onclick={() => toggleRailCard('next')}
-                aria-label="Up next"
-              >
-                <span class="fab-dial-icon" aria-hidden="true">▶</span>
-                <span class="fab-dial-label">Next</span>
-              </button>
-            </div>
-          {/if}
-
-          <div class="fab-dial-item" class:fab-visible={railExpanded} style="transition-delay: 0ms">
-            <button
-              type="button"
-              class="fab-dial-btn"
-              class:fab-active={railOpen === 'mission'}
-              onclick={() => toggleRailCard('mission')}
-              aria-label="Your mission"
-            >
-              <span class="fab-dial-icon" aria-hidden="true">◎</span>
-              <span class="fab-dial-label">Mission</span>
-            </button>
-          </div>
-
-          <button
-            type="button"
-            class="fab-trigger"
-            class:fab-trigger-pulse={railPulse && !railExpanded}
-            class:fab-trigger-open={railExpanded}
-            onclick={toggleRail}
-            aria-label={railExpanded ? 'Close panel' : 'Open lesson panel'}
-          >
-            <span class="fab-trigger-icon" aria-hidden="true">{railExpanded ? '✕' : '⋯'}</span>
-          </button>
-        </div>
-
         {#if showScrollDown}
           <button type="button" class="scroll-down-pill" onclick={scrollToBottom}>
             ↓ New message
           </button>
         {/if}
       </div>
-
-      <!-- Right rail: 2 cards max -->
-      <aside class="lesson-rail" aria-label="Lesson companion">
-        {#if nextStage}
-          <section class="rail-card next-card">
-            <p class="rail-kicker">Up next</p>
-            <h3>{stageEmoji(nextStage)} {toSentenceCase(getStageLabel(nextStage))}</h3>
-            <p>{stagePrompt(nextStage)}</p>
-            <button
-              type="button"
-              class="btn btn-primary next-stage-button"
-              onclick={() => sendQuickReply("I'm ready for the next step.")}
-            >
-              <span>Let's keep going</span>
-              <span class="next-stage-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="rail-divider"></div>
-            <div class="rail-secondary-actions">
-              <button
-                type="button"
-                class="btn btn-secondary rail-action"
-                onclick={() => sendQuickReply(helperPrompt(lessonSession.currentStage))}
-              >
-                Explain differently
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary rail-action"
-                onclick={() => sendQuickReply('Walk me through this step by step.')}
-              >
-                Walk me through it
-              </button>
-            </div>
-          </section>
-        {:else}
-          <section class="rail-card helper-card">
-            <p class="rail-kicker">Need a different take?</p>
-            <h3>Ask for help</h3>
-            <p>Try a guided prompt for a clearer example or a slower walkthrough.</p>
-            <div class="rail-actions">
-              <button
-                type="button"
-                class="btn btn-secondary rail-action"
-                onclick={() => sendQuickReply(helperPrompt(lessonSession.currentStage))}
-              >
-                Explain differently
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary rail-action"
-                onclick={() => sendQuickReply('Quiz me on this idea before we move on.')}
-              >
-                Walk me through it
-              </button>
-            </div>
-          </section>
-        {/if}
-
-        <section class="rail-card mission-card">
-          <p class="rail-kicker">Your mission</p>
-          <div class="mission-content">
-            <div class="mission-text">
-              <h3>{stageEmoji(lessonSession.currentStage)} {toSentenceCase(getStageLabel(lessonSession.currentStage))}</h3>
-              <p>{stagePrompt(lessonSession.currentStage)}</p>
-              <span class="stage-count">Stage {currentStageNumber} of {visibleStages.length}</span>
-            </div>
-            <div class="arc-wrapper" aria-hidden="true">
-              <svg viewBox="0 0 36 36" class="circular-arc">
-                <circle class="arc-bg" cx="18" cy="18" r="15.9" fill="none" stroke-width="2.8" />
-                <circle
-                  class="arc-fill"
-                  cx="18"
-                  cy="18"
-                  r="15.9"
-                  fill="none"
-                  stroke-width="2.8"
-                  stroke-dasharray="100"
-                  style="stroke-dashoffset: {100 - arcProgress};"
-                />
-              </svg>
-              <span class="arc-label">{lessonProgressPercent}%</span>
-            </div>
-          </div>
-        </section>
-      </aside>
 
       <!-- Composer -->
       <div class="input-area">
@@ -690,11 +704,26 @@
             {/if}
           </section>
         {:else}
-          <div class="quick-actions">
-            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Slow down and break it into smaller steps.')}>Slow down 🐢</button>
-            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('Give me a different example for this part.')}>Different example ✨</button>
-            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I think I understand this — can you test me?')}>Test me 🎯</button>
-            <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply('I want to go deeper on this idea.')}>Go deeper 🔍</button>
+          <div class="lesson-action-row">
+            <div class="quick-actions">
+              {#each visibleQuickActions as action}
+                <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
+                  {action.label}
+                </button>
+              {/each}
+            </div>
+            {#if useDesktopActionRow}
+              <div class="progress-action-slot">
+                <button
+                  type="button"
+                  class="btn btn-primary lesson-support-cta lesson-support-cta-row"
+                  onclick={() => sendQuickReply(getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage))}
+                >
+                  <span>Next step</span>
+                  <span class="next-step-arrow" aria-hidden="true">→</span>
+                </button>
+              </div>
+            {/if}
           </div>
           <div class="composer">
             <textarea
@@ -1091,6 +1120,16 @@
     background: color-mix(in srgb, var(--accent) 72%, transparent);
   }
 
+  .stage-connector.resolving {
+    animation: connector-resolve 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 84%, transparent),
+      color-mix(in srgb, var(--color-blue) 42%, var(--accent) 58%)
+    );
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
   .stage-node {
     display: flex;
     align-items: center;
@@ -1135,6 +1174,10 @@
     animation: dot-celebrate 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
+  .stage-node.activating .node-dot {
+    animation: next-stage-arrive 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   .node-label {
     font-size: 0.82rem;
     font-weight: 600;
@@ -1148,10 +1191,15 @@
     animation: label-arrive 250ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  .stage-node.activating .node-label {
+    animation: label-arrive 280ms cubic-bezier(0.22, 1, 0.36, 1), next-label-glow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+
   /* ── Body layout ── */
   .lesson-body {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 18rem;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     gap: 0;
     min-height: 0;
@@ -1252,8 +1300,95 @@
   }
 
   .bubble.assistant {
+    position: relative;
     justify-self: start;
     border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) 0.42rem;
+  }
+
+  .bubble-with-tts {
+    padding-top: 1.28rem;
+    padding-right: 3.25rem;
+  }
+
+  .bubble-tts-control {
+    position: absolute;
+    top: 0.72rem;
+    right: 0.72rem;
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border-strong));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
+    color: color-mix(in srgb, var(--text-soft) 82%, var(--accent) 18%);
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+    cursor: pointer;
+    transition:
+      transform var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft),
+      background var(--motion-fast) var(--ease-soft),
+      color var(--motion-fast) var(--ease-soft),
+      box-shadow var(--motion-fast) var(--ease-soft);
+  }
+
+  .bubble-tts-control:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border-strong));
+    color: color-mix(in srgb, var(--accent) 46%, var(--text) 54%);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 10%, rgba(15, 23, 42, 0.12));
+  }
+
+  .bubble-tts-control[data-tts-state='playing'] {
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    background: color-mix(in srgb, var(--accent-dim) 78%, var(--surface-soft));
+    color: color-mix(in srgb, var(--accent) 56%, var(--text) 44%);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent),
+      0 10px 22px color-mix(in srgb, var(--accent) 14%, rgba(15, 23, 42, 0.1));
+  }
+
+  .bubble-tts-control[data-tts-state='paused'] {
+    border-color: color-mix(in srgb, var(--color-blue) 30%, transparent);
+    background: color-mix(in srgb, var(--color-blue-dim) 72%, var(--surface-soft));
+    color: color-mix(in srgb, var(--color-blue) 44%, var(--text) 56%);
+  }
+
+  .bubble-tts-control[data-tts-state='playing']::after,
+  .bubble-tts-control[data-tts-state='paused']::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    opacity: 0.2;
+  }
+
+  .bubble-tts-control[data-tts-state='playing']::after {
+    animation: tts-pulse 1.1s ease-in-out infinite;
+  }
+
+  .bubble-tts-control:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+    outline-offset: 2px;
+  }
+
+  .bubble-tts-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .bubble.assistant.check {
@@ -1280,6 +1415,72 @@
     transform-origin: right bottom;
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.16);
     backdrop-filter: none;
+  }
+
+  .message-support-cluster {
+    display: grid;
+    gap: 1.1rem;
+    align-content: start;
+  }
+
+  .lesson-support-object {
+    justify-self: start;
+    width: min(100%, 34rem);
+    display: grid;
+    gap: 0.7rem;
+    padding: 0.95rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-strong));
+    background: linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--accent) 10%, var(--surface-strong)),
+      color-mix(in srgb, var(--surface-soft) 90%, transparent)
+    );
+    box-shadow: var(--glass-inset-tile);
+    animation: fade-up 220ms ease;
+  }
+
+  .lesson-support-copy {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+
+  .lesson-support-actions {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .lesson-support-cta {
+    justify-self: start;
+    min-height: 2.5rem;
+    padding-inline: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
+    letter-spacing: -0.01em;
+    font-size: 0.9rem;
+  }
+
+  .lesson-support-cta:hover {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
+      0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .next-step-arrow {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.92rem;
+    line-height: 1;
+    transition: transform var(--motion-fast) var(--ease-soft);
+  }
+
+  .lesson-support-cta:hover .next-step-arrow {
+    transform: translateX(3px);
   }
 
   .bubble.user.compact-reply {
@@ -1409,14 +1610,23 @@
     animation: content-fade 260ms ease;
   }
 
-  /* Tutor closing prompt (last paragraph) gets softer treatment */
-  .bubble.assistant:not(.side-thread):not(.check) .bubble-body :global(p:last-child) {
+  .bubble-prompt {
+    display: grid;
+    gap: 0.35rem;
     margin-top: 0.15rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
-    color: var(--text-soft);
-    font-style: italic;
+    padding: 0.78rem 0.9rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-blue) 18%, transparent);
+    border-radius: 0 0 1rem 1rem;
+    background: color-mix(in srgb, var(--color-blue-dim) 78%, var(--surface-strong));
+    color: color-mix(in srgb, var(--color-blue) 34%, var(--text) 66%);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-blue) 10%, transparent);
+  }
+
+  .bubble-prompt :global(p) {
+    margin: 0;
     font-size: 0.95rem;
+    line-height: 1.55;
+    font-weight: 600;
   }
 
   .bubble-body :global(ul),
@@ -1490,15 +1700,8 @@
     color: var(--muted);
   }
 
-  .rail-card h3,
   .rail-card p {
     margin: 0;
-  }
-
-  .rail-card h3 {
-    font-size: 1rem;
-    line-height: 1.2;
-    font-weight: 650;
   }
 
   .rail-card p {
@@ -1555,10 +1758,6 @@
     font-size: 0.92rem;
     line-height: 1;
     transition: transform var(--motion-fast) var(--ease-soft);
-  }
-
-  .next-stage-button:hover .next-stage-arrow {
-    transform: translateX(3px);
   }
 
   .rail-divider {
@@ -1723,15 +1922,8 @@
     letter-spacing: 0.01em;
   }
 
-  .fab-popup h3,
   .fab-popup p {
     margin: 0;
-  }
-
-  .fab-popup h3 {
-    font-size: 0.98rem;
-    font-weight: 650;
-    line-height: 1.2;
   }
 
   .fab-popup p {
@@ -1788,10 +1980,6 @@
     transition: transform 200ms var(--ease-spring);
   }
 
-  .fab-trigger.fab-trigger-open .fab-trigger-icon {
-    transform: rotate(90deg) scale(0.9);
-  }
-
   /* ── Input area ── */
   .input-area {
     grid-column: 1 / -1;
@@ -1811,6 +1999,11 @@
     overflow-x: auto;
     scrollbar-width: none;
     padding-bottom: 0.05rem;
+  }
+
+  .lesson-action-row {
+    display: grid;
+    gap: 0.7rem;
   }
 
   .quick-actions::-webkit-scrollbar {
@@ -2308,6 +2501,52 @@
     }
   }
 
+  @media (min-width: 900px) {
+    .lesson-support-object {
+      width: min(100%, 32rem);
+      gap: 0.4rem;
+      padding: 0.1rem 0.25rem 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      animation: none;
+    }
+
+    .lesson-support-copy {
+      max-width: 30rem;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      padding-left: 0.1rem;
+    }
+
+    .lesson-action-row {
+      grid-template-columns: auto auto;
+      align-items: center;
+      justify-content: start;
+      gap: 0.75rem;
+    }
+
+    .quick-actions {
+      flex-wrap: wrap;
+      align-items: center;
+      overflow: visible;
+    }
+
+    .progress-action-slot {
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .lesson-support-cta-row {
+      min-height: 2.65rem;
+      padding-inline: 1.05rem;
+      box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
+    }
+  }
+
   /* ── Keyframes ── */
   @keyframes fade-up {
     from {
@@ -2348,6 +2587,47 @@
 
     100% {
       transform: scale(1);
+    }
+  }
+
+  @keyframes connector-resolve {
+    from {
+      transform: scaleX(0.72);
+      opacity: 0.7;
+    }
+
+    to {
+      transform: scaleX(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes next-stage-arrive {
+    0% {
+      transform: scale(0.88);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+    }
+
+    65% {
+      transform: scale(1.08);
+      box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+  }
+
+  @keyframes next-label-glow {
+    from {
+      transform: translateX(-4px);
+      opacity: 0.72;
+    }
+
+    to {
+      transform: translateX(0);
+      opacity: 1;
     }
   }
 
@@ -2415,6 +2695,18 @@
     }
   }
 
+  @keyframes companion-cta-drop {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   @keyframes badge-arrive {
     from {
       opacity: 0;
@@ -2424,6 +2716,18 @@
     to {
       opacity: 1;
       transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes tts-pulse {
+    0%,
+    100% {
+      transform: scale(0.88);
+      opacity: 0.18;
+    }
+    50% {
+      transform: scale(1);
+      opacity: 0.34;
     }
   }
 

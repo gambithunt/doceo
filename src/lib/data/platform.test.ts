@@ -8,7 +8,7 @@ import {
   isValidEducationType,
   schoolProviders
 } from '$lib/data/onboarding';
-import type { RevisionPlan, RevisionTopic } from '$lib/types';
+import type { Lesson, LessonSession, Question, RevisionPlan, RevisionTopic } from '$lib/types';
 
 function createSyntheticTopic(overrides: Partial<RevisionTopic> = {}): RevisionTopic {
   return {
@@ -188,6 +188,82 @@ describe('normalizeAppState', () => {
       })
     ]);
     expect(normalized.lessons[0]?.id).toMatch(/^lesson-stub-/);
+  });
+
+  it('preserves artifact-backed lessons tied to saved lesson sessions when rebuilding the derived program', () => {
+    const base = createInitialState();
+    const artifactLesson: Lesson = {
+      ...base.lessons[0]!,
+      id: 'artifact-lesson-vocabulary-1',
+      title: 'English: Vocabulary Development',
+      topicId: 'artifact-topic-vocabulary',
+      subtopicId: 'artifact-subtopic-vocabulary',
+      orientation: { title: 'Orientation', body: 'Artifact orientation body.' },
+      mentalModel: { title: 'Big Picture', body: 'Artifact mental model body.' },
+      concepts: { title: 'Key Concepts', body: 'Artifact concepts body.' }
+    };
+    const artifactQuestion: Question = {
+      ...base.questions[0]!,
+      id: 'artifact-question-vocabulary-1',
+      lessonId: artifactLesson.id,
+      topicId: artifactLesson.topicId,
+      subtopicId: artifactLesson.subtopicId
+    };
+    const artifactSession: LessonSession = {
+      id: 'artifact-session-1',
+      studentId: 'student-1',
+      subjectId: artifactLesson.subjectId,
+      subject: 'English',
+      nodeId: 'artifact-node-vocabulary',
+      lessonArtifactId: 'artifact-record-1',
+      questionArtifactId: 'question-artifact-record-1',
+      topicId: artifactLesson.topicId,
+      topicTitle: 'Vocabulary Development',
+      topicDescription: 'Build stronger word knowledge.',
+      curriculumReference: 'CAPS Grade 6',
+      matchedSection: 'Vocabulary',
+      lessonId: artifactLesson.id,
+      currentStage: 'orientation',
+      stagesCompleted: [],
+      messages: [],
+      questionCount: 0,
+      reteachCount: 0,
+      confidenceScore: 0.5,
+      needsTeacherReview: false,
+      stuckConcept: null,
+      startedAt: '2026-04-20T12:00:00.000Z',
+      lastActiveAt: '2026-04-20T12:00:00.000Z',
+      completedAt: null,
+      status: 'active',
+      lessonRating: null,
+      topicDiscovery: undefined,
+      profileUpdates: []
+    };
+
+    const normalized = normalizeAppState({
+      ...base,
+      curriculum: {
+        country: 'South Africa',
+        name: 'CAPS',
+        grade: 'Grade 6',
+        subjects: []
+      },
+      onboarding: {
+        ...base.onboarding,
+        selectedSubjectNames: ['English'],
+        customSubjects: []
+      },
+      lessons: [artifactLesson],
+      questions: [artifactQuestion],
+      lessonSessions: [artifactSession]
+    });
+
+    expect(normalized.lessons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: artifactLesson.id, title: artifactLesson.title })])
+    );
+    expect(normalized.questions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: artifactQuestion.id, lessonId: artifactLesson.id })])
+    );
   });
 });
 

@@ -270,6 +270,131 @@ describe('state bootstrap route', () => {
     expect(payload.state.onboarding.selectedSubjectIds).toEqual(['graph-subject-mathematics']);
   });
 
+  it('preserves artifact-backed lesson content tied to saved lesson sessions during bootstrap hydration', async () => {
+    const base = createInitialState();
+    const artifactLesson = {
+      ...base.lessons[0]!,
+      id: 'artifact-lesson-vocabulary-1',
+      title: 'English: Vocabulary Development',
+      topicId: 'artifact-topic-vocabulary',
+      subtopicId: 'artifact-subtopic-vocabulary',
+      orientation: { title: 'Orientation', body: 'Artifact orientation body.' },
+      mentalModel: { title: 'Big Picture', body: 'Artifact mental model body.' },
+      concepts: { title: 'Key Concepts', body: 'Artifact concepts body.' }
+    };
+    const artifactQuestion = {
+      ...base.questions[0]!,
+      id: 'artifact-question-vocabulary-1',
+      lessonId: artifactLesson.id,
+      topicId: artifactLesson.topicId,
+      subtopicId: artifactLesson.subtopicId
+    };
+
+    loadAppState.mockResolvedValue({
+      ...base,
+      lessons: [artifactLesson],
+      questions: [artifactQuestion],
+      lessonSessions: [
+        {
+          id: 'artifact-session-1',
+          studentId: 'user-123',
+          subjectId: artifactLesson.subjectId,
+          subject: 'English',
+          nodeId: 'artifact-node-vocabulary',
+          lessonArtifactId: 'artifact-record-1',
+          questionArtifactId: 'question-artifact-record-1',
+          topicId: artifactLesson.topicId,
+          topicTitle: 'Vocabulary Development',
+          topicDescription: 'Build stronger word knowledge.',
+          curriculumReference: 'CAPS Grade 6',
+          matchedSection: 'Vocabulary',
+          lessonId: artifactLesson.id,
+          currentStage: 'orientation',
+          stagesCompleted: [],
+          messages: [],
+          questionCount: 0,
+          reteachCount: 0,
+          confidenceScore: 0.5,
+          needsTeacherReview: false,
+          stuckConcept: null,
+          startedAt: '2026-04-20T12:00:00.000Z',
+          lastActiveAt: '2026-04-20T12:00:00.000Z',
+          completedAt: null,
+          status: 'active',
+          lessonRating: null,
+          topicDiscovery: undefined,
+          profileUpdates: []
+        }
+      ]
+    });
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123'
+            }
+          }
+        })
+      }
+    });
+    loadOnboardingProgress.mockResolvedValue({
+      completed: true,
+      completedAt: null,
+      selectedCountryId: 'za',
+      selectedCurriculumId: 'caps',
+      selectedGradeId: 'grade-6',
+      schoolYear: '2026',
+      term: 'Term 1',
+      selectedSubjectIds: ['graph-subject-mathematics'],
+      selectedSubjectNames: ['Mathematics'],
+      customSubjects: [],
+      selectionMode: 'structured',
+      recommendation: {
+        subjectId: 'graph-subject-mathematics',
+        subjectName: 'Mathematics',
+        reason: 'Recommended by graph-backed onboarding.'
+      }
+    });
+    fetchCountries.mockResolvedValue([{ id: 'za', name: 'South Africa' }]);
+    fetchCurriculums.mockResolvedValue([
+      { id: 'caps', countryId: 'za', name: 'CAPS', description: 'Curriculum and Assessment Policy Statement' }
+    ]);
+    fetchGrades.mockResolvedValue([{ id: 'grade-6', curriculumId: 'caps', label: 'Grade 6', order: 6 }]);
+    fetchSubjects.mockResolvedValue([
+      {
+        id: 'graph-subject-mathematics',
+        curriculumId: 'caps',
+        gradeId: 'grade-6',
+        name: 'Mathematics',
+        category: 'core'
+      }
+    ]);
+    loadLearningProgram.mockResolvedValue({
+      curriculum: base.curriculum,
+      lessons: base.lessons,
+      questions: base.questions,
+      source: 'supabase'
+    });
+
+    const { GET } = await import('./+server');
+    const response = await GET({
+      request: new Request('http://localhost/api/state/bootstrap', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+    const payload = await response.json();
+
+    expect(payload.state.lessons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: artifactLesson.id, title: artifactLesson.title })])
+    );
+    expect(payload.state.questions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: artifactQuestion.id, lessonId: artifactLesson.id })])
+    );
+  });
+
   it('returns an authenticated degraded state with explicit errors when onboarding catalog reads fail', async () => {
     createServerSupabaseFromRequest.mockReturnValue({
       auth: {

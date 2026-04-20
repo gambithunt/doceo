@@ -2264,6 +2264,141 @@ describe('topic discovery completion linkage', () => {
     );
   });
 
+  it('uses artifact-backed lesson content when an active session advances into concepts', async () => {
+    const baseState = createInitialState();
+    const artifactLesson = {
+      ...baseState.lessons[0]!,
+      id: 'artifact-lesson-vocabulary-1',
+      title: 'English: Vocabulary Development',
+      subjectId: baseState.curriculum.subjects[0]!.id,
+      topicId: 'artifact-topic-vocabulary',
+      subtopicId: 'artifact-subtopic-vocabulary',
+      orientation: { title: 'Orientation', body: 'Artifact orientation body.' },
+      mentalModel: { title: 'Big Picture', body: 'Artifact mental model body.' },
+      concepts: { title: 'Key Concepts', body: 'Artifact concepts body.' }
+    };
+    const artifactQuestion = {
+      ...baseState.questions[0]!,
+      id: 'artifact-question-vocabulary-1',
+      lessonId: artifactLesson.id,
+      topicId: artifactLesson.topicId,
+      subtopicId: artifactLesson.subtopicId
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat') {
+        return new Response(
+          JSON.stringify({
+            displayContent: 'Good. Let’s build on that.',
+            metadata: {
+              action: 'advance',
+              next_stage: 'concepts',
+              reteach_style: null,
+              reteach_count: 0,
+              confidence_assessment: 0.74,
+              profile_update: {}
+            }
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      curriculum: {
+        country: 'South Africa',
+        name: 'CAPS',
+        grade: 'Grade 6',
+        subjects: []
+      },
+      onboarding: {
+        ...baseState.onboarding,
+        selectedSubjectNames: ['English'],
+        customSubjects: []
+      },
+      lessons: [artifactLesson],
+      questions: [artifactQuestion],
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'artifact-session-1'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'artifact-session-1',
+          status: 'active',
+          currentStage: 'orientation',
+          stagesCompleted: [],
+          lessonId: artifactLesson.id,
+          lessonArtifactId: 'artifact-record-1',
+          questionArtifactId: 'question-artifact-record-1',
+          nodeId: 'artifact-node-vocabulary',
+          topicId: artifactLesson.topicId,
+          topicTitle: 'Vocabulary Development',
+          topicDescription: 'Build stronger word knowledge.',
+          messages: [
+            {
+              id: 'msg-orientation-stage',
+              role: 'system',
+              type: 'stage_start',
+              content: '◎ Orientation',
+              stage: 'orientation',
+              timestamp: '2026-04-20T12:00:00.000Z',
+              metadata: null
+            },
+            {
+              id: 'msg-orientation-body',
+              role: 'assistant',
+              type: 'teaching',
+              content: 'Artifact orientation body.',
+              stage: 'orientation',
+              timestamp: '2026-04-20T12:00:01.000Z',
+              metadata: {
+                action: 'stay',
+                next_stage: null,
+                reteach_style: null,
+                reteach_count: 0,
+                confidence_assessment: 0.5,
+                profile_update: {}
+              }
+            }
+          ]
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('Ready for the next part.');
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'artifact-session-1');
+
+    expect(session?.currentStage).toBe('concepts');
+    expect(session?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: 'Artifact mental model body.' }),
+        expect.objectContaining({
+          content: 'Artifact concepts body.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+        })
+      ])
+    );
+    expect(session?.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.stringContaining('This lesson content is no longer generated locally')
+        })
+      ])
+    );
+  });
+
   describe('AI evaluation on demand (Phase 7)', () => {
     beforeEach(() => {
       vi.resetAllMocks();

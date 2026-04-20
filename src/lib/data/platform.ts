@@ -832,15 +832,36 @@ export function deriveLearningState(state: AppState): AppState {
         state.onboarding.selectedSubjectNames,
         state.onboarding.customSubjects
       );
+  const artifactBackedLessonIds = new Set(
+    (Array.isArray(state.lessonSessions) ? state.lessonSessions : [])
+      .filter((session) => Boolean(session.lessonArtifactId))
+      .map((session) => session.lessonId)
+  );
   const generatedLessons = state.lessons.filter((lesson) => lesson.id.startsWith('generated-'));
+  const artifactBackedLessons = state.lessons.filter(
+    (lesson) => artifactBackedLessonIds.has(lesson.id) && !lesson.id.startsWith('generated-')
+  );
   const generatedQuestions = state.questions.filter((question) => question.lessonId.startsWith('generated-'));
+  const artifactBackedQuestions = state.questions.filter(
+    (question) => artifactBackedLessonIds.has(question.lessonId) && !question.lessonId.startsWith('generated-')
+  );
   const mergedLessons = [
     ...generatedLessons,
-    ...program.lessons.filter((lesson) => !generatedLessons.some((generated) => generated.id === lesson.id))
+    ...artifactBackedLessons.filter((lesson) => !generatedLessons.some((generated) => generated.id === lesson.id)),
+    ...program.lessons.filter(
+      (lesson) =>
+        !generatedLessons.some((generated) => generated.id === lesson.id) &&
+        !artifactBackedLessons.some((artifact) => artifact.id === lesson.id)
+    )
   ];
   const mergedQuestions = [
     ...generatedQuestions,
-    ...program.questions.filter((question) => !generatedQuestions.some((generated) => generated.id === question.id))
+    ...artifactBackedQuestions.filter((question) => !generatedQuestions.some((generated) => generated.id === question.id)),
+    ...program.questions.filter(
+      (question) =>
+        !generatedQuestions.some((generated) => generated.id === question.id) &&
+        !artifactBackedQuestions.some((artifact) => artifact.id === question.id)
+    )
   ];
   const selectedSubject =
     program.curriculum.subjects.find((subject) => subject.id === state.ui.selectedSubjectId) ??

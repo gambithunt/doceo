@@ -13,6 +13,33 @@ import { createServerSupabaseFromRequest } from '$lib/server/supabase';
 import { applySignalProfileUpdate, buildLearnerProfileFromSignals } from '$lib/ai/adaptive-signals';
 import type { AppState } from '$lib/types';
 
+function mergeSessionBackedLessonContent(
+  savedState: Pick<AppState, 'lessonSessions' | 'lessons' | 'questions'>,
+  learningProgram: Pick<AppState, 'lessons' | 'questions'>
+) {
+  const artifactLessonIds = new Set(
+    savedState.lessonSessions
+      .filter((session) => Boolean(session.lessonArtifactId))
+      .map((session) => session.lessonId)
+  );
+
+  const preservedLessons = savedState.lessons.filter((lesson) => artifactLessonIds.has(lesson.id));
+  const preservedQuestions = savedState.questions.filter((question) => artifactLessonIds.has(question.lessonId));
+
+  return {
+    lessons: [
+      ...preservedLessons,
+      ...learningProgram.lessons.filter((lesson) => !preservedLessons.some((preserved) => preserved.id === lesson.id))
+    ],
+    questions: [
+      ...preservedQuestions,
+      ...learningProgram.questions.filter(
+        (question) => !preservedQuestions.some((preserved) => preserved.id === question.id)
+      )
+    ]
+  };
+}
+
 async function loadOnboardingOptions(onboardingProgress: NonNullable<Awaited<ReturnType<typeof loadOnboardingProgress>>>) {
   const [countries, curriculums, grades, subjects] = await Promise.all([
     fetchCountries(),
@@ -161,6 +188,10 @@ export async function GET({ request }) {
     }
   }
 
+  const mergedLearningProgram = learningProgram
+    ? mergeSessionBackedLessonContent(stateWithProfile, learningProgram)
+    : null;
+
   const hydratedState = onboardingProgress
     ? {
         ...stateWithProfile,
@@ -191,8 +222,8 @@ export async function GET({ request }) {
             onboardingProgress.recommendation.subjectName ?? stateWithProfile.profile.recommendedStartSubjectName
         },
         curriculum: learningProgram?.curriculum ?? stateWithProfile.curriculum,
-        lessons: learningProgram?.lessons ?? stateWithProfile.lessons,
-        questions: learningProgram?.questions ?? stateWithProfile.questions,
+        lessons: mergedLearningProgram?.lessons ?? learningProgram?.lessons ?? stateWithProfile.lessons,
+        questions: mergedLearningProgram?.questions ?? learningProgram?.questions ?? stateWithProfile.questions,
         ui: learningProgram
           ? {
               ...stateWithProfile.ui,
