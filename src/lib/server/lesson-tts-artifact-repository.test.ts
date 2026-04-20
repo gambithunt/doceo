@@ -157,4 +157,99 @@ describe('lesson-tts-artifact-repository', () => {
       expiresAt: '2026-04-20T09:30:00.000Z'
     });
   });
+
+  it('reuses an existing artifact when a concurrent insert hits the same cache key', async () => {
+    const upload = vi.fn().mockResolvedValue({ error: null });
+    const selectMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: 'tts-artifact-existing',
+        cache_key: 'cache-key-3',
+        cache_version: 'v1',
+        lesson_session_id: 'session-3',
+        lesson_message_id: 'message-3',
+        profile_id: 'profile-3',
+        provider: 'openai',
+        fallback_from_provider: null,
+        model: 'gpt-4o-mini-tts',
+        voice: 'alloy',
+        language_code: 'en',
+        format: 'mp3',
+        speed: 1,
+        style_instruction: null,
+        provider_settings: {},
+        text_hash: 'hash-3',
+        storage_bucket: LESSON_TTS_AUDIO_BUCKET,
+        storage_path: 'v1/openai/cache-key-3.mp3',
+        byte_length: 4,
+        duration_ms: null,
+        status: 'ready',
+        error_code: null,
+        error_message: null,
+        created_at: '2026-04-20T10:00:00.000Z',
+        updated_at: '2026-04-20T10:00:00.000Z'
+      }
+    });
+    const eq = vi.fn(() => ({ maybeSingle: selectMaybeSingle }));
+    const select = vi.fn(() => ({ eq }));
+    const insert = vi.fn().mockResolvedValue({
+      error: {
+        code: '23505',
+        message: 'duplicate key value violates unique constraint "lesson_tts_artifacts_cache_key_key"'
+      }
+    });
+    const storageFrom = vi.fn(() => ({
+      upload
+    }));
+    const from = vi.fn((table: string) => {
+      if (table !== 'lesson_tts_artifacts') {
+        throw new Error(`Unexpected table ${table}`);
+      }
+
+      return {
+        insert,
+        select
+      };
+    });
+
+    const repository = createLessonTtsArtifactRepository({
+      supabase: {
+        from,
+        storage: {
+          from: storageFrom
+        }
+      } as any
+    });
+
+    const artifact = await repository.createReadyArtifact({
+      cacheKey: 'cache-key-3',
+      cacheVersion: 'v1',
+      lessonSessionId: 'session-3',
+      lessonMessageId: 'message-3',
+      profileId: 'profile-3',
+      provider: 'openai',
+      fallbackFromProvider: null,
+      model: 'gpt-4o-mini-tts',
+      voice: 'alloy',
+      languageCode: 'en',
+      format: 'mp3',
+      speed: 1,
+      styleInstruction: null,
+      providerSettings: {},
+      textHash: 'hash-3',
+      audio: audioBytes,
+      mimeType: 'audio/mpeg'
+    });
+
+    expect(upload).toHaveBeenCalled();
+    expect(insert).toHaveBeenCalled();
+    expect(select).toHaveBeenCalledWith('*');
+    expect(eq).toHaveBeenCalledWith('cache_key', 'cache-key-3');
+    expect(artifact).toEqual(
+      expect.objectContaining({
+        id: 'tts-artifact-existing',
+        cacheKey: 'cache-key-3',
+        storagePath: 'v1/openai/cache-key-3.mp3'
+      })
+    );
+  });
 });

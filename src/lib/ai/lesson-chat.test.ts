@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt, createLessonChatBody } from '$lib/ai/lesson-chat';
 import { createInitialState } from '$lib/data/platform';
+import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
 import type { LessonMessage, LessonSession } from '$lib/types';
 
 function makeMessage(i: number): LessonMessage {
@@ -32,6 +33,7 @@ function makeMockSession(lesson: { id: string }, overrides: Partial<LessonSessio
     messages: [],
     questionCount: 0,
     reteachCount: 0,
+    softStuckCount: 0,
     confidenceScore: 0,
     needsTeacherReview: false,
     stuckConcept: null,
@@ -105,7 +107,14 @@ describe('lesson-chat', () => {
 
   it('P5: buildSystemPrompt does NOT include transferChallenge body for orientation stage', () => {
     const state = createInitialState();
-    const lesson = state.lessons[0];
+    const lesson = buildDynamicLessonFromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 8',
+      topicTitle: 'Patterns',
+      topicDescription: 'Growing number patterns.',
+      curriculumReference: 'CAPS · Grade 8 · Mathematics'
+    });
     const orientationSession = makeMockSession(lesson, { currentStage: 'orientation' });
     const prompt = buildSystemPrompt({
       student: state.profile,
@@ -134,5 +143,39 @@ describe('lesson-chat', () => {
     // Must say "contains" not "begins with" since [STAGE:] wrapper precedes [CONCEPT:] in the actual message
     expect(prompt).toContain('contains [CONCEPT:');
     expect(prompt).not.toContain('begins with [CONCEPT:');
+  });
+
+  it('buildSystemPrompt says short but meaningful concepts answers can still qualify', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson, { currentStage: 'concepts' });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: session,
+      message: 'It changes by 4 each time.',
+      messageType: 'response'
+    });
+
+    expect(prompt).toContain('A short answer can still count if it shows real understanding');
+    expect(prompt).toContain('names the key idea');
+  });
+
+  it('buildSystemPrompt caps concepts-stage same-point stays at two before resolution', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson, { currentStage: 'concepts', softStuckCount: 2 });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: session,
+      message: 'ok',
+      messageType: 'response'
+    });
+
+    expect(prompt).toContain('Do not stay on the exact same concepts-stage checkpoint more than 2 times');
+    expect(prompt).toContain('Soft-Stuck Same-Point Stays: 2');
   });
 });

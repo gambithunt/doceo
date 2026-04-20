@@ -14,6 +14,7 @@ vi.mock('$lib/authenticated-fetch', () => ({
 }));
 
 import LessonWorkspace from './LessonWorkspace.svelte';
+import { getNextStepPrompt } from '$lib/components/lesson-workspace-ui';
 import { createInitialState } from '$lib/data/platform';
 import { appState } from '$lib/stores/app-state';
 import type { AppState, LessonMessage, LessonSession } from '$lib/types';
@@ -35,6 +36,7 @@ function createSession(overrides: Partial<LessonSession> = {}): LessonSession {
     messages: [],
     questionCount: 0,
     reteachCount: 0,
+    softStuckCount: 0,
     confidenceScore: 0.5,
     needsTeacherReview: false,
     stuckConcept: null,
@@ -362,6 +364,187 @@ describe('LessonWorkspace Phase 3 stage-aware actions', () => {
     expect(appState.sendLessonMessage).toHaveBeenLastCalledWith(
       'Walk me through this step by step.'
     );
+  });
+});
+
+describe('LessonWorkspace Phase 3 trustworthy Next step contract', () => {
+  it('disables Next step in mobile support when the stage requires an explicit learner answer', () => {
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Try this one yourself first.',
+        stage: 'practice'
+      })
+    ], { currentStage: 'practice' });
+
+    const support = screen.getByRole('region', { name: 'Lesson support' });
+    const nextStep = within(support).getByRole('button', { name: 'Next step' });
+
+    expect(nextStep).toBeDisabled();
+    expect(within(support).getByText('Your turn first: try the question or tap Help me start.')).toBeInTheDocument();
+  });
+
+  it('keeps desktop Next step in the action row while disabled state and cue stay in sync', () => {
+    desktopViewport = true;
+
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Put it in your own words first.',
+        stage: 'check'
+      })
+    ], { currentStage: 'check' });
+
+    const support = screen.getByRole('region', { name: 'Lesson support' });
+    const nextStep = screen.getByRole('button', { name: 'Next step' });
+
+    expect(nextStep.closest('.progress-action-slot')).toBeInTheDocument();
+    expect(nextStep).toBeDisabled();
+    expect(within(support).queryByRole('button', { name: 'Next step' })).not.toBeInTheDocument();
+    expect(within(support).getByText('Your turn first: explain or apply the idea before moving on.')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Next step' })).toHaveLength(1);
+  });
+
+  it('re-enables Next step after the soft-stuck threshold in concepts', () => {
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Tell me what feels clear so far.',
+        stage: 'concepts'
+      })
+    ], {
+      currentStage: 'concepts',
+      softStuckCount: 2
+    });
+
+    const support = screen.getByRole('region', { name: 'Lesson support' });
+    const nextStep = within(support).getByRole('button', { name: 'Next step' });
+
+    expect(nextStep).toBeEnabled();
+    expect(within(support).queryByText('Your turn first: explain the idea in your own words.')).not.toBeInTheDocument();
+  });
+});
+
+describe('LessonWorkspace Phase 4 wrap-before-progress flow', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(appState, 'sendLessonMessage').mockResolvedValue(undefined);
+  });
+
+  it('renders the wrap bubble with distinct styling before the next stage content', () => {
+    renderWorkspace([
+      createMessage({
+        id: 'user-next-step',
+        role: 'user',
+        type: 'response',
+        content: getNextStepPrompt('concepts'),
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'assistant-wrap',
+        role: 'assistant',
+        type: 'wrap',
+        content: "Good. Let's move into Guided Construction.",
+        stage: 'concepts',
+        metadata: {
+          action: 'advance',
+          next_stage: 'construction',
+          reteach_style: null,
+          reteach_count: 0,
+          confidence_assessment: 0.68,
+          profile_update: {}
+        }
+      }),
+      createMessage({
+        id: 'construction-stage',
+        role: 'system',
+        type: 'stage_start',
+        content: '◉ Guided Construction',
+        stage: 'construction'
+      }),
+      createMessage({
+        id: 'construction-body',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Now we build the logic together.',
+        stage: 'construction'
+      })
+    ], {
+      currentStage: 'construction',
+      stagesCompleted: ['orientation', 'concepts']
+    });
+
+    const wrapBubble = screen.getByText("Good. Let's move into Guided Construction.").closest('article');
+    const nextStageBubble = screen.getByText('Now we build the logic together.').closest('article');
+
+    expect(wrapBubble).toHaveClass('bubble', 'assistant', 'wrap');
+    expect(wrapBubble?.compareDocumentPosition(nextStageBubble!) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('needs only one unlocked Next step press once concepts are unlocked', async () => {
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Tell me what feels clear so far.',
+        stage: 'concepts'
+      })
+    ], {
+      currentStage: 'concepts',
+      softStuckCount: 2
+    });
+
+    const nextStep = screen.getByRole('button', { name: 'Next step' });
+
+    expect(nextStep).toBeEnabled();
+
+    await fireEvent.click(nextStep);
+
+    expect(appState.sendLessonMessage).toHaveBeenCalledTimes(1);
+    expect(appState.sendLessonMessage).toHaveBeenCalledWith(getNextStepPrompt('concepts'));
+  });
+});
+
+describe('LessonWorkspace Phase 5 bubble motion hooks', () => {
+  it('uses a dedicated motion variant hook for wrap bubbles', () => {
+    renderWorkspace([
+      createMessage({
+        id: 'assistant-regular',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Let us build this out step by step.',
+        stage: 'construction'
+      }),
+      createMessage({
+        id: 'assistant-wrap',
+        role: 'assistant',
+        type: 'wrap',
+        content: "Good. Let's move into Worked Example.",
+        stage: 'construction',
+        metadata: {
+          action: 'advance',
+          next_stage: 'examples',
+          reteach_style: null,
+          reteach_count: 0,
+          confidence_assessment: 0.7,
+          profile_update: {}
+        }
+      })
+    ], {
+      currentStage: 'examples',
+      stagesCompleted: ['orientation', 'concepts', 'construction']
+    });
+
+    const regularBubble = screen.getByText('Let us build this out step by step.').closest('article');
+    const wrapBubble = screen.getByText("Good. Let's move into Worked Example.").closest('article');
+
+    expect(regularBubble).toHaveAttribute('data-motion-variant', 'assistant');
+    expect(regularBubble).not.toHaveClass('enter-wrap');
+    expect(wrapBubble).toHaveAttribute('data-motion-variant', 'wrap');
+    expect(wrapBubble).toHaveClass('enter-assistant', 'enter-wrap');
   });
 });
 

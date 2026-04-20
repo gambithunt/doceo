@@ -13,8 +13,16 @@ import {
   buildLessonSessionFromTopic,
   classifyLessonMessage,
   createDefaultLearnerProfile,
+  getNextStage,
+  getStageLabel,
+  SOFT_STUCK_STAY_THRESHOLD,
   updateLearnerProfile
 } from '$lib/lesson-system';
+import {
+  deriveNextStepCtaState,
+  getNextStepPrompt,
+  type VisibleLessonStage
+} from '$lib/components/lesson-workspace-ui';
 import {
   applyRevisionTurn,
   evaluateRevisionAnswer,
@@ -338,6 +346,62 @@ function getLessonForSession(state: AppState, session: LessonSession): Lesson {
   return state.lessons.find((lesson) => lesson.id === session.lessonId) ?? buildLessonStateStub(session, state.profile.grade);
 }
 
+function isUnlockedNextStepRequest(session: LessonSession, message: string): boolean {
+  if (session.currentStage === 'complete') {
+    return false;
+  }
+
+  if (deriveNextStepCtaState(session).disabled) {
+    return false;
+  }
+
+  return message === getNextStepPrompt(session.currentStage as VisibleLessonStage);
+}
+
+function buildWrapTransitionMessage(session: LessonSession, nextStage: LessonSession['currentStage']): LessonMessage {
+  const timestamp = new Date().toISOString();
+
+  return {
+    id: `msg-${crypto.randomUUID()}`,
+    role: 'assistant',
+    type: 'wrap',
+    content: `Good. Let's move into ${getStageLabel(nextStage)}.`,
+    stage: session.currentStage,
+    timestamp,
+    metadata: {
+      action: 'advance',
+      next_stage: nextStage,
+      reteach_style: null,
+      reteach_count: 0,
+      confidence_assessment: session.confidenceScore,
+      profile_update: {}
+    }
+  };
+}
+
+function advanceLessonSessionWithWrap(state: AppState, session: LessonSession): LessonSession {
+  const nextStage = getNextStage(session.currentStage);
+
+  if (!nextStage) {
+    return session;
+  }
+
+  const nextSession = applyLessonAssistantResponse(session, buildWrapTransitionMessage(session, nextStage));
+
+  if (nextSession.currentStage === 'complete') {
+    return nextSession;
+  }
+
+  const sessionLesson = getLessonForSession(state, nextSession);
+  return {
+    ...nextSession,
+    messages: [
+      ...nextSession.messages,
+      ...buildInitialLessonMessages(sessionLesson, nextSession.currentStage)
+    ]
+  };
+}
+
 function formatMisconceptionLabel(tag: string): string {
   return tag.replace(/-/g, ' ').replace(/\bcore gap\b/g, 'core gap').trim();
 }
@@ -407,6 +471,7 @@ function buildRevisionHandoffSession(
     messages: handoffMessages,
     questionCount: 0,
     reteachCount: 1,
+    softStuckCount: 0,
     confidenceScore: Math.min(lessonSession.confidenceScore, topic.confidenceScore),
     needsTeacherReview: false,
     stuckConcept: topic.topicTitle,
@@ -2276,6 +2341,29 @@ export function createAppStore(initialState: AppState = readState()) {
 
         const latest = currentState();
         const currentSession = latest.lessonSessions.find((item) => item.id === lessonSession.id) ?? lessonSession;
+
+        if (isUnlockedNextStepRequest(currentSession, message.trim())) {
+          resolved = true;
+          if (pendingTimer) {
+            clearTimeout(pendingTimer);
+          }
+          update((state) => {
+            const current = state.lessonSessions.find((item) => item.id === lessonSession.id) ?? currentSession;
+            const nextSession = advanceLessonSessionWithWrap(state, current);
+
+            return persistAndSync({
+              ...state,
+              lessonSessions: upsertLessonSession(state.lessonSessions, nextSession),
+              ui: {
+                ...state.ui,
+                pendingAssistantSessionId:
+                  state.ui.pendingAssistantSessionId === lessonSession.id ? null : state.ui.pendingAssistantSessionId
+              }
+            });
+          });
+          return;
+        }
+
         const currentLesson = getLessonForSession(latest, currentSession);
         const requestPayload = {
           student: latest.profile,
@@ -2324,6 +2412,9 @@ export function createAppStore(initialState: AppState = readState()) {
         let completedDiscoverySession: LessonSession | null = null;
         update((state) => {
           const current = state.lessonSessions.find((item) => item.id === lessonSession.id) ?? currentSession;
+          const useWrapTransition =
+            localPayload.metadata?.action === 'advance' &&
+            (current.softStuckCount ?? 0) >= SOFT_STUCK_STAY_THRESHOLD;
           const assistantMessage = {
             id: `msg-${crypto.randomUUID()}`,
             role: 'assistant' as const,
@@ -2331,7 +2422,7 @@ export function createAppStore(initialState: AppState = readState()) {
               localPayload.metadata?.action === 'side_thread'
                 ? ('side_thread' as const)
                 : localPayload.metadata?.action === 'advance'
-                  ? ('feedback' as const)
+                  ? (useWrapTransition ? ('wrap' as const) : ('feedback' as const))
                   : ('teaching' as const),
             content: localPayload.displayContent,
             stage: current.currentStage,
@@ -2629,6 +2720,7 @@ export function createAppStore(initialState: AppState = readState()) {
           messages: buildInitialLessonMessages(launched.lesson, 'orientation'),
           questionCount: 0,
           reteachCount: 0,
+          softStuckCount: 0,
           confidenceScore: 0.5,
           needsTeacherReview: false,
           stuckConcept: null,

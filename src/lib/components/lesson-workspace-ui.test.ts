@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deriveNextStepCtaState,
   LESSON_WORKSPACE_VISIBLE_STAGES,
   getNextStepPrompt,
   getStageContextCopy,
@@ -66,5 +67,73 @@ describe('lesson workspace UI helpers', () => {
         prompt: 'Help me start this practice question with the first move only.'
       }
     ]);
+  });
+
+  it('disables Next step in concepts before the soft-stuck unlock and explains why', () => {
+    expect(
+      deriveNextStepCtaState({
+        currentStage: 'concepts',
+        status: 'active',
+        softStuckCount: 1,
+        messages: []
+      })
+    ).toEqual({
+      disabled: true,
+      cue: 'Your turn first: explain the idea in your own words.'
+    });
+  });
+
+  it('re-enables Next step in concepts after the soft-stuck threshold', () => {
+    expect(
+      deriveNextStepCtaState({
+        currentStage: 'concepts',
+        status: 'active',
+        softStuckCount: 2,
+        messages: []
+      })
+    ).toEqual({
+      disabled: false,
+      cue: null
+    });
+  });
+
+  it('keeps Next step enabled in guided stages', () => {
+    expect(
+      deriveNextStepCtaState({
+        currentStage: 'construction',
+        status: 'active',
+        softStuckCount: 0,
+        messages: []
+      })
+    ).toEqual({
+      disabled: false,
+      cue: null
+    });
+  });
+
+  it('disables Next step in practice and check with a clear cue', () => {
+    expect(
+      deriveNextStepCtaState({
+        currentStage: 'practice',
+        status: 'active',
+        softStuckCount: 0,
+        messages: []
+      })
+    ).toEqual({
+      disabled: true,
+      cue: 'Your turn first: try the question or tap Help me start.'
+    });
+
+    expect(
+      deriveNextStepCtaState({
+        currentStage: 'check',
+        status: 'active',
+        softStuckCount: 0,
+        messages: []
+      })
+    ).toEqual({
+      disabled: true,
+      cue: 'Your turn first: explain or apply the idea before moving on.'
+    });
   });
 });

@@ -73,7 +73,7 @@ type SupabaseLike = {
         maybeSingle: () => Promise<{ data: Record<string, unknown> | null }>;
       };
     };
-    insert: (value: Record<string, unknown>) => Promise<{ error: { message?: string } | null }>;
+    insert: (value: Record<string, unknown>) => Promise<{ error: { code?: string; message?: string } | null }>;
   };
   storage: {
     from: (bucket: string) => SupabaseStorageBucket;
@@ -140,6 +140,14 @@ function getSupabaseClient(explicit?: SupabaseLike | null): SupabaseLike | null 
   }
 
   return createServerSupabaseAdmin() as SupabaseLike | null;
+}
+
+function isDuplicateCacheKeyError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) {
+    return false;
+  }
+
+  return error.code === '23505' || (error.message ?? '').toLowerCase().includes('duplicate key');
 }
 
 export function createLessonTtsArtifactRepository(options?: { supabase?: SupabaseLike | null }): LessonTtsArtifactRepository {
@@ -234,6 +242,13 @@ export function createLessonTtsArtifactRepository(options?: { supabase?: Supabas
       });
 
       if (insertResult.error) {
+        if (isDuplicateCacheKeyError(insertResult.error)) {
+          const existing = await this.getArtifactByCacheKey(input.cacheKey);
+          if (existing) {
+            return existing;
+          }
+        }
+
         throw new Error(insertResult.error.message ?? 'Failed to persist lesson TTS artifact');
       }
 

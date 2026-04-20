@@ -39,6 +39,7 @@ function makeMockSession(lesson: Lesson, overrides: Partial<LessonSession> = {})
     messages: [],
     questionCount: 0,
     reteachCount: 0,
+    softStuckCount: 0,
     confidenceScore: 0,
     needsTeacherReview: false,
     stuckConcept: null,
@@ -49,6 +50,10 @@ function makeMockSession(lesson: Lesson, overrides: Partial<LessonSession> = {})
     profileUpdates: [],
     ...overrides
   };
+}
+
+function getSoftStuckCount(session: LessonSession): unknown {
+  return Reflect.get(session, 'softStuckCount');
 }
 
 describe('lesson-system', () => {
@@ -113,6 +118,139 @@ describe('lesson-system', () => {
 
     expect(updated.currentStage).toBe('concepts');
     expect(updated.stagesCompleted).toContain('orientation');
+  });
+
+  it('increments the soft-stuck counter on the first stay', () => {
+    const state = createInitialState();
+    const lessonSession = makeMockSession(state.lessons[0]);
+    const updated = applyLessonAssistantResponse(lessonSession, {
+      id: 'assistant-stay-1',
+      role: 'assistant',
+      type: 'teaching',
+      content: 'Stay with this point.',
+      stage: 'orientation',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'stay',
+        next_stage: null,
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.55,
+        profile_update: {}
+      }
+    });
+
+    expect(getSoftStuckCount(updated)).toBe(1);
+  });
+
+  it('reaches the soft-stuck threshold on the second same-stage stay', () => {
+    const state = createInitialState();
+    const lessonSession = {
+      ...makeMockSession(state.lessons[0]),
+      softStuckCount: 1
+    } as LessonSession;
+    const updated = applyLessonAssistantResponse(lessonSession, {
+      id: 'assistant-stay-2',
+      role: 'assistant',
+      type: 'teaching',
+      content: 'One more pass here.',
+      stage: 'orientation',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'stay',
+        next_stage: null,
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.56,
+        profile_update: {}
+      }
+    });
+
+    expect(getSoftStuckCount(updated)).toBe(2);
+  });
+
+  it('resets the soft-stuck counter on advance', () => {
+    const state = createInitialState();
+    const lessonSession = {
+      ...makeMockSession(state.lessons[0]),
+      softStuckCount: 2
+    } as LessonSession;
+    const updated = applyLessonAssistantResponse(lessonSession, {
+      id: 'assistant-advance-reset',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Let us move on.',
+      stage: 'orientation',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.74,
+        profile_update: {}
+      }
+    });
+
+    expect(updated.currentStage).toBe('concepts');
+    expect(getSoftStuckCount(updated)).toBe(0);
+  });
+
+  it('resets the soft-stuck counter on reteach', () => {
+    const state = createInitialState();
+    const lessonSession = {
+      ...makeMockSession(state.lessons[0]),
+      softStuckCount: 2
+    } as LessonSession;
+    const updated = applyLessonAssistantResponse(lessonSession, {
+      id: 'assistant-reteach-reset',
+      role: 'assistant',
+      type: 'teaching',
+      content: 'Let me reteach that.',
+      stage: 'orientation',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'reteach',
+        next_stage: null,
+        reteach_style: 'step_by_step',
+        reteach_count: 1,
+        confidence_assessment: 0.4,
+        profile_update: {}
+      }
+    });
+
+    expect(updated.reteachCount).toBe(1);
+    expect(getSoftStuckCount(updated)).toBe(0);
+  });
+
+  it('does not carry stale soft-stuck count into the next stage', () => {
+    const state = createInitialState();
+    const lessonSession = {
+      ...makeMockSession(state.lessons[0], {
+        currentStage: 'concepts',
+        stagesCompleted: ['orientation']
+      }),
+      softStuckCount: 2
+    } as LessonSession;
+    const updated = applyLessonAssistantResponse(lessonSession, {
+      id: 'assistant-stage-change-reset',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Build on that.',
+      stage: 'concepts',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'construction',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.7,
+        profile_update: {}
+      }
+    });
+
+    expect(updated.currentStage).toBe('construction');
+    expect(getSoftStuckCount(updated)).toBe(0);
   });
 
   it('normalizes explicit completion into a completed session shape', () => {
@@ -211,6 +349,23 @@ describe('lesson-system', () => {
     expect(Array.isArray(normalized.lessonSessions)).toBe(true);
     // learnerProfile is always initialized with the profile's student id
     expect(normalized.learnerProfile.studentId).toBe(initial.profile.id);
+  });
+
+  it('normalizes older lesson sessions that do not include soft-stuck state', () => {
+    const initial = createInitialState();
+    const legacySession = {
+      ...makeMockSession(initial.lessons[0]),
+      currentStage: 'concepts'
+    } as unknown as Record<string, unknown>;
+
+    delete legacySession.softStuckCount;
+
+    const normalized = normalizeAppState({
+      ...initial,
+      lessonSessions: [legacySession as unknown as LessonSession]
+    });
+
+    expect(getSoftStuckCount(normalized.lessonSessions[0])).toBe(0);
   });
 
   // --- New lesson structure tests ---
@@ -341,6 +496,7 @@ describe('lesson-system', () => {
 
     expect(session.currentStage).toBe('orientation');
     expect(session.stagesCompleted).toEqual([]);
+    expect(getSoftStuckCount(session)).toBe(0);
   });
 
   it('buildInitialLessonMessages for orientation includes orientation body', () => {
@@ -579,6 +735,76 @@ describe('lesson-system', () => {
     );
     expect(result.metadata?.action).toBe('complete');
     expect(result.displayContent).toContain(lesson.transferChallenge.body);
+  });
+
+  it('local fallback treats a short but meaningful concepts answer as progression-ready', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson, { currentStage: 'concepts' });
+
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lesson,
+        lessonSession: session,
+        message: 'It adds 4 each time.',
+        messageType: 'response'
+      },
+      lesson
+    );
+
+    expect(result.metadata?.action).toBe('advance');
+    expect(result.metadata?.next_stage).toBe('construction');
+  });
+
+  it('local fallback keeps concepts-stage acknowledgement-only replies on stay before the soft-stuck threshold', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson, {
+      currentStage: 'concepts',
+      softStuckCount: 1
+    });
+
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lesson,
+        lessonSession: session,
+        message: 'ok',
+        messageType: 'response'
+      },
+      lesson
+    );
+
+    expect(result.metadata?.action).toBe('stay');
+    expect(result.metadata?.next_stage).toBeNull();
+  });
+
+  it('local fallback does not return another stay after the concepts soft-stuck threshold', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson, {
+      currentStage: 'concepts',
+      softStuckCount: 2
+    });
+
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lesson,
+        lessonSession: session,
+        message: 'ok',
+        messageType: 'response'
+      },
+      lesson
+    );
+
+    expect(result.metadata?.action).not.toBe('stay');
+    expect(result.metadata?.action).toBe('advance');
+    expect(result.metadata?.next_stage).toBe('construction');
   });
 
   // ─── Phase 2: Subject lenses ────────────────────────────────────────────────

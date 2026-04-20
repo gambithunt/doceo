@@ -988,6 +988,320 @@ REFACTOR
 
 ---
 
+## Phase 6: Production Hardening For Visibility, Telemetry, And Observability
+
+### Goal
+
+Close the remaining production-readiness gaps in operational visibility and cost controls without expanding the TTS surface area.
+
+This phase is not a feature expansion. It is a hardening pass on the existing lesson-only TTS system so that:
+
+- admins do not lose fallback history visibility when fallback is later disabled
+- telemetry includes estimated provider cost so cost controls are operationally meaningful
+- observability behavior is directly tested and less likely to regress silently
+
+### Why this phase exists
+
+The earlier phases establish the core TTS pipeline, but three production concerns remain:
+
+1. fallback history visibility is currently coupled too tightly to the current fallback-enabled setting
+2. cost telemetry is incomplete if estimated per-request provider cost is always null
+3. the fallback-summary aggregation path is too lightly tested for a system that is expected to inform admin operational decisions
+
+This phase keeps the scope narrow:
+
+- no new user-facing lesson playback features
+- no new TTS rollout surfaces
+- allow one narrow admin TTS analytics card inside the existing admin surface
+- no platform-wide analytics or billing refactor
+
+### Tasks
+
+- [ ] decouple fallback history lookup from current fallback-enabled state
+- [ ] preserve last fallback timestamp and summary in admin even when fallback is currently disabled
+- [ ] add estimated-cost metadata to the TTS provider/result pipeline
+- [ ] record estimated provider cost into `tts_generation_events` where pricing is known
+- [ ] keep estimated cost nullable only for truly unknown pricing cases
+- [ ] add one narrow admin TTS analytics card inside the existing admin UI
+- [ ] expose TTS-specific operational metrics needed by that card
+- [ ] add direct unit tests for `tts-observability` fallback-summary aggregation
+- [ ] add regression tests for admin fallback summary behavior when fallback is disabled
+- [ ] add regression tests proving estimated-cost telemetry is emitted on successful synth paths
+
+### Implementation Direction
+
+#### 1. Fallback history must remain historically visible
+
+The admin screen should display two related but different concepts:
+
+- current fallback enabled status
+- most recent fallback event summary
+
+These must not be derived from the same boolean gate.
+
+Production rule:
+
+- `enabled` reflects current configuration state from `tts_config`
+- `lastOccurredAt` and `lastResultSummary` reflect the latest historical fallback event from `tts_generation_events`
+
+Even if fallback is now disabled, the admin screen should still be able to show:
+
+- `Fallback Enabled: No`
+- `Last Fallback: OpenAI → ElevenLabs succeeded after provider_outage.`
+
+Suggested implementation detail:
+
+- update `src/lib/server/tts-observability.ts` so fallback-summary lookup does not short-circuit to null simply because fallback is currently disabled
+- keep the returned shape:
+
+```ts
+type TtsFallbackSummary = {
+  enabled: boolean
+  lastOccurredAt: string | null
+  lastResultSummary: string | null
+}
+```
+
+but compute it as:
+
+- `enabled` from current settings
+- `lastOccurredAt` from the latest row where `fallback_from_provider is not null`
+- `lastResultSummary` from the same latest row
+
+Suggested query behavior:
+
+- order by `created_at desc`
+- limit 1
+- source of truth remains `tts_generation_events`
+- do not create a duplicate “last fallback” cache row in `admin_settings`
+
+#### 2. Estimated-cost telemetry must become real
+
+The workstream already requires:
+
+- estimated cost by provider
+- practical cost guardrails
+
+That means successful synth events should carry non-null estimated cost whenever the app has pinned provider/model pricing for the active allowlist.
+
+Add pricing support in the narrowest production-safe way:
+
+- do not fetch live pricing at request time
+- do not introduce a dynamic pricing sync subsystem
+- do not block synthesis on unavailable pricing
+
+Use pinned server-side pricing constants for the allowlisted initial provider/model set.
+
+Recommended implementation shape:
+
+- extend `src/lib/server/tts-providers/types.ts`
+  - add optional pricing metadata to the normalized synth result or a companion metadata object
+- add a small server-only helper:
+  - new: `src/lib/server/tts-pricing.ts`
+
+Suggested responsibility for `tts-pricing.ts`:
+
+- define pinned per-provider/model pricing constants for the allowlisted rollout set
+- compute estimated cost from normalized text length or provider billing unit
+- return `null` only when the current provider/model combination truly has no pinned price
+
+Conservative first-release rule:
+
+- estimate based on text length because that is already recorded and sufficient for operational guardrails
+- do not attempt waveform-duration pricing
+- do not attempt invoice-grade billing precision
+
+Suggested interface:
+
+```ts
+type TtsPricingInput = {
+  provider: 'openai' | 'elevenlabs'
+  model: string
+  textLength: number
+}
+
+function estimateTtsCostUsd(input: TtsPricingInput): number | null
+```
+
+Where to apply it:
+
+- lesson synth success
+- lesson cache hit may keep `estimatedCostUsd` null or zero depending on event semantics
+
+Recommended event semantics:
+
+- cache hit:
+  - `estimatedCostUsd = 0`
+  - because no new provider generation cost was incurred
+- successful provider synthesis:
+  - `estimatedCostUsd = estimated generated cost`
+- denied or invalid requests:
+  - `estimatedCostUsd = null`
+- provider failure before successful synthesis:
+  - `estimatedCostUsd = null` unless the app intentionally wants to model attempted spend later
+
+That distinction makes operational reporting more useful:
+
+- hits can be rolled up separately as avoided generation cost
+- misses capture actual estimated generation spend
+
+#### 3. Add one narrow admin TTS analytics card
+
+The admin experience needs slightly more than a single fallback summary line, but this workstream still should not become a general reporting system.
+
+Allow exactly one TTS-specific analytics surface:
+
+- a compact analytics card inside the existing admin settings page or existing admin overview surface
+
+Do not add:
+
+- a dedicated TTS analytics route
+- a standalone dashboard page
+- time-series drilldowns
+- export/reporting workflows
+
+The purpose of the card is operational visibility for the TTS system only.
+
+Recommended contents for the first version:
+
+- estimated TTS cost over a fixed recent window
+- cache hit rate
+- synth request count
+- preview request count
+- provider usage share
+- fallback count
+- last fallback summary
+
+Suggested data source:
+
+- aggregate directly from `tts_generation_events`
+
+Suggested implementation detail:
+
+- add a small aggregation helper in `src/lib/server/tts-observability.ts`
+- keep aggregation logic server-side
+- return only the already-computed card payload to the admin load function
+
+Suggested payload shape:
+
+```ts
+type TtsAnalyticsCard = {
+  windowLabel: string
+  estimatedCostUsd: number
+  synthRequestCount: number
+  previewRequestCount: number
+  cacheHitRate: number
+  providerShare: Array<{
+    provider: 'openai' | 'elevenlabs'
+    count: number
+    sharePct: number
+  }>
+  fallbackCount: number
+  lastFallbackAt: string | null
+  lastFallbackSummary: string | null
+}
+```
+
+Keep the initial aggregation conservative:
+
+- use a fixed recent window like 30 days
+- count request categories using the existing event fields and route-specific semantics already present in the TTS service
+- do not introduce a second analytics table unless event aggregation proves insufficient later
+
+#### 4. Observability behavior needs direct unit tests
+
+This workstream should not rely only on route tests and service tests to cover observability.
+
+Add:
+
+- new: `src/lib/server/tts-observability.test.ts`
+
+Required behaviors to lock with direct tests:
+
+- records a `tts_generation_events` row correctly
+- returns the latest fallback summary from historical events
+- still returns historical summary when `enabled = false`
+- returns null summary when no fallback event exists
+- formats success/failure summary text deterministically
+
+Also add regression coverage to the admin load/UI path:
+
+- update admin settings tests so the page/server contract proves fallback history remains visible when fallback is disabled in current config
+
+#### 5. Keep scope narrow
+
+This phase is not permission to build a broader app-cost or observability platform.
+
+Do not add:
+
+- a dedicated TTS dashboard page
+- time-series charts
+- per-tenant billing usage pages
+- provider health alerting infrastructure
+- monthly cap alerts beyond what existing telemetry already supports
+- generalized AI cost accounting for lesson generation, chat, revision, and TTS together
+- a platform-wide billing metering refactor
+- invoice-grade cost reporting for all app systems
+
+Keep it to:
+
+- correct fallback-history visibility
+- correct TTS cost telemetry
+- one narrow admin TTS analytics card
+- correct test coverage
+
+App-wide cost awareness is still important, but that should be handled in a later platform workstream that can unify:
+
+- text AI generation costs
+- lesson planning costs
+- revision generation costs
+- TTS costs
+- any future provider-specific infra costs
+
+This TTS workstream should only produce TTS-specific cost data in a form that can later feed that broader system.
+
+### Touch Points
+
+- `src/lib/server/tts-observability.ts`
+- `src/lib/server/tts-observability.test.ts`
+- `src/lib/server/lesson-tts-service.ts`
+- `src/lib/server/tts-providers/types.ts`
+- new: `src/lib/server/tts-pricing.ts`
+- `src/routes/admin/settings/+page.server.ts`
+- `src/routes/admin/settings/+page.svelte`
+- admin settings tests
+
+### TDD
+
+RED
+
+- `tts-observability` unit tests for:
+  - latest fallback summary aggregation
+  - fallback summary still returned when fallback is currently disabled
+  - null summary when no fallback history exists
+  - analytics-card aggregation output for a mixed recent event set
+- service tests asserting:
+  - cache hits emit `estimatedCostUsd = 0`
+  - successful synth emits non-null estimated cost for pinned provider/model combinations
+- admin load/UI regression tests asserting:
+  - `enabled: false` does not erase the last fallback summary from the admin view
+  - the analytics card renders TTS-specific metrics without creating a new dashboard surface
+
+GREEN
+
+- minimal observability and pricing implementation
+- minimal admin load update to separate current enabled state from historical fallback event lookup
+- minimal analytics-card aggregation and rendering inside the existing admin surface
+
+REFACTOR
+
+- keep pricing logic out of routes and UI
+- keep fallback-summary aggregation centralized in `tts-observability`
+- keep analytics-card aggregation centralized in `tts-observability`
+- keep event-shaping logic in the TTS service rather than scattering cost fields across callers
+
+---
+
 ## Validation Checklist
 
 Before this workstream is considered complete:
@@ -1001,10 +1315,15 @@ Before this workstream is considered complete:
 - ElevenLabs can be configured and used
 - fallback works when eligible
 - fallback events are visible operationally
+- fallback history remains visible even if fallback is later disabled
+- a narrow admin TTS analytics card is available inside the existing admin surface
 - admin voice/provider settings persist via `admin_settings`
 - admin preview is capped and authenticated
 - TTS is gated to `standard` and `premium`
+- estimated provider cost is recorded for successful synth paths where pricing is pinned
+- no new TTS rollout surface was introduced outside lesson teaching bubbles
 - tests cover cache, fallback, entitlement, admin config, preview, and lesson playback wiring
+- tests directly cover observability aggregation behavior
 
 ---
 

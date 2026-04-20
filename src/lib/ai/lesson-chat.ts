@@ -1,4 +1,9 @@
-import { buildLocalLessonChatResponse, parseDoceoMeta, stripDoceoMeta } from '$lib/lesson-system';
+import {
+  buildLocalLessonChatResponse,
+  parseDoceoMeta,
+  SOFT_STUCK_STAY_THRESHOLD,
+  stripDoceoMeta
+} from '$lib/lesson-system';
 import type { Lesson, LessonChatRequest, LessonChatResponse } from '$lib/types';
 
 export interface GithubModelsMessage {
@@ -156,6 +161,7 @@ Rules:
     `Stages Completed: ${request.lessonSession.stagesCompleted.join(', ') || 'none'}`,
     `Questions Asked This Session: ${request.lessonSession.questionCount}`,
     `Reteach Attempts on Current Concept: ${request.lessonSession.reteachCount}`,
+    `Soft-Stuck Same-Point Stays: ${request.lessonSession.softStuckCount ?? 0}`,
     `Last Message Type: ${getLastMessageType(request.lessonSession)}`,
     ``,
     `--- LEARNER PROFILE ---`,
@@ -168,6 +174,8 @@ Rules:
     `When the student asks a question, answer it within the topic and always return to the lesson.`,
     `Use markdown for readability. Short sentences. Explicit reasoning.`,
     `In the concepts stage: introduce no more than 2–3 ideas before checking understanding. Connect each concept to the previous one. Do not dump a flat list — teach each idea with a reason and a brief example, then ask the learner to engage before moving to the next.`,
+    `In the concepts stage: A short answer can still count if it shows real understanding: it names the key idea, states the rule, or identifies the relationship in the learner's own words.`,
+    `In the concepts stage: Do not stay on the exact same concepts-stage checkpoint more than ${SOFT_STUCK_STAY_THRESHOLD} times. If the learner has already reached ${SOFT_STUCK_STAY_THRESHOLD} same-point stays, resolve by advancing with a brief acknowledgment instead of asking the same kind of check again.`,
     `Within your teaching content, always include a specific question that requires the learner to think, explain, or apply — not a yes/no question. Never rely on "Does this make sense?" alone as your only question.`,
     `If the student's message contains [CONCEPT: name], they are asking for a clearer explanation of a concept card they just read. The [STUDENT_HAS_READ: ...] field shows the exact text they already saw — do NOT restate or paraphrase it. Instead, give them a completely fresh angle: a new analogy, a real-world comparison, or a simpler breakdown that says "in other words...". Keep it to 3–5 sentences. End with a short, specific question to check whether it clicked (e.g. "Does that help? Can you tell me what xylem does in your own words?"). This is an in-lesson clarification — NOT a side_thread. Set action to "stay".`,
     ``,

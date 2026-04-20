@@ -38,6 +38,8 @@ export const LESSON_STAGE_ORDER: LessonStage[] = [
   'complete'
 ];
 
+export const SOFT_STUCK_STAY_THRESHOLD = 2;
+
 export const LESSON_STAGE_ICONS: Record<Exclude<LessonStage, 'complete'>, string> = {
   orientation: '◎',
   concepts: '◈',
@@ -598,6 +600,7 @@ export function buildLessonSessionFromTopic(
     messages: buildInitialLessonMessages(lesson, 'orientation'),
     questionCount: 0,
     reteachCount: 0,
+    softStuckCount: 0,
     confidenceScore: 0.5,
     needsTeacherReview: false,
     stuckConcept: null,
@@ -751,6 +754,41 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
   ];
 }
 
+function normalizeLearnerReply(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isAcknowledgementOnlyReply(message: string): boolean {
+  const normalized = normalizeLearnerReply(message);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    'ok',
+    'okay',
+    'yes',
+    'yep',
+    'sure',
+    'continue',
+    'next',
+    'go on',
+    'carry on',
+    'got it',
+    'i understand',
+    'i think i understand',
+    'i think i understand this',
+    'that makes sense',
+    'makes sense'
+  ].includes(normalized);
+}
+
 function buildQuestionReply(session: LessonSession, lesson: Lesson, message: string): LessonChatResponse {
   // Handle concept card clarification requests ([CONCEPT: name] prefix)
   const conceptMatch = message.match(/^\[CONCEPT:\s*(.+?)\]/);
@@ -882,6 +920,45 @@ function buildResponseReply(session: LessonSession, lesson: Lesson, message: str
   }
 
   const nextStage = getNextStage(session.currentStage);
+  const transitionLine =
+    nextStage === 'check'
+      ? `Good. Let's see how much has landed.`
+      : `Good. Let's build on that.`;
+
+  if (session.currentStage === 'concepts' && isAcknowledgementOnlyReply(message)) {
+    if ((session.softStuckCount ?? 0) >= SOFT_STUCK_STAY_THRESHOLD && nextStage) {
+      return {
+        displayContent: transitionLine,
+        provider: 'local-fallback',
+        metadata: {
+          action: 'advance',
+          next_stage: nextStage,
+          reteach_style: null,
+          reteach_count: 0,
+          confidence_assessment: 0.68,
+          profile_update: {
+            abstract_thinking: 0.64
+          }
+        }
+      };
+    }
+
+    return {
+      displayContent:
+        `Good start. Put the core idea in your own words: what is the key rule or relationship here?`,
+      provider: 'local-fallback',
+      metadata: {
+        action: 'stay',
+        next_stage: null,
+        reteach_style: null,
+        reteach_count: session.reteachCount,
+        confidence_assessment: 0.46,
+        profile_update: {
+          abstract_thinking: 0.58
+        }
+      }
+    };
+  }
 
   if (!nextStage) {
     return {
@@ -899,11 +976,6 @@ function buildResponseReply(session: LessonSession, lesson: Lesson, message: str
       }
     };
   }
-
-  const transitionLine =
-    nextStage === 'check'
-      ? `Good. Let's see how much has landed.`
-      : `Good. Let's build on that.`;
 
   return {
     displayContent: transitionLine,
@@ -938,10 +1010,12 @@ export function applyLessonAssistantResponse(
   assistantMessage: LessonMessage
 ): LessonSession {
   const metadata = assistantMessage.metadata;
+  const currentSoftStuckCount = lessonSession.softStuckCount ?? 0;
   const next: LessonSession = {
     ...lessonSession,
     messages: [...lessonSession.messages, assistantMessage],
     lastActiveAt: assistantMessage.timestamp,
+    softStuckCount: currentSoftStuckCount,
     confidenceScore: metadata?.confidence_assessment ?? lessonSession.confidenceScore
   };
 
@@ -961,6 +1035,7 @@ export function applyLessonAssistantResponse(
     return {
       ...next,
       reteachCount: metadata.reteach_count,
+      softStuckCount: 0,
       needsTeacherReview: metadata.needs_teacher_review ?? lessonSession.needsTeacherReview,
       stuckConcept: metadata.stuck_concept ?? lessonSession.stuckConcept,
       profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
@@ -978,6 +1053,7 @@ export function applyLessonAssistantResponse(
       currentStage: 'complete',
       stagesCompleted: completed,
       reteachCount: metadata.reteach_count,
+      softStuckCount: 0,
       status: 'complete',
       completedAt: next.lastActiveAt,
       profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
@@ -990,6 +1066,7 @@ export function applyLessonAssistantResponse(
       currentStage: metadata.next_stage,
       stagesCompleted: completed,
       reteachCount: 0,
+      softStuckCount: 0,
       profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
     };
   }
@@ -1000,8 +1077,18 @@ export function applyLessonAssistantResponse(
       currentStage: 'complete',
       stagesCompleted: completed,
       reteachCount: metadata.reteach_count,
+      softStuckCount: 0,
       status: 'complete',
       completedAt: next.lastActiveAt,
+      profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
+    };
+  }
+
+  if (metadata.action === 'stay') {
+    return {
+      ...next,
+      softStuckCount:
+        assistantMessage.stage === lessonSession.currentStage ? currentSoftStuckCount + 1 : 1,
       profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
     };
   }

@@ -30,6 +30,13 @@ interface LessonTtsProviderRuntime {
   request: Record<string, unknown>;
 }
 
+interface TtsSynthesisExecutionResult {
+  runtime: LessonTtsProviderRuntime;
+  result: TtsSynthesisResult;
+  fallbackFromProvider: TtsProviderId | null;
+  reasonCategory: NormalizedTtsProviderError['category'] | null;
+}
+
 export interface LessonTtsRequest {
   userId: string;
   profileId: string | null;
@@ -175,18 +182,78 @@ export function createLessonTtsService(dependencies?: {
     return { key, artifact };
   }
 
-  async function synthesizeAndPersist(input: {
+  async function executeSynthesis(input: {
+    primaryRuntime: LessonTtsProviderRuntime;
+    fallbackRuntime: LessonTtsProviderRuntime | null;
+    normalizedText: string;
+  }): Promise<TtsSynthesisExecutionResult> {
+    try {
+      const result = await synthesizeWithRuntime(input.primaryRuntime, input.normalizedText);
+
+      return {
+        runtime: input.primaryRuntime,
+        result,
+        fallbackFromProvider: null,
+        reasonCategory: null
+      };
+    } catch (error) {
+      if (!(error instanceof TtsProviderError)) {
+        throw error;
+      }
+
+      const primaryError = error.normalized;
+      if (!primaryError.fallbackEligible || !input.fallbackRuntime) {
+        throw new LessonTtsServiceError({
+          code: 'synthesis_failed',
+          message: primaryError.message,
+          normalizedError: primaryError,
+          primaryError
+        });
+      }
+
+      try {
+        const fallbackResult = await synthesizeWithRuntime(input.fallbackRuntime, input.normalizedText);
+
+        return {
+          runtime: input.fallbackRuntime,
+          result: fallbackResult,
+          fallbackFromProvider: input.primaryRuntime.provider,
+          reasonCategory: primaryError.category
+        };
+      } catch (fallbackError) {
+        if (!(fallbackError instanceof TtsProviderError)) {
+          throw fallbackError;
+        }
+
+        throw new LessonTtsServiceError({
+          code: 'synthesis_failed',
+          message: fallbackError.normalized.message,
+          normalizedError: fallbackError.normalized,
+          primaryError,
+          fallbackError: fallbackError.normalized
+        });
+      }
+    }
+  }
+
+  async function synthesizeWithRuntime(
+    runtime: LessonTtsProviderRuntime,
+    normalizedText: string
+  ): Promise<TtsSynthesisResult> {
+    return providers[runtime.provider].synthesize({
+      ...runtime.request,
+      text: normalizedText
+    });
+  }
+
+  async function persistSynthesisResult(input: {
     request: LessonTtsRequest;
     runtime: LessonTtsProviderRuntime;
     key: ReturnType<typeof createLessonTtsCacheKey>;
     fallbackFromProvider: TtsProviderId | null;
     cacheEnabled: boolean;
+    result: TtsSynthesisResult;
   }): Promise<LessonTtsResult> {
-    const result = await providers[input.runtime.provider].synthesize({
-      ...input.runtime.request,
-      text: input.key.normalized.normalizedText
-    });
-
     if (!input.cacheEnabled) {
       throw new Error('Non-cached lesson TTS playback is not supported in Phase 3');
     }
@@ -207,8 +274,8 @@ export function createLessonTtsService(dependencies?: {
       styleInstruction: input.runtime.styleInstruction,
       providerSettings: input.runtime.providerSettings,
       textHash: input.key.textHash,
-      audio: new Uint8Array(result.audio),
-      mimeType: result.mimeType
+      audio: new Uint8Array(input.result.audio),
+      mimeType: input.result.mimeType
     });
     const signed = await artifactRepository.createSignedUrl(artifact);
 
@@ -218,8 +285,8 @@ export function createLessonTtsService(dependencies?: {
 
     return {
       audioUrl: signed.url,
-      mimeType: result.mimeType,
-      provider: result.provider,
+      mimeType: input.result.mimeType,
+      provider: input.result.provider,
       fallbackUsed: input.fallbackFromProvider !== null,
       cacheHit: false,
       expiresAt: signed.expiresAt
@@ -290,9 +357,10 @@ export function createLessonTtsService(dependencies?: {
     }).normalized;
 
     try {
-      const result = await providers[primaryRuntime.provider].synthesize({
-        ...primaryRuntime.request,
-        text: normalized.normalizedText
+      const execution = await executeSynthesis({
+        primaryRuntime,
+        fallbackRuntime,
+        normalizedText: normalized.normalizedText
       });
 
       await observability.recordGenerationEvent({
@@ -301,102 +369,44 @@ export function createLessonTtsService(dependencies?: {
         lessonSessionId: null,
         lessonMessageId: null,
         cacheHit: false,
-        providerUsed: result.provider,
-        fallbackFromProvider: null,
-        fallbackToProvider: null,
+        providerUsed: execution.result.provider,
+        fallbackFromProvider: execution.fallbackFromProvider,
+        fallbackToProvider: execution.fallbackFromProvider ? execution.result.provider : null,
         status: 'success',
-        reasonCategory: null,
+        reasonCategory: execution.reasonCategory,
         textLength: normalized.normalizedText.length,
         estimatedCostUsd: null
       });
 
       return {
-        audio: new Uint8Array(result.audio),
-        mimeType: result.mimeType
+        audio: new Uint8Array(execution.result.audio),
+        mimeType: execution.result.mimeType
       };
     } catch (error) {
-      if (!(error instanceof TtsProviderError)) {
-        throw error;
-      }
+      if (error instanceof LessonTtsServiceError) {
+        const providerUsed = error.fallbackError ? fallbackRuntime?.provider ?? null : primaryRuntime.provider;
+        const fallbackFromProvider = error.fallbackError ? primaryRuntime.provider : null;
+        const fallbackToProvider = error.fallbackError ? fallbackRuntime?.provider ?? null : null;
+        const reasonCategory =
+          error.fallbackError?.category ?? error.primaryError?.category ?? error.normalizedError?.category ?? null;
 
-      const primaryError = error.normalized;
-      if (!primaryError.fallbackEligible || !fallbackRuntime) {
         await observability.recordGenerationEvent({
           requestId,
           profileId: input.profileId,
           lessonSessionId: null,
           lessonMessageId: null,
           cacheHit: false,
-          providerUsed: primaryRuntime.provider,
-          fallbackFromProvider: null,
-          fallbackToProvider: null,
+          providerUsed,
+          fallbackFromProvider,
+          fallbackToProvider,
           status: 'failure',
-          reasonCategory: primaryError.category,
+          reasonCategory,
           textLength: normalized.normalizedText.length,
           estimatedCostUsd: null
-        });
-
-        throw new LessonTtsServiceError({
-          code: 'synthesis_failed',
-          message: primaryError.message,
-          normalizedError: primaryError,
-          primaryError
         });
       }
 
-      try {
-        const fallbackResult = await providers[fallbackRuntime.provider].synthesize({
-          ...fallbackRuntime.request,
-          text: normalized.normalizedText
-        });
-
-        await observability.recordGenerationEvent({
-          requestId,
-          profileId: input.profileId,
-          lessonSessionId: null,
-          lessonMessageId: null,
-          cacheHit: false,
-          providerUsed: fallbackResult.provider,
-          fallbackFromProvider: primaryRuntime.provider,
-          fallbackToProvider: fallbackResult.provider,
-          status: 'success',
-          reasonCategory: primaryError.category,
-          textLength: normalized.normalizedText.length,
-          estimatedCostUsd: null
-        });
-
-        return {
-          audio: new Uint8Array(fallbackResult.audio),
-          mimeType: fallbackResult.mimeType
-        };
-      } catch (fallbackError) {
-        if (!(fallbackError instanceof TtsProviderError)) {
-          throw fallbackError;
-        }
-
-        await observability.recordGenerationEvent({
-          requestId,
-          profileId: input.profileId,
-          lessonSessionId: null,
-          lessonMessageId: null,
-          cacheHit: false,
-          providerUsed: fallbackRuntime.provider,
-          fallbackFromProvider: primaryRuntime.provider,
-          fallbackToProvider: fallbackRuntime.provider,
-          status: 'failure',
-          reasonCategory: fallbackError.normalized.category,
-          textLength: normalized.normalizedText.length,
-          estimatedCostUsd: null
-        });
-
-        throw new LessonTtsServiceError({
-          code: 'synthesis_failed',
-          message: fallbackError.normalized.message,
-          normalizedError: fallbackError.normalized,
-          primaryError,
-          fallbackError: fallbackError.normalized
-        });
-      }
+      throw error;
     }
   }
 
@@ -515,12 +525,18 @@ export function createLessonTtsService(dependencies?: {
       }
 
       try {
-        const result = await synthesizeAndPersist({
+        const execution = await executeSynthesis({
+          primaryRuntime,
+          fallbackRuntime: null,
+          normalizedText: primaryLookup.key.normalized.normalizedText
+        });
+        const result = await persistSynthesisResult({
           request,
-          runtime: primaryRuntime,
+          runtime: execution.runtime,
           key: primaryLookup.key,
-          fallbackFromProvider: null,
-          cacheEnabled: config.cacheEnabled
+          fallbackFromProvider: execution.fallbackFromProvider,
+          cacheEnabled: config.cacheEnabled,
+          result: execution.result
         });
 
         await observability.recordGenerationEvent({
@@ -530,138 +546,138 @@ export function createLessonTtsService(dependencies?: {
           lessonMessageId: request.lessonMessageId,
           cacheHit: false,
           providerUsed: result.provider,
-          fallbackFromProvider: null,
-          fallbackToProvider: null,
+          fallbackFromProvider: execution.fallbackFromProvider,
+          fallbackToProvider: execution.fallbackFromProvider ? result.provider : null,
           status: 'success',
-          reasonCategory: null,
+          reasonCategory: execution.reasonCategory,
           textLength: normalizedTextLength,
           estimatedCostUsd: null
         });
 
         return result;
       } catch (error) {
-        if (!(error instanceof TtsProviderError)) {
-          throw error;
-        }
+        if (error instanceof LessonTtsServiceError) {
+          if (error.primaryError?.fallbackEligible && fallbackRuntime) {
+            const fallbackLookup = await maybeReadCache({
+              runtime: fallbackRuntime,
+              content: trimmedContent,
+              cacheEnabled: config.cacheEnabled
+            });
 
-        const primaryError = error.normalized;
-        if (!primaryError.fallbackEligible || !fallbackRuntime) {
+            if (fallbackLookup.artifact) {
+              const signed = await artifactRepository.createSignedUrl(fallbackLookup.artifact);
+
+              if (!signed) {
+                throw new LessonTtsServiceError({
+                  code: 'tts_unavailable',
+                  message: 'Failed to create lesson TTS playback URL.'
+                });
+              }
+
+              await observability.recordGenerationEvent({
+                requestId,
+                profileId: request.profileId,
+                lessonSessionId: request.lessonSessionId,
+                lessonMessageId: request.lessonMessageId,
+                cacheHit: true,
+                providerUsed: fallbackLookup.artifact.provider,
+                fallbackFromProvider: primaryRuntime.provider,
+                fallbackToProvider: fallbackLookup.artifact.provider,
+                status: 'success',
+                reasonCategory: error.primaryError.category,
+                textLength: fallbackLookup.key.normalized.normalizedText.length,
+                estimatedCostUsd: null
+              });
+
+              return {
+                audioUrl: signed.url,
+                mimeType: fallbackLookup.artifact.format === 'wav' ? 'audio/wav' : 'audio/mpeg',
+                provider: fallbackLookup.artifact.provider,
+                fallbackUsed: true,
+                cacheHit: true,
+                expiresAt: signed.expiresAt
+              };
+            }
+
+            try {
+              const fallbackResult = await synthesizeWithRuntime(
+                fallbackRuntime,
+                fallbackLookup.key.normalized.normalizedText
+              );
+              const result = await persistSynthesisResult({
+                request,
+                runtime: fallbackRuntime,
+                key: fallbackLookup.key,
+                fallbackFromProvider: primaryRuntime.provider,
+                cacheEnabled: config.cacheEnabled,
+                result: fallbackResult
+              });
+
+              await observability.recordGenerationEvent({
+                requestId,
+                profileId: request.profileId,
+                lessonSessionId: request.lessonSessionId,
+                lessonMessageId: request.lessonMessageId,
+                cacheHit: false,
+                providerUsed: result.provider,
+                fallbackFromProvider: primaryRuntime.provider,
+                fallbackToProvider: result.provider,
+                status: 'success',
+                reasonCategory: error.primaryError.category,
+                textLength: fallbackLookup.key.normalized.normalizedText.length,
+                estimatedCostUsd: null
+              });
+
+              return result;
+            } catch (fallbackError) {
+              if (fallbackError instanceof TtsProviderError) {
+                await observability.recordGenerationEvent({
+                  requestId,
+                  profileId: request.profileId,
+                  lessonSessionId: request.lessonSessionId,
+                  lessonMessageId: request.lessonMessageId,
+                  cacheHit: false,
+                  providerUsed: fallbackRuntime.provider,
+                  fallbackFromProvider: primaryRuntime.provider,
+                  fallbackToProvider: fallbackRuntime.provider,
+                  status: 'failure',
+                  reasonCategory: fallbackError.normalized.category,
+                  textLength: fallbackLookup.key.normalized.normalizedText.length,
+                  estimatedCostUsd: null
+                });
+
+                throw new LessonTtsServiceError({
+                  code: 'synthesis_failed',
+                  message: fallbackError.normalized.message,
+                  normalizedError: fallbackError.normalized,
+                  primaryError: error.primaryError,
+                  fallbackError: fallbackError.normalized
+                });
+              }
+
+              throw fallbackError;
+            }
+          }
+
+          const reasonCategory =
+            error.fallbackError?.category ?? error.primaryError?.category ?? error.normalizedError?.category ?? null;
           await observability.recordGenerationEvent({
             requestId,
             profileId: request.profileId,
             lessonSessionId: request.lessonSessionId,
             lessonMessageId: request.lessonMessageId,
             cacheHit: false,
-            providerUsed: primaryRuntime.provider,
-            fallbackFromProvider: null,
-            fallbackToProvider: null,
+            providerUsed: error.fallbackError ? fallbackRuntime?.provider ?? null : primaryRuntime.provider,
+            fallbackFromProvider: error.fallbackError ? primaryRuntime.provider : null,
+            fallbackToProvider: error.fallbackError ? fallbackRuntime?.provider ?? null : null,
             status: 'failure',
-            reasonCategory: primaryError.category,
+            reasonCategory,
             textLength: normalizedTextLength,
             estimatedCostUsd: null
           });
-
-          throw new LessonTtsServiceError({
-            code: 'synthesis_failed',
-            message: primaryError.message,
-            normalizedError: primaryError,
-            primaryError
-          });
         }
 
-        const fallbackLookup = await maybeReadCache({
-          runtime: fallbackRuntime,
-          content: trimmedContent,
-          cacheEnabled: config.cacheEnabled
-        });
-
-        if (fallbackLookup.artifact) {
-          const signed = await artifactRepository.createSignedUrl(fallbackLookup.artifact);
-
-          if (!signed) {
-            throw new LessonTtsServiceError({
-              code: 'tts_unavailable',
-              message: 'Failed to create lesson TTS playback URL.'
-            });
-          }
-
-          await observability.recordGenerationEvent({
-            requestId,
-            profileId: request.profileId,
-            lessonSessionId: request.lessonSessionId,
-            lessonMessageId: request.lessonMessageId,
-            cacheHit: true,
-            providerUsed: fallbackLookup.artifact.provider,
-            fallbackFromProvider: primaryRuntime.provider,
-            fallbackToProvider: fallbackLookup.artifact.provider,
-            status: 'success',
-            reasonCategory: primaryError.category,
-            textLength: fallbackLookup.key.normalized.normalizedText.length,
-            estimatedCostUsd: null
-          });
-
-          return {
-            audioUrl: signed.url,
-            mimeType: fallbackLookup.artifact.format === 'wav' ? 'audio/wav' : 'audio/mpeg',
-            provider: fallbackLookup.artifact.provider,
-            fallbackUsed: true,
-            cacheHit: true,
-            expiresAt: signed.expiresAt
-          };
-        }
-
-        try {
-          const fallbackResult = await synthesizeAndPersist({
-            request,
-            runtime: fallbackRuntime,
-            key: fallbackLookup.key,
-            fallbackFromProvider: primaryRuntime.provider,
-            cacheEnabled: config.cacheEnabled
-          });
-
-          await observability.recordGenerationEvent({
-            requestId,
-            profileId: request.profileId,
-            lessonSessionId: request.lessonSessionId,
-            lessonMessageId: request.lessonMessageId,
-            cacheHit: false,
-            providerUsed: fallbackResult.provider,
-            fallbackFromProvider: primaryRuntime.provider,
-            fallbackToProvider: fallbackResult.provider,
-            status: 'success',
-            reasonCategory: primaryError.category,
-            textLength: fallbackLookup.key.normalized.normalizedText.length,
-            estimatedCostUsd: null
-          });
-
-          return fallbackResult;
-        } catch (fallbackError) {
-          const normalizedFallbackError =
-            fallbackError instanceof TtsProviderError ? fallbackError.normalized : null;
-
-          await observability.recordGenerationEvent({
-            requestId,
-            profileId: request.profileId,
-            lessonSessionId: request.lessonSessionId,
-            lessonMessageId: request.lessonMessageId,
-            cacheHit: false,
-            providerUsed: fallbackRuntime.provider,
-            fallbackFromProvider: primaryRuntime.provider,
-            fallbackToProvider: fallbackRuntime.provider,
-            status: 'failure',
-            reasonCategory: normalizedFallbackError?.category ?? primaryError.category,
-            textLength: fallbackLookup.key.normalized.normalizedText.length,
-            estimatedCostUsd: null
-          });
-
-          throw new LessonTtsServiceError({
-            code: 'synthesis_failed',
-            message: normalizedFallbackError?.message ?? primaryError.message,
-            normalizedError: normalizedFallbackError ?? primaryError,
-            primaryError,
-            fallbackError: normalizedFallbackError
-          });
-        }
+        throw error;
       }
     }
   };

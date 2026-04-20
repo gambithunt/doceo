@@ -752,7 +752,8 @@ export function normalizeAppState(value: unknown): AppState {
           currentStage: migrateStage(session.currentStage),
           stagesCompleted: Array.isArray(session.stagesCompleted)
             ? session.stagesCompleted.map(migrateStage)
-            : []
+            : [],
+          softStuckCount: typeof session.softStuckCount === 'number' ? session.softStuckCount : 0
         }))
       : base.lessonSessions,
     revisionTopics: Array.isArray(input.revisionTopics)

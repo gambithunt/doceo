@@ -1,5 +1,5 @@
-import { LESSON_STAGE_ORDER } from '$lib/lesson-system';
-import type { LessonStage } from '$lib/types';
+import { LESSON_STAGE_ORDER, SOFT_STUCK_STAY_THRESHOLD } from '$lib/lesson-system';
+import type { LessonSession, LessonStage } from '$lib/types';
 
 export type VisibleLessonStage = Exclude<LessonStage, 'complete'>;
 
@@ -7,6 +7,11 @@ export interface LessonWorkspaceQuickActionDefinition {
   id: string;
   label: string;
   prompt: string;
+}
+
+export interface LessonWorkspaceNextStepCtaState {
+  disabled: boolean;
+  cue: string | null;
 }
 
 export const LESSON_WORKSPACE_VISIBLE_STAGES = LESSON_STAGE_ORDER.filter(
@@ -41,6 +46,12 @@ const HELP_ME_START_PROMPTS: Record<VisibleLessonStage, string> = {
   check: 'Help me start explaining this in my own words.'
 };
 
+const NEXT_STEP_DISABLED_CUES: Partial<Record<VisibleLessonStage, string>> = {
+  concepts: 'Your turn first: explain the idea in your own words.',
+  practice: 'Your turn first: try the question or tap Help me start.',
+  check: 'Your turn first: explain or apply the idea before moving on.'
+};
+
 const GIVE_ME_AN_EXAMPLE_PROMPTS: Record<VisibleLessonStage, string> = {
   orientation: 'Give me a real-world example for this topic.',
   concepts: 'Give me an example that makes this concept concrete.',
@@ -65,6 +76,43 @@ export function getStageContextCopy(stage: LessonStage): string {
 
 export function getNextStepPrompt(stage: VisibleLessonStage): string {
   return NEXT_STEP_PROMPTS[stage];
+}
+
+export function deriveNextStepCtaState(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'messages' | 'softStuckCount' | 'status'>
+): LessonWorkspaceNextStepCtaState {
+  if (lessonSession.status !== 'active' || lessonSession.currentStage === 'complete') {
+    return {
+      disabled: false,
+      cue: null
+    };
+  }
+
+  if (lessonSession.currentStage === 'concepts') {
+    if ((lessonSession.softStuckCount ?? 0) >= SOFT_STUCK_STAY_THRESHOLD) {
+      return {
+        disabled: false,
+        cue: null
+      };
+    }
+
+    return {
+      disabled: true,
+      cue: NEXT_STEP_DISABLED_CUES.concepts ?? null
+    };
+  }
+
+  if (lessonSession.currentStage === 'practice' || lessonSession.currentStage === 'check') {
+    return {
+      disabled: true,
+      cue: NEXT_STEP_DISABLED_CUES[lessonSession.currentStage] ?? null
+    };
+  }
+
+  return {
+    disabled: false,
+    cue: null
+  };
 }
 
 export function getVisibleQuickActionDefinitions(

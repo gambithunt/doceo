@@ -38,6 +38,7 @@ export type LessonMessageType =
   | 'question'
   | 'side_thread'
   | 'feedback'
+  | 'wrap'
   | 'stage_start'
   | 'concept_cards';
 export type LessonSessionStatus = 'active' | 'complete' | 'archived';
@@ -632,6 +633,7 @@ export interface LessonSession {
   messages: LessonMessage[];
   questionCount: number;
   reteachCount: number;
+  softStuckCount?: number;
   confidenceScore: number;
   needsTeacherReview: boolean;
   stuckConcept: string | null;

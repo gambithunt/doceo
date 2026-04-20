@@ -7,6 +7,7 @@
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
   import {
+    deriveNextStepCtaState,
     getNextStepPrompt,
     getStageContextCopy,
     getVisibleQuickActionDefinitions,
@@ -106,6 +107,17 @@
       ? getVisibleQuickActionDefinitions(lessonSession.currentStage as VisibleLessonStage)
       : []
   );
+  const nextStepCtaState = $derived(
+    lessonSession && lessonSession.currentStage !== 'complete'
+      ? deriveNextStepCtaState(lessonSession)
+      : { disabled: false, cue: null }
+  );
+  const nextStepPrompt = $derived(
+    lessonSession && lessonSession.currentStage !== 'complete'
+      ? getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage)
+      : null
+  );
+  const nextStepCueId = 'lesson-next-step-cue';
   const supportAnchorIndex = $derived.by(() => {
     if (!lessonSession || lessonSession.status === 'complete') {
       return null;
@@ -272,6 +284,10 @@
       return 'assistant side-thread';
     }
 
+    if (message.type === 'wrap') {
+      return 'assistant wrap';
+    }
+
     if (message.type === 'feedback') {
       return 'assistant check';
     }
@@ -280,7 +296,19 @@
   }
 
   function bubbleAnimationClass(message: LessonMessage): string {
-    return message.role === 'user' ? 'enter-user' : 'enter-assistant';
+    if (message.role === 'user') {
+      return 'enter-user';
+    }
+
+    return message.type === 'wrap' ? 'enter-assistant enter-wrap' : 'enter-assistant';
+  }
+
+  function bubbleMotionVariant(message: LessonMessage): 'user' | 'assistant' | 'wrap' {
+    if (message.role === 'user') {
+      return 'user';
+    }
+
+    return message.type === 'wrap' ? 'wrap' : 'assistant';
   }
 
   function isCompactUserReply(message: LessonMessage): boolean {
@@ -493,12 +521,17 @@
               {#if supportAnchorIndex === messageIndex}
                 <section class="lesson-support-object" aria-label="Lesson support">
                   <p class="lesson-support-copy">{getStageContextCopy(lessonSession.currentStage)}</p>
+                  {#if nextStepCtaState.cue}
+                    <p class="lesson-support-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
+                  {/if}
                   {#if !useDesktopActionRow}
                     <div class="lesson-support-actions">
                       <button
                         type="button"
                         class="btn btn-primary lesson-support-cta"
-                        onclick={() => sendQuickReply(getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage))}
+                        onclick={() => nextStepPrompt && sendQuickReply(nextStepPrompt)}
+                        disabled={nextStepCtaState.disabled}
+                        aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
                       >
                         <span>Next step</span>
                         <span class="next-step-arrow" aria-hidden="true">→</span>
@@ -516,6 +549,7 @@
                   class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
                   class:compact-reply={isCompactUserReply(message)}
                   class:bubble-with-tts={canPlayTutorBubble(message)}
+                  data-motion-variant={bubbleMotionVariant(message)}
                 >
                   {#if message.type === 'question'}
                     {@const questionCard = parseQuestionCard(message.content)}
@@ -575,12 +609,17 @@
                 {#if supportAnchorIndex === messageIndex}
                   <section class="lesson-support-object" aria-label="Lesson support">
                     <p class="lesson-support-copy">{getStageContextCopy(lessonSession.currentStage)}</p>
+                    {#if nextStepCtaState.cue}
+                      <p class="lesson-support-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
+                    {/if}
                     {#if !useDesktopActionRow}
                       <div class="lesson-support-actions">
                         <button
                           type="button"
                           class="btn btn-primary lesson-support-cta"
-                          onclick={() => sendQuickReply(getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage))}
+                          onclick={() => nextStepPrompt && sendQuickReply(nextStepPrompt)}
+                          disabled={nextStepCtaState.disabled}
+                          aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
                         >
                           <span>Next step</span>
                           <span class="next-step-arrow" aria-hidden="true">→</span>
@@ -717,7 +756,9 @@
                 <button
                   type="button"
                   class="btn btn-primary lesson-support-cta lesson-support-cta-row"
-                  onclick={() => sendQuickReply(getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage))}
+                  onclick={() => nextStepPrompt && sendQuickReply(nextStepPrompt)}
+                  disabled={nextStepCtaState.disabled}
+                  aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
                 >
                   <span>Next step</span>
                   <span class="next-step-arrow" aria-hidden="true">→</span>
@@ -802,6 +843,8 @@
     --chat-assistant-text: var(--text);
     --chat-check-bg: color-mix(in srgb, var(--accent) 8%, var(--surface-strong));
     --chat-check-border: color-mix(in srgb, var(--accent) 24%, var(--border));
+    --chat-wrap-bg: color-mix(in srgb, var(--color-success) 10%, var(--surface-strong));
+    --chat-wrap-border: color-mix(in srgb, var(--color-success) 26%, var(--border));
     --chat-side-thread-bg: color-mix(in srgb, #8ec5ff 9%, var(--surface-strong));
     --chat-side-thread-border: color-mix(in srgb, #8ec5ff 24%, var(--border));
     --chat-stage-bg: color-mix(in srgb, var(--surface-soft) 92%, rgba(236, 228, 214, 0.5));
@@ -968,6 +1011,8 @@
     --chat-assistant-text: #eef5ff;
     --chat-check-bg: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
     --chat-check-border: color-mix(in srgb, var(--accent) 32%, var(--border));
+    --chat-wrap-bg: color-mix(in srgb, var(--color-success) 12%, var(--surface-strong));
+    --chat-wrap-border: color-mix(in srgb, var(--color-success) 34%, var(--border));
     --chat-side-thread-bg: color-mix(in srgb, #5eb3ff 12%, var(--surface-strong));
     --chat-side-thread-border: color-mix(in srgb, #5eb3ff 34%, var(--border));
     --chat-stage-bg: color-mix(in srgb, var(--surface-soft) 96%, rgba(233, 227, 215, 0.14));
@@ -1297,6 +1342,11 @@
     font-size: 0.99rem;
     transform-origin: left bottom;
     will-change: transform, opacity;
+    transition:
+      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 180ms ease-out,
+      border-color 180ms ease-out,
+      background 180ms ease-out;
   }
 
   .bubble.assistant {
@@ -1398,6 +1448,16 @@
     padding-left: calc(1.22rem - 2px);
   }
 
+  .bubble.assistant.wrap {
+    background: var(--chat-wrap-bg);
+    border-color: var(--chat-wrap-border);
+    border-left: 3px solid color-mix(in srgb, var(--color-success) 72%, transparent);
+    padding-left: calc(1.22rem - 2px);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-success) 10%, transparent),
+      0 10px 22px color-mix(in srgb, var(--color-success) 10%, transparent);
+  }
+
   .bubble.assistant.side-thread {
     background: var(--chat-side-thread-bg);
     border-color: var(--chat-side-thread-border);
@@ -1447,6 +1507,13 @@
     line-height: 1.55;
   }
 
+  .lesson-support-cue {
+    margin: 0;
+    color: color-mix(in srgb, var(--accent) 46%, var(--text-soft) 54%);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+
   .lesson-support-actions {
     display: flex;
     justify-content: flex-start;
@@ -1469,6 +1536,20 @@
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
       0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .lesson-support-cta:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .lesson-support-cta:disabled:hover {
+    box-shadow: none;
+  }
+
+  .lesson-support-cta:disabled .next-step-arrow {
+    transform: none;
   }
 
   .next-step-arrow {
@@ -1662,6 +1743,30 @@
   .bubble.assistant.side-thread .bubble-body :global(p) {
     font-size: 0.95rem;
     line-height: 1.68;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .bubble.assistant:hover,
+    .bubble.user:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 34px color-mix(in srgb, rgba(15, 23, 42, 0.16) 82%, transparent);
+    }
+
+    .bubble.assistant.wrap:hover {
+      transform: translateY(-2px) scale(1.005);
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--color-success) 12%, transparent),
+        0 16px 30px color-mix(in srgb, var(--color-success) 12%, transparent);
+    }
+  }
+
+  .bubble.assistant:active,
+  .bubble.user:active {
+    transform: translateY(-1px) scale(0.992);
+  }
+
+  .bubble.assistant.wrap:active {
+    transform: translateY(-1px) scale(0.988);
   }
 
   .bubble-body :global(hr) {
@@ -2122,7 +2227,11 @@
 
   /* ── Animations ── */
   .enter-assistant {
-    animation: bubble-in-assistant 350ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: bubble-in-assistant 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .enter-wrap {
+    animation: bubble-in-wrap 420ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .enter-user {
@@ -2520,6 +2629,12 @@
       padding-left: 0.1rem;
     }
 
+    .lesson-support-cue {
+      max-width: 30rem;
+      font-size: 0.8rem;
+      padding-left: 0.1rem;
+    }
+
     .lesson-action-row {
       grid-template-columns: auto auto;
       align-items: center;
@@ -2646,13 +2761,13 @@
   @keyframes bubble-in-assistant {
     0% {
       opacity: 0;
-      transform: translateY(12px) scaleX(0.97) scaleY(0.94);
+      transform: translateY(10px) scaleX(0.972) scaleY(0.945);
       filter: blur(4px);
     }
 
-    60% {
+    68% {
       opacity: 1;
-      transform: translateY(0) scaleX(1.005) scaleY(1);
+      transform: translateY(-1px) scaleX(1.014) scaleY(1.004);
       filter: blur(0);
     }
 
@@ -2666,13 +2781,39 @@
   @keyframes bubble-in-user {
     0% {
       opacity: 0;
-      transform: translateY(10px) scaleX(0.94) scaleY(0.92);
+      transform: translateY(8px) scaleX(0.95) scaleY(0.93);
       filter: blur(4px);
     }
 
-    65% {
+    72% {
       opacity: 1;
-      transform: translateY(0) scaleX(1.01) scaleY(1);
+      transform: translateY(-1px) scaleX(1.012) scaleY(1.002);
+      filter: blur(0);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0) scaleX(1) scaleY(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes bubble-in-wrap {
+    0% {
+      opacity: 0;
+      transform: translateY(12px) scaleX(0.968) scaleY(0.938);
+      filter: blur(4px);
+    }
+
+    58% {
+      opacity: 1;
+      transform: translateY(-2px) scaleX(1.022) scaleY(1.01);
+      filter: blur(0);
+    }
+
+    84% {
+      opacity: 1;
+      transform: translateY(0) scaleX(0.998) scaleY(0.998);
       filter: blur(0);
     }
 
@@ -2794,6 +2935,12 @@
       animation: none !important;
       transition: none !important;
       filter: none !important;
+    }
+
+    .bubble:hover,
+    .bubble:active {
+      transform: none !important;
+      box-shadow: inherit !important;
     }
   }
 </style>

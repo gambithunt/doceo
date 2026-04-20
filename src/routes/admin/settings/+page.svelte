@@ -50,20 +50,53 @@
     { value: 'closed', label: 'Closed — registration disabled' }
   ];
 
-  let selectedProviderId = $state<ProviderId>(data.aiConfig.provider);
+  function createTierModelState(aiConfig: AiConfig) {
+    return {
+      fast: aiConfig.tiers.fast.model,
+      default: aiConfig.tiers.default.model,
+      thinking: aiConfig.tiers.thinking.model
+    };
+  }
+
+  function createTtsFormState(ttsConfig: AppTtsSettings) {
+    return {
+      enabled: ttsConfig.enabled,
+      defaultProvider: ttsConfig.defaultProvider,
+      fallbackProvider: ttsConfig.fallbackProvider ?? '',
+      previewEnabled: ttsConfig.previewEnabled,
+      previewMaxChars: ttsConfig.previewMaxChars,
+      openaiEnabled: ttsConfig.openai.enabled,
+      openaiModel: ttsConfig.openai.model,
+      openaiVoice: ttsConfig.openai.voice,
+      openaiSpeed: String(ttsConfig.openai.speed),
+      openaiStyleInstruction: ttsConfig.openai.styleInstruction ?? '',
+      openaiFormat: ttsConfig.openai.format,
+      elevenlabsEnabled: ttsConfig.elevenlabs.enabled,
+      elevenlabsModel: ttsConfig.elevenlabs.model,
+      elevenlabsVoiceId: ttsConfig.elevenlabs.voiceId,
+      elevenlabsFormat: ttsConfig.elevenlabs.format,
+      elevenlabsLanguageCode: ttsConfig.elevenlabs.languageCode ?? '',
+      elevenlabsStability: String(ttsConfig.elevenlabs.stability),
+      elevenlabsSimilarityBoost: String(ttsConfig.elevenlabs.similarityBoost),
+      elevenlabsStyle: String(ttsConfig.elevenlabs.style),
+      elevenlabsSpeakerBoost: ttsConfig.elevenlabs.speakerBoost
+    };
+  }
+
+  let selectedProviderId = $state<ProviderId>('openai' as ProviderId);
   let tierModels = $state({
-    fast:     data.aiConfig.tiers.fast.model,
-    default:  data.aiConfig.tiers.default.model,
-    thinking: data.aiConfig.tiers.thinking.model
+    fast: '',
+    default: '',
+    thinking: ''
   });
-  let budgetCap      = $state(data.budgetCapUsd);
-  let errorThreshold = $state(data.alertThresholds.errorRatePct);
-  let spendThreshold = $state(data.alertThresholds.spendPct);
+  let budgetCap      = $state(0);
+  let errorThreshold = $state(0);
+  let spendThreshold = $state(0);
   let showOverrides  = $state(false);
   let saveState      = $state<'idle' | 'saving' | 'saved'>('idle');
   let scanning       = $state(false);
   let scanBanner     = $state<{ pricesUpdated: number; modelsAdded: number; errors: string[] } | null>(null);
-  let selectedMode   = $state<RegistrationMode>(data.registrationMode);
+  let selectedMode   = $state<RegistrationMode>('open');
   let inviteEmail    = $state('');
   let modeSaveState  = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
   let inviteSaveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -81,26 +114,63 @@
 
   const allModels = $derived(selectedProvider?.models ?? []);
 
-  let ttsEnabled = $state(data.ttsConfig.enabled);
-  let ttsDefaultProvider = $state(data.ttsConfig.defaultProvider);
-  let ttsFallbackProvider = $state(data.ttsConfig.fallbackProvider ?? '');
-  let ttsPreviewEnabled = $state(data.ttsConfig.previewEnabled);
-  let ttsPreviewMaxChars = $state(data.ttsConfig.previewMaxChars);
-  let openaiEnabled = $state(data.ttsConfig.openai.enabled);
-  let openaiModel = $state(data.ttsConfig.openai.model);
-  let openaiVoice = $state(data.ttsConfig.openai.voice);
-  let openaiSpeed = $state(String(data.ttsConfig.openai.speed));
-  let openaiStyleInstruction = $state(data.ttsConfig.openai.styleInstruction ?? '');
-  let openaiFormat = $state(data.ttsConfig.openai.format);
-  let elevenlabsEnabled = $state(data.ttsConfig.elevenlabs.enabled);
-  let elevenlabsModel = $state(data.ttsConfig.elevenlabs.model);
-  let elevenlabsVoiceId = $state(data.ttsConfig.elevenlabs.voiceId);
-  let elevenlabsFormat = $state(data.ttsConfig.elevenlabs.format);
-  let elevenlabsLanguageCode = $state(data.ttsConfig.elevenlabs.languageCode ?? '');
-  let elevenlabsStability = $state(String(data.ttsConfig.elevenlabs.stability));
-  let elevenlabsSimilarityBoost = $state(String(data.ttsConfig.elevenlabs.similarityBoost));
-  let elevenlabsStyle = $state(String(data.ttsConfig.elevenlabs.style));
-  let elevenlabsSpeakerBoost = $state(data.ttsConfig.elevenlabs.speakerBoost);
+  let ttsEnabled = $state(false);
+  let ttsDefaultProvider = $state<'openai' | 'elevenlabs'>('openai');
+  let ttsFallbackProvider = $state('');
+  let ttsPreviewEnabled = $state(false);
+  let ttsPreviewMaxChars = $state(280);
+  let openaiEnabled = $state(false);
+  let openaiModel = $state('');
+  let openaiVoice = $state('');
+  let openaiSpeed = $state('1');
+  let openaiStyleInstruction = $state('');
+  let openaiFormat = $state<'mp3' | 'wav'>('mp3');
+  let elevenlabsEnabled = $state(false);
+  let elevenlabsModel = $state('');
+  let elevenlabsVoiceId = $state('');
+  let elevenlabsFormat = $state<'mp3' | 'wav'>('mp3');
+  let elevenlabsLanguageCode = $state('');
+  let elevenlabsStability = $state('0.5');
+  let elevenlabsSimilarityBoost = $state('0.8');
+  let elevenlabsStyle = $state('0');
+  let elevenlabsSpeakerBoost = $state(false);
+  let initializedFromData = false;
+
+  $effect(() => {
+    if (initializedFromData) {
+      return;
+    }
+
+    selectedProviderId = data.aiConfig.provider;
+    tierModels = createTierModelState(data.aiConfig);
+    budgetCap = data.budgetCapUsd;
+    errorThreshold = data.alertThresholds.errorRatePct;
+    spendThreshold = data.alertThresholds.spendPct;
+    selectedMode = data.registrationMode;
+
+    const ttsFormState = createTtsFormState(data.ttsConfig);
+    ttsEnabled = ttsFormState.enabled;
+    ttsDefaultProvider = ttsFormState.defaultProvider;
+    ttsFallbackProvider = ttsFormState.fallbackProvider;
+    ttsPreviewEnabled = ttsFormState.previewEnabled;
+    ttsPreviewMaxChars = ttsFormState.previewMaxChars;
+    openaiEnabled = ttsFormState.openaiEnabled;
+    openaiModel = ttsFormState.openaiModel;
+    openaiVoice = ttsFormState.openaiVoice;
+    openaiSpeed = ttsFormState.openaiSpeed;
+    openaiStyleInstruction = ttsFormState.openaiStyleInstruction;
+    openaiFormat = ttsFormState.openaiFormat;
+    elevenlabsEnabled = ttsFormState.elevenlabsEnabled;
+    elevenlabsModel = ttsFormState.elevenlabsModel;
+    elevenlabsVoiceId = ttsFormState.elevenlabsVoiceId;
+    elevenlabsFormat = ttsFormState.elevenlabsFormat;
+    elevenlabsLanguageCode = ttsFormState.elevenlabsLanguageCode;
+    elevenlabsStability = ttsFormState.elevenlabsStability;
+    elevenlabsSimilarityBoost = ttsFormState.elevenlabsSimilarityBoost;
+    elevenlabsStyle = ttsFormState.elevenlabsStyle;
+    elevenlabsSpeakerBoost = ttsFormState.elevenlabsSpeakerBoost;
+    initializedFromData = true;
+  });
 
   function onProviderChange() {
     const provider =

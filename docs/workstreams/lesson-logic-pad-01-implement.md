@@ -76,9 +76,9 @@ Excluded:
 
 ### Tasks
 
-- [ ] Add a minimal soft-stuck counter to the lesson session shape.
-- [ ] Update `applyLessonAssistantResponse(...)` to increment/reset the counter appropriately.
-- [ ] Ensure normalization/default session builders initialize the new state safely.
+- [x] Add a minimal soft-stuck counter to the lesson session shape.
+- [x] Update `applyLessonAssistantResponse(...)` to increment/reset the counter appropriately.
+- [x] Ensure normalization/default session builders initialize the new state safely.
 
 ### TDD Plan
 
@@ -137,9 +137,9 @@ Excluded:
 
 ### Tasks
 
-- [ ] Update `buildSystemPrompt(...)` with explicit anti-loop rules for concepts-stage checks.
-- [ ] Update local fallback response logic to resolve instead of repeating `stay` after threshold.
-- [ ] Keep fallback resolution behavior aligned with the same product contract as the AI path.
+- [x] Update `buildSystemPrompt(...)` with explicit anti-loop rules for concepts-stage checks.
+- [x] Update local fallback response logic to resolve instead of repeating `stay` after threshold.
+- [x] Keep fallback resolution behavior aligned with the same product contract as the AI path.
 
 ### TDD Plan
 
@@ -199,10 +199,10 @@ Excluded:
 
 ### Tasks
 
-- [ ] Add reusable CTA-state helper logic derived from session/message state.
-- [ ] Update desktop and mobile `Next step` rendering to use disabled state consistently.
-- [ ] Add short explanation copy for the disabled state.
-- [ ] Ensure the unlock condition respects the soft-stuck threshold.
+- [x] Add reusable CTA-state helper logic derived from session/message state.
+- [x] Update desktop and mobile `Next step` rendering to use disabled state consistently.
+- [x] Add short explanation copy for the disabled state.
+- [x] Ensure the unlock condition respects the soft-stuck threshold.
 
 ### TDD Plan
 
@@ -261,9 +261,9 @@ Excluded:
 
 ### Tasks
 
-- [ ] Define the smallest way to represent a wrap transition in lesson messages.
-- [ ] Update progression flow so unlocked `Next step` injects the wrap line before stage advancement content.
-- [ ] Add wrap bubble rendering with distinct color treatment based on the existing soft-success palette.
+- [x] Define the smallest way to represent a wrap transition in lesson messages.
+- [x] Update progression flow so unlocked `Next step` injects the wrap line before stage advancement content.
+- [x] Add wrap bubble rendering with distinct color treatment based on the existing soft-success palette.
 
 ### TDD Plan
 
@@ -324,10 +324,10 @@ Excluded:
 
 ### Tasks
 
-- [ ] Refine bubble entrance motion with a soft elastic settle.
-- [ ] Add restrained press/hover tactility where appropriate.
-- [ ] Tune wrap bubble motion to feel slightly more resolved than standard tutor bubbles.
-- [ ] Respect reduced-motion settings.
+- [x] Refine bubble entrance motion with a soft elastic settle.
+- [x] Add restrained press/hover tactility where appropriate.
+- [x] Tune wrap bubble motion to feel slightly more resolved than standard tutor bubbles.
+- [x] Respect reduced-motion settings.
 
 ### TDD Plan
 

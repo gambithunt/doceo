@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { createInitialState } from '$lib/data/platform';
+import { getNextStepPrompt } from '$lib/components/lesson-workspace-ui';
 import { buildRevisionSession } from '$lib/revision/engine';
 import type {
   DashboardTopicDiscoverySuggestion,
@@ -131,6 +132,7 @@ function createLessonSession(overrides: Partial<LessonSession> = {}): LessonSess
     messages: [],
     questionCount: 0,
     reteachCount: 0,
+    softStuckCount: 0,
     confidenceScore: 0.42,
     needsTeacherReview: false,
     stuckConcept: null,
@@ -2397,6 +2399,118 @@ describe('topic discovery completion linkage', () => {
         })
       ])
     );
+  });
+
+  it('guarantees progression when unlocked Next step is pressed once after the soft-stuck threshold', async () => {
+    const baseState = createInitialState();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat') {
+        throw new Error('Unlocked Next step should progress locally.');
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'next-step-session-1'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'next-step-session-1',
+          status: 'active',
+          currentStage: 'concepts',
+          stagesCompleted: ['orientation'],
+          completedAt: null,
+          lessonId: baseState.lessons[0]!.id,
+          topicId: baseState.curriculum.subjects[0]!.topics[0]!.id,
+          softStuckCount: 2,
+          messages: []
+        })
+      ]
+    });
+
+    await store.sendLessonMessage(getNextStepPrompt('concepts'));
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'next-step-session-1');
+    const requestedUrls = fetchMock.mock.calls.map(([input]) =>
+      typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+    );
+
+    expect(session?.currentStage).toBe('construction');
+    expect(requestedUrls).not.toContain('/api/ai/lesson-chat');
+  });
+
+  it('inserts a wrap message before the next stage messages when unlocked Next step progresses', async () => {
+    const baseState = createInitialState();
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'next-step-session-2'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'next-step-session-2',
+          status: 'active',
+          currentStage: 'concepts',
+          stagesCompleted: ['orientation'],
+          completedAt: null,
+          lessonId: baseState.lessons[0]!.id,
+          topicId: baseState.curriculum.subjects[0]!.topics[0]!.id,
+          softStuckCount: 2,
+          messages: []
+        })
+      ]
+    });
+
+    await store.sendLessonMessage(getNextStepPrompt('concepts'));
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'next-step-session-2');
+    const wrapIndex = session?.messages.findIndex((message) => message.type === 'wrap') ?? -1;
+    const stageStartIndex =
+      session?.messages.findIndex(
+        (message) => message.type === 'stage_start' && message.stage === 'construction'
+      ) ?? -1;
+    const stageContentIndex =
+      session?.messages.findIndex(
+        (message) =>
+          message.role === 'assistant' &&
+          message.type === 'teaching' &&
+          message.stage === 'construction'
+      ) ?? -1;
+
+    expect(session?.messages[wrapIndex]).toEqual(
+      expect.objectContaining({
+        type: 'wrap',
+        content: 'Good. Let\'s move into Guided Construction.'
+      })
+    );
+    expect(wrapIndex).toBeGreaterThan(-1);
+    expect(stageStartIndex).toBeGreaterThan(wrapIndex);
+    expect(stageContentIndex).toBeGreaterThan(stageStartIndex);
   });
 
   describe('AI evaluation on demand (Phase 7)', () => {
