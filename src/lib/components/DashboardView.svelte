@@ -405,6 +405,10 @@
   }
 
   function recentStageLabel(session: LessonSession): string {
+    if (session.status === 'complete') {
+      return 'Completed';
+    }
+
     return `Stage ${Math.min(session.stagesCompleted.length + 1, 6)} of 6 · ${getStageLabel(session.currentStage)}`;
   }
 
@@ -685,12 +689,18 @@
             <h4 class="recent-title">{toSentenceCase(session.topicTitle)}</h4>
             <p class="recent-stage">{recentStageLabel(session)}</p>
             <div class="recent-actions">
-              <button type="button" class="btn btn-primary btn-compact" onclick={() => appState.resumeSession(session.id)}>
-                Resume →
-              </button>
-              <button type="button" class="btn btn-ghost btn-compact" onclick={() => appState.restartLessonSession(session.id)}>
-                Restart
-              </button>
+              {#if session.status === 'complete'}
+                <button type="button" class="btn btn-primary btn-compact" onclick={() => appState.restartLessonSession(session.id)}>
+                  Restart
+                </button>
+              {:else}
+                <button type="button" class="btn btn-primary btn-compact" onclick={() => appState.resumeSession(session.id)}>
+                  Resume →
+                </button>
+                <button type="button" class="btn btn-ghost btn-compact" onclick={() => appState.restartLessonSession(session.id)}>
+                  Restart
+                </button>
+              {/if}
               <button type="button" class="btn btn-ghost btn-compact danger-ghost" onclick={() => appState.archiveSession(session.id)}>
                 Archive
               </button>

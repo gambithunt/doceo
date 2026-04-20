@@ -315,6 +315,67 @@ describe('DashboardView', () => {
     expect(screen.getByText('Fractions')).toBeInTheDocument();
   });
 
+  it('renders completed recent sessions with a completed label instead of an in-progress stage label', () => {
+    const state = createDashboardState();
+
+    render(DashboardView, {
+      props: {
+        state: {
+          ...state,
+          lessonSessions: [
+            createLessonSession({
+              id: 'lesson-session-complete',
+              topicTitle: 'Fractions',
+              status: 'complete',
+              currentStage: 'complete',
+              stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice', 'check'],
+              completedAt: '2026-03-23T08:30:00.000Z',
+              lastActiveAt: '2026-03-23T08:30:00.000Z'
+            })
+          ]
+        }
+      }
+    });
+
+    const recentCard = screen.getByText('Fractions').closest('.recent-card');
+
+    expect(recentCard).not.toBeNull();
+    expect(within(recentCard!).getByText('Completed')).toBeInTheDocument();
+    expect(within(recentCard!).queryByText(/Stage .* of 6/i)).not.toBeInTheDocument();
+  });
+
+  it('does not expose a primary resume action for completed recent sessions', async () => {
+    const state = createDashboardState();
+
+    render(DashboardView, {
+      props: {
+        state: {
+          ...state,
+          lessonSessions: [
+            createLessonSession({
+              id: 'lesson-session-complete',
+              topicTitle: 'Fractions',
+              status: 'complete',
+              currentStage: 'complete',
+              stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice', 'check'],
+              completedAt: '2026-03-23T08:30:00.000Z',
+              lastActiveAt: '2026-03-23T08:30:00.000Z'
+            })
+          ]
+        }
+      }
+    });
+
+    const recentCard = screen.getByText('Fractions').closest('.recent-card');
+
+    expect(recentCard).not.toBeNull();
+    expect(within(recentCard!).queryByRole('button', { name: /resume/i })).not.toBeInTheDocument();
+
+    await fireEvent.click(within(recentCard!).getByRole('button', { name: /^restart$/i }));
+
+    expect(mockAppState.restartLessonSession).toHaveBeenCalledWith('lesson-session-complete');
+  });
+
   it('disables hero ctas during a pending launch just like the rest of the dashboard controls', async () => {
     const pendingLaunch = deferred();
     mockAppState.startLessonFromTopicDiscovery.mockReturnValueOnce(pendingLaunch.promise);

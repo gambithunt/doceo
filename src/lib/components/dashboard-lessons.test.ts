@@ -59,4 +59,21 @@ describe('deriveDashboardLessonLists', () => {
       recentLessons: [olderSession]
     });
   });
+
+  it('keeps a completed session visible in recents without treating it as the current session', () => {
+    const completedSession = createSession({
+      id: 'lesson-session-complete',
+      topicTitle: 'Fractions',
+      status: 'complete',
+      currentStage: 'complete',
+      stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice', 'check'],
+      completedAt: '2026-03-23T09:10:00.000Z',
+      lastActiveAt: '2026-03-23T09:10:00.000Z'
+    });
+
+    expect(deriveDashboardLessonLists([completedSession])).toEqual({
+      currentSession: null,
+      recentLessons: [completedSession]
+    });
+  });
 });

@@ -10,6 +10,7 @@ import {
   calculateNextRevisionInterval,
   classifyLessonMessage,
   createDefaultLearnerProfile,
+  deriveLessonProgressDisplay,
   getLessonSectionForStage,
   getNextStage,
   getStageNumber,
@@ -114,6 +115,80 @@ describe('lesson-system', () => {
     expect(updated.stagesCompleted).toContain('orientation');
   });
 
+  it('normalizes explicit completion into a completed session shape', () => {
+    const state = createInitialState();
+    const lessonSession = makeMockSession(state.lessons[0], {
+      currentStage: 'check',
+      stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice']
+    });
+    const timestamp = '2026-04-18T09:15:00.000Z';
+    const updated = applyLessonAssistantResponse(lessonSession, {
+      id: 'assistant-complete-1',
+      role: 'assistant',
+      type: 'teaching',
+      content: 'You completed this lesson.',
+      stage: 'check',
+      timestamp,
+      metadata: {
+        action: 'complete',
+        next_stage: null,
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.84,
+        profile_update: {}
+      }
+    });
+
+    expect(updated.status).toBe('complete');
+    expect(updated.currentStage).toBe('complete');
+    expect(updated.completedAt).toBe(timestamp);
+    expect(updated.stagesCompleted).toEqual([
+      'orientation',
+      'concepts',
+      'construction',
+      'examples',
+      'practice',
+      'check'
+    ]);
+  });
+
+  it('normalizes terminal advance metadata into the same completed session shape', () => {
+    const state = createInitialState();
+    const lessonSession = makeMockSession(state.lessons[0], {
+      currentStage: 'check',
+      stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice']
+    });
+    const timestamp = '2026-04-18T09:20:00.000Z';
+    const updated = applyLessonAssistantResponse(lessonSession, {
+      id: 'assistant-complete-2',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Great. You are done.',
+      stage: 'check',
+      timestamp,
+      metadata: {
+        action: 'advance',
+        next_stage: 'complete',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.81,
+        profile_update: {}
+      }
+    });
+
+    expect(updated.status).toBe('complete');
+    expect(updated.currentStage).toBe('complete');
+    expect(updated.completedAt).toBe(timestamp);
+    expect(updated.stagesCompleted).toEqual([
+      'orientation',
+      'concepts',
+      'construction',
+      'examples',
+      'practice',
+      'check'
+    ]);
+  });
+
   it('calculates spaced repetition intervals', () => {
     expect(calculateNextRevisionInterval(0.95, 4)).toBe(10);
     expect(calculateNextRevisionInterval(0.75, 4)).toBe(8);
@@ -164,6 +239,45 @@ describe('lesson-system', () => {
     expect(getStageNumber('practice')).toBe(5);
     expect(getStageNumber('check')).toBe(6);
     expect(getStageNumber('complete')).toBe(6);
+  });
+
+  it('derives initial lesson progress for an active orientation session', () => {
+    expect(
+      deriveLessonProgressDisplay({
+        currentStage: 'orientation',
+        status: 'active'
+      })
+    ).toEqual({
+      stageNumber: 1,
+      visibleStageCount: 6,
+      progressPercent: 8
+    });
+  });
+
+  it('increments lesson step and progress coherently for an advanced session', () => {
+    expect(
+      deriveLessonProgressDisplay({
+        currentStage: 'concepts',
+        status: 'active'
+      })
+    ).toEqual({
+      stageNumber: 2,
+      visibleStageCount: 6,
+      progressPercent: 17
+    });
+  });
+
+  it('returns terminal lesson progress for a completed session', () => {
+    expect(
+      deriveLessonProgressDisplay({
+        currentStage: 'complete',
+        status: 'complete'
+      })
+    ).toEqual({
+      stageNumber: 6,
+      visibleStageCount: 6,
+      progressPercent: 100
+    });
   });
 
   it('builds a lesson with all 9 sections around the exact chosen subject and topic', () => {

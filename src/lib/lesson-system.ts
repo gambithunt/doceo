@@ -264,6 +264,33 @@ export function getStageNumber(stage: LessonStage): number {
   return index === -1 ? 1 : Math.min(index + 1, 6);
 }
 
+export interface LessonProgressDisplay {
+  stageNumber: number;
+  visibleStageCount: number;
+  progressPercent: number;
+}
+
+export function deriveLessonProgressDisplay(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'status'>
+): LessonProgressDisplay {
+  const visibleStageCount = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete').length;
+  const stageNumber = getStageNumber(lessonSession.currentStage);
+
+  if (lessonSession.status === 'complete' || lessonSession.currentStage === 'complete') {
+    return {
+      stageNumber,
+      visibleStageCount,
+      progressPercent: 100
+    };
+  }
+
+  return {
+    stageNumber,
+    visibleStageCount,
+    progressPercent: Math.max(8, Math.round(((stageNumber - 1) / visibleStageCount) * 100))
+  };
+}
+
 export function getNextStage(stage: LessonStage): LessonStage | null {
   const index = LESSON_STAGE_ORDER.indexOf(stage);
 
@@ -940,9 +967,24 @@ export function applyLessonAssistantResponse(
     };
   }
 
-  if (metadata.action === 'advance' && metadata.next_stage) {
-    const completed = Array.from(new Set([...lessonSession.stagesCompleted, lessonSession.currentStage]));
+  const completed = Array.from(new Set([...lessonSession.stagesCompleted, lessonSession.currentStage]));
 
+  if (
+    metadata.next_stage === 'complete' &&
+    (metadata.action === 'advance' || metadata.action === 'complete')
+  ) {
+    return {
+      ...next,
+      currentStage: 'complete',
+      stagesCompleted: completed,
+      reteachCount: metadata.reteach_count,
+      status: 'complete',
+      completedAt: next.lastActiveAt,
+      profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
+    };
+  }
+
+  if (metadata.action === 'advance' && metadata.next_stage) {
     return {
       ...next,
       currentStage: metadata.next_stage,
@@ -953,8 +995,6 @@ export function applyLessonAssistantResponse(
   }
 
   if (metadata.action === 'complete') {
-    const completed = Array.from(new Set([...lessonSession.stagesCompleted, lessonSession.currentStage]));
-
     return {
       ...next,
       currentStage: 'complete',

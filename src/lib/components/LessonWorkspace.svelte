@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getActiveLessonSession } from '$lib/data/platform';
-  import { getNextStage, getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
+  import { deriveLessonProgressDisplay, getNextStage, getStageLabel, getStageNumber, LESSON_STAGE_ORDER } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { appState } from '$lib/stores/app-state';
@@ -68,11 +68,18 @@
   }
 
   const visibleStages = LESSON_STAGE_ORDER.filter((stage) => stage !== 'complete');
-  const currentStageNumber = $derived(lessonSession ? getStageNumber(lessonSession.currentStage) : 1);
-  const nextStage = $derived(lessonSession ? getNextStage(lessonSession.currentStage) : null);
-  const lessonProgressPercent = $derived(
-    lessonSession ? Math.max(8, Math.round((lessonSession.stagesCompleted.length / visibleStages.length) * 100)) : 0
+  const lessonProgressDisplay = $derived(
+    lessonSession
+      ? deriveLessonProgressDisplay(lessonSession)
+      : {
+          stageNumber: 1,
+          visibleStageCount: visibleStages.length,
+          progressPercent: 0
+        }
   );
+  const currentStageNumber = $derived(lessonProgressDisplay.stageNumber);
+  const nextStage = $derived(lessonSession ? getNextStage(lessonSession.currentStage) : null);
+  const lessonProgressPercent = $derived(lessonProgressDisplay.progressPercent);
   const arcProgress = $derived(Math.max(4, Math.min(100, lessonProgressPercent)));
   const hasInput = $derived(composer.trim().length > 0);
 

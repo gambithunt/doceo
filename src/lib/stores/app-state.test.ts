@@ -2197,6 +2197,73 @@ describe('topic discovery completion linkage', () => {
     expect(requestedUrls).not.toContain('/api/lesson-artifacts/rate');
   });
 
+  it('normalizes terminal advance metadata from sendLessonMessage into a completed session shape', async () => {
+    const baseState = createInitialState();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat') {
+        return new Response(
+          JSON.stringify({
+            displayContent: 'You reached the end of the lesson.',
+            metadata: {
+              action: 'advance',
+              next_stage: 'complete',
+              reteach_style: null,
+              reteach_count: 0,
+              confidence_assessment: 0.79,
+              profile_update: {
+                engagement_level: 'high'
+              }
+            }
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'terminal-advance-session-1'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'terminal-advance-session-1',
+          status: 'active',
+          currentStage: 'check',
+          stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice'],
+          completedAt: null,
+          lessonId: baseState.lessons[0]!.id,
+          topicId: baseState.curriculum.subjects[0]!.topics[0]!.id
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('Here is my explanation of the main idea.');
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'terminal-advance-session-1');
+
+    expect(session).toEqual(
+      expect.objectContaining({
+        status: 'complete',
+        currentStage: 'complete',
+        completedAt: expect.any(String),
+        stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice', 'check']
+      })
+    );
+  });
+
   describe('AI evaluation on demand (Phase 7)', () => {
     beforeEach(() => {
       vi.resetAllMocks();
