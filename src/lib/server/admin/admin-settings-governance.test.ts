@@ -183,4 +183,23 @@ describe('admin settings governance', () => {
       })
     );
   });
+
+  it('requires admin access before scanning models and mutating provider settings', async () => {
+    const denied = new Error('Admin required');
+    requireAdminSession.mockRejectedValueOnce(denied);
+
+    const { actions } = await import('../../../routes/admin/settings/+page.server');
+
+    await expect(
+      actions.scanModels({
+        request: new Request('http://localhost/admin/settings?/scanModels', {
+          method: 'POST'
+        })
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(getProviders).not.toHaveBeenCalled();
+    expect(runModelScan).not.toHaveBeenCalled();
+    expect(saveProviderModels).not.toHaveBeenCalled();
+  });
 });

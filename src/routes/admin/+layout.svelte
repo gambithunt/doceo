@@ -3,11 +3,9 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { supabase } from '$lib/supabase';
-  import { clearAdminTokenCookie, setAdminTokenCookie } from '$lib/admin-auth';
+  import { syncAdminSessionCookie } from '$lib/admin-auth';
 
   const { children } = $props();
-
-  let status = $state<'checking' | 'authorized' | 'denied'>('checking');
 
   const navItems = [
     { id: 'overview',  label: 'Overview',   icon: '◈', path: '/admin',          color: 'var(--color-blue)'   },
@@ -28,50 +26,24 @@
     return pathname.startsWith(path);
   }
 
-  function applyAdminTokenCookie(accessToken: string): void {
-    document.cookie = setAdminTokenCookie(accessToken, {
-      secure: window.location.protocol === 'https:'
-    });
-  }
-
-  function removeAdminTokenCookie(): void {
-    document.cookie = clearAdminTokenCookie();
-  }
-
   onMount(async () => {
     if (!supabase) {
-      status = 'denied';
       return;
     }
+
+    const syncTokenCookie = (session: { access_token?: string | null } | null | undefined) => {
+      syncAdminSessionCookie(document, session, {
+        secure: window.location.protocol === 'https:'
+      });
+    };
 
     const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      removeAdminTokenCookie();
-      void goto('/');
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', session.user.id)
-      .maybeSingle<{ role: string }>();
-
-    if (profile?.role !== 'admin') {
-      removeAdminTokenCookie();
-      status = 'denied';
-      return;
-    }
-
-    applyAdminTokenCookie(session.access_token);
-    status = 'authorized';
+    syncTokenCookie(session);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, updated) => {
-      if (updated?.access_token) {
-        applyAdminTokenCookie(updated.access_token);
-      } else {
-        removeAdminTokenCookie();
+      syncTokenCookie(updated);
+      if (!updated?.user) {
+        void goto('/');
       }
     });
 
@@ -81,119 +53,44 @@
   });
 </script>
 
-{#if status === 'checking'}
-  <div class="auth-screen">
-    <div class="auth-inner">
-      <div class="checking-spinner" aria-hidden="true"></div>
-      <p>Checking access…</p>
-    </div>
-  </div>
-
-{:else if status === 'denied'}
-  <div class="auth-screen">
-    <div class="auth-inner">
-      <p class="denied-code">403</p>
-      <p class="denied-msg">You don't have access to the admin panel.</p>
-      <a href="/" class="denied-link">← Back to the app</a>
-    </div>
-  </div>
-
-{:else}
-  <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand">
-        <div class="brand-mark" aria-hidden="true">D</div>
-        <div class="brand-copy">
-          <span class="brand-name">Doceo</span>
-          <span class="brand-badge">Admin</span>
-        </div>
+<div class="admin-shell">
+  <aside class="admin-sidebar">
+    <div class="admin-brand">
+      <div class="brand-mark" aria-hidden="true">D</div>
+      <div class="brand-copy">
+        <span class="brand-name">Doceo</span>
+        <span class="brand-badge">Admin</span>
       </div>
+    </div>
 
-      <nav aria-label="Admin navigation">
-        {#each navItems as item}
-          <a
-            href={item.path}
-            class="nav-item"
-            class:active={isActive(item.path)}
-            style:--nav-color={item.color}
-            aria-current={isActive(item.path) ? 'page' : undefined}
-          >
-            <span class="nav-icon" aria-hidden="true">{item.icon}</span>
-            <span class="nav-label">{item.label}</span>
-          </a>
-        {/each}
-      </nav>
-
-      <div class="sidebar-footer">
-        <a href="/" class="back-link">
-          <span aria-hidden="true">←</span> Back to app
+    <nav aria-label="Admin navigation">
+      {#each navItems as item}
+        <a
+          href={item.path}
+          class="nav-item"
+          class:active={isActive(item.path)}
+          style:--nav-color={item.color}
+          aria-current={isActive(item.path) ? 'page' : undefined}
+        >
+          <span class="nav-icon" aria-hidden="true">{item.icon}</span>
+          <span class="nav-label">{item.label}</span>
         </a>
-      </div>
-    </aside>
+      {/each}
+    </nav>
 
-    <main class="admin-main">
-      {@render children()}
-    </main>
-  </div>
-{/if}
+    <div class="sidebar-footer">
+      <a href="/" class="back-link">
+        <span aria-hidden="true">←</span> Back to app
+      </a>
+    </div>
+  </aside>
+
+  <main class="admin-main">
+    {@render children()}
+  </main>
+</div>
 
 <style>
-  /* ── Auth screens ── */
-  .auth-screen {
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    background: var(--bg);
-  }
-
-  .auth-inner {
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.9rem;
-  }
-
-  .checking-spinner {
-    width: 2.25rem;
-    height: 2.25rem;
-    border: 2.5px solid var(--border-strong);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.65s linear infinite;
-  }
-
-  .auth-inner p { font-size: 0.9rem; color: var(--muted); margin: 0; }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .denied-code {
-    font-size: 3.5rem;
-    font-weight: 800;
-    color: var(--color-error);
-    margin: 0;
-    line-height: 1;
-    letter-spacing: -0.04em;
-  }
-
-  .denied-msg { font-size: 0.9rem; color: var(--text-soft); margin: 0; }
-
-  .denied-link {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--accent);
-    text-decoration: none;
-    padding: 0.5rem 1.1rem;
-    border: 1px solid var(--accent-dim);
-    border-radius: 999px;
-    transition: background 150ms, box-shadow 150ms;
-  }
-
-  .denied-link:hover {
-    background: var(--accent-dim);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-  }
-
   /* ── Admin shell ── */
   .admin-shell {
     display: grid;

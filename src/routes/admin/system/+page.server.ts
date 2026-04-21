@@ -1,4 +1,5 @@
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 
 interface ServiceStatus {
@@ -41,7 +42,8 @@ async function loadServiceStatus(): Promise<ServiceStatus[]> {
   return services;
 }
 
-export async function load() {
+export async function load({ request }: { request: Request }) {
+  await requireAdminSession(request);
   const [services, dashboard] = await Promise.all([
     loadServiceStatus(),
     createServerDynamicOperationsService()?.getSystemDashboard() ?? Promise.resolve(null)

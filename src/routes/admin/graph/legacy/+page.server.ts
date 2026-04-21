@@ -32,8 +32,8 @@ export async function load({ request }: { request: Request }) {
 
 export const actions = {
   runBatch: async ({ request }: { request: Request }) => {
+    await requireAdminSession(request);
     try {
-      await requireAdminSession(request);
       const service = createServiceOrThrow();
       const result = await service.runMigrationBatch();
 
@@ -50,8 +50,8 @@ export const actions = {
   },
 
   resolveRecord: async ({ request }: { request: Request }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const queueId = String(form.get('queueId') ?? '').trim();
       const nodeId = String(form.get('nodeId') ?? '').trim();

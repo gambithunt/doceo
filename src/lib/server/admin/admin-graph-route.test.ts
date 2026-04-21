@@ -106,6 +106,34 @@ describe('admin graph routes', () => {
     );
   });
 
+  it('rejects unauthenticated node mutations before graph services run', async () => {
+    const denied = new Error('Admin required');
+    requireAdminSession.mockRejectedValueOnce(denied);
+    const applyNodeAction = vi.fn();
+    createAdminGraphService.mockReturnValue({
+      getNodeDetail: vi.fn(),
+      applyNodeAction
+    });
+
+    const { actions } = await import('../../../routes/admin/graph/[nodeId]/+page.server');
+
+    await expect(
+      actions.mergeNode({
+        request: new Request('http://localhost/admin/graph/topic-a?/mergeNode', {
+          method: 'POST',
+          body: new URLSearchParams({
+            targetNodeId: 'topic-b'
+          })
+        }),
+        params: {
+          nodeId: 'topic-a'
+        }
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(applyNodeAction).not.toHaveBeenCalled();
+  });
+
   it('posts lifecycle changes through the node detail status handler', async () => {
     const applyNodeAction = vi.fn().mockResolvedValue(null);
     createAdminGraphService.mockReturnValue({

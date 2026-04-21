@@ -1,7 +1,9 @@
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { getSubjectStats, getStageDropoff } from '$lib/server/admin/admin-queries';
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
 
-export async function load() {
+export async function load({ request }: { request: Request }) {
+  await requireAdminSession(request);
   const [subjectStats, stageStats, reteachByTopic] = await Promise.all([
     getSubjectStats(),
     getStageDropoff(),

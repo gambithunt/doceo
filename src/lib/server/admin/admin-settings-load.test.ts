@@ -5,13 +5,15 @@ const {
   getProviders,
   getTtsConfig,
   createTtsObservability,
-  createServerSupabaseAdmin
+  createServerSupabaseAdmin,
+  requireAdminSession
 } = vi.hoisted(() => ({
   getAiConfig: vi.fn(),
   getProviders: vi.fn(),
   getTtsConfig: vi.fn(),
   createTtsObservability: vi.fn(),
-  createServerSupabaseAdmin: vi.fn()
+  createServerSupabaseAdmin: vi.fn(),
+  requireAdminSession: vi.fn()
 }));
 
 vi.mock('$lib/server/ai-config', () => ({
@@ -41,9 +43,17 @@ vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseAdmin
 }));
 
+vi.mock('$lib/server/admin/admin-guard', () => ({
+  requireAdminSession
+}));
+
 describe('admin settings load', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    requireAdminSession.mockResolvedValue({
+      authUserId: 'auth-admin-1',
+      profileId: 'admin-1'
+    });
     getAiConfig.mockResolvedValue({
       provider: 'openai',
       tiers: {
@@ -114,7 +124,9 @@ describe('admin settings load', () => {
   it('keeps fallback history visible even when fallback is currently disabled and loads analytics card data', async () => {
     const { load } = await import('../../../routes/admin/settings/+page.server');
 
-    const result = await load();
+    const result = await load({
+      request: new Request('http://localhost/admin/settings')
+    } as never);
 
     expect(result.ttsFallbackSummary).toEqual({
       enabled: false,
@@ -128,5 +140,21 @@ describe('admin settings load', () => {
         fallbackCount: 1
       })
     );
+  });
+
+  it('fails before loading settings data when admin auth is denied', async () => {
+    const denied = new Error('denied');
+    requireAdminSession.mockRejectedValueOnce(denied);
+    const { load } = await import('../../../routes/admin/settings/+page.server');
+
+    await expect(
+      load({
+        request: new Request('http://localhost/admin/settings')
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(getAiConfig).not.toHaveBeenCalled();
+    expect(getProviders).not.toHaveBeenCalled();
+    expect(getTtsConfig).not.toHaveBeenCalled();
   });
 });

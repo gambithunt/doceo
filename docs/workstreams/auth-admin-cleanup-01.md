@@ -85,10 +85,10 @@ Excluded:
 - client-side token transport cleanup beyond what is strictly required for page requests
 
 ### Tasks
-- [ ] Turn [src/routes/admin/+layout.server.ts](/Users/delon/Documents/code/projects/doceo/src/routes/admin/+layout.server.ts:1) into a real shared admin page-entry guard
-- [ ] Normalize page-load auth in the admin route tree so no admin page remains public
-- [ ] Remove conditional `extractAccessToken(...)` page-load checks where they produce inconsistent route behavior
-- [ ] Add page-load regressions proving unauthorized requests cannot SSR admin data
+- [x] Turn [src/routes/admin/+layout.server.ts](/Users/delon/Documents/code/projects/doceo/src/routes/admin/+layout.server.ts:1) into a real shared admin page-entry guard
+- [x] Normalize page-load auth in the admin route tree so no admin page remains public
+- [x] Remove conditional `extractAccessToken(...)` page-load checks where they produce inconsistent route behavior
+- [x] Add page-load regressions proving unauthorized requests cannot SSR admin data
 
 ### TDD Plan
 RED
@@ -175,11 +175,11 @@ Excluded:
 - changing the business rules of AI, TTS, graph, invites, comp actions, or exports
 
 ### Tasks
-- [ ] Audit every admin action handler and require the shared admin guard at the server entry point
-- [ ] Close the unauthenticated `scanModels` action gap in settings
-- [ ] Verify all enhanced form submitters keep using the shared admin form helper instead of ad hoc fetch logic
-- [ ] Verify direct `fetch(...)` admin actions, such as TTS preview, still use the shared bearer-header helper
-- [ ] Add negative-path tests for unauthenticated and non-admin action/API requests
+- [x] Audit every admin action handler and require the shared admin guard at the server entry point
+- [x] Close the unauthenticated `scanModels` action gap in settings
+- [x] Verify all enhanced form submitters keep using the shared admin form helper instead of ad hoc fetch logic
+- [x] Verify direct `fetch(...)` admin actions, such as TTS preview, still use the shared bearer-header helper
+- [x] Add negative-path tests for unauthenticated and non-admin action/API requests
 
 ### TDD Plan
 RED
@@ -252,10 +252,10 @@ Excluded:
 - changes to admin feature behavior
 
 ### Tasks
-- [ ] Audit the current admin request auth inputs: `Authorization` header, `doceo-admin-token` cookie, and missing-token behavior
-- [ ] Keep `requireAdminSession(...)` as the only server authorization primitive for admin requests
-- [ ] Extract or centralize the client-side admin-token sync behavior so it can be reused without making `src/routes/admin/+layout.svelte` the auth authority
-- [ ] Add focused tests for the shared auth contract and helper reuse
+- [x] Audit the current admin request auth inputs: `Authorization` header, `doceo-admin-token` cookie, and missing-token behavior
+- [x] Keep `requireAdminSession(...)` as the only server authorization primitive for admin requests
+- [x] Extract or centralize the client-side admin-token sync behavior so it can be reused without making `src/routes/admin/+layout.svelte` the auth authority
+- [x] Add focused tests for the shared auth contract and helper reuse
 
 ### TDD Plan
 RED
@@ -316,9 +316,9 @@ Excluded:
 - visual redesign of the admin shell
 
 ### Tasks
-- [ ] Reduce `src/routes/admin/+layout.svelte` to shell, navigation, and token-sync responsibilities instead of role-authority responsibilities
-- [ ] Update any stale admin docs that still claim protection lives somewhere it does not
-- [ ] Add one final regression sweep covering:
+- [x] Reduce `src/routes/admin/+layout.svelte` to shell, navigation, and token-sync responsibilities instead of role-authority responsibilities
+- [x] Update any stale admin docs that still claim protection lives somewhere it does not
+- [x] Add one final regression sweep covering:
   - direct navigation to admin home
   - direct deep link to a protected tab
   - direct deep link to a protected detail page

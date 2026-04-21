@@ -17,7 +17,8 @@ const ROUTE_MODES: AiMode[] = [
 const VALID_MODES: RegistrationMode[] = ['open', 'invite_only', 'closed'];
 const REGISTRATION_MODE_KEY = 'registration_mode';
 
-export async function load() {
+export async function load({ request }: { request: Request }) {
+  await requireAdminSession(request);
   const [aiConfig, providers, ttsConfig] = await Promise.all([getAiConfig(), getProviders(), getTtsConfig()]);
   const ttsObservability = createTtsObservability();
   const [ttsFallbackSummary, ttsAnalyticsCard] = await Promise.all([
@@ -162,7 +163,8 @@ export const actions = {
     return { success: true };
   },
 
-  scanModels: async () => {
+  scanModels: async ({ request }: { request: Request }) => {
+    await requireAdminSession(request);
     const providers = await getProviders();
 
     // Build current model map: { providerId: ModelOption[] }

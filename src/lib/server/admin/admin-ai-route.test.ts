@@ -4,16 +4,22 @@ const {
   requireAdminSession,
   createServerDynamicOperationsService,
   getAiConfig,
-  saveAiConfig
+  saveAiConfig,
+  getAiSpendByRoute
 } = vi.hoisted(() => ({
   requireAdminSession: vi.fn(),
   createServerDynamicOperationsService: vi.fn(),
   getAiConfig: vi.fn(),
-  saveAiConfig: vi.fn()
+  saveAiConfig: vi.fn(),
+  getAiSpendByRoute: vi.fn()
 }));
 
 vi.mock('$lib/server/admin/admin-guard', () => ({
   requireAdminSession
+}));
+
+vi.mock('$lib/server/admin/admin-queries', () => ({
+  getAiSpendByRoute
 }));
 
 vi.mock('$lib/server/dynamic-operations', () => ({
@@ -32,6 +38,7 @@ describe('admin ai route', () => {
       authUserId: 'auth-admin-1',
       profileId: 'admin-1'
     });
+    getAiSpendByRoute.mockResolvedValue([{ route: 'lesson-plan', requests: 1, estimatedCost: 0 }]);
     getAiConfig.mockResolvedValue({
       provider: 'openai',
       tiers: {
@@ -72,7 +79,9 @@ describe('admin ai route', () => {
     });
 
     const { load } = await import('../../../routes/admin/ai/+page.server');
-    const result = await load();
+    const result = await load({
+      request: new Request('http://localhost/admin/ai')
+    } as never);
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -91,6 +100,21 @@ describe('admin ai route', () => {
         })
       })
     );
+  });
+
+  it('fails before loading AI governance data when admin auth is denied', async () => {
+    const denied = new Error('denied');
+    requireAdminSession.mockRejectedValueOnce(denied);
+    const { load } = await import('../../../routes/admin/ai/+page.server');
+
+    await expect(
+      load({
+        request: new Request('http://localhost/admin/ai')
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(getAiSpendByRoute).not.toHaveBeenCalled();
+    expect(getAiConfig).not.toHaveBeenCalled();
   });
 
   it('prefers a lesson lineage artifact through the governance action handler', async () => {
@@ -124,6 +148,31 @@ describe('admin ai route', () => {
         action: 'preferLineage'
       })
     );
+  });
+
+  it('rejects unauthenticated lineage preference requests before mutating governance state', async () => {
+    const denied = new Error('Admin required');
+    requireAdminSession.mockRejectedValueOnce(denied);
+    const preferLessonArtifactLineage = vi.fn();
+    createServerDynamicOperationsService.mockReturnValue({
+      getGovernanceDashboard: vi.fn(),
+      preferLessonArtifactLineage
+    });
+
+    const { actions } = await import('../../../routes/admin/ai/+page.server');
+
+    await expect(
+      actions.preferLineage({
+        request: new Request('http://localhost/admin/ai?/preferLineage', {
+          method: 'POST',
+          body: new URLSearchParams({
+            artifactId: 'lesson-artifact-2'
+          })
+        })
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(preferLessonArtifactLineage).not.toHaveBeenCalled();
   });
 
   it('resets a route override through the governance action handler', async () => {
@@ -161,5 +210,31 @@ describe('admin ai route', () => {
         action: 'resetRouteOverride'
       })
     );
+  });
+
+  it('rejects non-admin route override resets before persisting config changes', async () => {
+    const forbidden = new Error('Forbidden');
+    requireAdminSession.mockRejectedValueOnce(forbidden);
+    const recordGovernanceAction = vi.fn();
+    createServerDynamicOperationsService.mockReturnValue({
+      getGovernanceDashboard: vi.fn(),
+      recordGovernanceAction
+    });
+
+    const { actions } = await import('../../../routes/admin/ai/+page.server');
+
+    await expect(
+      actions.resetRouteOverride({
+        request: new Request('http://localhost/admin/ai?/resetRouteOverride', {
+          method: 'POST',
+          body: new URLSearchParams({
+            mode: 'lesson-plan'
+          })
+        })
+      } as never)
+    ).rejects.toBe(forbidden);
+
+    expect(saveAiConfig).not.toHaveBeenCalled();
+    expect(recordGovernanceAction).not.toHaveBeenCalled();
   });
 });

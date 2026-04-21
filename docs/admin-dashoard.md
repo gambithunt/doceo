@@ -18,7 +18,13 @@ WHERE email = 'your@email.com';
 
 Non-admin users who navigate to `/admin` receive a `403`. Unauthenticated users are redirected to `/`.
 
-The role check is enforced server-side in `src/routes/admin/+layout.server.ts` — it cannot be bypassed client-side.
+Admin authorization is enforced server-side through `requireAdminSession(...)` across:
+- `src/routes/admin/+layout.server.ts`
+- admin page load functions under `src/routes/admin/**/+page.server.ts`
+- admin actions under those same route files
+- admin API routes under `src/routes/api/admin/*`
+
+`src/routes/admin/+layout.svelte` is only the client shell. It handles navigation and admin-token cookie sync for enhanced requests, but it is not the source of truth for admin authorization.
 
 ---
 

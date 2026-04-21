@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createServerDynamicOperationsService } = vi.hoisted(() => ({
+const { requireAdminSession, createServerDynamicOperationsService } = vi.hoisted(() => ({
+  requireAdminSession: vi.fn(),
   createServerDynamicOperationsService: vi.fn()
+}));
+
+vi.mock('$lib/server/admin/admin-guard', () => ({
+  requireAdminSession
 }));
 
 vi.mock('$lib/server/dynamic-operations', () => ({
@@ -11,6 +16,10 @@ vi.mock('$lib/server/dynamic-operations', () => ({
 describe('admin system route', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    requireAdminSession.mockResolvedValue({
+      authUserId: 'auth-admin-1',
+      profileId: 'admin-1'
+    });
   });
 
   it('loads the dynamic system dashboard from the operations service', async () => {
@@ -38,7 +47,9 @@ describe('admin system route', () => {
     });
 
     const { load } = await import('../../../routes/admin/system/+page.server');
-    const result = await load();
+    const result = await load({
+      request: new Request('http://localhost/admin/system')
+    } as never);
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -49,5 +60,19 @@ describe('admin system route', () => {
         })
       })
     );
+  });
+
+  it('fails before loading system data when admin auth is denied', async () => {
+    const denied = new Error('denied');
+    requireAdminSession.mockRejectedValueOnce(denied);
+    const { load } = await import('../../../routes/admin/system/+page.server');
+
+    await expect(
+      load({
+        request: new Request('http://localhost/admin/system')
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(createServerDynamicOperationsService).not.toHaveBeenCalled();
   });
 });

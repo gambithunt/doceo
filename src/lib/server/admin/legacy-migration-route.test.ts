@@ -91,6 +91,27 @@ describe('legacy migration admin route', () => {
     );
   });
 
+  it('rejects unauthenticated migration batches before service execution', async () => {
+    const denied = new Error('Admin required');
+    requireAdminSession.mockRejectedValueOnce(denied);
+    const runMigrationBatch = vi.fn();
+    createServerLegacyMigrationService.mockReturnValue({
+      runMigrationBatch
+    });
+
+    const { actions } = await import('../../../routes/admin/graph/legacy/+page.server');
+
+    await expect(
+      actions.runBatch({
+        request: new Request('http://localhost/admin/graph/legacy?/runBatch', {
+          method: 'POST'
+        })
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(runMigrationBatch).not.toHaveBeenCalled();
+  });
+
   it('resolves a queued legacy record through the admin action', async () => {
     const resolveUnresolvedRecord = vi.fn().mockResolvedValue(null);
     createServerLegacyMigrationService.mockReturnValue({
@@ -119,5 +140,30 @@ describe('legacy migration admin route', () => {
         action: 'resolveRecord'
       })
     );
+  });
+
+  it('rejects non-admin record resolutions before mutating legacy queues', async () => {
+    const forbidden = new Error('Forbidden');
+    requireAdminSession.mockRejectedValueOnce(forbidden);
+    const resolveUnresolvedRecord = vi.fn();
+    createServerLegacyMigrationService.mockReturnValue({
+      resolveUnresolvedRecord
+    });
+
+    const { actions } = await import('../../../routes/admin/graph/legacy/+page.server');
+
+    await expect(
+      actions.resolveRecord({
+        request: new Request('http://localhost/admin/graph/legacy?/resolveRecord', {
+          method: 'POST',
+          body: new URLSearchParams({
+            queueId: 'legacy-migration-lesson_session-session-1',
+            nodeId: 'topic-equivalent-fractions'
+          })
+        })
+      } as never)
+    ).rejects.toBe(forbidden);
+
+    expect(resolveUnresolvedRecord).not.toHaveBeenCalled();
   });
 });

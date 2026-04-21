@@ -79,9 +79,41 @@ describe('createAdminFormEnhance', () => {
     const headers = options?.headers as Headers;
 
     expect(headers.get('Authorization')).toBe('Bearer admin-token-123');
+    expect(headers.get('Cookie')).toBeNull();
     expect(headers.get('x-sveltekit-action')).toBe('true');
     expect(headers.get('Content-Type')).toBe('application/x-www-form-urlencoded');
     expect(deserialize).toHaveBeenCalledTimes(1);
     expect(invalidateAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invent a cookie-based auth path when no bearer session exists', async () => {
+    getSession.mockResolvedValueOnce({
+      data: {
+        session: null
+      }
+    });
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'http://localhost/admin/settings?/saveAiConfig';
+
+    const submit = createAdminFormEnhance();
+
+    await submit({
+      action: new URL(form.action),
+      cancel: vi.fn(),
+      controller: new AbortController(),
+      formData: new FormData(form),
+      formElement: form,
+      submitter: null
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
+    const headers = options?.headers as Headers;
+
+    expect(headers.get('Authorization')).toBeNull();
+    expect(headers.get('Cookie')).toBeNull();
+    expect(headers.get('x-sveltekit-action')).toBe('true');
   });
 });

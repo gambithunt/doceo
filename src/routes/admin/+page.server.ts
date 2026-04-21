@@ -1,6 +1,8 @@
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { getAdminKpis, getRecentActivity, getDailyActiveUsers, getAiSpendByRoute } from '$lib/server/admin/admin-queries';
 
-export async function load() {
+export async function load({ request }: { request: Request }) {
+  await requireAdminSession(request);
   const [kpis, activity, dauSeries, spendByRoute] = await Promise.all([
     getAdminKpis(),
     getRecentActivity(20),

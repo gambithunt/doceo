@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAdminAuthHeaders,
   clearAdminTokenCookie,
+  syncAdminSessionCookie,
   setAdminTokenCookie
 } from './admin-auth';
 
@@ -35,5 +36,29 @@ describe('admin auth helpers', () => {
     expect(buildAdminAuthHeaders(null, { 'Content-Type': 'application/json' })).toEqual({
       'Content-Type': 'application/json'
     });
+  });
+
+  it('syncs the admin cookie from an authenticated session token', () => {
+    const target = { cookie: '' };
+
+    syncAdminSessionCookie(
+      target,
+      {
+        access_token: 'token-123'
+      },
+      { secure: true }
+    );
+
+    expect(target.cookie).toContain('doceo-admin-token=token-123');
+    expect(target.cookie).toContain('Secure');
+  });
+
+  it('clears the admin cookie when the session token is missing', () => {
+    const target = { cookie: 'doceo-admin-token=stale-token' };
+
+    syncAdminSessionCookie(target, null);
+
+    expect(target.cookie).toContain('doceo-admin-token=');
+    expect(target.cookie).toContain('max-age=0');
   });
 });

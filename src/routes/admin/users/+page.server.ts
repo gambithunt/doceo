@@ -1,10 +1,8 @@
-import { extractAccessToken, requireAdminSession } from '$lib/server/admin/admin-guard';
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { getAdminUsers } from '$lib/server/admin/admin-queries';
 
 export async function load({ request, url }: { request: Request; url: URL }) {
-  if (extractAccessToken(request)) {
-    await requireAdminSession(request);
-  }
+  await requireAdminSession(request);
   const search = url.searchParams.get('search') ?? '';
   const grade = url.searchParams.get('grade') ?? undefined;
   const curriculum = url.searchParams.get('curriculum') ?? undefined;

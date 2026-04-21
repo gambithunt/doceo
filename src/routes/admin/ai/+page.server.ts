@@ -3,7 +3,8 @@ import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { getAiConfig, saveAiConfig } from '$lib/server/ai-config';
 import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 
-export async function load() {
+export async function load({ request }: { request: Request }) {
+  await requireAdminSession(request);
   const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const operations = createServerDynamicOperationsService();

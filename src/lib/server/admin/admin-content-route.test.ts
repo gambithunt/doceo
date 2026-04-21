@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createServerSupabaseAdmin, getSubjectStats } = vi.hoisted(() => ({
+const { requireAdminSession, createServerSupabaseAdmin, getSubjectStats } = vi.hoisted(() => ({
+  requireAdminSession: vi.fn(),
   createServerSupabaseAdmin: vi.fn(),
   getSubjectStats: vi.fn()
+}));
+
+vi.mock('$lib/server/admin/admin-guard', () => ({
+  requireAdminSession
 }));
 
 vi.mock('$lib/server/supabase', () => ({
@@ -16,6 +21,10 @@ vi.mock('$lib/server/admin/admin-queries', () => ({
 describe('admin content route', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    requireAdminSession.mockResolvedValue({
+      authUserId: 'auth-admin-1',
+      profileId: 'admin-1'
+    });
     createServerSupabaseAdmin.mockReturnValue({ id: 'supabase-admin' });
   });
 
@@ -48,7 +57,9 @@ describe('admin content route', () => {
     ]);
 
     const { load } = await import('../../../routes/admin/content/+page.server');
-    const result = await load();
+    const result = await load({
+      request: new Request('http://localhost/admin/content')
+    } as never);
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -65,5 +76,19 @@ describe('admin content route', () => {
         })
       })
     );
+  });
+
+  it('fails before loading content summaries when admin auth is denied', async () => {
+    const denied = new Error('denied');
+    requireAdminSession.mockRejectedValueOnce(denied);
+    const { load } = await import('../../../routes/admin/content/+page.server');
+
+    await expect(
+      load({
+        request: new Request('http://localhost/admin/content')
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(getSubjectStats).not.toHaveBeenCalled();
   });
 });

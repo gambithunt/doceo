@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { z } from 'zod';
-import { extractAccessToken, requireAdminSession } from '$lib/server/admin/admin-guard';
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import {
   getAdminUserDetail,
   getAdminUserSubscription,
@@ -32,9 +32,7 @@ async function resolveAuthUserIdFromProfile(profileId: string): Promise<string |
 }
 
 export async function load({ params, request }: { params: { id: string }; request: Request }) {
-  if (extractAccessToken(request)) {
-    await requireAdminSession(request);
-  }
+  await requireAdminSession(request);
   const profileId = params.id;
 
   const [user, billing, billingHistory, sessions, messages] = await Promise.all([

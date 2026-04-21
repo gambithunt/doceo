@@ -39,8 +39,8 @@ export async function load({ request, params }: { request: Request; params: { no
 
 export const actions = {
   renameNode: async ({ request, params }: { request: Request; params: { nodeId: string } }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const label = String(form.get('label') ?? '').trim();
 
@@ -63,8 +63,8 @@ export const actions = {
   },
 
   saveAliases: async ({ request, params }: { request: Request; params: { nodeId: string } }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const aliases = toAliasList(form.get('aliases'));
       const service = createServiceOrThrow();
@@ -83,8 +83,8 @@ export const actions = {
   },
 
   mergeNode: async ({ request, params }: { request: Request; params: { nodeId: string } }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const targetNodeId = String(form.get('targetNodeId') ?? '').trim();
 
@@ -107,8 +107,8 @@ export const actions = {
   },
 
   reparentNode: async ({ request, params }: { request: Request; params: { nodeId: string } }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const parentNodeId = String(form.get('parentNodeId') ?? '').trim() || null;
       const service = createServiceOrThrow();
@@ -127,8 +127,8 @@ export const actions = {
   },
 
   setStatus: async ({ request, params }: { request: Request; params: { nodeId: string } }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const status = String(form.get('status') ?? '').trim();
       const reason = String(form.get('reason') ?? '').trim() || null;
@@ -153,8 +153,8 @@ export const actions = {
   },
 
   restoreNode: async ({ request, params }: { request: Request; params: { nodeId: string } }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const nextStatus = String(form.get('nextStatus') ?? 'provisional').trim() as
         | 'canonical'
@@ -176,8 +176,8 @@ export const actions = {
   },
 
   lessonArtifactAction: async ({ request }: { request: Request }) => {
+    const admin = await requireAdminSession(request);
     try {
-      const admin = await requireAdminSession(request);
       const form = await request.formData();
       const artifactId = String(form.get('artifactId') ?? '').trim();
       const action = String(form.get('artifactAction') ?? '').trim();

@@ -1,3 +1,4 @@
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
 import { getSubjectStats } from '$lib/server/admin/admin-queries';
 
@@ -24,7 +25,8 @@ function resolveHealth(totalSessions: number, reteachRate: number, completionRat
   return 'stable';
 }
 
-export async function load() {
+export async function load({ request }: { request: Request }) {
+  await requireAdminSession(request);
   const supabase = createServerSupabaseAdmin();
   if (!supabase) {
     return {

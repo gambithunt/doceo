@@ -18,10 +18,31 @@ vi.mock('$lib/server/admin/admin-guard', () => ({
 
 describe('admin promote-topics route', () => {
   beforeEach(() => {
+    vi.resetAllMocks();
     requireAdminSession.mockResolvedValue({
       authUserId: 'auth-admin-1',
       profileId: 'admin-1'
     });
+  });
+
+  it('rejects unauthenticated promotion requests before RPC execution', async () => {
+    const denied = new Error('Admin required');
+    requireAdminSession.mockRejectedValueOnce(denied);
+
+    const { POST } = await import('../../../routes/api/admin/promote-topics/+server');
+
+    await expect(
+      POST({
+        request: new Request('http://localhost/api/admin/promote-topics', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(createServerSupabaseAdmin).not.toHaveBeenCalled();
   });
 
   it('returns 202 when promotion job succeeds', async () => {

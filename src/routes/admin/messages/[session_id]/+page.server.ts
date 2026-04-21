@@ -1,8 +1,10 @@
 import { error } from '@sveltejs/kit';
+import { requireAdminSession } from '$lib/server/admin/admin-guard';
 import { getSessionMessages } from '$lib/server/admin/admin-queries';
 import { createServerSupabaseAdmin } from '$lib/server/supabase';
 
-export async function load({ params }: { params: { session_id: string } }) {
+export async function load({ params, request }: { params: { session_id: string }; request: Request }) {
+  await requireAdminSession(request);
   const sessionId = params.session_id;
   const messages = await getSessionMessages(sessionId);
 

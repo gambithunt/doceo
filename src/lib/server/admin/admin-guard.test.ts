@@ -1,6 +1,58 @@
-import { describe, expect, it } from 'vitest';
-import { isAdminRole, formatAdminError, extractAccessToken } from '$lib/server/admin/admin-guard';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { ADMIN_TOKEN_COOKIE } from '$lib/admin-constants';
+
+const { createClient } = vi.hoisted(() => ({
+  createClient: vi.fn()
+}));
+
+const { createServerSupabaseAdmin, isSupabaseConfigured } = vi.hoisted(() => ({
+  createServerSupabaseAdmin: vi.fn(),
+  isSupabaseConfigured: vi.fn()
+}));
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient
+}));
+
+vi.mock('$lib/server/supabase', () => ({
+  createServerSupabaseAdmin,
+  isSupabaseConfigured
+}));
+
+vi.mock('$lib/server/env', () => ({
+  serverEnv: {
+    supabaseUrl: 'https://example.supabase.co',
+    supabaseAnonKey: 'anon-key'
+  }
+}));
+
+import {
+  extractAccessToken,
+  formatAdminError,
+  isAdminRole,
+  requireAdminSession
+} from '$lib/server/admin/admin-guard';
+
+function mockUserClient(userId: string | null) {
+  createClient.mockReturnValue({
+    auth: {
+      getUser: vi.fn().mockResolvedValue({
+        data: {
+          user: userId ? { id: userId } : null
+        }
+      })
+    }
+  });
+}
+
+function mockAdminProfile(profile: { id: string; role: string } | null) {
+  const maybeSingle = vi.fn().mockResolvedValue({ data: profile });
+  const eq = vi.fn().mockReturnValue({ maybeSingle });
+  const select = vi.fn().mockReturnValue({ eq });
+  const from = vi.fn().mockReturnValue({ select });
+  createServerSupabaseAdmin.mockReturnValue({ from });
+  return { from, select, eq, maybeSingle };
+}
 
 describe('extractAccessToken', () => {
   it('extracts token from Authorization header', () => {
@@ -59,6 +111,93 @@ describe('extractAccessToken', () => {
       headers: { Cookie: 'other=abc; something=xyz' }
     });
     expect(extractAccessToken(request)).toBeNull();
+  });
+});
+
+describe('requireAdminSession', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    isSupabaseConfigured.mockReturnValue(true);
+  });
+
+  it('prefers bearer auth over cookie auth when validating the request session', async () => {
+    mockUserClient('user-1');
+    const { from } = mockAdminProfile({ id: 'user-1', role: 'admin' });
+
+    const result = await requireAdminSession(
+      new Request('http://localhost/admin', {
+        headers: {
+          Authorization: 'Bearer header-token',
+          Cookie: `${ADMIN_TOKEN_COOKIE}=cookie-token`
+        }
+      })
+    );
+
+    expect(createClient).toHaveBeenCalledWith(
+      'https://example.supabase.co',
+      'anon-key',
+      expect.objectContaining({
+        global: {
+          headers: {
+            Authorization: 'Bearer header-token'
+          }
+        }
+      })
+    );
+    expect(from).toHaveBeenCalledWith('profiles');
+    expect(result).toEqual({
+      authUserId: 'user-1',
+      profileId: 'user-1'
+    });
+  });
+
+  it('fails closed when no admin transport token is present', async () => {
+    await expect(requireAdminSession(new Request('http://localhost/admin'))).rejects.toMatchObject({
+      status: 303,
+      location: '/'
+    });
+
+    expect(createClient).not.toHaveBeenCalled();
+    expect(createServerSupabaseAdmin).not.toHaveBeenCalled();
+  });
+
+  it('redirects to root when the provided user token is invalid', async () => {
+    mockUserClient(null);
+
+    await expect(
+      requireAdminSession(
+        new Request('http://localhost/admin', {
+          headers: {
+            Authorization: 'Bearer invalid-token'
+          }
+        })
+      )
+    ).rejects.toMatchObject({
+      status: 303,
+      location: '/'
+    });
+
+    expect(createServerSupabaseAdmin).not.toHaveBeenCalled();
+  });
+
+  it('fails with 403 for authenticated non-admin users', async () => {
+    mockUserClient('user-2');
+    mockAdminProfile({ id: 'user-2', role: 'student' });
+
+    await expect(
+      requireAdminSession(
+        new Request('http://localhost/admin', {
+          headers: {
+            Authorization: 'Bearer user-token'
+          }
+        })
+      )
+    ).rejects.toMatchObject({
+      status: 403,
+      body: {
+        message: formatAdminError(403)
+      }
+    });
   });
 });
 

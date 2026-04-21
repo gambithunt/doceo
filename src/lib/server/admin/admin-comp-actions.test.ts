@@ -65,6 +65,25 @@ describe('admin comp actions', () => {
     expect(result).toEqual({ success: true, action: 'grantComp', message: 'Complimentary access granted.' });
   });
 
+  it('rejects unauthenticated comp grants before touching subscription state', async () => {
+    const denied = new Error('Admin required');
+    requireAdminSession.mockRejectedValueOnce(denied);
+
+    const { actions } = await import('../../../routes/admin/users/[id]/+page.server');
+
+    await expect(
+      actions.grantComp({
+        params: { id: 'profile-abc' },
+        request: new Request('http://localhost/admin/users/profile-abc?/grantComp', {
+          method: 'POST',
+          body: new URLSearchParams({ type: 'indefinite' })
+        })
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(createServerSupabaseAdmin).not.toHaveBeenCalled();
+  });
+
   it('grantComp with until_date mode upserts the expiry and custom budget', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null });
     const from = vi.fn((table: string) => {
@@ -187,5 +206,23 @@ describe('admin comp actions', () => {
       { onConflict: 'user_id' }
     );
     expect(result).toEqual({ success: true, action: 'revokeComp', message: 'Complimentary access revoked.' });
+  });
+
+  it('rejects non-admin comp revocations before mutating subscription state', async () => {
+    const forbidden = new Error('Forbidden');
+    requireAdminSession.mockRejectedValueOnce(forbidden);
+
+    const { actions } = await import('../../../routes/admin/users/[id]/+page.server');
+
+    await expect(
+      actions.revokeComp({
+        params: { id: 'profile-abc' },
+        request: new Request('http://localhost/admin/users/profile-abc?/revokeComp', {
+          method: 'POST'
+        })
+      } as never)
+    ).rejects.toBe(forbidden);
+
+    expect(createServerSupabaseAdmin).not.toHaveBeenCalled();
   });
 });

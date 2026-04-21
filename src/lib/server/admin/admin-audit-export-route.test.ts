@@ -31,6 +31,22 @@ describe('admin audit export route', () => {
     });
   });
 
+  it('rejects unauthenticated export requests before reading audit records', async () => {
+    const denied = new Error('Admin required');
+    requireAdminSession.mockRejectedValueOnce(denied);
+
+    const { GET } = await import('../../../routes/api/admin/audit-export/+server');
+
+    await expect(
+      GET({
+        request: new Request('http://localhost/api/admin/audit-export?stream=governance&format=csv')
+      } as never)
+    ).rejects.toBe(denied);
+
+    expect(createServerDynamicOperationsService).not.toHaveBeenCalled();
+    expect(createServerGraphRepository).not.toHaveBeenCalled();
+  });
+
   it('exports governance audit records as csv', async () => {
     createServerDynamicOperationsService.mockReturnValue({
       listGovernanceActions: vi.fn().mockResolvedValue([
