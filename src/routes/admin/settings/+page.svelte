@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import { applyAction } from '$app/forms';
   import { onDestroy } from 'svelte';
+  import { createAdminFormEnhance } from '$lib/admin-form-enhance';
   import { supabase } from '$lib/supabase';
   import { buildAdminAuthHeaders } from '$lib/admin-auth';
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
@@ -216,6 +217,35 @@
     return provider === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI';
   }
 
+  function createPreviewDraftConfig(): Partial<AppTtsSettings> {
+    return {
+      enabled: ttsEnabled,
+      defaultProvider: ttsDefaultProvider,
+      fallbackProvider: ttsFallbackProvider ? (ttsFallbackProvider as 'openai' | 'elevenlabs') : null,
+      previewEnabled: ttsPreviewEnabled,
+      previewMaxChars: Number(ttsPreviewMaxChars),
+      openai: {
+        enabled: openaiEnabled,
+        model: openaiModel,
+        voice: openaiVoice,
+        speed: Number(openaiSpeed),
+        styleInstruction: openaiStyleInstruction || null,
+        format: openaiFormat
+      },
+      elevenlabs: {
+        enabled: elevenlabsEnabled,
+        model: elevenlabsModel,
+        voiceId: elevenlabsVoiceId,
+        format: elevenlabsFormat,
+        languageCode: elevenlabsLanguageCode || null,
+        stability: Number(elevenlabsStability),
+        similarityBoost: Number(elevenlabsSimilarityBoost),
+        style: Number(elevenlabsStyle),
+        speakerBoost: elevenlabsSpeakerBoost
+      }
+    };
+  }
+
   type Invite = {
     id: string;
     normalized_email: string;
@@ -258,7 +288,10 @@
         headers: buildAdminAuthHeaders(accessToken, {
           'Content-Type': 'application/json'
         }),
-        body: JSON.stringify({ content })
+        body: JSON.stringify({
+          content,
+          draftConfig: createPreviewDraftConfig()
+        })
       });
 
       if (!response.ok) {
@@ -308,14 +341,21 @@
     <form
       method="POST"
       action="?/saveAiConfig"
-      use:enhance={() => {
-        saveState = 'saving';
-        return async ({ update }) => {
+      use:enhance={createAdminFormEnhance({
+        onPending: () => {
+          saveState = 'saving';
+        },
+        onResult: async ({ result, update }) => {
           await update({ reset: false });
-          saveState = 'saved';
-          setTimeout(() => (saveState = 'idle'), 2200);
-        };
-      }}
+          if (result.type === 'success') {
+            saveState = 'saved';
+            setTimeout(() => (saveState = 'idle'), 2200);
+            return;
+          }
+
+          saveState = 'idle';
+        }
+      })}
       class="settings-form"
     >
       <div class="settings-section">
@@ -421,14 +461,21 @@
     <form
       method="POST"
       action="?/saveTtsConfig"
-      use:enhance={() => {
-        ttsSaveState = 'saving';
-        return async ({ update }) => {
+      use:enhance={createAdminFormEnhance({
+        onPending: () => {
+          ttsSaveState = 'saving';
+        },
+        onResult: async ({ result, update }) => {
           await update({ reset: false });
-          ttsSaveState = 'saved';
-          setTimeout(() => (ttsSaveState = 'idle'), 2200);
-        };
-      }}
+          if (result.type === 'success') {
+            ttsSaveState = 'saved';
+            setTimeout(() => (ttsSaveState = 'idle'), 2200);
+            return;
+          }
+
+          ttsSaveState = 'idle';
+        }
+      })}
       class="settings-form"
     >
       <div class="settings-section">
@@ -784,17 +831,19 @@
     <form
       method="POST"
       action="?/scanModels"
-      use:enhance={() => {
-        scanning = true;
-        scanBanner = null;
-        return async ({ result }) => {
+      use:enhance={createAdminFormEnhance({
+        onPending: () => {
+          scanning = true;
+          scanBanner = null;
+        },
+        onResult: async ({ result }) => {
           scanning = false;
           await applyAction(result);
           if (result.type === 'success' && result.data?.scanResult) {
             scanBanner = result.data.scanResult as typeof scanBanner;
           }
-        };
-      }}
+        }
+      })}
     >
       <div class="settings-section scan-section">
         <h2 class="section-title">Model Catalog</h2>
@@ -866,14 +915,21 @@
         <form
           method="POST"
           action="?/setRegistrationMode"
-          use:enhance={() => {
-            modeSaveState = 'saving';
-            return async ({ update }) => {
+          use:enhance={createAdminFormEnhance({
+            onPending: () => {
+              modeSaveState = 'saving';
+            },
+            onResult: async ({ result, update }) => {
               await update({ reset: false });
-              modeSaveState = 'saved';
-              setTimeout(() => (modeSaveState = 'idle'), 2200);
-            };
-          }}
+              if (result.type === 'success') {
+                modeSaveState = 'saved';
+                setTimeout(() => (modeSaveState = 'idle'), 2200);
+                return;
+              }
+
+              modeSaveState = 'idle';
+            }
+          })}
         >
           <div class="field-row">
             <label class="field-label" for="reg-mode">Current Mode</label>
@@ -916,19 +972,21 @@
         <form
           method="POST"
           action="?/addInvite"
-          use:enhance={() => {
-            inviteSaveState = 'saving';
-            inviteError = null;
-            return async ({ update }) => {
+          use:enhance={createAdminFormEnhance({
+            onPending: () => {
+              inviteSaveState = 'saving';
+              inviteError = null;
+            },
+            onResult: async ({ result, update }) => {
               await update({ reset: false });
               inviteSaveState = 'idle';
-              if (inviteEmail) {
+              if (result.type === 'success' && inviteEmail) {
                 inviteSaveState = 'saved';
                 inviteEmail = '';
                 setTimeout(() => (inviteSaveState = 'idle'), 2200);
               }
-            };
-          }}
+            }
+          })}
         >
           <div class="field-row">
             <label class="field-label" for="invite-email">Email Address</label>

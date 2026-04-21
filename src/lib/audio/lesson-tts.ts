@@ -1,6 +1,17 @@
 import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
 
 export type LessonTtsState = 'idle' | 'playing' | 'paused';
+export type LessonTtsUpgradeTier = 'standard' | 'premium';
+
+export interface LessonTtsError {
+  code: 'entitlement_denied' | 'tts_unavailable' | 'unknown';
+  message: string;
+  upgradeTier?: LessonTtsUpgradeTier;
+}
+
+export type LessonTtsPlayResult =
+  | { started: true }
+  | { started: false; error: LessonTtsError | null };
 
 export interface LessonTtsPlayRequest {
   lessonSessionId: string;
@@ -15,6 +26,12 @@ export interface LessonTtsCallbacks {
 interface LessonTtsRouteResponse {
   ok: true;
   audioUrl: string;
+}
+
+interface LessonTtsRouteErrorResponse {
+  error: string;
+  code?: string;
+  upgradeTier?: LessonTtsUpgradeTier;
 }
 
 interface LessonAudioLike {
@@ -36,7 +53,7 @@ interface LessonTtsOptions {
 
 export interface LessonTtsController {
   available: boolean;
-  play: (request: LessonTtsPlayRequest, callbacks?: LessonTtsCallbacks) => Promise<boolean>;
+  play: (request: LessonTtsPlayRequest, callbacks?: LessonTtsCallbacks) => Promise<LessonTtsPlayResult>;
   stop: () => void;
   resume: () => Promise<boolean>;
   destroy: () => void;
@@ -98,10 +115,13 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
     clearPlayback();
   }
 
-  async function play(request: LessonTtsPlayRequest, callbacks: LessonTtsCallbacks = {}): Promise<boolean> {
+  async function play(
+    request: LessonTtsPlayRequest,
+    callbacks: LessonTtsCallbacks = {}
+  ): Promise<LessonTtsPlayResult> {
     const content = request.content.trim();
     if (!content) {
-      return false;
+      return { started: false, error: null };
     }
 
     if (currentAudio) {
@@ -125,20 +145,50 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
       });
 
       if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as LessonTtsRouteErrorResponse | null;
         clearPlayback();
-        return false;
+        return {
+          started: false,
+          error: payload?.code === 'entitlement_denied'
+            ? {
+                code: 'entitlement_denied',
+                message: payload.error ?? 'Tutor audio requires a paid plan.',
+                upgradeTier: payload.upgradeTier ?? 'standard'
+              }
+            : payload?.code === 'tts_unavailable'
+              ? {
+                  code: 'tts_unavailable',
+                  message: payload.error ?? 'Tutor audio is unavailable right now.'
+                }
+              : {
+                  code: 'unknown',
+                  message: payload?.error ?? 'Tutor audio could not be started.'
+                }
+        };
       }
 
       routePayload = (await response.json()) as LessonTtsRouteResponse;
     } catch {
       clearPlayback();
-      return false;
+      return {
+        started: false,
+        error: {
+          code: 'unknown',
+          message: 'Tutor audio could not be started.'
+        }
+      };
     }
 
     const audio = createAudio(routePayload.audioUrl);
     if (!audio) {
       clearPlayback();
-      return false;
+      return {
+        started: false,
+        error: {
+          code: 'tts_unavailable',
+          message: 'Audio playback is unavailable on this device.'
+        }
+      };
     }
 
     currentAudio = audio;
@@ -166,10 +216,16 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
     try {
       await audio.play();
       emitState('playing');
-      return true;
+      return { started: true };
     } catch {
       clearPlayback();
-      return false;
+      return {
+        started: false,
+        error: {
+          code: 'tts_unavailable',
+          message: 'Tutor audio could not be played.'
+        }
+      };
     }
   }
 

@@ -16,6 +16,30 @@ vi.mock('$lib/supabase', () => ({
 
 import AdminSettingsPage from './+page.svelte';
 
+function stubPreviewEnvironment(fetchMock = vi.fn().mockResolvedValue(
+  new Response(new Uint8Array([1, 2, 3]), {
+    status: 200,
+    headers: { 'content-type': 'audio/mpeg' }
+  })
+)) {
+  const play = vi.fn().mockResolvedValue(undefined);
+
+  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('Audio', class {
+    onended: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor(_src: string) {}
+    play = play;
+    pause = vi.fn();
+  } as never);
+  vi.stubGlobal('URL', {
+    createObjectURL: vi.fn().mockReturnValue('blob:preview-audio'),
+    revokeObjectURL: vi.fn()
+  } as never);
+
+  return { fetchMock, play };
+}
+
 function createPageData() {
   return {
     aiConfig: {
@@ -139,26 +163,7 @@ describe('admin settings page tts section', () => {
   });
 
   it('sends the admin bearer token when previewing tts audio', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(new Uint8Array([1, 2, 3]), {
-        status: 200,
-        headers: { 'content-type': 'audio/mpeg' }
-      })
-    );
-    const play = vi.fn().mockResolvedValue(undefined);
-
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('Audio', class {
-      onended: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      constructor(_src: string) {}
-      play = play;
-      pause = vi.fn();
-    } as never);
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn().mockReturnValue('blob:preview-audio'),
-      revokeObjectURL: vi.fn()
-    } as never);
+    const { fetchMock } = stubPreviewEnvironment();
 
     render(AdminSettingsPage, {
       props: {
@@ -181,5 +186,69 @@ describe('admin settings page tts section', () => {
         })
       );
     });
+  });
+
+  it('sends the unsaved openai voice draft in the preview payload without calling save', async () => {
+    const { fetchMock } = stubPreviewEnvironment();
+
+    render(AdminSettingsPage, {
+      props: {
+        data: createPageData(),
+        form: null
+      }
+    });
+
+    await fireEvent.change(screen.getByLabelText(/^voice$/i), {
+      target: { value: 'nova' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /preview voice/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const [url, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body as string);
+
+    expect(url).toBe('/api/admin/tts/preview');
+    expect(body).toEqual(
+      expect.objectContaining({
+        content: 'Preview the current teaching voice.',
+        draftConfig: expect.objectContaining({
+          openai: expect.objectContaining({
+            voice: 'nova'
+          })
+        })
+      })
+    );
+  });
+
+  it('sends the unsaved provider choice in the preview payload and does not submit the save action', async () => {
+    const { fetchMock } = stubPreviewEnvironment();
+
+    render(AdminSettingsPage, {
+      props: {
+        data: createPageData(),
+        form: null
+      }
+    });
+
+    await fireEvent.change(screen.getByLabelText(/default provider/i), {
+      target: { value: 'elevenlabs' }
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /preview voice/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const [url, options] = fetchMock.mock.calls[0];
+    const body = JSON.parse(options.body as string);
+
+    expect(url).toBe('/api/admin/tts/preview');
+    expect(body).toEqual(
+      expect.objectContaining({
+        draftConfig: expect.objectContaining({
+          defaultProvider: 'elevenlabs'
+        })
+      })
+    );
+    expect(fetchMock.mock.calls.some(([calledUrl]) => String(calledUrl).includes('?/saveTtsConfig'))).toBe(false);
   });
 });

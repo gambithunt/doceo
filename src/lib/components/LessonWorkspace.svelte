@@ -3,7 +3,7 @@
   import { getActiveLessonSession } from '$lib/data/platform';
   import { deriveLessonProgressDisplay, getStageLabel, getStageNumber } from '$lib/lesson-system';
   import { renderSimpleMarkdown } from '$lib/markdown';
-  import { createLessonTts, type LessonTtsState } from '$lib/audio/lesson-tts';
+  import { createLessonTts, type LessonTtsError, type LessonTtsState } from '$lib/audio/lesson-tts';
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
   import {
@@ -14,6 +14,7 @@
     LESSON_WORKSPACE_VISIBLE_STAGES,
     type VisibleLessonStage
   } from '$lib/components/lesson-workspace-ui';
+  import { launchCheckout } from '$lib/payments/checkout';
   import { appState } from '$lib/stores/app-state';
   import type { AppState, ConceptItem, LessonMessage, LessonStage } from '$lib/types';
 
@@ -29,6 +30,9 @@
   let hasTrackedCompletedStages = $state(false);
   let activeTtsMessageId = $state<string | null>(null);
   let activeTtsState = $state<LessonTtsState>('idle');
+  let ttsUpgradeMessageId = $state<string | null>(null);
+  let ttsUpgradeError = $state<string | null>(null);
+  let ttsUpgradePending = $state(false);
   let ttsPlaybackRequest = 0;
   let prevCompleted: LessonStage[] = [];
   let usefulness = $state<number | null>(null);
@@ -374,13 +378,30 @@
     activeTtsState = nextState;
   }
 
+  function clearTtsUpgradeNotice(): void {
+    ttsUpgradeMessageId = null;
+    ttsUpgradeError = null;
+    ttsUpgradePending = false;
+  }
+
+  function applyTtsErrorNotice(messageId: string, error: LessonTtsError | null): void {
+    if (!error || error.code !== 'entitlement_denied') {
+      clearTtsUpgradeNotice();
+      return;
+    }
+
+    ttsUpgradeMessageId = messageId;
+    ttsUpgradeError = null;
+    ttsUpgradePending = false;
+  }
+
   async function playTutorBubble(message: LessonMessage): Promise<void> {
     if (!lessonSession) {
       return;
     }
 
     const requestToken = ++ttsPlaybackRequest;
-    const started = await lessonTts.play({
+    const result = await lessonTts.play({
       lessonSessionId: lessonSession.id,
       lessonMessageId: message.id,
       content: message.content
@@ -388,9 +409,28 @@
       onStateChange: (nextState) => updateTtsState(message.id, nextState)
     });
 
-    if (started && requestToken === ttsPlaybackRequest) {
+    if (result.started && requestToken === ttsPlaybackRequest) {
+      clearTtsUpgradeNotice();
       activeTtsMessageId = message.id;
       activeTtsState = 'playing';
+      return;
+    }
+
+    activeTtsMessageId = null;
+    activeTtsState = 'idle';
+    applyTtsErrorNotice(message.id, result.error);
+  }
+
+  async function upgradeTutorAudio(): Promise<void> {
+    ttsUpgradePending = true;
+    ttsUpgradeError = null;
+
+    try {
+      await launchCheckout('standard');
+    } catch (error) {
+      ttsUpgradeError = error instanceof Error ? error.message : 'Unable to start checkout.';
+    } finally {
+      ttsUpgradePending = false;
     }
   }
 
@@ -603,6 +643,26 @@
                         <div class="bubble-prompt">{@html renderSimpleMarkdown(promptSplit.prompt)}</div>
                       {/if}
                     </div>
+                    {#if ttsUpgradeMessageId === message.id}
+                      <div class="bubble-tts-upgrade" role="status" aria-live="polite">
+                        <p class="bubble-tts-upgrade-copy">
+                          Tutor audio is available on Standard and Premium. Upgrade to listen to lesson explanations.
+                        </p>
+                        <div class="bubble-tts-upgrade-actions">
+                          <button
+                            type="button"
+                            class="btn btn-secondary btn-compact bubble-tts-upgrade-button"
+                            onclick={upgradeTutorAudio}
+                            disabled={ttsUpgradePending}
+                          >
+                            {ttsUpgradePending ? 'Opening checkout…' : 'Upgrade to listen'}
+                          </button>
+                        </div>
+                        {#if ttsUpgradeError}
+                          <p class="bubble-tts-upgrade-error">{ttsUpgradeError}</p>
+                        {/if}
+                      </div>
+                    {/if}
                   {/if}
                 </article>
 
@@ -1427,6 +1487,55 @@
   .bubble-tts-icon {
     width: 1rem;
     height: 1rem;
+  }
+
+  .bubble-tts-upgrade {
+    display: grid;
+    gap: 0.6rem;
+    margin-top: 0.2rem;
+    padding: 0.82rem 0.95rem;
+    border-radius: 1rem;
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--color-blue-dim) 92%, var(--surface-soft)) 0%,
+        color-mix(in srgb, var(--color-blue-dim) 72%, var(--surface)) 100%
+      );
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 16%, transparent);
+    color: var(--text);
+    animation: tts-upgrade-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .bubble-tts-upgrade-copy {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: color-mix(in srgb, var(--text) 82%, var(--color-blue) 18%);
+  }
+
+  .bubble-tts-upgrade-actions {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .bubble-tts-upgrade-button {
+    min-height: 2.2rem;
+    border-color: color-mix(in srgb, var(--color-blue) 18%, transparent);
+    background: color-mix(in srgb, var(--surface) 76%, white 24%);
+    color: color-mix(in srgb, var(--color-blue) 42%, var(--text) 58%);
+  }
+
+  .bubble-tts-upgrade-button:hover {
+    border-color: color-mix(in srgb, var(--color-blue) 28%, transparent);
+    background: color-mix(in srgb, var(--color-blue-dim) 42%, var(--surface));
+    color: color-mix(in srgb, var(--color-blue) 58%, var(--text) 42%);
+  }
+
+  .bubble-tts-upgrade-error {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: var(--color-error);
   }
 
   .sr-only {
@@ -2870,6 +2979,26 @@
     50% {
       transform: scale(1);
       opacity: 0.34;
+    }
+  }
+
+  @keyframes tts-upgrade-in {
+    from {
+      opacity: 0;
+      transform: translateX(12px) translateY(4px) scale(0.985);
+      filter: blur(5px);
+    }
+
+    70% {
+      opacity: 1;
+      transform: translateX(-1px) translateY(0) scale(1.004);
+      filter: blur(0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0) translateY(0) scale(1);
+      filter: blur(0);
     }
   }
 

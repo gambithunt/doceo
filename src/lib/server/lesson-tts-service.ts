@@ -296,6 +296,7 @@ export function createLessonTtsService(dependencies?: {
   async function previewAdminTts(input: {
     profileId: string | null;
     content: string;
+    configOverride?: AppTtsSettings;
   }): Promise<AdminTtsPreviewResult> {
     const requestId = crypto.randomUUID();
     const trimmedContent = input.content.trim();
@@ -322,7 +323,7 @@ export function createLessonTtsService(dependencies?: {
       });
     }
 
-    const config = await loadConfig();
+    const config = input.configOverride ?? await loadConfig();
     if (!config.enabled || !config.previewEnabled || config.rolloutScope !== 'lessons') {
       throw new LessonTtsServiceError({
         code: 'tts_unavailable',

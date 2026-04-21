@@ -29,7 +29,9 @@
   }
 
   function applyAdminTokenCookie(accessToken: string): void {
-    document.cookie = setAdminTokenCookie(accessToken);
+    document.cookie = setAdminTokenCookie(accessToken, {
+      secure: window.location.protocol === 'https:'
+    });
   }
 
   function removeAdminTokenCookie(): void {

@@ -370,4 +370,71 @@ describe('lesson-tts-service', () => {
       })
     );
   });
+
+  it('uses an override openai preview config when provided', async () => {
+    const configOverride = createTtsConfig();
+    configOverride.defaultProvider = 'openai';
+    configOverride.fallbackProvider = null;
+    configOverride.openai.voice = 'nova';
+    configOverride.openai.model = 'gpt-4o-mini-tts';
+
+    await createService().previewAdminTts({
+      profileId: 'admin-1',
+      content: ' Preview the lesson teaching voice. ',
+      configOverride
+    });
+
+    expect(openaiSynthesize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: 'nova',
+        model: 'gpt-4o-mini-tts'
+      })
+    );
+    expect(elevenlabsSynthesize).not.toHaveBeenCalled();
+  });
+
+  it('uses an override elevenlabs preview config when provided', async () => {
+    const configOverride = createTtsConfig();
+    configOverride.defaultProvider = 'elevenlabs';
+    configOverride.fallbackProvider = null;
+    configOverride.elevenlabs.voiceId = 'JBFqnCBsd6RMkjVDRZzb';
+    configOverride.elevenlabs.model = 'eleven_flash_v2_5';
+    configOverride.elevenlabs.style = 0.4;
+    configOverride.elevenlabs.similarityBoost = 0.6;
+
+    await createService().previewAdminTts({
+      profileId: 'admin-1',
+      content: ' Preview the lesson teaching voice. ',
+      configOverride
+    });
+
+    expect(elevenlabsSynthesize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voiceId: 'JBFqnCBsd6RMkjVDRZzb',
+        model: 'eleven_flash_v2_5',
+        style: 0.4,
+        similarityBoost: 0.6
+      })
+    );
+    expect(openaiSynthesize).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the saved config when no preview override is supplied', async () => {
+    const config = createTtsConfig();
+    config.defaultProvider = 'elevenlabs';
+    getTtsConfig.mockResolvedValue(config);
+
+    await createService().previewAdminTts({
+      profileId: 'admin-1',
+      content: ' Preview the lesson teaching voice. '
+    });
+
+    expect(elevenlabsSynthesize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: config.elevenlabs.model,
+        voiceId: config.elevenlabs.voiceId
+      })
+    );
+    expect(openaiSynthesize).not.toHaveBeenCalled();
+  });
 });

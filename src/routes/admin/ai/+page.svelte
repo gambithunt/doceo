@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { createAdminFormEnhance } from '$lib/admin-form-enhance';
   import AdminKpiCard from '$lib/components/admin/AdminKpiCard.svelte';
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
   import type { TimeRange } from '$lib/components/admin/AdminTimeRange.svelte';
@@ -159,13 +160,15 @@
               <form
                 method="POST"
                 action="?/resetRouteOverride"
-                use:enhance={() => {
-                  routeResetBusy = mode;
-                  return async ({ update }) => {
+                use:enhance={createAdminFormEnhance({
+                  onPending: () => {
+                    routeResetBusy = mode;
+                  },
+                  onResult: async ({ update }) => {
                     await update();
                     routeResetBusy = null;
-                  };
-                }}
+                  }
+                })}
                 class="rollback-item"
               >
                 <input type="hidden" name="mode" value={mode} />
@@ -260,13 +263,15 @@
             <form
               method="POST"
               action="?/preferLineage"
-              use:enhance={() => {
-                rollbackBusy = item.recommendedArtifactId;
-                return async ({ update }) => {
+              use:enhance={createAdminFormEnhance({
+                onPending: () => {
+                  rollbackBusy = item.recommendedArtifactId;
+                },
+                onResult: async ({ update }) => {
                   await update();
                   rollbackBusy = null;
-                };
-              }}
+                }
+              })}
               class="rollback-item"
             >
               <input type="hidden" name="artifactId" value={item.recommendedArtifactId} />

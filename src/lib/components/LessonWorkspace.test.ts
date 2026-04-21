@@ -6,11 +6,18 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 const { getAuthenticatedHeaders } = vi.hoisted(() => ({
   getAuthenticatedHeaders: vi.fn()
 }));
+const { launchCheckout } = vi.hoisted(() => ({
+  launchCheckout: vi.fn()
+}));
 
 let desktopViewport = false;
 
 vi.mock('$lib/authenticated-fetch', () => ({
   getAuthenticatedHeaders
+}));
+
+vi.mock('$lib/payments/checkout', () => ({
+  launchCheckout
 }));
 
 import LessonWorkspace from './LessonWorkspace.svelte';
@@ -696,6 +703,7 @@ describe('LessonWorkspace Phase 4 lesson TTS playback', () => {
 
   beforeEach(() => {
     audioInstances = [];
+    vi.mocked(launchCheckout).mockReset();
     getAuthenticatedHeaders.mockImplementation(async (baseHeaders = {}) => ({
       ...baseHeaders,
       Authorization: 'Bearer token'
@@ -865,5 +873,64 @@ describe('LessonWorkspace Phase 4 lesson TTS playback', () => {
 
     expect(control).toHaveAttribute('data-tts-state', 'idle');
     expect(control).toHaveAccessibleName('Play tutor audio');
+  });
+
+  it('shows an inline upgrade prompt when tutor audio is gated by plan tier', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: vi.fn().mockResolvedValue({
+          error: 'Lesson TTS requires a standard or premium plan.',
+          code: 'entitlement_denied',
+          upgradeTier: 'standard'
+        })
+      })
+    );
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Audio access should explain the upgrade path.'
+      })
+    ]);
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Play tutor audio' }));
+    await tick();
+
+    const upgradePrompt = screen.getByText(
+      'Tutor audio is available on Standard and Premium. Upgrade to listen to lesson explanations.'
+    );
+    const upgradeButton = screen.getByRole('button', { name: 'Upgrade to listen' });
+
+    expect(upgradePrompt).toBeInTheDocument();
+    expect(upgradeButton).toBeInTheDocument();
+  });
+
+  it('uses the existing checkout launcher from the lesson upgrade prompt', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: vi.fn().mockResolvedValue({
+          error: 'Lesson TTS requires a standard or premium plan.',
+          code: 'entitlement_denied',
+          upgradeTier: 'standard'
+        })
+      })
+    );
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Audio access should explain the upgrade path.'
+      })
+    ]);
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Play tutor audio' }));
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Upgrade to listen' }));
+
+    expect(launchCheckout).toHaveBeenCalledWith('standard');
   });
 });

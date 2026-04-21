@@ -1,20 +1,24 @@
 import { createLessonTtsService, LessonTtsServiceError } from '$lib/server/lesson-tts-service';
 import { requireAdminSession } from '$lib/server/admin/admin-guard';
-import { getTtsConfig } from '$lib/server/tts-config';
+import { buildPreviewTtsConfig, getTtsConfig } from '$lib/server/tts-config';
 
 export async function POST({ request }: { request: Request }) {
   const adminSession = await requireAdminSession(request);
   const raw = await request.json().catch(() => null);
   const content = typeof raw?.content === 'string' ? raw.content.trim() : '';
-  const config = await getTtsConfig();
+  const savedConfig = await getTtsConfig();
+  const configOverride = raw && typeof raw === 'object' && 'draftConfig' in raw
+    ? buildPreviewTtsConfig(savedConfig, raw.draftConfig)
+    : undefined;
+  const effectiveConfig = configOverride ?? savedConfig;
 
   if (!content) {
     return Response.json({ error: 'Preview content must not be empty.' }, { status: 400 });
   }
 
-  if (content.length > config.previewMaxChars) {
+  if (content.length > effectiveConfig.previewMaxChars) {
     return Response.json(
-      { error: `Preview text exceeds the maximum length of ${config.previewMaxChars} characters.` },
+      { error: `Preview text exceeds the maximum length of ${effectiveConfig.previewMaxChars} characters.` },
       { status: 400 }
     );
   }
@@ -22,7 +26,8 @@ export async function POST({ request }: { request: Request }) {
   try {
     const result = await createLessonTtsService().previewAdminTts({
       content,
-      profileId: adminSession.profileId
+      profileId: adminSession.profileId,
+      configOverride
     });
 
     return new Response(result.audio, {

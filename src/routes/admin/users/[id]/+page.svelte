@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { createAdminFormEnhance } from '$lib/admin-form-enhance';
   import { invalidate } from '$app/navigation';
   import { createAdminCompFormEnhance } from '$lib/components/admin/comp-action-enhance';
   import type { BillingPeriodCost } from '$lib/types';
@@ -437,7 +438,7 @@
         <button type="button" class="cancel-btn" onclick={() => { confirmAction = null; confirmInput = ''; }}>
           Cancel
         </button>
-        <form method="POST" action="?/{confirmAction}" use:enhance>
+        <form method="POST" action="?/{confirmAction}" use:enhance={createAdminFormEnhance()}>
           <button
             type="submit"
             class="confirm-btn"

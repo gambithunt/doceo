@@ -1,7 +1,11 @@
 import { ADMIN_TOKEN_COOKIE } from '$lib/admin-constants';
 
-export function setAdminTokenCookie(accessToken: string): string {
-  return `${ADMIN_TOKEN_COOKIE}=${encodeURIComponent(accessToken)}; path=/; SameSite=Strict; Secure`;
+export function setAdminTokenCookie(
+  accessToken: string,
+  options?: { secure?: boolean }
+): string {
+  const secure = options?.secure ?? true;
+  return `${ADMIN_TOKEN_COOKIE}=${encodeURIComponent(accessToken)}; path=/; SameSite=Strict${secure ? '; Secure' : ''}`;
 }
 
 export function clearAdminTokenCookie(): string {

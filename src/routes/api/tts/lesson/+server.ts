@@ -52,8 +52,24 @@ export async function POST({ request }: { request: Request }) {
             : error.code === 'tts_unavailable'
               ? 503
               : 502;
-
-      return json({ error: error.message }, { status });
+      return json(
+        error.code === 'entitlement_denied'
+          ? {
+              error: error.message,
+              code: 'entitlement_denied',
+              requiredPlan: 'standard_or_premium',
+              upgradeTier: 'standard'
+            }
+          : error.code === 'tts_unavailable'
+            ? {
+                error: error.message,
+                code: 'tts_unavailable'
+              }
+            : {
+                error: error.message
+              },
+        { status }
+      );
     }
 
     return json({ error: 'Lesson TTS unavailable.' }, { status: 502 });

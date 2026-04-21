@@ -209,7 +209,10 @@ describe('lesson tts route', () => {
 
     expect(denied.status).toBe(402);
     await expect(denied.json()).resolves.toEqual({
-      error: 'Lesson TTS requires a standard or premium plan.'
+      error: 'Lesson TTS requires a standard or premium plan.',
+      code: 'entitlement_denied',
+      requiredPlan: 'standard_or_premium',
+      upgradeTier: 'standard'
     });
 
     const failed = await POST({

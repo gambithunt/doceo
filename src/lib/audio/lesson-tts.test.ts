@@ -40,7 +40,7 @@ describe('createLessonTts', () => {
         },
         { onStateChange }
       )
-    ).toBe(false);
+    ).toEqual({ started: false, error: null });
 
     tts.stop();
     tts.destroy();
@@ -85,7 +85,7 @@ describe('createLessonTts', () => {
         },
         { onStateChange }
       )
-    ).toBe(true);
+    ).toEqual({ started: true });
     expect(audio.src).toBe('https://storage.example/audio.mp3');
     expect(onStateChange).toHaveBeenNthCalledWith(1, 'playing');
 
@@ -103,5 +103,35 @@ describe('createLessonTts', () => {
     tts.stop();
     tts.destroy();
     expect(audio.pause).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured upgrade-required error when lesson tts is plan-gated', async () => {
+    const tts = createLessonTts({
+      getAuthenticatedHeaders,
+      fetcher: vi.fn().mockResolvedValue({
+        ok: false,
+        json: vi.fn().mockResolvedValue({
+          error: 'Lesson TTS requires a standard or premium plan.',
+          code: 'entitlement_denied',
+          upgradeTier: 'standard'
+        })
+      }),
+      createAudio: vi.fn()
+    });
+
+    await expect(
+      tts.play({
+        lessonSessionId: 'lesson-session-1',
+        lessonMessageId: 'lesson-message-1',
+        content: 'Tutor bubble copy'
+      })
+    ).resolves.toEqual({
+      started: false,
+      error: {
+        code: 'entitlement_denied',
+        message: 'Lesson TTS requires a standard or premium plan.',
+        upgradeTier: 'standard'
+      }
+    });
   });
 });

@@ -185,6 +185,23 @@ function normalizeElevenLabsConfig(value: unknown): AppTtsSettings['elevenlabs']
   };
 }
 
+function mergeTtsConfigDraft(base: AppTtsSettings, draft: unknown): unknown {
+  const draftRecord = asRecord(draft);
+
+  return {
+    ...base,
+    ...draftRecord,
+    openai: {
+      ...base.openai,
+      ...asRecord(draftRecord.openai)
+    },
+    elevenlabs: {
+      ...base.elevenlabs,
+      ...asRecord(draftRecord.elevenlabs)
+    }
+  };
+}
+
 export function normalizeTtsConfig(input: unknown): AppTtsSettings {
   const record = asRecord(input);
 
@@ -207,6 +224,14 @@ export function normalizeTtsConfig(input: unknown): AppTtsSettings {
     openai: normalizeOpenAiConfig(record.openai),
     elevenlabs: normalizeElevenLabsConfig(record.elevenlabs)
   };
+}
+
+export function buildPreviewTtsConfig(base: AppTtsSettings, draft?: unknown): AppTtsSettings {
+  if (draft === undefined) {
+    return normalizeTtsConfig(base);
+  }
+
+  return normalizeTtsConfig(mergeTtsConfigDraft(base, draft));
 }
 
 export async function getTtsConfig(): Promise<AppTtsSettings> {
