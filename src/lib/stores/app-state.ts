@@ -20,6 +20,7 @@ import {
   updateLearnerProfile
 } from '$lib/lesson-system';
 import {
+  detectLessonSupportIntent,
   deriveNextStepCtaState,
   getNextStepPrompt,
   type VisibleLessonStage
@@ -2314,6 +2315,10 @@ export function createAppStore(initialState: AppState = readState()) {
       }
 
       const messageType = classifyLessonMessage(message);
+      const supportIntent =
+        lessonSession.currentStage !== 'complete'
+          ? detectLessonSupportIntent(lessonSession.currentStage as VisibleLessonStage, message)
+          : null;
       const userMessage = {
         id: `msg-${crypto.randomUUID()}`,
         role: 'user' as const,
@@ -2401,7 +2406,8 @@ export function createAppStore(initialState: AppState = readState()) {
               : currentLesson,
           lessonSession: currentSession,
           message: message.trim(),
-          messageType
+          messageType,
+          supportIntent
         } satisfies LessonChatRequest;
         let resolvedPayload: LessonChatResponse | null = null;
 
@@ -2442,6 +2448,14 @@ export function createAppStore(initialState: AppState = readState()) {
           const useWrapTransition =
             localPayload.metadata?.action === 'advance' &&
             (current.softStuckCount ?? 0) >= SOFT_STUCK_STAY_THRESHOLD;
+          const assistantMetadata =
+            supportIntent === 'help_me_start'
+              ? {
+                  ...localPayload.metadata,
+                  response_mode: 'support' as const,
+                  support_intent: 'help_me_start' as const
+                }
+              : localPayload.metadata;
           const assistantMessage = {
             id: `msg-${crypto.randomUUID()}`,
             role: 'assistant' as const,
@@ -2454,7 +2468,7 @@ export function createAppStore(initialState: AppState = readState()) {
             content: localPayload.displayContent,
             stage: current.currentStage,
             timestamp: new Date().toISOString(),
-            metadata: localPayload.metadata
+            metadata: assistantMetadata
           };
           let nextSession = applyLessonAssistantResponse(current, assistantMessage);
 

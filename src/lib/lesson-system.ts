@@ -16,6 +16,7 @@ import type {
   Topic,
   UserProfile
 } from '$lib/types';
+import { getLatestTutorPrompt, getLatestTutorTeachingAnchor } from '$lib/lesson-tutor-prompt';
 
 function createDefaultRevisionCalibration() {
   return {
@@ -1128,6 +1129,118 @@ function buildQuestionReply(session: LessonSession, lesson: Lesson, message: str
   };
 }
 
+function extractPromptAnchors(prompt: string): string[] {
+  const inTermsOfMatch = prompt.match(/in terms of ([^?.!]+)/i);
+  if (inTermsOfMatch?.[1]) {
+    return inTermsOfMatch[1]
+      .split(/,| and /i)
+      .map((item) => item.replace(/^[\s:;.-]+|[\s:;.-]+$/g, '').trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function buildPromptAwareSupportFrame(
+  activePrompt: string,
+  stage: LessonStage,
+  teachingAnchor: string | null
+): string {
+  const lower = activePrompt.toLowerCase();
+  const anchors = extractPromptAnchors(activePrompt);
+  const firstQuestion = activePrompt.split('?').map((part) => part.trim()).filter(Boolean)[0] ?? activePrompt;
+
+  if (/summari[sz]e|big picture|wrap this up/.test(lower)) {
+    const anchorList =
+      anchors.length > 0
+        ? `Use the parts already named in the question: ${anchors.join(', ')}.`
+        : 'Use the parts already named in the explanation above.';
+
+    return [
+      'Start with one sentence that states the main idea you are summarizing.',
+      anchorList,
+      'Then turn each part into a short supporting phrase instead of trying to write the whole answer at once.'
+    ].join(' ');
+  }
+
+  if (/how .*impact|how did .*affect|what effect/i.test(lower)) {
+    return [
+      'Answer the first part only.',
+      'Choose one element already mentioned above and link it to one concrete effect on people or society.',
+      'Once you have that one link, you can add another.'
+    ].join(' ');
+  }
+
+  if (/what do you think .*valued most|what did .*value most/i.test(lower)) {
+    return [
+      'Ignore that second, bigger inference for the moment.',
+      'Start by answering the earlier, more concrete part of the question using one detail from the explanation above.',
+      'You can return to the values part after that.'
+    ].join(' ');
+  }
+
+  if (/which|what|identify|name/.test(lower)) {
+    return [
+      `Start with the exact part being asked: "${firstQuestion.replace(/\?$/, '')}."`,
+      'Point to one clue, example, or detail already given above that directly supports your answer.'
+    ].join(' ');
+  }
+
+  if (/how|why/.test(lower)) {
+    return [
+      `Start with the first question only: "${firstQuestion.replace(/\?$/, '')}."`,
+      'Use one cause-and-effect link from the explanation above before you add anything broader.'
+    ].join(' ');
+  }
+
+  if (teachingAnchor) {
+    return [
+      'Start from the explanation directly above.',
+      'Pull out one detail from it and use that as your first move before you try to answer the whole prompt.'
+    ].join(' ');
+  }
+
+  if (stage === 'practice' || stage === 'check') {
+    return 'Start with one detail already given in the task above. Use that detail to make your first move before you try to answer everything.';
+  }
+
+  return 'Start with one detail that was already explained above. Use that detail for the first move before you try to answer the whole prompt.';
+}
+
+function buildHelpMeStartReply(session: LessonSession): LessonChatResponse {
+  const activePrompt = getLatestTutorPrompt(session);
+  const teachingAnchor = getLatestTutorTeachingAnchor(session);
+  const stageSpecificScaffold: Record<LessonStage, string> = {
+    orientation: `Start with the topic itself. Name the main idea above and one thing it helps you decide before you try to explain anything else.`,
+    concepts: `Pick one key idea from the explanation above. State the rule or relationship it gives you before you try to connect all the ideas together.`,
+    construction: `Use the build above as your anchor. Identify the first thing you need to notice or label before you try the full method.`,
+    examples: `Copy the opening move from the worked example above. Match that same move to the example in front of you before worrying about the later steps.`,
+    practice: `Do only the first move on the task above. Identify the rule, clue, category, or quantity you should use before you try to finish the whole answer.`,
+    check: `Start with one sentence that states the main rule from above. Then use one detail from the task to support that sentence.`,
+    complete: `Start with the strongest idea you remember from the lesson above and say why it mattered.`
+  };
+
+  return {
+    displayContent: `${activePrompt
+      ? buildPromptAwareSupportFrame(activePrompt, session.currentStage, teachingAnchor)
+      : stageSpecificScaffold[session.currentStage]}\n\nTry just that first move now.`,
+    provider: 'local-fallback',
+    metadata: {
+      action: 'stay',
+      next_stage: null,
+      reteach_style: 'step_by_step',
+      reteach_count: session.reteachCount + 1,
+      confidence_assessment: Math.max(0.36, Math.min(0.52, session.confidenceScore || 0.44)),
+      response_mode: 'support',
+      support_intent: 'help_me_start',
+      profile_update: {
+        step_by_step: 0.82,
+        needs_repetition: 0.68
+      }
+    }
+  };
+}
+
 function buildResponseReply(session: LessonSession, lesson: Lesson, message: string): LessonChatResponse {
   const lower = message.toLowerCase();
   const indicatesConfusion =
@@ -1262,6 +1375,10 @@ export function buildLocalLessonChatResponse(
   request: LessonChatRequest,
   lesson: Lesson
 ): LessonChatResponse {
+  if (request.supportIntent === 'help_me_start') {
+    return buildHelpMeStartReply(request.lessonSession);
+  }
+
   if (request.messageType === 'question') {
     return buildQuestionReply(request.lessonSession, lesson, request.message);
   }

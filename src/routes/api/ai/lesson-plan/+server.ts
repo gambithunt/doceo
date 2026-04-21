@@ -12,6 +12,7 @@ import { createServerDynamicOperationsService } from '$lib/server/dynamic-operat
 import { createServerTopicDiscoveryRepository } from '$lib/server/topic-discovery-repository';
 import { createServerSupabaseFromRequest } from '$lib/server/supabase';
 import { checkUserQuota, LESSON_COST_ESTIMATES_USD } from '$lib/server/quota-check';
+import { parseAiCostWithPricing } from '$lib/server/admin/cost-calculator';
 import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 const LessonPlanBodySchema = z.object({
@@ -46,6 +47,7 @@ const LessonPlanBodySchema = z.object({
 
 const LESSON_PLAN_PROMPT_VERSION = 'lesson-plan-v3';
 const LESSON_PLAN_PEDAGOGY_VERSION = 'phase3-v1';
+type GeneratedLessonPlanResponse = LessonPlanResponse & { estimatedCostUsd?: number | null };
 
 async function recordTopicDiscoveryLaunch(input: {
   lessonRequest: LessonPlanRequest;
@@ -136,7 +138,7 @@ export async function POST({ request, fetch }) {
     }
   }
 
-  const generateLessonPlan = async (launchRequest: LessonPlanRequest): Promise<LessonPlanResponse> => {
+  const generateLessonPlan = async (launchRequest: LessonPlanRequest): Promise<GeneratedLessonPlanResponse> => {
     const aiConfig = await getAiConfig();
     const { model } = resolveAiRoute(aiConfig, 'lesson-plan');
 
@@ -175,6 +177,12 @@ export async function POST({ request, fetch }) {
       });
     }
 
+    const costTelemetry = await parseAiCostWithPricing(functionPayload, {
+      provider: functionPayload.provider,
+      model: functionPayload.model ?? null,
+      modelTier: functionPayload.modelTier ?? null
+    });
+
     await logAiInteraction(
       launchRequest.student.id,
       JSON.stringify(launchRequest),
@@ -184,11 +192,15 @@ export async function POST({ request, fetch }) {
         mode: 'lesson-plan',
         latencyMs: (functionPayload as { latencyMs?: number }).latencyMs ?? null,
         modelTier: functionPayload.modelTier,
-        model: functionPayload.model
+        model: functionPayload.model,
+        costTelemetry
       }
     );
 
-    return functionPayload;
+    return {
+      ...functionPayload,
+      estimatedCostUsd: costTelemetry.costUsd
+    };
   };
 
   try {
@@ -209,7 +221,8 @@ export async function POST({ request, fetch }) {
         provider: generated.provider,
         model: generated.model ?? null,
         modelTier: generated.modelTier,
-        latencyMs: Date.now() - startedAt
+        latencyMs: Date.now() - startedAt,
+        estimatedCostUsd: generated.estimatedCostUsd ?? null
       });
       return json(generated);
     }
@@ -238,7 +251,8 @@ export async function POST({ request, fetch }) {
           pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
           provider: event.provider,
           model: event.model,
-          latencyMs: Date.now() - startedAt
+          latencyMs: Date.now() - startedAt,
+          estimatedCostUsd: event.estimatedCostUsd ?? null
         });
       }
     });

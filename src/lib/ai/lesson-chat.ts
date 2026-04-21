@@ -4,6 +4,7 @@ import {
   SOFT_STUCK_STAY_THRESHOLD,
   stripDoceoMeta
 } from '$lib/lesson-system';
+import { getLatestTutorPrompt, getLatestTutorTeachingAnchor } from '$lib/lesson-tutor-prompt';
 import type { Lesson, LessonChatRequest, LessonChatResponse } from '$lib/types';
 
 export interface GithubModelsMessage {
@@ -153,7 +154,10 @@ Rules:
     ``,
     `--- SESSION ---`,
     `Current Stage: ${request.lessonSession.currentStage}`,
+    `Support Intent: ${request.supportIntent ?? 'none'}`,
     `Current Stage Content: ${getCurrentStageContent(request)}`,
+    `Latest Tutor Prompt Awaiting Answer: ${getLatestTutorPrompt(request.lessonSession) ?? 'none'}`,
+    `Latest Tutor Teaching Anchor: ${getLatestTutorTeachingAnchor(request.lessonSession) ?? 'none'}`,
     ...(request.lessonSession.currentStage === 'check' ? [
       `Common Mistakes to probe (use these to design check questions — ask the learner to avoid them): ${lesson?.commonMistakes?.body ?? ''}`,
       `Transfer Challenge (use this if the learner demonstrates mastery — push them to apply the idea in a new context): ${lesson?.transferChallenge?.body ?? ''}`
@@ -180,6 +184,9 @@ Rules:
     `Ask a concrete, answerable question first. Prefer prompts that ask the learner to identify, choose, solve, quote, classify, correct, or complete the next step before you ask for a broad explanation.`,
     `Do not default to asking for a practical or real-world example. Only ask for one when the lesson is explicitly testing transfer to a new context.`,
     `If you ask for explanation, anchor it to the given task, sentence, case, numbers, source, or worked example instead of a free-floating "How does this work?" prompt.`,
+    `Do not ask beyond the taught envelope. Your next question must be answerable from the Current Stage Content, the Latest Tutor Teaching Anchor, and the learner's latest reply. If you need a broader inference, teach the bridge sentence first and only then ask one bounded follow-up.`,
+    `In the examples stage, stay inside the worked example already shown. Ask about a clue, step, effect, or consequence already present in that example before you ask for any broader interpretation.`,
+    `If Support Intent is help_me_start, target the Latest Tutor Prompt Awaiting Answer, not the stage in general. Reduce multi-part prompts to the first unresolved part. Stay on the current task. Give one concrete first move, add one short clue tied to the exact stage content, and stop there. Do not add a new bottom-of-bubble question. End with a soft handoff such as "Try just that first move now." or "Start with that move."`,
     `If the student's message contains [CONCEPT: name], they are asking for a clearer explanation of a concept card they just read. The [STUDENT_HAS_READ: ...] field shows the exact text they already saw — do NOT restate or paraphrase it. Instead, give them a completely fresh angle: a new analogy, a real-world comparison, or a simpler breakdown that says "in other words...". Keep it to 3–5 sentences. End with a short, specific question to check whether it clicked (e.g. "Does that help? Can you tell me what xylem does in your own words?"). This is an in-lesson clarification — NOT a side_thread. Set action to "stay".`,
     ``,
     `--- DOCEO_META FORMAT (required at end of every response) ---`,

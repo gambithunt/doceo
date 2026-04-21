@@ -16,6 +16,7 @@ interface LessonLaunchDependencies {
     questionArtifactId: string;
     provider: string;
     model: string | null;
+    estimatedCostUsd: number | null;
   }) => Promise<void> | void;
 }
 
@@ -191,7 +192,8 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
           lessonArtifactId: preferredLesson.id,
           questionArtifactId: preferredQuestions.id,
           provider: preferredLesson.provider,
-          model: preferredLesson.model ?? null
+          model: preferredLesson.model ?? null,
+          estimatedCostUsd: 0
         });
         return {
           ...preferredLesson.payload,
@@ -245,7 +247,8 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
         lessonArtifactId: lessonArtifact.id,
         questionArtifactId: questionArtifact.id,
         provider: generated.provider,
-        model: generated.model ?? null
+        model: generated.model ?? null,
+        estimatedCostUsd: generated.estimatedCostUsd ?? null
       });
 
       return {

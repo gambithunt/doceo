@@ -196,4 +196,41 @@ describe('lesson-chat', () => {
     expect(prompt).toContain('Do not default to asking for a practical or real-world example');
     expect(prompt).toContain('identify, choose, solve, quote, classify, correct, or complete the next step');
   });
+
+  it('buildSystemPrompt tells the tutor not to append a new question for Help me start support replies', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      currentStage: 'practice',
+      messages: [
+        {
+          id: 'msg-active-practice-prompt',
+          role: 'assistant',
+          type: 'teaching',
+          content:
+            'Exactly! By building ships, the Greeks could travel further for trade and fishing.\n\nNow, let’s wrap this up. Can you summarize how the ocean, as a key resource, influenced the Greek civilization in terms of food, trade, and shipbuilding? What’s the big picture?',
+          stage: 'practice',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: session,
+      message: 'Help me start this practice question with the first move only.',
+      messageType: 'response',
+      supportIntent: 'help_me_start'
+    });
+
+    expect(prompt).toContain('Support Intent: help_me_start');
+    expect(prompt).toContain('Latest Tutor Prompt Awaiting Answer: Now, let’s wrap this up. Can you summarize how the ocean, as a key resource, influenced the Greek civilization in terms of food, trade, and shipbuilding? What’s the big picture?');
+    expect(prompt).toContain('Latest Tutor Teaching Anchor: Exactly! By building ships, the Greeks could travel further for trade and fishing.');
+    expect(prompt).toContain('Do not ask beyond the taught envelope.');
+    expect(prompt).toContain('Reduce multi-part prompts to the first unresolved part.');
+    expect(prompt).toContain('Do not add a new bottom-of-bubble question');
+    expect(prompt).toContain('Give one concrete first move');
+  });
 });

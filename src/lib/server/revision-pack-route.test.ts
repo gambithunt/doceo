@@ -96,7 +96,8 @@ describe('revision pack route', () => {
         revisionQuestionArtifactId: 'revision-question-artifact-1',
         provider: 'github-models',
         model: 'openai/gpt-4.1-mini',
-        mode: 'deep_revision'
+        mode: 'deep_revision',
+        estimatedCostUsd: 0.0025
       });
       return { startRevisionSession };
     });
@@ -164,7 +165,8 @@ describe('revision pack route', () => {
       expect.objectContaining({
         route: 'revision-pack',
         status: 'success',
-        promptVersion: 'revision-pack-v1'
+        promptVersion: 'revision-pack-v1',
+        estimatedCostUsd: 0.0025
       })
     );
   });

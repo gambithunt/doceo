@@ -149,7 +149,9 @@ describe('revision generation service', () => {
     provider: string;
     model?: string;
     modelTier?: 'thinking';
+    estimatedCostUsd?: number | null;
   }>>();
+  const onSessionObserved = vi.fn();
   let service: ReturnType<typeof createRevisionGenerationService>;
   let graphStore: ReturnType<typeof createInMemoryGraphStore>;
 
@@ -159,6 +161,7 @@ describe('revision generation service', () => {
     await bootstrapGraphFromLegacyData(graphRepository, createLegacySnapshot());
     const artifactRepository = createRevisionArtifactRepository(createInMemoryRevisionArtifactStore());
     generator.mockReset();
+    onSessionObserved.mockReset();
     generator.mockResolvedValue({
       payload: createGeneratedPack(),
       provider: 'github-models',
@@ -170,7 +173,8 @@ describe('revision generation service', () => {
       artifactRepository,
       generateRevisionPack: generator,
       pedagogyVersion: 'phase5-v1',
-      promptVersion: 'revision-pack-v1'
+      promptVersion: 'revision-pack-v1',
+      onSessionObserved
     });
   });
 
@@ -217,6 +221,67 @@ describe('revision generation service', () => {
     expect(launched.session.revisionQuestionArtifactId).toBeTruthy();
     expect(launched.session.questions[0]?.helpLadder?.hint).toContain('1/2 and 2/4');
     expect(launched.resolvedTopics[0]?.nodeId).toBe('graph-subtopic-equivalent-fractions');
+  });
+
+  it('passes estimated cost to the observed session event for generated packs', async () => {
+    generator.mockResolvedValueOnce({
+      payload: createGeneratedPack(),
+      provider: 'github-models',
+      model: 'openai/gpt-4.1-mini',
+      modelTier: 'thinking',
+      estimatedCostUsd: 0.0024
+    });
+
+    await service.startRevisionSession({
+      request: {
+        student: createProfile(),
+        learnerProfile: createLearnerProfile(),
+        topics: [createTopic()],
+        recommendationReason: 'Due today',
+        mode: 'deep_revision',
+        source: 'do_today'
+      }
+    });
+
+    expect(onSessionObserved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'generated',
+        estimatedCostUsd: 0.0024
+      })
+    );
+  });
+
+  it('records zero estimated cost when reusing an existing revision artifact', async () => {
+    await service.startRevisionSession({
+      request: {
+        student: createProfile(),
+        learnerProfile: createLearnerProfile(),
+        topics: [createTopic()],
+        recommendationReason: 'Due today',
+        mode: 'deep_revision',
+        source: 'do_today'
+      }
+    });
+
+    onSessionObserved.mockClear();
+
+    await service.startRevisionSession({
+      request: {
+        student: createProfile(),
+        learnerProfile: createLearnerProfile(),
+        topics: [createTopic()],
+        recommendationReason: 'Due today',
+        mode: 'deep_revision',
+        source: 'do_today'
+      }
+    });
+
+    expect(onSessionObserved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'artifact_reuse',
+        estimatedCostUsd: 0
+      })
+    );
   });
 
   it('reuses the preferred revision artifact instead of generating a duplicate pack', async () => {

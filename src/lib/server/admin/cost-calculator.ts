@@ -1,4 +1,5 @@
-import { PROVIDERS } from '$lib/ai/providers';
+import { PROVIDERS, getProviderById, type ModelOption, type ProviderId } from '$lib/ai/providers';
+import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
 
 export interface TokenCounts {
   inputTokens: number;
@@ -14,6 +15,12 @@ export interface CostResult {
 interface Pricing {
   inputPer1M: number;
   outputPer1M: number;
+}
+
+export type PricingSource = 'provider_catalog' | 'provider_override' | 'tier' | 'fallback';
+
+export interface PricingSnapshot extends Pricing {
+  source: PricingSource;
 }
 
 // USD per 1M tokens, kept in sync with the provider catalog.
@@ -34,6 +41,11 @@ const TIER_PRICING: Record<string, Pricing> = {
 
 const FALLBACK_PRICING: Pricing = { inputPer1M: 0.15, outputPer1M: 0.60 };
 
+const PROVIDER_MODELS_CACHE_TTL_MS = 30_000;
+
+let cachedProviderOverrides: Partial<Record<string, ModelOption[]>> | null = null;
+let providerOverridesCacheExpiry = 0;
+
 export function calculateCost(tokens: TokenCounts, modelOrTier: string): CostResult {
   const pricing = MODEL_PRICING[modelOrTier] ?? TIER_PRICING[modelOrTier] ?? FALLBACK_PRICING;
   const inputCostUsd = (tokens.inputTokens / 1_000_000) * pricing.inputPer1M;
@@ -46,6 +58,11 @@ export interface AiCostResult {
   costUsd: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  inputCostUsd: number | null;
+  outputCostUsd: number | null;
+  pricingInputPer1MUsd: number | null;
+  pricingOutputPer1MUsd: number | null;
+  pricingSource: PricingSource | null;
 }
 
 /**
@@ -59,19 +76,195 @@ export function parseAiCost(response: unknown, modelOrTier: string): AiCostResul
     try {
       parsed = JSON.parse(response);
     } catch {
-      return { tokensUsed: null, costUsd: null, inputTokens: null, outputTokens: null };
+      return {
+        tokensUsed: null,
+        costUsd: null,
+        inputTokens: null,
+        outputTokens: null,
+        inputCostUsd: null,
+        outputCostUsd: null,
+        pricingInputPer1MUsd: null,
+        pricingOutputPer1MUsd: null,
+        pricingSource: null
+      };
     }
   }
 
   const tokens = extractTokensFromResponse(parsed);
-  if (!tokens) return { tokensUsed: null, costUsd: null, inputTokens: null, outputTokens: null };
+  if (!tokens) {
+    return {
+      tokensUsed: null,
+      costUsd: null,
+      inputTokens: null,
+      outputTokens: null,
+      inputCostUsd: null,
+      outputCostUsd: null,
+      pricingInputPer1MUsd: null,
+      pricingOutputPer1MUsd: null,
+      pricingSource: null
+    };
+  }
 
   const { costUsd } = calculateCost(tokens, modelOrTier);
   return {
     tokensUsed: tokens.inputTokens + tokens.outputTokens,
     costUsd,
     inputTokens: tokens.inputTokens,
-    outputTokens: tokens.outputTokens
+    outputTokens: tokens.outputTokens,
+    inputCostUsd: null,
+    outputCostUsd: null,
+    pricingInputPer1MUsd: null,
+    pricingOutputPer1MUsd: null,
+    pricingSource: null
+  };
+}
+
+async function loadProviderOverrides(): Promise<Partial<Record<string, ModelOption[]>>> {
+  const now = Date.now();
+  if (cachedProviderOverrides && now < providerOverridesCacheExpiry) {
+    return cachedProviderOverrides;
+  }
+
+  const supabase = createServerSupabaseAdmin();
+  if (!supabase || !isSupabaseConfigured()) {
+    cachedProviderOverrides = {};
+    providerOverridesCacheExpiry = now + PROVIDER_MODELS_CACHE_TTL_MS;
+    return {};
+  }
+
+  const { data } = await supabase
+    .from('admin_settings')
+    .select('value')
+    .eq('key', 'provider_models')
+    .maybeSingle<{ value: Partial<Record<string, ModelOption[]>> }>();
+
+  cachedProviderOverrides = data?.value ?? {};
+  providerOverridesCacheExpiry = now + PROVIDER_MODELS_CACHE_TTL_MS;
+  return cachedProviderOverrides;
+}
+
+function findModelInStaticCatalog(modelId: string): ModelOption | null {
+  for (const provider of PROVIDERS) {
+    const model = provider.models.find((entry) => entry.id === modelId);
+    if (model) {
+      return model;
+    }
+  }
+
+  return null;
+}
+
+export async function resolvePricingSnapshot(
+  modelOrTier: string,
+  options?: {
+    provider?: string | null;
+  }
+): Promise<PricingSnapshot> {
+  const providerId = options?.provider as ProviderId | undefined;
+
+  if (providerId) {
+    const overrides = await loadProviderOverrides();
+    const overrideMatch = overrides[providerId]?.find((model) => model.id === modelOrTier);
+    if (overrideMatch) {
+      return {
+        inputPer1M: overrideMatch.inputPer1M,
+        outputPer1M: overrideMatch.outputPer1M,
+        source: 'provider_override'
+      };
+    }
+
+    const providerModel = getProviderById(providerId)?.models.find((model) => model.id === modelOrTier);
+    if (providerModel) {
+      return {
+        inputPer1M: providerModel.inputPer1M,
+        outputPer1M: providerModel.outputPer1M,
+        source: 'provider_catalog'
+      };
+    }
+  }
+
+  const anyCatalogMatch = findModelInStaticCatalog(modelOrTier);
+  if (anyCatalogMatch) {
+    return {
+      inputPer1M: anyCatalogMatch.inputPer1M,
+      outputPer1M: anyCatalogMatch.outputPer1M,
+      source: 'provider_catalog'
+    };
+  }
+
+  const tierPricing = TIER_PRICING[modelOrTier];
+  if (tierPricing) {
+    return {
+      ...tierPricing,
+      source: 'tier'
+    };
+  }
+
+  return {
+    ...FALLBACK_PRICING,
+    source: 'fallback'
+  };
+}
+
+export async function parseAiCostWithPricing(
+  response: unknown,
+  options: {
+    provider?: string | null;
+    model?: string | null;
+    modelTier?: string | null;
+  }
+): Promise<AiCostResult> {
+  let parsed: unknown = response;
+
+  if (typeof response === 'string') {
+    try {
+      parsed = JSON.parse(response);
+    } catch {
+      return {
+        tokensUsed: null,
+        costUsd: null,
+        inputTokens: null,
+        outputTokens: null,
+        inputCostUsd: null,
+        outputCostUsd: null,
+        pricingInputPer1MUsd: null,
+        pricingOutputPer1MUsd: null,
+        pricingSource: null
+      };
+    }
+  }
+
+  const tokens = extractTokensFromResponse(parsed);
+  if (!tokens) {
+    return {
+      tokensUsed: null,
+      costUsd: null,
+      inputTokens: null,
+      outputTokens: null,
+      inputCostUsd: null,
+      outputCostUsd: null,
+      pricingInputPer1MUsd: null,
+      pricingOutputPer1MUsd: null,
+      pricingSource: null
+    };
+  }
+
+  const pricing = await resolvePricingSnapshot(options.model ?? options.modelTier ?? 'default', {
+    provider: options.provider ?? null
+  });
+  const inputCostUsd = (tokens.inputTokens / 1_000_000) * pricing.inputPer1M;
+  const outputCostUsd = (tokens.outputTokens / 1_000_000) * pricing.outputPer1M;
+
+  return {
+    tokensUsed: tokens.inputTokens + tokens.outputTokens,
+    costUsd: inputCostUsd + outputCostUsd,
+    inputTokens: tokens.inputTokens,
+    outputTokens: tokens.outputTokens,
+    inputCostUsd,
+    outputCostUsd,
+    pricingInputPer1MUsd: pricing.inputPer1M,
+    pricingOutputPer1MUsd: pricing.outputPer1M,
+    pricingSource: pricing.source
   };
 }
 

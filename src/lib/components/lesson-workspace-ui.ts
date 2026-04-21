@@ -1,6 +1,6 @@
 import { LESSON_STAGE_ORDER, SOFT_STUCK_STAY_THRESHOLD } from '$lib/lesson-system';
 import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
-import type { LessonMessage, LessonSession, LessonStage } from '$lib/types';
+import type { LessonMessage, LessonSession, LessonStage, LessonSupportIntent } from '$lib/types';
 
 export type VisibleLessonStage = Exclude<LessonStage, 'complete'>;
 
@@ -77,6 +77,20 @@ export function getStageContextCopy(stage: LessonStage): string {
 
 export function getNextStepPrompt(stage: VisibleLessonStage): string {
   return NEXT_STEP_PROMPTS[stage];
+}
+
+export function detectLessonSupportIntent(
+  stage: VisibleLessonStage,
+  reply: string
+): LessonSupportIntent | null {
+  const normalizedReply = reply.trim().toLowerCase();
+  const helpMeStartPrompt = HELP_ME_START_PROMPTS[stage].toLowerCase();
+
+  if (normalizedReply === helpMeStartPrompt || normalizedReply.startsWith('help me start')) {
+    return 'help_me_start';
+  }
+
+  return null;
 }
 
 function getLatestCurrentStageAssistantMessage(

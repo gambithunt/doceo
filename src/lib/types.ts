@@ -31,6 +31,7 @@ export type ResponseStage =
   | 'worked_example'
   | 'final_explanation';
 export type AssistantAction = 'advance' | 'reteach' | 'side_thread' | 'complete' | 'stay';
+export type LessonSupportIntent = 'help_me_start';
 export type LessonMessageType =
   | 'teaching'
   | 'check'
@@ -592,6 +593,8 @@ export interface DoceoMeta {
   confidence_assessment: number;
   needs_teacher_review?: boolean;
   stuck_concept?: string | null;
+  response_mode?: 'lesson_flow' | 'support';
+  support_intent?: LessonSupportIntent | null;
   profile_update: LearnerProfileUpdate;
 }
 
@@ -659,6 +662,7 @@ export interface LessonChatRequest {
   lessonSession: LessonSession;
   message: string;
   messageType: 'question' | 'response';
+  supportIntent?: LessonSupportIntent | null;
 }
 
 export interface LessonChatResponse {

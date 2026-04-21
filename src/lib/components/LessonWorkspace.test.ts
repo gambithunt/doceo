@@ -668,6 +668,34 @@ describe('LessonWorkspace Phase 4 tutor prompt emphasis', () => {
 
     expect(helpText.closest('.bubble-prompt')).toBeNull();
   });
+
+  it('renders Help me start replies as support bubbles without a bottom prompt block', () => {
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content:
+          'Start with the rule above and use it on just one item first.\n\nWhich resource would you classify first?',
+        metadata: {
+          action: 'stay',
+          next_stage: null,
+          reteach_style: 'step_by_step',
+          reteach_count: 1,
+          confidence_assessment: 0.42,
+          profile_update: {},
+          response_mode: 'support',
+          support_intent: 'help_me_start'
+        }
+      })
+    ]);
+
+    const bubble = screen.getByText('Start with the rule above and use it on just one item first.').closest('article');
+    const promptText = screen.getByText('Which resource would you classify first?');
+
+    expect(screen.getByText('Hint')).toBeInTheDocument();
+    expect(bubble).toHaveClass('bubble', 'assistant', 'support');
+    expect(promptText.closest('.bubble-prompt')).toBeNull();
+  });
 });
 
 describe('LessonWorkspace Phase 5 progress strip states', () => {
@@ -726,10 +754,27 @@ describe('LessonWorkspace Phase 5 progress strip states', () => {
 
     expect(completedStage).toHaveClass('completed', 'celebrating');
     expect(connector).toHaveClass('filled', 'resolving');
-    expect(activeStage).toHaveClass('active', 'activating');
+    expect(activeStage).toHaveClass('active', 'activating', 'settling');
     expect(laterStage).not.toHaveClass('celebrating');
     expect(laterStage).not.toHaveClass('activating');
+    expect(laterStage).not.toHaveClass('settling');
     expect(strip).not.toHaveClass('celebrating');
+  });
+
+  it('applies a completion treatment to the final visible stage when the lesson is finished', () => {
+    renderWorkspace([], {
+      currentStage: 'complete',
+      stagesCompleted: ['orientation', 'concepts', 'construction', 'examples', 'practice', 'check'],
+      status: 'complete'
+    });
+
+    const strip = screen.getByLabelText('Lesson stages');
+    const finalStage = document.querySelector('[data-stage="check"]');
+    const finalConnector = document.querySelector('[data-stage-connector-after="practice"]');
+
+    expect(strip).toHaveClass('progress-rail', 'lesson-complete');
+    expect(finalStage).toHaveClass('stage-node', 'completed', 'final-stage');
+    expect(finalConnector).toHaveClass('stage-connector', 'filled', 'completion-trail');
   });
 });
 

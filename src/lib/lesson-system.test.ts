@@ -891,6 +891,84 @@ describe('lesson-system', () => {
     expect(result.metadata?.next_stage).toBe('construction');
   });
 
+  it('local fallback turns Help me start into a scaffold without a fresh bottom question', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      currentStage: 'practice',
+      messages: [
+        {
+          id: 'assistant-practice-question',
+          role: 'assistant',
+          type: 'teaching',
+          content:
+            'Exactly! By building ships, the Greeks could travel further for trade and fishing.\n\nNow, let’s wrap this up. Can you summarize how the ocean, as a key resource, influenced the Greek civilization in terms of food, trade, and shipbuilding? What’s the big picture?',
+          stage: 'practice',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lesson,
+        lessonSession: session,
+        message: 'Help me start this practice question with the first move only.',
+        messageType: 'response',
+        supportIntent: 'help_me_start'
+      },
+      lesson
+    );
+
+    expect(result.metadata?.action).toBe('stay');
+    expect(result.metadata?.response_mode).toBe('support');
+    expect(result.metadata?.support_intent).toBe('help_me_start');
+    expect(result.displayContent).toContain('food, trade, shipbuilding');
+    expect(result.displayContent).toContain('Start with one sentence that states the main idea');
+    expect(result.displayContent).toContain('Try just that first move now.');
+    expect(result.displayContent).not.toContain('Identify the rule, clue, category, or quantity');
+  });
+
+  it('local fallback narrows multi-part examples questions to the first concrete part when helping the learner start', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      currentStage: 'examples',
+      messages: [
+        {
+          id: 'assistant-examples-question',
+          role: 'assistant',
+          type: 'teaching',
+          content:
+            "You've captured the essence of how Ancient Egypt functioned beautifully!\n\nNow, let’s connect this to the bigger picture. How do you think these elements would impact the daily lives of the people living in Ancient Egypt? What do you think they valued most based on these components?",
+          stage: 'examples',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lesson,
+        lessonSession: session,
+        message: 'Help me start reading this example.',
+        messageType: 'response',
+        supportIntent: 'help_me_start'
+      },
+      lesson
+    );
+
+    expect(result.displayContent).toContain('Answer the first part only.');
+    expect(result.displayContent).toContain('Choose one element already mentioned above');
+    expect(result.displayContent).toContain('Try just that first move now.');
+  });
+
   // ─── Phase 2: Subject lenses ────────────────────────────────────────────────
 
   it('P2: getSubjectLens returns unique lens for Life Sciences', () => {

@@ -17,6 +17,7 @@ interface RevisionGenerationDependencies {
     provider: string;
     model?: string;
     modelTier?: import('$lib/ai/model-tiers').ModelTier;
+    estimatedCostUsd?: number | null;
   }>;
   pedagogyVersion: string;
   promptVersion: string;
@@ -28,6 +29,7 @@ interface RevisionGenerationDependencies {
     provider: string;
     model: string | null;
     mode: RevisionPackRequest['mode'];
+    estimatedCostUsd: number | null;
   }) => Promise<void> | void;
 }
 
@@ -189,7 +191,8 @@ export function createRevisionGenerationService(dependencies: RevisionGeneration
           revisionQuestionArtifactId: preferredQuestions.id,
           provider: preferredPack.provider,
           model: preferredPack.model ?? null,
-          mode: request.mode
+          mode: request.mode,
+          estimatedCostUsd: 0
         });
         return {
           session: buildRevisionSession({
@@ -258,7 +261,8 @@ export function createRevisionGenerationService(dependencies: RevisionGeneration
         revisionQuestionArtifactId: questionArtifact.id,
         provider: generated.provider,
         model: generated.model ?? null,
-        mode: request.mode
+        mode: request.mode,
+        estimatedCostUsd: generated.estimatedCostUsd ?? null
       });
 
       return {

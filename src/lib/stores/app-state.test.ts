@@ -2453,6 +2453,76 @@ describe('topic discovery completion linkage', () => {
     expect(requestedUrls).not.toContain('/api/ai/lesson-chat');
   });
 
+  it('sends Help me start as support intent and stores the reply as a support bubble', async () => {
+    const baseState = createInitialState();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat') {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+        expect(body.supportIntent).toBe('help_me_start');
+
+        return new Response(
+          JSON.stringify({
+            displayContent:
+              'Start with the deciding rule from the task above.\n\nWhich resource would you classify first?',
+            metadata: {
+              action: 'stay',
+              next_stage: null,
+              reteach_style: 'step_by_step',
+              reteach_count: 1,
+              confidence_assessment: 0.41,
+              profile_update: {}
+            }
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'support-session-1'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'support-session-1',
+          status: 'active',
+          currentStage: 'practice',
+          stagesCompleted: ['orientation', 'concepts', 'construction', 'examples'],
+          completedAt: null,
+          lessonId: baseState.lessons[0]!.id,
+          topicId: baseState.curriculum.subjects[0]!.topics[0]!.id,
+          messages: []
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('Help me start this practice question with the first move only.');
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'support-session-1');
+    const assistantMessage = session?.messages.at(-1);
+
+    expect(assistantMessage?.role).toBe('assistant');
+    expect(assistantMessage?.metadata?.response_mode).toBe('support');
+    expect(assistantMessage?.metadata?.support_intent).toBe('help_me_start');
+  });
+
   it('inserts a wrap message before the next stage messages when unlocked Next step progresses', async () => {
     const baseState = createInitialState();
     const fetchMock = vi.fn(async () =>

@@ -127,6 +127,10 @@
       ? getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage)
       : null
   );
+  const finalVisibleStage = $derived(visibleStages.at(-1) ?? null);
+  const finalConnectorAfterStage = $derived(
+    visibleStages.length > 1 ? (visibleStages[visibleStages.length - 2] ?? null) : null
+  );
   const nextStepCueId = 'lesson-next-step-cue';
   const supportAnchorIndex = $derived.by(() => {
     if (!lessonSession || lessonSession.status === 'complete') {
@@ -300,6 +304,10 @@
 
     if (message.type === 'feedback') {
       return 'assistant check';
+    }
+
+    if (message.metadata?.response_mode === 'support') {
+      return 'assistant support';
     }
 
     return 'assistant';
@@ -502,7 +510,7 @@
       </div>
 
       <!-- Timeline breadcrumb -->
-      <nav class="progress-rail" aria-label="Lesson stages">
+      <nav class="progress-rail" class:lesson-complete={lessonSession?.status === 'complete'} aria-label="Lesson stages">
         {#each visibleStages as stage, i}
           {#if i > 0}
             <div
@@ -510,6 +518,7 @@
               data-stage-connector-after={visibleStages[i - 1]}
               class:filled={statusForStage(visibleStages[i - 1]) === 'completed'}
               class:resolving={visibleStages[i - 1] === celebratingStage}
+              class:completion-trail={lessonSession?.status === 'complete' && visibleStages[i - 1] === finalConnectorAfterStage}
             ></div>
           {/if}
           <div
@@ -519,6 +528,8 @@
             class:active={statusForStage(stage) === 'active'}
             class:celebrating={celebratingStage === stage}
             class:activating={i > 0 && visibleStages[i - 1] === celebratingStage && statusForStage(stage) === 'active'}
+            class:settling={i > 0 && visibleStages[i - 1] === celebratingStage && statusForStage(stage) === 'active'}
+            class:final-stage={lessonSession?.status === 'complete' && stage === finalVisibleStage}
           >
             <div class="node-dot">
               {#if statusForStage(stage) === 'completed'}
@@ -632,6 +643,8 @@
                   {:else}
                     {#if message.type === 'side_thread'}
                       <small>↳ Side thread</small>
+                    {:else if message.metadata?.response_mode === 'support'}
+                      <small>Hint</small>
                     {/if}
                     {#if canPlayTutorBubble(message)}
                       {@const ttsState = ttsStateForMessage(message)}
@@ -663,7 +676,9 @@
                     {/if}
                     {@const promptSplit =
                       message.role === 'assistant' && message.type === 'teaching'
-                        ? splitTutorPrompt(message.content)
+                        ? message.metadata?.response_mode === 'support'
+                          ? { body: message.content, prompt: null }
+                          : splitTutorPrompt(message.content)
                         : { body: message.content, prompt: null }}
                     <div class="bubble-body">
                       {@html renderSimpleMarkdown(promptSplit.body)}
@@ -1234,6 +1249,7 @@
     overflow-x: auto;
     scrollbar-width: none;
     padding: 0.1rem 0.05rem;
+    isolation: isolate;
   }
 
   .progress-rail::-webkit-scrollbar {
@@ -1242,11 +1258,30 @@
 
   .stage-connector {
     flex: 1;
+    position: relative;
     height: 2px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--border-strong) 60%, transparent);
     min-width: 1rem;
+    overflow: hidden;
     transition: background 400ms var(--ease-soft);
+  }
+
+  .stage-connector::after {
+    content: '';
+    position: absolute;
+    inset: -2px auto -2px -24%;
+    width: 28%;
+    border-radius: inherit;
+    opacity: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 46%, var(--accent) 54%) 46%,
+      transparent 100%
+    );
+    filter: blur(1px);
+    pointer-events: none;
   }
 
   .stage-connector.filled {
@@ -1254,7 +1289,7 @@
   }
 
   .stage-connector.resolving {
-    animation: connector-resolve 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: connector-resolve 460ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
     background: linear-gradient(
       90deg,
       color-mix(in srgb, var(--accent) 84%, transparent),
@@ -1263,12 +1298,28 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 8%, transparent);
   }
 
+  .stage-connector.resolving::after {
+    animation: connector-sweep 460ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
+  }
+
+  .stage-connector.completion-trail {
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 74%, transparent),
+      color-mix(in srgb, var(--color-xp) 52%, var(--accent) 48%)
+    );
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-xp) 8%, transparent),
+      0 0 16px color-mix(in srgb, var(--color-xp) 12%, transparent);
+  }
+
   .stage-node {
     display: flex;
     align-items: center;
     gap: 0.45rem;
     flex-shrink: 0;
     position: relative;
+    overflow: visible;
   }
 
   .node-dot {
@@ -1283,11 +1334,24 @@
     color: var(--text-soft);
     font-size: 0.7rem;
     font-weight: 700;
+    position: relative;
+    overflow: visible;
     transition:
       background 300ms var(--ease-soft),
       border-color 300ms var(--ease-soft),
       color 300ms var(--ease-soft),
       transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .node-dot::after {
+    content: '';
+    position: absolute;
+    inset: -0.34rem;
+    border-radius: inherit;
+    border: 1px solid color-mix(in srgb, var(--accent) 0%, transparent);
+    opacity: 0;
+    transform: scale(0.78);
+    pointer-events: none;
   }
 
   .stage-node.active .node-dot {
@@ -1304,11 +1368,15 @@
   }
 
   .stage-node.celebrating .node-dot {
-    animation: dot-celebrate 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: dot-celebrate 620ms cubic-bezier(0.24, 1.2, 0.32, 1) both;
+  }
+
+  .stage-node.celebrating .node-dot::after {
+    animation: stage-seal 620ms cubic-bezier(0.24, 1.2, 0.32, 1) both;
   }
 
   .stage-node.activating .node-dot {
-    animation: next-stage-arrive 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation: next-stage-arrive 460ms cubic-bezier(0.22, 1, 0.36, 1) 170ms both;
   }
 
   .node-label {
@@ -1322,11 +1390,74 @@
     border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
     color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
     animation: label-arrive 250ms cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .node-label::after {
+    content: '';
+    position: absolute;
+    left: 0.7rem;
+    right: 0.7rem;
+    bottom: 0.28rem;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 24%, transparent),
+      color-mix(in srgb, var(--accent) 84%, transparent)
+    );
+    opacity: 0;
+    transform: scaleX(0.18);
+    transform-origin: left center;
   }
 
   .stage-node.activating .node-label {
-    animation: label-arrive 280ms cubic-bezier(0.22, 1, 0.36, 1), next-label-glow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+    animation:
+      label-arrive 300ms cubic-bezier(0.22, 1, 0.36, 1) 170ms both,
+      next-label-glow 460ms cubic-bezier(0.22, 1, 0.36, 1) 230ms both;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+
+  .stage-node.settling .node-label::after {
+    animation: label-underline-settle 320ms cubic-bezier(0.22, 1, 0.36, 1) 310ms both;
+  }
+
+  .progress-rail.lesson-complete .stage-node.final-stage .node-dot {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-xp) 60%, var(--accent) 40%),
+      color-mix(in srgb, var(--accent) 78%, var(--color-xp) 22%)
+    );
+    border-color: color-mix(in srgb, var(--color-xp) 46%, transparent);
+    color: var(--accent-contrast);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--color-xp) 10%, transparent),
+      0 0 24px color-mix(in srgb, var(--color-xp) 16%, transparent);
+    animation: final-stage-crown 720ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .progress-rail.lesson-complete .stage-node.final-stage .node-label {
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-xp) 16%, var(--surface-strong)),
+      color-mix(in srgb, var(--accent) 14%, var(--surface-soft))
+    );
+    border-color: color-mix(in srgb, var(--color-xp) 30%, transparent);
+    color: color-mix(in srgb, var(--color-xp) 54%, var(--text) 46%);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--color-xp) 7%, transparent),
+      0 0 18px color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .progress-rail.lesson-complete .stage-node.final-stage .node-label::after {
+    opacity: 1;
+    transform: scaleX(1);
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-xp) 46%, transparent),
+      color-mix(in srgb, var(--accent) 80%, var(--color-xp) 20%)
+    );
   }
 
   /* ── Body layout ── */
@@ -1606,6 +1737,26 @@
     border-color: var(--chat-check-border);
     border-left: 3px solid color-mix(in srgb, var(--accent) 72%, transparent);
     padding-left: calc(1.22rem - 2px);
+  }
+
+  .bubble.assistant.support {
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--color-yellow-dim) 92%, var(--surface-strong)),
+        color-mix(in srgb, var(--color-yellow-dim) 68%, var(--surface-soft))
+      );
+    border-color: color-mix(in srgb, var(--color-yellow) 20%, var(--border-strong));
+    border-left: 3px solid color-mix(in srgb, var(--color-yellow) 54%, transparent);
+    padding-left: calc(1.22rem - 2px);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-yellow) 8%, transparent),
+      0 10px 24px color-mix(in srgb, var(--color-yellow) 10%, rgba(15, 23, 42, 0.08));
+  }
+
+  .bubble.assistant.support small {
+    color: color-mix(in srgb, var(--color-yellow) 52%, var(--text-soft) 48%);
+    opacity: 1;
   }
 
   .bubble.assistant.wrap {
@@ -2863,7 +3014,7 @@
   @keyframes label-arrive {
     from {
       opacity: 0;
-      transform: translateX(-6px) scaleX(0.9);
+      transform: translateX(-8px) scaleX(0.9);
     }
 
     to {
@@ -2877,12 +3028,16 @@
       transform: scale(1);
     }
 
-    30% {
-      transform: scale(1.45);
+    24% {
+      transform: scale(1.18);
     }
 
-    60% {
-      transform: scale(0.9);
+    46% {
+      transform: scale(1.42);
+    }
+
+    68% {
+      transform: scale(0.92);
     }
 
     100% {
@@ -2890,44 +3045,132 @@
     }
   }
 
-  @keyframes connector-resolve {
-    from {
-      transform: scaleX(0.72);
-      opacity: 0.7;
+  @keyframes stage-seal {
+    0% {
+      opacity: 0;
+      transform: scale(0.72);
+      border-color: color-mix(in srgb, var(--accent) 0%, transparent);
     }
 
-    to {
+    35% {
+      opacity: 0.9;
+      transform: scale(1.36);
+      border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+    }
+
+    100% {
+      opacity: 0;
+      transform: scale(1.7);
+      border-color: color-mix(in srgb, var(--accent) 0%, transparent);
+    }
+  }
+
+  @keyframes connector-resolve {
+    0% {
+      transform: scaleX(0.28);
+      opacity: 0.58;
+    }
+
+    65% {
+      transform: scaleX(1.02);
+      opacity: 1;
+    }
+
+    100% {
       transform: scaleX(1);
       opacity: 1;
     }
   }
 
-  @keyframes next-stage-arrive {
+  @keyframes connector-sweep {
     0% {
-      transform: scale(0.88);
-      box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+      opacity: 0;
+      transform: translateX(-120%);
     }
 
-    65% {
-      transform: scale(1.08);
-      box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 10%, transparent);
+    20% {
+      opacity: 1;
     }
 
     100% {
-      transform: scale(1);
+      opacity: 0;
+      transform: translateX(430%);
+    }
+  }
+
+  @keyframes next-stage-arrive {
+    0% {
+      transform: translateY(5px) scale(0.84);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+    }
+
+    58% {
+      transform: translateY(-1px) scale(1.1);
+      box-shadow:
+        0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent),
+        0 0 18px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+
+    100% {
+      transform: translateY(0) scale(1);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
     }
   }
 
   @keyframes next-label-glow {
-    from {
-      transform: translateX(-4px);
-      opacity: 0.72;
+    0% {
+      transform: translateX(-6px);
+      opacity: 0;
     }
 
-    to {
+    55% {
       transform: translateX(0);
       opacity: 1;
+    }
+
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes label-underline-settle {
+    0% {
+      opacity: 0;
+      transform: scaleX(0.18);
+    }
+
+    65% {
+      opacity: 1;
+      transform: scaleX(1.04);
+    }
+
+    100% {
+      opacity: 1;
+      transform: scaleX(1);
+    }
+  }
+
+  @keyframes final-stage-crown {
+    0% {
+      transform: scale(1);
+      box-shadow:
+        0 0 0 0 color-mix(in srgb, var(--color-xp) 0%, transparent),
+        0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+    }
+
+    40% {
+      transform: scale(1.12);
+      box-shadow:
+        0 0 0 6px color-mix(in srgb, var(--color-xp) 10%, transparent),
+        0 0 24px color-mix(in srgb, var(--accent) 14%, transparent);
+    }
+
+    100% {
+      transform: scale(1);
+      box-shadow:
+        0 0 0 4px color-mix(in srgb, var(--color-xp) 10%, transparent),
+        0 0 24px color-mix(in srgb, var(--color-xp) 16%, transparent);
     }
   }
 
@@ -3170,6 +3413,7 @@
     .input-area,
     .confirm-card,
     .stage-transition,
+    .stage-connector,
     .bubble,
     .bubble-body,
     .node-dot,

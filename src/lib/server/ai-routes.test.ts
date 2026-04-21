@@ -9,6 +9,8 @@ const createServerGraphRepository = vi.fn();
 const createServerLessonArtifactRepository = vi.fn();
 const createServerDynamicOperationsService = vi.fn();
 const createServerTopicDiscoveryRepository = vi.fn();
+const createServerSupabaseAdmin = vi.fn();
+const isSupabaseConfigured = vi.fn();
 const createServerSupabaseFromRequest = vi.fn();
 const checkUserQuota = vi.fn();
 
@@ -55,7 +57,9 @@ vi.mock('$lib/server/topic-discovery-repository', () => ({
 }));
 
 vi.mock('$lib/server/supabase', () => ({
-  createServerSupabaseFromRequest
+  createServerSupabaseAdmin,
+  createServerSupabaseFromRequest,
+  isSupabaseConfigured
 }));
 
 vi.mock('$lib/server/quota-check', () => ({
@@ -76,6 +80,22 @@ describe('ai routes', () => {
       recordGenerationEvent: vi.fn()
     });
     createServerTopicDiscoveryRepository.mockReturnValue(null);
+    isSupabaseConfigured.mockReturnValue(true);
+    createServerSupabaseAdmin.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'admin_settings') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn().mockResolvedValue({ data: null })
+              }))
+            }))
+          };
+        }
+
+        throw new Error(`Unexpected admin table ${table}`);
+      })
+    });
     createServerSupabaseFromRequest.mockReturnValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -403,6 +423,10 @@ describe('ai routes', () => {
         provider: 'github-models',
         modelTier: 'thinking',
         model: 'openai/gpt-4.1-mini',
+        usage: {
+          prompt_tokens: 400,
+          completion_tokens: 100
+        },
         lesson: {
           id: 'lesson-1',
           title: 'Biology: Photosynthesis',
@@ -464,7 +488,8 @@ describe('ai routes', () => {
     } as never);
 
     expect(response.status).toBe(200);
-    expect(createServerDynamicOperationsService().recordGenerationEvent).toHaveBeenCalledWith(
+    const event = createServerDynamicOperationsService().recordGenerationEvent.mock.calls[0]?.[0];
+    expect(event).toEqual(
       expect.objectContaining({
         route: 'lesson-plan',
         status: 'success',
@@ -472,6 +497,7 @@ describe('ai routes', () => {
         model: 'openai/gpt-4.1-mini'
       })
     );
+    expect(event?.estimatedCostUsd).toBeCloseTo(0.00032, 8);
   });
 
   it('lesson plan route keeps the current launch path unchanged when no topic discovery metadata is provided', async () => {

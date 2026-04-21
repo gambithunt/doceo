@@ -2,7 +2,7 @@ import { createInitialState, normalizeAppState } from '$lib/data/platform';
 import type { AnalyticsEvent, AppState, DoceoMeta, LessonSession } from '$lib/types';
 import type { LessonSignalRow } from '$lib/ai/adaptive-signals';
 import { createServerSupabaseAdmin, isSupabaseConfigured } from '$lib/server/supabase';
-import { parseAiCost } from '$lib/server/admin/cost-calculator';
+import { parseAiCostWithPricing, type AiCostResult } from '$lib/server/admin/cost-calculator';
 
 interface SnapshotRow {
   state_json: AppState;
@@ -244,6 +244,7 @@ export async function logAiInteraction(
     modelTier?: string;
     model?: string;
     latencyMs?: number | null;
+    costTelemetry?: AiCostResult | null;
   }
 ): Promise<void> {
   const supabase = createServerSupabaseAdmin();
@@ -252,26 +253,47 @@ export async function logAiInteraction(
     return;
   }
 
+  const payloadMeta = {
+    mode: meta?.mode,
+    modelTier: meta?.modelTier,
+    model: meta?.model,
+    latencyMs: meta?.latencyMs ?? null
+  };
+
   const wrapPayload = (payload: string): string => {
-    if (!meta || (!meta.mode && !meta.modelTier && !meta.model)) {
+    if (!payloadMeta.mode && !payloadMeta.modelTier && !payloadMeta.model) {
       return payload;
     }
 
     try {
       return JSON.stringify({
         payload: JSON.parse(payload),
-        meta
+        meta: payloadMeta
       });
     } catch {
       return JSON.stringify({
         payload,
-        meta
+        meta: payloadMeta
       });
     }
   };
 
-  const modelOrTier = meta?.model ?? meta?.modelTier ?? 'default';
-  const { tokensUsed, costUsd, inputTokens, outputTokens } = parseAiCost(response, modelOrTier);
+  const costTelemetry = meta?.costTelemetry ?? (await parseAiCostWithPricing(response, {
+    provider,
+    model: meta?.model ?? null,
+    modelTier: meta?.modelTier ?? null
+  }));
+  const {
+    tokensUsed,
+    costUsd,
+    inputTokens,
+    outputTokens,
+    inputCostUsd,
+    outputCostUsd,
+    pricingInputPer1MUsd,
+    pricingOutputPer1MUsd,
+    pricingSource
+  } = costTelemetry;
 
   await supabase.from('ai_interactions').insert({
     id: crypto.randomUUID(),
@@ -284,6 +306,11 @@ export async function logAiInteraction(
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     cost_usd: costUsd,
+    input_cost_usd: inputCostUsd,
+    output_cost_usd: outputCostUsd,
+    pricing_input_per_1m_usd: pricingInputPer1MUsd,
+    pricing_output_per_1m_usd: pricingOutputPer1MUsd,
+    pricing_source: pricingSource,
     latency_ms: meta?.latencyMs ?? null,
     request_payload: wrapPayload(requestPayload),
     response_payload: wrapPayload(response),

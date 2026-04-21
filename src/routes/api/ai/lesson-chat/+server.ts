@@ -24,7 +24,8 @@ const LessonChatBodySchema = z.object({
     currentStage: z.string()
   }).passthrough(),
   message: z.string().min(1),
-  messageType: z.enum(['question', 'response'])
+  messageType: z.enum(['question', 'response']),
+  supportIntent: z.enum(['help_me_start']).nullable().optional()
 });
 
 export async function POST({ request, fetch }) {

@@ -7,6 +7,7 @@ import { createServerRevisionArtifactRepository } from '$lib/server/revision-art
 import { createRevisionGenerationService } from '$lib/server/revision-generation-service';
 import { createServerDynamicOperationsService } from '$lib/server/dynamic-operations';
 import { logAiInteraction } from '$lib/server/state-repository';
+import { parseAiCostWithPricing } from '$lib/server/admin/cost-calculator';
 import type { RevisionPackGenerationPayload, RevisionPackRequest } from '$lib/types';
 
 const RevisionPackBodySchema = z.object({
@@ -111,6 +112,12 @@ export async function POST({ request, fetch }) {
       throw Object.assign(new Error(edge.error ?? 'Revision pack generation failed.'), { status: edge.ok ? 502 : edge.status });
     }
 
+    const costTelemetry = await parseAiCostWithPricing(edge.payload, {
+      provider: edge.payload.provider,
+      model: edge.payload.model ?? null,
+      modelTier: edge.payload.modelTier ?? null
+    });
+
     await logAiInteraction(
       packRequest.student.id,
       JSON.stringify(packRequest),
@@ -120,7 +127,8 @@ export async function POST({ request, fetch }) {
         mode: 'revision-pack',
         latencyMs: (edge.payload as { latencyMs?: number }).latencyMs ?? null,
         modelTier: edge.payload.modelTier,
-        model: edge.payload.model
+        model: edge.payload.model,
+        costTelemetry
       }
     );
 
@@ -132,7 +140,8 @@ export async function POST({ request, fetch }) {
       },
       provider: edge.payload.provider,
       modelTier: edge.payload.modelTier,
-      model: edge.payload.model
+      model: edge.payload.model,
+      estimatedCostUsd: costTelemetry.costUsd
     };
   };
 
@@ -157,6 +166,7 @@ export async function POST({ request, fetch }) {
           provider: event.provider,
           model: event.model,
           latencyMs: Date.now() - startedAt,
+          estimatedCostUsd: event.estimatedCostUsd ?? null,
           payload: {
             mode: event.mode
           }
