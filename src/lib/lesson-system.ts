@@ -789,6 +789,74 @@ function isAcknowledgementOnlyReply(message: string): boolean {
   ].includes(normalized);
 }
 
+function isVagueConceptReply(message: string): boolean {
+  const normalized = normalizeLearnerReply(message);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return [
+    'maybe',
+    'maybe so',
+    'i think so',
+    'i guess',
+    'not sure',
+    'kind of',
+    'sort of',
+    'probably',
+    'perhaps'
+  ].includes(normalized);
+}
+
+function isMeaningfulConceptReply(message: string): boolean {
+  const normalized = normalizeLearnerReply(message);
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (isAcknowledgementOnlyReply(message) || isVagueConceptReply(message)) {
+    return false;
+  }
+
+  if (classifyLessonMessage(message) === 'question') {
+    return false;
+  }
+
+  const tokens = normalized.split(' ').filter(Boolean);
+  const hasReasoningCue = tokens.some((token) =>
+    [
+      'because',
+      'means',
+      'shows',
+      'uses',
+      'equals',
+      'changes',
+      'change',
+      'adds',
+      'subtracts',
+      'multiplies',
+      'divides',
+      'doubles',
+      'halves',
+      'grows',
+      'increases',
+      'decreases',
+      'pattern',
+      'rule',
+      'relationship',
+      'difference',
+      'represents',
+      'depends',
+      'stays',
+      'becomes'
+    ].includes(token)
+  );
+
+  return /\d/.test(message) || hasReasoningCue || tokens.length >= 4;
+}
+
 function buildQuestionReply(session: LessonSession, lesson: Lesson, message: string): LessonChatResponse {
   // Handle concept card clarification requests ([CONCEPT: name] prefix)
   const conceptMatch = message.match(/^\[CONCEPT:\s*(.+?)\]/);
@@ -925,7 +993,7 @@ function buildResponseReply(session: LessonSession, lesson: Lesson, message: str
       ? `Good. Let's see how much has landed.`
       : `Good. Let's build on that.`;
 
-  if (session.currentStage === 'concepts' && isAcknowledgementOnlyReply(message)) {
+  if (session.currentStage === 'concepts' && !isMeaningfulConceptReply(message)) {
     if ((session.softStuckCount ?? 0) >= SOFT_STUCK_STAY_THRESHOLD && nextStage) {
       return {
         displayContent: transitionLine,

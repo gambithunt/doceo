@@ -426,6 +426,23 @@ describe('LessonWorkspace Phase 3 trustworthy Next step contract', () => {
     expect(nextStep).toBeEnabled();
     expect(within(support).queryByText('Your turn first: explain the idea in your own words.')).not.toBeInTheDocument();
   });
+
+  it('keeps Next step enabled when a gated stage message is explanatory rather than answer-required', () => {
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Start by identifying the quantity that changes each step, then compare it to the last line.',
+        stage: 'practice'
+      })
+    ], { currentStage: 'practice' });
+
+    const support = screen.getByRole('region', { name: 'Lesson support' });
+    const nextStep = within(support).getByRole('button', { name: 'Next step' });
+
+    expect(nextStep).toBeEnabled();
+    expect(within(support).queryByText('Your turn first: try the question or tap Help me start.')).not.toBeInTheDocument();
+  });
 });
 
 describe('LessonWorkspace Phase 4 wrap-before-progress flow', () => {

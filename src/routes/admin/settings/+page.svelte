@@ -7,6 +7,7 @@
   import type { AiConfig } from '$lib/server/ai-config';
   import type { AppTtsSettings } from '$lib/server/tts-config';
   import type { RegistrationMode } from '$lib/server/invite-system';
+  import type { TtsAnalyticsCard } from '$lib/server/tts-observability';
 
   const { data, form } = $props<{
     data: {
@@ -17,6 +18,7 @@
         lastOccurredAt: string | null;
         lastResultSummary: string | null;
       };
+      ttsAnalyticsCard: TtsAnalyticsCard;
       providers: ProviderDefinition[];
       budgetCapUsd: number;
       alertThresholds: { errorRatePct: number; spendPct: number };
@@ -202,6 +204,14 @@
       month: 'short',
       day: 'numeric'
     });
+  }
+
+  function formatUsd(amount: number): string {
+    return `$${amount.toFixed(2)}`;
+  }
+
+  function labelTtsProvider(provider: 'openai' | 'elevenlabs'): string {
+    return provider === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI';
   }
 
   type Invite = {
@@ -695,6 +705,54 @@
             {/if}
           </div>
         </div>
+
+        <section class="tts-analytics-card" aria-label="TTS Analytics">
+          <div class="tts-analytics-header">
+            <div>
+              <h3>TTS Analytics</h3>
+              <p class="section-desc section-desc--tight">
+                {data.ttsAnalyticsCard.windowLabel} across lesson synthesis and admin preview.
+              </p>
+            </div>
+          </div>
+
+          <div class="tts-analytics-grid">
+            <div class="status-card status-card--accent">
+              <span class="status-label">Estimated Cost</span>
+              <strong>{formatUsd(data.ttsAnalyticsCard.estimatedCostUsd)}</strong>
+            </div>
+            <div class="status-card">
+              <span class="status-label">Cache Hit Rate</span>
+              <strong>{data.ttsAnalyticsCard.cacheHitRate}%</strong>
+            </div>
+            <div class="status-card">
+              <span class="status-label">Synth Requests</span>
+              <strong>{data.ttsAnalyticsCard.synthRequestCount}</strong>
+            </div>
+            <div class="status-card">
+              <span class="status-label">Preview Requests</span>
+              <strong>{data.ttsAnalyticsCard.previewRequestCount}</strong>
+            </div>
+            <div class="status-card">
+              <span class="status-label">Fallback Count</span>
+              <strong>{data.ttsAnalyticsCard.fallbackCount}</strong>
+            </div>
+            <div class="status-card">
+              <span class="status-label">Provider Split</span>
+              <strong class="status-list">
+                {#if data.ttsAnalyticsCard.providerShare.length === 0}
+                  No usage recorded yet.
+                {:else}
+                  {#each data.ttsAnalyticsCard.providerShare as share, index}
+                    <span>
+                      {labelTtsProvider(share.provider)} {share.sharePct}% ({share.count})
+                    </span>{index < data.ttsAnalyticsCard.providerShare.length - 1 ? ' · ' : ''}
+                  {/each}
+                {/if}
+              </strong>
+            </div>
+          </div>
+        </section>
       </div>
 
       <div class="form-footer">
@@ -1099,6 +1157,7 @@
 
   .tts-provider-card,
   .tts-preview-panel,
+  .tts-analytics-card,
   .status-card {
     background: var(--surface-soft);
     border: 1px solid var(--border);
@@ -1108,6 +1167,7 @@
 
   .tts-provider-header,
   .tts-preview-footer,
+  .tts-analytics-header,
   .tts-status-grid {
     display: flex;
     align-items: center;
@@ -1140,6 +1200,19 @@
     gap: 0.85rem;
   }
 
+  .tts-analytics-card {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .tts-analytics-header h3 {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--text);
+  }
+
   .section-desc--tight {
     margin-bottom: 0;
   }
@@ -1158,16 +1231,32 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .tts-analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+  }
+
   .status-card {
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
   }
 
+  .status-card--accent {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft));
+    border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+  }
+
   .status-card strong {
     color: var(--text);
     font-size: 0.9rem;
     line-height: 1.45;
+  }
+
+  .status-list {
+    font-size: 0.84rem;
+    font-weight: 600;
   }
 
   /* Footer */
@@ -1352,12 +1441,14 @@
     .invite-row,
     .tts-provider-grid,
     .tts-inline-fields,
-    .tts-status-grid {
+    .tts-status-grid,
+    .tts-analytics-grid {
       grid-template-columns: 1fr;
     }
 
     .tts-preview-footer,
-    .tts-provider-header {
+    .tts-provider-header,
+    .tts-analytics-header {
       flex-direction: column;
       align-items: stretch;
     }

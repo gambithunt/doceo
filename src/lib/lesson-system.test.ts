@@ -782,6 +782,30 @@ describe('lesson-system', () => {
     expect(result.metadata?.next_stage).toBeNull();
   });
 
+  it('local fallback keeps vague concepts replies on stay before the soft-stuck threshold', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeMockSession(lesson, {
+      currentStage: 'concepts',
+      softStuckCount: 1
+    });
+
+    const result = buildLocalLessonChatResponse(
+      {
+        student: state.profile,
+        learnerProfile: state.learnerProfile,
+        lesson,
+        lessonSession: session,
+        message: 'maybe',
+        messageType: 'response'
+      },
+      lesson
+    );
+
+    expect(result.metadata?.action).toBe('stay');
+    expect(result.metadata?.next_stage).toBeNull();
+  });
+
   it('local fallback does not return another stay after the concepts soft-stuck threshold', () => {
     const state = createInitialState();
     const lesson = state.lessons[0];

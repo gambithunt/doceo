@@ -19,7 +19,11 @@ const REGISTRATION_MODE_KEY = 'registration_mode';
 
 export async function load() {
   const [aiConfig, providers, ttsConfig] = await Promise.all([getAiConfig(), getProviders(), getTtsConfig()]);
-  const ttsFallbackSummary = await createTtsObservability().getFallbackSummary(ttsConfig.fallbackProvider !== null);
+  const ttsObservability = createTtsObservability();
+  const [ttsFallbackSummary, ttsAnalyticsCard] = await Promise.all([
+    ttsObservability.getFallbackSummary(ttsConfig.fallbackProvider !== null),
+    ttsObservability.getAnalyticsCard()
+  ]);
   const supabase = createServerSupabaseAdmin();
 
   let registrationMode: RegistrationMode = 'open';
@@ -46,6 +50,7 @@ export async function load() {
     aiConfig,
     ttsConfig,
     ttsFallbackSummary,
+    ttsAnalyticsCard,
     providers,
     budgetCapUsd: 50,
     alertThresholds: { errorRatePct: 5, spendPct: 75, latencyP95Ms: 3000 },

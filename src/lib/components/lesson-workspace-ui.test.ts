@@ -8,6 +8,21 @@ import {
 } from './lesson-workspace-ui';
 
 describe('lesson workspace UI helpers', () => {
+  function createAssistantStageMessage(
+    stage: 'orientation' | 'concepts' | 'construction' | 'examples' | 'practice' | 'check',
+    content: string
+  ) {
+    return {
+      id: `msg-${stage}`,
+      role: 'assistant' as const,
+      type: 'teaching' as const,
+      content,
+      stage,
+      timestamp: new Date().toISOString(),
+      metadata: null
+    };
+  }
+
   it('returns contextual copy for every visible lesson stage', () => {
     expect(LESSON_WORKSPACE_VISIBLE_STAGES).toEqual([
       'orientation',
@@ -75,7 +90,12 @@ describe('lesson workspace UI helpers', () => {
         currentStage: 'concepts',
         status: 'active',
         softStuckCount: 1,
-        messages: []
+        messages: [
+          createAssistantStageMessage(
+            'concepts',
+            'Here is the core idea.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+          )
+        ]
       })
     ).toEqual({
       disabled: true,
@@ -89,7 +109,12 @@ describe('lesson workspace UI helpers', () => {
         currentStage: 'concepts',
         status: 'active',
         softStuckCount: 2,
-        messages: []
+        messages: [
+          createAssistantStageMessage(
+            'concepts',
+            'Here is the core idea.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+          )
+        ]
       })
     ).toEqual({
       disabled: false,
@@ -103,7 +128,12 @@ describe('lesson workspace UI helpers', () => {
         currentStage: 'construction',
         status: 'active',
         softStuckCount: 0,
-        messages: []
+        messages: [
+          createAssistantStageMessage(
+            'construction',
+            'Here is the next step.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+          )
+        ]
       })
     ).toEqual({
       disabled: false,
@@ -117,7 +147,12 @@ describe('lesson workspace UI helpers', () => {
         currentStage: 'practice',
         status: 'active',
         softStuckCount: 0,
-        messages: []
+        messages: [
+          createAssistantStageMessage(
+            'practice',
+            'Try this one yourself first.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+          )
+        ]
       })
     ).toEqual({
       disabled: true,
@@ -129,11 +164,35 @@ describe('lesson workspace UI helpers', () => {
         currentStage: 'check',
         status: 'active',
         softStuckCount: 0,
-        messages: []
+        messages: [
+          createAssistantStageMessage(
+            'check',
+            'Put it in your own words.\n\nWhat would you say is the main idea here?'
+          )
+        ]
       })
     ).toEqual({
       disabled: true,
       cue: 'Your turn first: explain or apply the idea before moving on.'
+    });
+  });
+
+  it('keeps Next step enabled in gated stages when the latest stage assistant message does not ask for a learner answer', () => {
+    expect(
+      deriveNextStepCtaState({
+        currentStage: 'practice',
+        status: 'active',
+        softStuckCount: 0,
+        messages: [
+          createAssistantStageMessage(
+            'practice',
+            'Start by identifying the quantity that changes each step, then compare it to the last line.'
+          )
+        ]
+      })
+    ).toEqual({
+      disabled: false,
+      cue: null
     });
   });
 });

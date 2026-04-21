@@ -1017,16 +1017,16 @@ This phase keeps the scope narrow:
 
 ### Tasks
 
-- [ ] decouple fallback history lookup from current fallback-enabled state
-- [ ] preserve last fallback timestamp and summary in admin even when fallback is currently disabled
-- [ ] add estimated-cost metadata to the TTS provider/result pipeline
-- [ ] record estimated provider cost into `tts_generation_events` where pricing is known
-- [ ] keep estimated cost nullable only for truly unknown pricing cases
-- [ ] add one narrow admin TTS analytics card inside the existing admin UI
-- [ ] expose TTS-specific operational metrics needed by that card
-- [ ] add direct unit tests for `tts-observability` fallback-summary aggregation
-- [ ] add regression tests for admin fallback summary behavior when fallback is disabled
-- [ ] add regression tests proving estimated-cost telemetry is emitted on successful synth paths
+- [x] decouple fallback history lookup from current fallback-enabled state
+- [x] preserve last fallback timestamp and summary in admin even when fallback is currently disabled
+- [x] add estimated-cost metadata to the TTS provider/result pipeline
+- [x] record estimated provider cost into `tts_generation_events` where pricing is known
+- [x] keep estimated cost nullable only for truly unknown pricing cases
+- [x] add one narrow admin TTS analytics card inside the existing admin UI
+- [x] expose TTS-specific operational metrics needed by that card
+- [x] add direct unit tests for `tts-observability` fallback-summary aggregation
+- [x] add regression tests for admin fallback summary behavior when fallback is disabled
+- [x] add regression tests proving estimated-cost telemetry is emitted on successful synth paths
 
 ### Implementation Direction
 

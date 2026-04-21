@@ -1,7 +1,7 @@
 create table if not exists tts_generation_events (
   id uuid primary key default gen_random_uuid(),
   request_id text not null,
-  profile_id uuid references profiles(id) on delete set null,
+  profile_id text references profiles(id) on delete set null,
   lesson_session_id text,
   lesson_message_id text,
   cache_hit boolean not null default false,

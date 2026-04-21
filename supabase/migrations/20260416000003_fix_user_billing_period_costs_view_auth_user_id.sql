@@ -1,3 +1,5 @@
+drop view if exists user_billing_period_costs;
+
 create or replace view user_billing_period_costs as
 select
   profiles.auth_user_id as user_id,

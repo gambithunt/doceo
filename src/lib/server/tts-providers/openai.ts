@@ -1,4 +1,5 @@
 import type { TtsAudioFormat } from '$lib/server/tts-config';
+import { estimateTtsCostUsd } from '$lib/server/tts-pricing';
 import {
   classifyTtsProviderError,
   extractProviderErrorDetails,
@@ -83,7 +84,12 @@ export function createOpenAITtsAdapter(options: OpenAITtsAdapterOptions) {
         mimeType: response.headers.get('content-type') || mimeTypeForFormat(request.format),
         provider: 'openai',
         model: request.model,
-        voice: request.voice
+        voice: request.voice,
+        estimatedCostUsd: estimateTtsCostUsd({
+          provider: 'openai',
+          model: request.model,
+          textLength: request.text.length
+        })
       };
     }
   };

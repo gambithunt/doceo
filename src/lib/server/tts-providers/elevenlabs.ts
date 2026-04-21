@@ -1,4 +1,5 @@
 import type { TtsAudioFormat, TtsLanguageCode } from '$lib/server/tts-config';
+import { estimateTtsCostUsd } from '$lib/server/tts-pricing';
 import {
   classifyTtsProviderError,
   extractProviderErrorDetails,
@@ -94,7 +95,12 @@ export function createElevenLabsTtsAdapter(options: ElevenLabsTtsAdapterOptions)
         mimeType: response.headers.get('content-type') || mimeTypeForFormat(request.format),
         provider: 'elevenlabs',
         model: request.model,
-        voice: request.voiceId
+        voice: request.voiceId,
+        estimatedCostUsd: estimateTtsCostUsd({
+          provider: 'elevenlabs',
+          model: request.model,
+          textLength: request.text.length
+        })
       };
     }
   };

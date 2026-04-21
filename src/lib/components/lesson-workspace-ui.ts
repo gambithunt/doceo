@@ -1,5 +1,6 @@
 import { LESSON_STAGE_ORDER, SOFT_STUCK_STAY_THRESHOLD } from '$lib/lesson-system';
-import type { LessonSession, LessonStage } from '$lib/types';
+import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
+import type { LessonMessage, LessonSession, LessonStage } from '$lib/types';
 
 export type VisibleLessonStage = Exclude<LessonStage, 'complete'>;
 
@@ -78,6 +79,43 @@ export function getNextStepPrompt(stage: VisibleLessonStage): string {
   return NEXT_STEP_PROMPTS[stage];
 }
 
+function getLatestCurrentStageAssistantMessage(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'messages'>
+): LessonMessage | null {
+  for (let index = lessonSession.messages.length - 1; index >= 0; index -= 1) {
+    const message = lessonSession.messages[index];
+    if (!message || message.stage !== lessonSession.currentStage || message.role !== 'assistant') {
+      continue;
+    }
+
+    return message;
+  }
+
+  return null;
+}
+
+function messageRequestsLearnerAnswer(message: LessonMessage | null): boolean {
+  if (!message || (message.type !== 'teaching' && message.type !== 'feedback')) {
+    return false;
+  }
+
+  const trimmed = message.content.trim();
+  const prompt = splitTutorPrompt(trimmed).prompt;
+
+  if (prompt) {
+    return true;
+  }
+
+  return [
+    /try this (one|question) yourself/i,
+    /put it in your own words/i,
+    /what feels clear so far/i,
+    /tell me where you want to slow down/i,
+    /what would you say/i,
+    /tell me if that version feels clearer/i
+  ].some((pattern) => pattern.test(trimmed));
+}
+
 export function deriveNextStepCtaState(
   lessonSession: Pick<LessonSession, 'currentStage' | 'messages' | 'softStuckCount' | 'status'>
 ): LessonWorkspaceNextStepCtaState {
@@ -88,6 +126,9 @@ export function deriveNextStepCtaState(
     };
   }
 
+  const latestStageAssistantMessage = getLatestCurrentStageAssistantMessage(lessonSession);
+  const requiresLearnerAnswer = messageRequestsLearnerAnswer(latestStageAssistantMessage);
+
   if (lessonSession.currentStage === 'concepts') {
     if ((lessonSession.softStuckCount ?? 0) >= SOFT_STUCK_STAY_THRESHOLD) {
       return {
@@ -97,15 +138,15 @@ export function deriveNextStepCtaState(
     }
 
     return {
-      disabled: true,
-      cue: NEXT_STEP_DISABLED_CUES.concepts ?? null
+      disabled: requiresLearnerAnswer,
+      cue: requiresLearnerAnswer ? (NEXT_STEP_DISABLED_CUES.concepts ?? null) : null
     };
   }
 
   if (lessonSession.currentStage === 'practice' || lessonSession.currentStage === 'check') {
     return {
-      disabled: true,
-      cue: NEXT_STEP_DISABLED_CUES[lessonSession.currentStage] ?? null
+      disabled: requiresLearnerAnswer,
+      cue: requiresLearnerAnswer ? (NEXT_STEP_DISABLED_CUES[lessonSession.currentStage] ?? null) : null
     };
   }
 

@@ -29,7 +29,8 @@ function createSynthesisResult(
     mimeType: 'audio/mpeg',
     provider,
     model,
-    voice
+    voice,
+    estimatedCostUsd: provider === 'openai' ? 0.0012 : 0.004
   };
 }
 
@@ -175,7 +176,8 @@ describe('lesson-tts-service', () => {
       expect.objectContaining({
         cacheHit: true,
         providerUsed: 'openai',
-        status: 'success'
+        status: 'success',
+        estimatedCostUsd: 0
       })
     );
   });
@@ -333,7 +335,8 @@ describe('lesson-tts-service', () => {
         profileId: 'admin-1',
         lessonSessionId: null,
         lessonMessageId: null,
-        status: 'success'
+        status: 'success',
+        estimatedCostUsd: 0.0012
       })
     );
   });
@@ -362,7 +365,8 @@ describe('lesson-tts-service', () => {
       expect.objectContaining({
         fallbackFromProvider: 'openai',
         fallbackToProvider: 'elevenlabs',
-        status: 'success'
+        status: 'success',
+        estimatedCostUsd: 0.004
       })
     );
   });

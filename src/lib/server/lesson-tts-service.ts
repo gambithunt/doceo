@@ -375,7 +375,7 @@ export function createLessonTtsService(dependencies?: {
         status: 'success',
         reasonCategory: execution.reasonCategory,
         textLength: normalized.normalizedText.length,
-        estimatedCostUsd: null
+        estimatedCostUsd: execution.result.estimatedCostUsd
       });
 
       return {
@@ -511,7 +511,7 @@ export function createLessonTtsService(dependencies?: {
           status: 'success',
           reasonCategory: null,
           textLength: normalizedTextLength,
-          estimatedCostUsd: null
+          estimatedCostUsd: 0
         });
 
         return {
@@ -551,7 +551,7 @@ export function createLessonTtsService(dependencies?: {
           status: 'success',
           reasonCategory: execution.reasonCategory,
           textLength: normalizedTextLength,
-          estimatedCostUsd: null
+          estimatedCostUsd: execution.result.estimatedCostUsd
         });
 
         return result;
@@ -586,7 +586,7 @@ export function createLessonTtsService(dependencies?: {
                 status: 'success',
                 reasonCategory: error.primaryError.category,
                 textLength: fallbackLookup.key.normalized.normalizedText.length,
-                estimatedCostUsd: null
+                estimatedCostUsd: 0
               });
 
               return {
@@ -625,7 +625,7 @@ export function createLessonTtsService(dependencies?: {
                 status: 'success',
                 reasonCategory: error.primaryError.category,
                 textLength: fallbackLookup.key.normalized.normalizedText.length,
-                estimatedCostUsd: null
+                estimatedCostUsd: fallbackResult.estimatedCostUsd
               });
 
               return result;

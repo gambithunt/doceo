@@ -1509,9 +1509,10 @@
 
   .lesson-support-cue {
     margin: 0;
-    color: color-mix(in srgb, var(--accent) 46%, var(--text-soft) 54%);
-    font-size: 0.82rem;
-    line-height: 1.45;
+    color: color-mix(in srgb, var(--accent) 62%, var(--text) 38%);
+    font-size: 0.96rem;
+    font-weight: 600;
+    line-height: 1.5;
   }
 
   .lesson-support-actions {
@@ -2631,7 +2632,7 @@
 
     .lesson-support-cue {
       max-width: 30rem;
-      font-size: 0.8rem;
+      font-size: 0.92rem;
       padding-left: 0.1rem;
     }
 

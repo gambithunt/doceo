@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import AdminSettingsPage from './+page.svelte';
 
 describe('admin settings page tts section', () => {
-  it('renders the TTS settings, preview tools, and fallback summary', () => {
+  it('renders the TTS settings, analytics card, preview tools, and fallback summary', () => {
     render(AdminSettingsPage, {
       props: {
         data: {
@@ -52,9 +52,23 @@ describe('admin settings page tts section', () => {
             }
           },
           ttsFallbackSummary: {
-            enabled: true,
+            enabled: false,
             lastOccurredAt: '2026-04-20T08:00:00.000Z',
             lastResultSummary: 'OpenAI → ElevenLabs succeeded after provider_outage.'
+          },
+          ttsAnalyticsCard: {
+            windowLabel: 'Last 30 days',
+            estimatedCostUsd: 0.02,
+            synthRequestCount: 8,
+            previewRequestCount: 2,
+            cacheHitRate: 62.5,
+            providerShare: [
+              { provider: 'openai', count: 6, sharePct: 75 },
+              { provider: 'elevenlabs', count: 2, sharePct: 25 }
+            ],
+            fallbackCount: 1,
+            lastFallbackAt: '2026-04-20T08:00:00.000Z',
+            lastFallbackSummary: 'OpenAI → ElevenLabs succeeded after provider_outage.'
           },
           providers: [
             {
@@ -86,6 +100,13 @@ describe('admin settings page tts section', () => {
     expect(screen.getByLabelText(/preview text/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /preview voice/i })).toBeInTheDocument();
     expect(screen.getByText(/fallback enabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/tts analytics/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.02/i)).toBeInTheDocument();
+    expect(screen.getByText(/cache hit rate/i)).toBeInTheDocument();
+    expect(screen.getByText(/62\.5%/i)).toBeInTheDocument();
+    expect(screen.getByText(/synth requests/i)).toBeInTheDocument();
+    expect(screen.getByText(/^8$/)).toBeInTheDocument();
     expect(screen.getByText(/openai → elevenlabs succeeded after provider_outage\./i)).toBeInTheDocument();
+    expect(screen.getByText(/^no$/i)).toBeInTheDocument();
   });
 });

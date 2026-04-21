@@ -4,7 +4,7 @@ create table if not exists lesson_tts_artifacts (
   cache_version text not null,
   lesson_session_id text,
   lesson_message_id text,
-  profile_id uuid references profiles(id) on delete set null,
+  profile_id text references profiles(id) on delete set null,
   provider text not null check (provider in ('openai', 'elevenlabs')),
   fallback_from_provider text check (fallback_from_provider in ('openai', 'elevenlabs')),
   model text not null,

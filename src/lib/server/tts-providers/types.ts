@@ -16,6 +16,7 @@ export interface TtsSynthesisResult {
   provider: TtsProviderId;
   model: string;
   voice: string;
+  estimatedCostUsd: number | null;
 }
 
 export interface NormalizedTtsProviderError {
