@@ -1,96 +1,124 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { getSession } = vi.hoisted(() => ({
+  getSession: vi.fn()
+}));
+
+vi.mock('$lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession
+    }
+  }
+}));
 
 import AdminSettingsPage from './+page.svelte';
 
+function createPageData() {
+  return {
+    aiConfig: {
+      provider: 'openai',
+      tiers: {
+        fast: { model: 'gpt-4.1-mini' },
+        default: { model: 'gpt-4.1-mini' },
+        thinking: { model: 'gpt-4.1' }
+      },
+      routeOverrides: {}
+    },
+    ttsConfig: {
+      enabled: true,
+      defaultProvider: 'openai',
+      fallbackProvider: 'elevenlabs',
+      previewEnabled: true,
+      previewMaxChars: 280,
+      cacheEnabled: true,
+      languageDefault: 'en',
+      rolloutScope: 'lessons',
+      openai: {
+        enabled: true,
+        model: 'gpt-4o-mini-tts',
+        voice: 'alloy',
+        speed: 1,
+        styleInstruction: null,
+        format: 'mp3',
+        timeoutMs: 15000,
+        retries: 1
+      },
+      elevenlabs: {
+        enabled: true,
+        model: 'eleven_multilingual_v2',
+        voiceId: 'JBFqnCBsd6RMkjVDRZzb',
+        format: 'mp3',
+        languageCode: 'en',
+        stability: 0.5,
+        similarityBoost: 0.8,
+        style: 0,
+        speakerBoost: true,
+        timeoutMs: 15000,
+        retries: 1
+      }
+    },
+    ttsFallbackSummary: {
+      enabled: false,
+      lastOccurredAt: '2026-04-20T08:00:00.000Z',
+      lastResultSummary: 'OpenAI → ElevenLabs succeeded after provider_outage.'
+    },
+    ttsAnalyticsCard: {
+      windowLabel: 'Last 30 days',
+      estimatedCostUsd: 0.02,
+      synthRequestCount: 8,
+      previewRequestCount: 2,
+      cacheHitRate: 62.5,
+      providerShare: [
+        { provider: 'openai', count: 6, sharePct: 75 },
+        { provider: 'elevenlabs', count: 2, sharePct: 25 }
+      ],
+      fallbackCount: 1,
+      lastFallbackAt: '2026-04-20T08:00:00.000Z',
+      lastFallbackSummary: 'OpenAI → ElevenLabs succeeded after provider_outage.'
+    },
+    providers: [
+      {
+        id: 'openai',
+        label: 'OpenAI',
+        models: [
+          {
+            id: 'gpt-4.1-mini',
+            label: 'GPT-4.1 Mini',
+            provider: 'openai',
+            inputPer1M: 0.4,
+            outputPer1M: 1.6,
+            tier: 'default'
+          }
+        ]
+      }
+    ],
+    budgetCapUsd: 50,
+    alertThresholds: { errorRatePct: 5, spendPct: 75 },
+    registrationMode: 'open' as const,
+    invites: []
+  };
+}
+
 describe('admin settings page tts section', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getSession.mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'admin-token-123',
+          user: { id: 'user-1' }
+        }
+      }
+    });
+  });
+
   it('renders the TTS settings, analytics card, preview tools, and fallback summary', () => {
     render(AdminSettingsPage, {
       props: {
-        data: {
-          aiConfig: {
-            provider: 'openai',
-            tiers: {
-              fast: { model: 'gpt-4.1-mini' },
-              default: { model: 'gpt-4.1-mini' },
-              thinking: { model: 'gpt-4.1' }
-            },
-            routeOverrides: {}
-          },
-          ttsConfig: {
-            enabled: true,
-            defaultProvider: 'openai',
-            fallbackProvider: 'elevenlabs',
-            previewEnabled: true,
-            previewMaxChars: 280,
-            cacheEnabled: true,
-            languageDefault: 'en',
-            rolloutScope: 'lessons',
-            openai: {
-              enabled: true,
-              model: 'gpt-4o-mini-tts',
-              voice: 'alloy',
-              speed: 1,
-              styleInstruction: null,
-              format: 'mp3',
-              timeoutMs: 15000,
-              retries: 1
-            },
-            elevenlabs: {
-              enabled: true,
-              model: 'eleven_multilingual_v2',
-              voiceId: 'JBFqnCBsd6RMkjVDRZzb',
-              format: 'mp3',
-              languageCode: 'en',
-              stability: 0.5,
-              similarityBoost: 0.8,
-              style: 0,
-              speakerBoost: true,
-              timeoutMs: 15000,
-              retries: 1
-            }
-          },
-          ttsFallbackSummary: {
-            enabled: false,
-            lastOccurredAt: '2026-04-20T08:00:00.000Z',
-            lastResultSummary: 'OpenAI → ElevenLabs succeeded after provider_outage.'
-          },
-          ttsAnalyticsCard: {
-            windowLabel: 'Last 30 days',
-            estimatedCostUsd: 0.02,
-            synthRequestCount: 8,
-            previewRequestCount: 2,
-            cacheHitRate: 62.5,
-            providerShare: [
-              { provider: 'openai', count: 6, sharePct: 75 },
-              { provider: 'elevenlabs', count: 2, sharePct: 25 }
-            ],
-            fallbackCount: 1,
-            lastFallbackAt: '2026-04-20T08:00:00.000Z',
-            lastFallbackSummary: 'OpenAI → ElevenLabs succeeded after provider_outage.'
-          },
-          providers: [
-            {
-              id: 'openai',
-              label: 'OpenAI',
-              models: [
-                {
-                  id: 'gpt-4.1-mini',
-                  label: 'GPT-4.1 Mini',
-                  provider: 'openai',
-                  inputPer1M: 0.4,
-                  outputPer1M: 1.6,
-                  tier: 'default'
-                }
-              ]
-            }
-          ],
-          budgetCapUsd: 50,
-          alertThresholds: { errorRatePct: 5, spendPct: 75 },
-          registrationMode: 'open',
-          invites: []
-        },
+        data: createPageData(),
         form: null
       }
     });
@@ -108,5 +136,50 @@ describe('admin settings page tts section', () => {
     expect(screen.getByText(/^8$/)).toBeInTheDocument();
     expect(screen.getByText(/openai → elevenlabs succeeded after provider_outage\./i)).toBeInTheDocument();
     expect(screen.getByText(/^no$/i)).toBeInTheDocument();
+  });
+
+  it('sends the admin bearer token when previewing tts audio', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { 'content-type': 'audio/mpeg' }
+      })
+    );
+    const play = vi.fn().mockResolvedValue(undefined);
+
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('Audio', class {
+      onended: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor(_src: string) {}
+      play = play;
+      pause = vi.fn();
+    } as never);
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('blob:preview-audio'),
+      revokeObjectURL: vi.fn()
+    } as never);
+
+    render(AdminSettingsPage, {
+      props: {
+        data: createPageData(),
+        form: null
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /preview voice/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/tts/preview',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer admin-token-123'
+          })
+        })
+      );
+    });
   });
 });

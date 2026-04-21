@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { supabase } from '$lib/supabase';
-  import { ADMIN_TOKEN_COOKIE } from '$lib/admin-constants';
+  import { clearAdminTokenCookie, setAdminTokenCookie } from '$lib/admin-auth';
 
   const { children } = $props();
 
@@ -28,12 +28,12 @@
     return pathname.startsWith(path);
   }
 
-  function setAdminTokenCookie(accessToken: string): void {
-    document.cookie = `${ADMIN_TOKEN_COOKIE}=${encodeURIComponent(accessToken)}; path=/admin; SameSite=Strict; Secure`;
+  function applyAdminTokenCookie(accessToken: string): void {
+    document.cookie = setAdminTokenCookie(accessToken);
   }
 
-  function clearAdminTokenCookie(): void {
-    document.cookie = `${ADMIN_TOKEN_COOKIE}=; path=/admin; max-age=0`;
+  function removeAdminTokenCookie(): void {
+    document.cookie = clearAdminTokenCookie();
   }
 
   onMount(async () => {
@@ -45,7 +45,7 @@
     const { data: { session } } = await supabase.auth.getSession();
 
     if (!session?.user) {
-      clearAdminTokenCookie();
+      removeAdminTokenCookie();
       void goto('/');
       return;
     }
@@ -57,19 +57,19 @@
       .maybeSingle<{ role: string }>();
 
     if (profile?.role !== 'admin') {
-      clearAdminTokenCookie();
+      removeAdminTokenCookie();
       status = 'denied';
       return;
     }
 
-    setAdminTokenCookie(session.access_token);
+    applyAdminTokenCookie(session.access_token);
     status = 'authorized';
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, updated) => {
       if (updated?.access_token) {
-        setAdminTokenCookie(updated.access_token);
+        applyAdminTokenCookie(updated.access_token);
       } else {
-        clearAdminTokenCookie();
+        removeAdminTokenCookie();
       }
     });
 

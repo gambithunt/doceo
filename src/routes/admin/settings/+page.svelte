@@ -2,6 +2,8 @@
   import { enhance } from '$app/forms';
   import { applyAction } from '$app/forms';
   import { onDestroy } from 'svelte';
+  import { supabase } from '$lib/supabase';
+  import { buildAdminAuthHeaders } from '$lib/admin-auth';
   import AdminPageHeader from '$lib/components/admin/AdminPageHeader.svelte';
   import type { ProviderDefinition, ModelOption, ProviderId } from '$lib/ai/providers';
   import type { AiConfig } from '$lib/server/ai-config';
@@ -249,11 +251,13 @@
     ttsPreviewError = null;
 
     try {
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token ?? null;
       const response = await fetch('/api/admin/tts/preview', {
         method: 'POST',
-        headers: {
+        headers: buildAdminAuthHeaders(accessToken, {
           'Content-Type': 'application/json'
-        },
+        }),
         body: JSON.stringify({ content })
       });
 
