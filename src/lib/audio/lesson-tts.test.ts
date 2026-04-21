@@ -87,15 +87,16 @@ describe('createLessonTts', () => {
       )
     ).toEqual({ started: true });
     expect(audio.src).toBe('https://storage.example/audio.mp3');
-    expect(onStateChange).toHaveBeenNthCalledWith(1, 'playing');
+    expect(onStateChange).toHaveBeenNthCalledWith(1, 'loading');
+    expect(onStateChange).toHaveBeenNthCalledWith(2, 'playing');
 
     audio.currentTime = 5;
     audio.onpause?.();
-    expect(onStateChange).toHaveBeenNthCalledWith(2, 'paused');
+    expect(onStateChange).toHaveBeenNthCalledWith(3, 'paused');
 
     expect(await tts.resume()).toBe(true);
     expect(audio.play).toHaveBeenCalledTimes(2);
-    expect(onStateChange).toHaveBeenNthCalledWith(3, 'playing');
+    expect(onStateChange).toHaveBeenNthCalledWith(4, 'playing');
 
     audio.onended?.();
     expect(onStateChange).toHaveBeenLastCalledWith('idle');
@@ -133,5 +134,66 @@ describe('createLessonTts', () => {
         upgradeTier: 'standard'
       }
     });
+  });
+
+  it('ignores stale overlapping play requests so only the latest audio starts', async () => {
+    const firstResponse = Promise.withResolvers<{ ok: true; json: () => Promise<{ ok: true; audioUrl: string }> }>();
+    const secondResponse = Promise.withResolvers<{ ok: true; json: () => Promise<{ ok: true; audioUrl: string }> }>();
+    const fetcher = vi
+      .fn()
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise);
+    const audioUrls: string[] = [];
+    const tts = createLessonTts({
+      getAuthenticatedHeaders,
+      fetcher,
+      createAudio: (url) => {
+        audioUrls.push(url);
+        return {
+          src: url,
+          currentTime: 0,
+          onplay: null,
+          onpause: null,
+          onended: null,
+          onerror: null,
+          play: vi.fn(async function (this: MockAudio) {
+            this.onplay?.();
+          }),
+          pause: vi.fn()
+        } as never;
+      }
+    });
+
+    const firstPlay = tts.play({
+      lessonSessionId: 'lesson-session-1',
+      lessonMessageId: 'lesson-message-1',
+      content: 'First bubble'
+    });
+    const secondPlay = tts.play({
+      lessonSessionId: 'lesson-session-1',
+      lessonMessageId: 'lesson-message-2',
+      content: 'Second bubble'
+    });
+
+    secondResponse.resolve({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        audioUrl: 'https://storage.example/audio-2.mp3'
+      })
+    });
+    await expect(secondPlay).resolves.toEqual({ started: true });
+
+    firstResponse.resolve({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        audioUrl: 'https://storage.example/audio-1.mp3'
+      })
+    });
+    await expect(firstPlay).resolves.toEqual({ started: false, error: null });
+
+    expect(audioUrls).toEqual(['https://storage.example/audio-2.mp3']);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

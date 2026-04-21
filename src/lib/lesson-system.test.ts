@@ -5,6 +5,7 @@ import {
   buildDynamicLessonFromTopic,
   buildDynamicQuestionsForLesson,
   buildInitialLessonMessages,
+  buildStageStartMessage,
   buildLocalLessonChatResponse,
   buildLessonSessionFromTopic,
   calculateNextRevisionInterval,
@@ -16,6 +17,7 @@ import {
   getStageNumber,
   getSubjectLens,
   parseDoceoMeta,
+  repairLessonSessionMessages,
   stripDoceoMeta,
   updateLearnerProfile
 } from '$lib/lesson-system';
@@ -593,8 +595,8 @@ describe('lesson-system', () => {
     expect(result.displayContent.length).toBeGreaterThan(20);
   });
 
-  // T1.4: check question requires explanation, not just topic name recall
-  it('check question asks for explanation or application, not topic name recall', () => {
+  // T1.4: lesson questions should be bounded and answerable, not broad intuition prompts
+  it('dynamic lesson questions use a bounded check and a structured task frame', () => {
     const lesson = buildDynamicLessonFromTopic({
       subjectId: 'subject-math',
       subjectName: 'Mathematics',
@@ -604,21 +606,16 @@ describe('lesson-system', () => {
       curriculumReference: 'CAPS · Grade 6 · Mathematics'
     });
     const questions = buildDynamicQuestionsForLesson(lesson, 'Mathematics', 'Fractions');
-    const checkQuestion = questions[0];
+    const checkQuestion = questions[0]!;
+    const structuredQuestion = questions[1]!;
 
-    // The prompt must not be answerable by just saying the topic name
+    expect(checkQuestion.type).toBe('multiple-choice');
+    expect(checkQuestion.options).toHaveLength(4);
     expect(checkQuestion.expectedAnswer.toLowerCase()).not.toBe('fractions');
-    // Must ask for understanding (explain/apply/show/describe)
-    const promptLower = checkQuestion.prompt.toLowerCase();
-    const asksForUnderstanding =
-      promptLower.includes('explain') ||
-      promptLower.includes('show') ||
-      promptLower.includes('apply') ||
-      promptLower.includes('describe') ||
-      promptLower.includes('how') ||
-      promptLower.includes('why') ||
-      promptLower.includes('example');
-    expect(asksForUnderstanding).toBe(true);
+    expect(checkQuestion.prompt.toLowerCase()).not.toContain('practical example');
+    expect(structuredQuestion.prompt).toContain('Use this task');
+    expect(structuredQuestion.prompt).toContain(lesson.practicePrompt.body);
+    expect(structuredQuestion.prompt).toContain('the first step');
   });
 
   // T3.5: AI message history is capped at 20
@@ -695,6 +692,18 @@ describe('lesson-system', () => {
     expect(feedbackMsg).toBeDefined();
   });
 
+  it('P1: check stage teaching message asks for the first move on the task, not a vague restatement', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const messages = buildInitialLessonMessages(lesson, 'check');
+
+    const teachingMsg = messages.find((m) => m.role === 'assistant' && m.type === 'teaching');
+    expect(teachingMsg?.content).toContain('Answer the task above.');
+    expect(teachingMsg?.content).toContain('first step');
+    expect(teachingMsg?.content).not.toContain('Put it in your own words');
+    expect(teachingMsg?.content).not.toContain('main idea here');
+  });
+
   it('P1: check stage feedback message has system role', () => {
     const state = createInitialState();
     const lesson = state.lessons[0];
@@ -735,6 +744,57 @@ describe('lesson-system', () => {
     );
     expect(result.metadata?.action).toBe('complete');
     expect(result.displayContent).toContain(lesson.transferChallenge.body);
+  });
+
+  it('P1: stage opening prompts are concrete and bounded instead of using the old slow-down wording', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+
+    const conceptsPrompt = buildInitialLessonMessages(lesson, 'concepts')
+      .filter((message) => message.role === 'assistant' && message.type === 'teaching')
+      .at(-1)?.content ?? '';
+    const constructionPrompt = buildInitialLessonMessages(lesson, 'construction')[1]?.content ?? '';
+    const practicePrompt = buildInitialLessonMessages(lesson, 'practice')[1]?.content ?? '';
+
+    expect(conceptsPrompt).not.toContain('What feels clear so far?');
+    expect(conceptsPrompt).not.toContain('Tell me where you want to slow down.');
+    expect(conceptsPrompt).toMatch(/Which|What/);
+
+    expect(constructionPrompt).not.toContain('Tell me where you want to slow down.');
+    expect(constructionPrompt).toMatch(/first/i);
+
+    expect(practicePrompt).not.toContain('Apply what you have learned');
+    expect(practicePrompt).toContain('Start with the task above');
+  });
+
+  it('P1: repairLessonSessionMessages replaces legacy generic prompts with the current stage-specific message', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const repaired = repairLessonSessionMessages(
+      {
+        ...makeMockSession(lesson, { currentStage: 'practice' }),
+        messages: [
+          buildStageStartMessage('practice'),
+          {
+            id: 'legacy-practice-message',
+            role: 'assistant',
+            type: 'teaching',
+            content:
+              'Now try it yourself. Apply what you have learned about **Sequences** to a similar problem. Write out each step, explain your reasoning, and check your answer before moving on.\n\nWhat feels clear so far? Tell me where you want to slow down.',
+            stage: 'practice',
+            timestamp: '2026-04-21T12:00:00.000Z',
+            metadata: null
+          }
+        ]
+      },
+      lesson
+    );
+
+    const repairedMessage = repaired.messages.find((message) => message.id === 'legacy-practice-message');
+
+    expect(repairedMessage?.content).toContain('Start with the task above');
+    expect(repairedMessage?.content).not.toContain('Apply what you have learned');
+    expect(repairedMessage?.content).not.toContain('Tell me where you want to slow down.');
   });
 
   it('local fallback treats a short but meaningful concepts answer as progression-ready', () => {

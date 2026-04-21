@@ -35,6 +35,11 @@ describe('geo country endpoint', () => {
   });
 
   it('returns null for unsupported Cloudflare country', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      text: async () => 'XX'
+    } as unknown as Response);
+
     const result = await getCountryCode({ 'cf-ipcountry': 'us' });
     expect(result).toBeNull();
   });

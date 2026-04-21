@@ -44,6 +44,9 @@ const LessonPlanBodySchema = z.object({
   })
 });
 
+const LESSON_PLAN_PROMPT_VERSION = 'lesson-plan-v3';
+const LESSON_PLAN_PEDAGOGY_VERSION = 'phase3-v1';
+
 async function recordTopicDiscoveryLaunch(input: {
   lessonRequest: LessonPlanRequest;
   nodeId: string | null;
@@ -179,6 +182,7 @@ export async function POST({ request, fetch }) {
       functionPayload.provider,
       {
         mode: 'lesson-plan',
+        latencyMs: (functionPayload as { latencyMs?: number }).latencyMs ?? null,
         modelTier: functionPayload.modelTier,
         model: functionPayload.model
       }
@@ -200,8 +204,8 @@ export async function POST({ request, fetch }) {
         status: 'success',
         source: 'generated_direct',
         profileId: lessonRequest.student.id,
-        promptVersion: 'lesson-plan-v1',
-        pedagogyVersion: 'phase3-v1',
+        promptVersion: LESSON_PLAN_PROMPT_VERSION,
+        pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
         provider: generated.provider,
         model: generated.model ?? null,
         modelTier: generated.modelTier,
@@ -214,8 +218,8 @@ export async function POST({ request, fetch }) {
       graphRepository,
       artifactRepository,
       generateLessonPlan,
-      pedagogyVersion: 'phase3-v1',
-      promptVersion: 'lesson-plan-v1',
+      pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
+      promptVersion: LESSON_PLAN_PROMPT_VERSION,
       onLaunchObserved: async (event) => {
         await recordTopicDiscoveryLaunch({
           lessonRequest,
@@ -230,8 +234,8 @@ export async function POST({ request, fetch }) {
           nodeId: event.nodeId,
           artifactId: event.lessonArtifactId,
           secondaryArtifactId: event.questionArtifactId,
-          promptVersion: 'lesson-plan-v1',
-          pedagogyVersion: 'phase3-v1',
+          promptVersion: LESSON_PLAN_PROMPT_VERSION,
+          pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
           provider: event.provider,
           model: event.model,
           latencyMs: Date.now() - startedAt
@@ -246,8 +250,8 @@ export async function POST({ request, fetch }) {
       status: 'failure',
       source: 'generated',
       profileId: lessonRequest.student.id,
-      promptVersion: 'lesson-plan-v1',
-      pedagogyVersion: 'phase3-v1',
+      promptVersion: LESSON_PLAN_PROMPT_VERSION,
+      pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
       latencyMs: Date.now() - startedAt,
       payload: {
         error: error instanceof Error ? error.message : 'Unknown lesson generation error'

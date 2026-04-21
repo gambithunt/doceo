@@ -372,6 +372,37 @@ describe('LessonWorkspace Phase 3 stage-aware actions', () => {
       'Walk me through this step by step.'
     );
   });
+
+  it('lets each concept explain button fire only once', async () => {
+    renderWorkspace([
+      createMessage({
+        id: 'concept-card-message',
+        role: 'system',
+        type: 'concept_cards',
+        content: 'Tap any concept to explore it in depth',
+        conceptItems: [
+          {
+            name: 'Fiscal drag',
+            summary: 'Tax thresholds stay fixed while income rises.',
+            detail: 'Workers can move into higher tax brackets even when their real spending power barely changes.',
+            example: 'A salary increase pushes a worker into a higher bracket while inflation also rises.'
+          }
+        ]
+      })
+    ], { currentStage: 'concepts' });
+
+    await fireEvent.click(screen.getByRole('button', { name: /Fiscal drag/i }));
+
+    const askButton = screen.getByRole('button', { name: 'Ask Doceo to explain this' });
+    await fireEvent.click(askButton);
+
+    expect(appState.sendLessonMessage).toHaveBeenCalledTimes(1);
+    expect(appState.sendLessonMessage).toHaveBeenCalledWith(
+      '[CONCEPT: Fiscal drag]\n[STUDENT_HAS_READ: Tax thresholds stay fixed while income rises. Workers can move into higher tax brackets even when their real spending power barely changes.]\nCan you explain this differently?'
+    );
+
+    expect(screen.getByRole('button', { name: 'Explanation requested' })).toBeDisabled();
+  });
 });
 
 describe('LessonWorkspace Phase 3 trustworthy Next step contract', () => {
@@ -579,15 +610,15 @@ describe('LessonWorkspace Phase 4 tutor prompt emphasis', () => {
         role: 'assistant',
         type: 'teaching',
         content:
-          'Market structures shape how firms compete.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+          'Market structures shape how firms compete.\n\nWhich market structure gives firms the least power to set prices?'
       })
     ]);
 
     const bubble = screen.getByText('Market structures shape how firms compete.').closest('article');
-    const prompt = screen.getByText('What feels clear so far? Tell me where you want to slow down.');
+    const prompt = screen.getByText('Which market structure gives firms the least power to set prices?');
 
     expect(prompt.closest('.bubble-prompt')).toBeInTheDocument();
-    expect(within(bubble!).getByText('What feels clear so far? Tell me where you want to slow down.')).toBeInTheDocument();
+    expect(within(bubble!).getByText('Which market structure gives firms the least power to set prices?')).toBeInTheDocument();
   });
 
   it('does not split a normal assistant message without a clear tutor prompt', () => {
@@ -621,6 +652,21 @@ describe('LessonWorkspace Phase 4 tutor prompt emphasis', () => {
 
     expect(bubble).toHaveClass('bubble', 'assistant');
     expect(screen.getAllByRole('article')).toHaveLength(1);
+  });
+
+  it('does not promote bounded help text as a fake question prompt', () => {
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content:
+          'Sort these resources into renewable and non-renewable.\n\nIf you want help, say rule, first step, or example.'
+      })
+    ]);
+
+    const helpText = screen.getByText('If you want help, say rule, first step, or example.');
+
+    expect(helpText.closest('.bubble-prompt')).toBeNull();
   });
 });
 
@@ -772,19 +818,66 @@ describe('LessonWorkspace Phase 4 lesson TTS playback', () => {
     expect(within(userBubble!).queryByRole('button', { name: /tutor audio/i })).toBeNull();
   });
 
+  it('marks tutor audio bubbles as button-only interaction surfaces', () => {
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Keep the bubble steady while audio loads.'
+      })
+    ]);
+
+    const tutorBubble = screen.getByText('Keep the bubble steady while audio loads.').closest('article');
+
+    expect(tutorBubble).toHaveAttribute('data-interaction-mode', 'button-only');
+  });
+
   it('fetches the lesson route and plays the returned audio for the active tutor bubble', async () => {
     const message = createMessage({
       role: 'assistant',
       type: 'teaching',
       content: 'Listen to this explanation.'
     });
+    const routeResponse = Promise.withResolvers<{
+      ok: boolean;
+      json: () => Promise<{
+        ok: true;
+        audioUrl: string;
+        mimeType: string;
+        provider: string;
+        fallbackUsed: boolean;
+        cacheHit: boolean;
+        expiresAt: string;
+      }>;
+    }>();
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(routeResponse.promise));
     renderWorkspace([message]);
 
     const control = screen.getByRole('button', { name: 'Play tutor audio' });
 
     expect(control).toHaveAttribute('data-tts-state', 'idle');
 
-    await fireEvent.click(control);
+    const clickPromise = fireEvent.click(control);
+    await tick();
+
+    expect(control).toHaveAttribute('data-tts-state', 'loading');
+    expect(control).toBeDisabled();
+    expect(control).toHaveAccessibleName('Tutor audio loading');
+
+    routeResponse.resolve({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        ok: true,
+        audioUrl: 'https://storage.example/audio.mp3',
+        mimeType: 'audio/mpeg',
+        provider: 'openai',
+        fallbackUsed: false,
+        cacheHit: false,
+        expiresAt: '2026-04-20T10:15:00.000Z'
+      })
+    });
+    await clickPromise;
+    await tick();
 
     expect(getAuthenticatedHeaders).toHaveBeenCalledWith({
       'Content-Type': 'application/json'
@@ -808,6 +901,7 @@ describe('LessonWorkspace Phase 4 lesson TTS playback', () => {
     expect(audioInstances[0]?.src).toBe('https://storage.example/audio.mp3');
     expect(audioInstances[0]?.play).toHaveBeenCalledTimes(1);
     expect(control).toHaveAttribute('data-tts-state', 'playing');
+    expect(control).not.toBeDisabled();
     expect(control).toHaveAccessibleName('Stop tutor audio');
 
     await fireEvent.click(control);
@@ -817,6 +911,58 @@ describe('LessonWorkspace Phase 4 lesson TTS playback', () => {
     const stoppedControl = screen.getByRole('button', { name: 'Play tutor audio' });
     expect(stoppedControl).toHaveAttribute('data-tts-state', 'idle');
     expect(stoppedControl).toHaveAccessibleName('Play tutor audio');
+  });
+
+  it('ignores repeat clicks while tutor audio is still loading', async () => {
+    const routeResponse = Promise.withResolvers<{
+      ok: boolean;
+      json: () => Promise<{
+        ok: true;
+        audioUrl: string;
+        mimeType: string;
+        provider: string;
+        fallbackUsed: boolean;
+        cacheHit: boolean;
+        expiresAt: string;
+      }>;
+    }>();
+    const fetchMock = vi.fn().mockReturnValue(routeResponse.promise);
+    vi.stubGlobal('fetch', fetchMock);
+    renderWorkspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Only load this once.'
+      })
+    ]);
+
+    const control = screen.getByRole('button', { name: 'Play tutor audio' });
+    const firstClick = fireEvent.click(control);
+    await tick();
+
+    expect(control).toHaveAttribute('data-tts-state', 'loading');
+    expect(control).toBeDisabled();
+
+    await fireEvent.click(control);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    routeResponse.resolve({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        ok: true,
+        audioUrl: 'https://storage.example/audio.mp3',
+        mimeType: 'audio/mpeg',
+        provider: 'openai',
+        fallbackUsed: false,
+        cacheHit: false,
+        expiresAt: '2026-04-20T10:15:00.000Z'
+      })
+    });
+
+    await firstClick;
+    await tick();
+
+    expect(control).toHaveAttribute('data-tts-state', 'playing');
   });
 
   it('keeps one active lesson playback at a time when another bubble starts', async () => {

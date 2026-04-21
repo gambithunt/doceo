@@ -1,6 +1,6 @@
 import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
 
-export type LessonTtsState = 'idle' | 'playing' | 'paused';
+export type LessonTtsState = 'idle' | 'loading' | 'playing' | 'paused';
 export type LessonTtsUpgradeTier = 'standard' | 'premium';
 
 export interface LessonTtsError {
@@ -74,6 +74,7 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
   let currentAudio: LessonAudioLike | null = null;
   let currentCallbacks: LessonTtsCallbacks | null = null;
   let currentState: LessonTtsState = 'idle';
+  let activeRequestId = 0;
 
   function emitState(nextState: LessonTtsState): void {
     if (currentState === nextState) {
@@ -106,12 +107,17 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
   }
 
   function stop(): void {
-    if (!currentAudio) {
+    activeRequestId += 1;
+
+    if (!currentAudio && currentState === 'idle') {
       return;
     }
 
-    currentAudio.pause();
-    currentAudio.currentTime = 0;
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+    }
+
     clearPlayback();
   }
 
@@ -128,7 +134,9 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
       stop();
     }
 
+    const requestId = ++activeRequestId;
     currentCallbacks = callbacks;
+    emitState('loading');
 
     let routePayload: LessonTtsRouteResponse;
     try {
@@ -145,6 +153,9 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
       });
 
       if (!response.ok) {
+        if (requestId !== activeRequestId) {
+          return { started: false, error: null };
+        }
         const payload = (await response.json().catch(() => null)) as LessonTtsRouteErrorResponse | null;
         clearPlayback();
         return {
@@ -169,6 +180,9 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
 
       routePayload = (await response.json()) as LessonTtsRouteResponse;
     } catch {
+      if (requestId !== activeRequestId) {
+        return { started: false, error: null };
+      }
       clearPlayback();
       return {
         started: false,
@@ -177,6 +191,10 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
           message: 'Tutor audio could not be started.'
         }
       };
+    }
+
+    if (requestId !== activeRequestId) {
+      return { started: false, error: null };
     }
 
     const audio = createAudio(routePayload.audioUrl);
@@ -215,9 +233,17 @@ export function createLessonTts(options: LessonTtsOptions = {}): LessonTtsContro
 
     try {
       await audio.play();
+      if (requestId !== activeRequestId) {
+        audio.pause();
+        audio.currentTime = 0;
+        return { started: false, error: null };
+      }
       emitState('playing');
       return { started: true };
     } catch {
+      if (requestId !== activeRequestId) {
+        return { started: false, error: null };
+      }
       clearPlayback();
       return {
         started: false,

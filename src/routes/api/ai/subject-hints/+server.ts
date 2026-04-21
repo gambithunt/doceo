@@ -7,6 +7,7 @@ import {
 import type { Subject } from '$lib/types';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
+import { logAiInteractionForRequest } from '$lib/server/ai-telemetry';
 
 const SubjectHintsBodySchema = z.object({
   request: z.object({
@@ -111,6 +112,17 @@ export async function POST({ request, fetch }) {
       { status: 502 }
     );
   }
+
+  await logAiInteractionForRequest({
+    request,
+    requestPayload: JSON.stringify(parsed.data.request),
+    responsePayload: JSON.stringify(functionPayload),
+    provider: functionPayload.provider,
+    mode: 'subject-hints',
+    modelTier: functionPayload.modelTier,
+    model: functionPayload.model,
+    latencyMs: (functionPayload as { latencyMs?: number }).latencyMs ?? null
+  });
 
   return json({
     response: { hints: validated },

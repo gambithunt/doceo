@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PROVIDERS } from '$lib/ai/providers';
 import {
   calculateCost,
   extractTokensFromResponse,
@@ -57,6 +58,17 @@ describe('calculateCost', () => {
     // 500 output: 500/1M * 0.60 = 0.00030
     expect(result.inputCostUsd).toBeCloseTo(0.00015, 5);
     expect(result.outputCostUsd).toBeCloseTo(0.00030, 5);
+  });
+
+  it('uses the configured provider model pricing for every known model id', () => {
+    for (const provider of PROVIDERS) {
+      for (const model of provider.models) {
+        const result = calculateCost({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, model.id);
+        expect(result.inputCostUsd).toBeCloseTo(model.inputPer1M);
+        expect(result.outputCostUsd).toBeCloseTo(model.outputPer1M);
+        expect(result.costUsd).toBeCloseTo(model.inputPer1M + model.outputPer1M);
+      }
+    }
   });
 });
 

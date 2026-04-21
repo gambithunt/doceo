@@ -62,6 +62,14 @@ describe('lesson-plan system prompt', () => {
     const prompt = createLessonPlanSystemPrompt();
     expect(prompt.toLowerCase()).toMatch(/grade.appropriate|age.appropriate|level/i);
   });
+
+  it('P4: createLessonPlanSystemPrompt requires self-contained concrete practice tasks', () => {
+    const prompt = createLessonPlanSystemPrompt();
+    expect(prompt).toContain('self-contained');
+    expect(prompt).toContain('Do not ask the learner to invent their own practical example');
+    expect(prompt).toContain('Prefer clear task verbs');
+    expect(prompt).toContain('Do not use generic learner check lines');
+  });
 });
 
 // ─── Phase 4.2: parseLessonPlanResponse ────────────────────────────────────
@@ -124,6 +132,21 @@ describe('parseLessonPlanResponse', () => {
 
   it('P4: returns null when choices array is empty', () => {
     expect(parseLessonPlanResponse({ choices: [] }, baseRequest)).toBeNull();
+  });
+
+  it('P4: returns null when practice and transfer sections use the old generic wording', () => {
+    const bad = makeValidAiPayload({
+      practicePrompt: {
+        title: 'Active Practice',
+        body: 'Now try it yourself. Apply Quadratic Equations to a similar problem. Write out each step and explain your reasoning.'
+      },
+      transferChallenge: {
+        title: 'Transfer Challenge',
+        body: 'Can you apply Quadratic Equations to a problem you have not seen before?'
+      }
+    });
+
+    expect(parseLessonPlanResponse(bad, baseRequest)).toBeNull();
   });
 
   it('P4: produces keyConcepts with at least 2 items', () => {

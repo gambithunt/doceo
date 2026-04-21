@@ -1318,8 +1318,7 @@
     gap: 0.9rem;
   }
 
-  .review-card strong,
-  .review-section-head strong {
+  .review-card strong {
     margin: 0;
     font-size: 1.05rem;
     font-weight: 600;

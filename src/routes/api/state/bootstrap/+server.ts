@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { isBackendUnavailableError } from '$lib/server/backend-availability';
 import { loadLearningProgram } from '$lib/server/learning-program-repository';
+import { createServerLessonArtifactRepository } from '$lib/server/lesson-artifact-repository';
 import { loadAppState, loadSignalsForProfile } from '$lib/server/state-repository';
 import {
   fetchCountries,
@@ -11,7 +12,78 @@ import {
 } from '$lib/server/onboarding-repository';
 import { createServerSupabaseFromRequest } from '$lib/server/supabase';
 import { applySignalProfileUpdate, buildLearnerProfileFromSignals } from '$lib/ai/adaptive-signals';
+import { repairLessonSessionMessages } from '$lib/lesson-system';
 import type { AppState } from '$lib/types';
+
+async function hydrateMissingSessionArtifactContent(
+  state: Pick<AppState, 'lessonSessions' | 'lessons' | 'questions'>
+): Promise<Pick<AppState, 'lessons' | 'questions'>> {
+  const artifactRepository = createServerLessonArtifactRepository();
+
+  if (!artifactRepository) {
+    return {
+      lessons: state.lessons,
+      questions: state.questions
+    };
+  }
+
+  const existingLessonIds = new Set(state.lessons.map((lesson) => lesson.id));
+  const existingQuestionIds = new Set(state.questions.map((question) => question.id));
+  const missingLessonArtifacts = Array.from(
+    new Set(
+      state.lessonSessions
+        .filter((session) => session.lessonArtifactId && !existingLessonIds.has(session.lessonId))
+        .map((session) => session.lessonArtifactId as string)
+    )
+  );
+  const missingQuestionArtifacts = Array.from(
+    new Set(
+      state.lessonSessions
+        .filter(
+          (session) =>
+            session.questionArtifactId &&
+            !state.questions.some((question) => question.lessonId === session.lessonId)
+        )
+        .map((session) => session.questionArtifactId as string)
+    )
+  );
+
+  if (missingLessonArtifacts.length === 0 && missingQuestionArtifacts.length === 0) {
+    return {
+      lessons: state.lessons,
+      questions: state.questions
+    };
+  }
+
+  const [lessonArtifacts, questionArtifacts] = await Promise.all([
+    Promise.all(
+      missingLessonArtifacts.map((artifactId) =>
+        artifactRepository.getLessonArtifactById(artifactId).catch(() => null)
+      )
+    ),
+    Promise.all(
+      missingQuestionArtifacts.map((artifactId) =>
+        artifactRepository.getQuestionArtifactById(artifactId).catch(() => null)
+      )
+    )
+  ]);
+
+  return {
+    lessons: [
+      ...state.lessons,
+      ...lessonArtifacts
+        .map((artifact) => artifact?.payload.lesson ?? null)
+        .filter((lesson): lesson is AppState['lessons'][number] => Boolean(lesson))
+        .filter((lesson) => !existingLessonIds.has(lesson.id))
+    ],
+    questions: [
+      ...state.questions,
+      ...questionArtifacts
+        .flatMap((artifact) => artifact?.payload.questions ?? [])
+        .filter((question) => !existingQuestionIds.has(question.id))
+    ]
+  };
+}
 
 function mergeSessionBackedLessonContent(
   savedState: Pick<AppState, 'lessonSessions' | 'lessons' | 'questions'>,
@@ -37,6 +109,19 @@ function mergeSessionBackedLessonContent(
         (question) => !preservedQuestions.some((preserved) => preserved.id === question.id)
       )
     ]
+  };
+}
+
+function repairSavedLessonSessionPrompts(
+  state: Pick<AppState, 'lessonSessions' | 'lessons'>
+): Pick<AppState, 'lessonSessions'> {
+  const lessonsById = new Map(state.lessons.map((lesson) => [lesson.id, lesson]));
+
+  return {
+    lessonSessions: state.lessonSessions.map((session) => {
+      const lesson = lessonsById.get(session.lessonId);
+      return lesson ? repairLessonSessionMessages(session, lesson) : session;
+    })
   };
 }
 
@@ -112,6 +197,7 @@ export async function GET({ request }) {
     loadOnboardingProgress(profileId)
   ]);
 
+  const recoveredArtifactContent = await hydrateMissingSessionArtifactContent(state);
   const signalUpdate = buildLearnerProfileFromSignals(signals);
   const refreshedLearnerProfile =
     signals.length > 0 ? applySignalProfileUpdate(state.learnerProfile, signalUpdate) : state.learnerProfile;
@@ -119,12 +205,17 @@ export async function GET({ request }) {
   const fullName = (user.user_metadata?.full_name as string | undefined) ?? '';
   const stateWithProfile = {
     ...state,
+    ...recoveredArtifactContent,
     learnerProfile: refreshedLearnerProfile,
     profile: {
       ...state.profile,
       id: profileId,
       fullName: fullName || state.profile.fullName
     }
+  };
+  const repairedState = {
+    ...stateWithProfile,
+    ...repairSavedLessonSessionPrompts(stateWithProfile)
   };
 
   let degradedError: string | null = null;
@@ -144,13 +235,13 @@ export async function GET({ request }) {
 
   const countryName =
     onboardingOptions?.countries.find((country) => country.id === onboardingProgress?.selectedCountryId)?.name ??
-    stateWithProfile.profile.country;
+    repairedState.profile.country;
   const curriculumName =
     onboardingOptions?.curriculums.find((curriculum) => curriculum.id === onboardingProgress?.selectedCurriculumId)?.name ??
-    stateWithProfile.profile.curriculum;
+    repairedState.profile.curriculum;
   const gradeLabel =
     onboardingOptions?.grades.find((grade) => grade.id === onboardingProgress?.selectedGradeId)?.label ??
-    stateWithProfile.profile.grade;
+    repairedState.profile.grade;
   const hasSubjects = onboardingProgress &&
     (onboardingProgress.selectedSubjectIds.length > 0 ||
      onboardingProgress.customSubjects.length > 0 ||
@@ -164,10 +255,10 @@ export async function GET({ request }) {
   if (shouldLoadLearningProgram && onboardingProgress) {
     try {
       learningProgram = await loadLearningProgram({
-        country: countryName || stateWithProfile.profile.country || 'South Africa',
-        curriculumName: curriculumName || stateWithProfile.profile.curriculum || onboardingProgress.selectedCurriculumId,
+        country: countryName || repairedState.profile.country || 'South Africa',
+        curriculumName: curriculumName || repairedState.profile.curriculum || onboardingProgress.selectedCurriculumId,
         curriculumId: onboardingProgress.selectedCurriculumId,
-        grade: gradeLabel || stateWithProfile.profile.grade || onboardingProgress.selectedGradeId,
+        grade: gradeLabel || repairedState.profile.grade || onboardingProgress.selectedGradeId,
         gradeId: onboardingProgress.selectedGradeId,
         selectedSubjectIds: onboardingProgress.selectedSubjectIds,
         selectedSubjectNames:
@@ -189,57 +280,57 @@ export async function GET({ request }) {
   }
 
   const mergedLearningProgram = learningProgram
-    ? mergeSessionBackedLessonContent(stateWithProfile, learningProgram)
+    ? mergeSessionBackedLessonContent(repairedState, learningProgram)
     : null;
 
   const hydratedState = onboardingProgress
     ? {
-        ...stateWithProfile,
+        ...repairedState,
         onboarding: {
-          ...stateWithProfile.onboarding,
+          ...repairedState.onboarding,
           ...onboardingProgress,
           error: degradedError,
           options: onboardingOptions
             ? {
-                ...stateWithProfile.onboarding.options,
+                ...repairedState.onboarding.options,
                 ...onboardingOptions
               }
-            : stateWithProfile.onboarding.options
+            : repairedState.onboarding.options
         },
         profile: {
-          ...stateWithProfile.profile,
+          ...repairedState.profile,
           country: countryName,
-          countryId: onboardingProgress.selectedCountryId || stateWithProfile.profile.countryId,
+          countryId: onboardingProgress.selectedCountryId || repairedState.profile.countryId,
           curriculum: curriculumName,
-          curriculumId: onboardingProgress.selectedCurriculumId || stateWithProfile.profile.curriculumId,
+          curriculumId: onboardingProgress.selectedCurriculumId || repairedState.profile.curriculumId,
           grade: gradeLabel,
-          gradeId: onboardingProgress.selectedGradeId || stateWithProfile.profile.gradeId,
-          schoolYear: onboardingProgress.schoolYear || stateWithProfile.profile.schoolYear,
-          term: onboardingProgress.term ?? stateWithProfile.profile.term,
+          gradeId: onboardingProgress.selectedGradeId || repairedState.profile.gradeId,
+          schoolYear: onboardingProgress.schoolYear || repairedState.profile.schoolYear,
+          term: onboardingProgress.term ?? repairedState.profile.term,
           recommendedStartSubjectId:
-            onboardingProgress.recommendation.subjectId ?? stateWithProfile.profile.recommendedStartSubjectId,
+            onboardingProgress.recommendation.subjectId ?? repairedState.profile.recommendedStartSubjectId,
           recommendedStartSubjectName:
-            onboardingProgress.recommendation.subjectName ?? stateWithProfile.profile.recommendedStartSubjectName
+            onboardingProgress.recommendation.subjectName ?? repairedState.profile.recommendedStartSubjectName
         },
-        curriculum: learningProgram?.curriculum ?? stateWithProfile.curriculum,
-        lessons: mergedLearningProgram?.lessons ?? learningProgram?.lessons ?? stateWithProfile.lessons,
-        questions: mergedLearningProgram?.questions ?? learningProgram?.questions ?? stateWithProfile.questions,
+        curriculum: learningProgram?.curriculum ?? repairedState.curriculum,
+        lessons: mergedLearningProgram?.lessons ?? learningProgram?.lessons ?? repairedState.lessons,
+        questions: mergedLearningProgram?.questions ?? learningProgram?.questions ?? repairedState.questions,
         ui: learningProgram
           ? {
-              ...stateWithProfile.ui,
-              ...resolveCurriculumSelection(stateWithProfile, learningProgram, onboardingProgress)
+              ...repairedState.ui,
+              ...resolveCurriculumSelection(repairedState, learningProgram, onboardingProgress)
             }
-          : stateWithProfile.ui,
+          : repairedState.ui,
         backend: degradedError
           ? {
-              ...stateWithProfile.backend,
+              ...repairedState.backend,
               lastSyncAt: new Date().toISOString(),
               lastSyncStatus: 'error',
               lastSyncError: degradedError
             }
-          : stateWithProfile.backend
+          : repairedState.backend
       }
-    : stateWithProfile;
+    : repairedState;
 
   const resolvedScreen =
     hydratedState.ui.currentScreen === 'landing'

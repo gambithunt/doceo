@@ -93,7 +93,7 @@ describe('lesson workspace UI helpers', () => {
         messages: [
           createAssistantStageMessage(
             'concepts',
-            'Here is the core idea.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+            'Here is the core idea.\n\nWhich of these ideas feels strongest right now? Name one and give me the key rule in your own words.'
           )
         ]
       })
@@ -112,7 +112,7 @@ describe('lesson workspace UI helpers', () => {
         messages: [
           createAssistantStageMessage(
             'concepts',
-            'Here is the core idea.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+            'Here is the core idea.\n\nWhich of these ideas feels strongest right now? Name one and give me the key rule in your own words.'
           )
         ]
       })
@@ -131,7 +131,7 @@ describe('lesson workspace UI helpers', () => {
         messages: [
           createAssistantStageMessage(
             'construction',
-            'Here is the next step.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+            'Here is the next step.\n\nUsing the steps above, what should you identify first before you do anything else?'
           )
         ]
       })
@@ -150,7 +150,7 @@ describe('lesson workspace UI helpers', () => {
         messages: [
           createAssistantStageMessage(
             'practice',
-            'Try this one yourself first.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+            'Complete this task first.\n\nStart with the task above. What rule, clue, or first step will you use?'
           )
         ]
       })

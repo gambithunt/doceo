@@ -76,6 +76,62 @@ function createQuestion(
   };
 }
 
+function renderQuestionBlueprintPrompt(blueprint: QuestionBlueprint): string {
+  const optionLines = blueprint.options?.length
+    ? ['', ...blueprint.options.map((option) => `- **${option.label}.** ${option.text}`)]
+    : [];
+
+  return [blueprint.prompt, ...optionLines].join('\n');
+}
+
+function buildConcretePracticePrompt(blueprint: LessonBlueprint): LessonSection {
+  const primaryQuestion = blueprint.questions[0];
+
+  if (!primaryQuestion) {
+    return {
+      title: 'Active Practice',
+      body: `Use the worked example on **${blueprint.topicName}** as your model. Name the rule you would use, point to the clue or evidence that matters, and show the first step.`
+    };
+  }
+
+  return {
+    title: 'Active Practice',
+    body: [
+      `Try this task on **${blueprint.topicName}**.`,
+      '',
+      renderQuestionBlueprintPrompt(primaryQuestion),
+      '',
+      'Start by naming the rule, clue, or first step you will use.'
+    ].join('\n')
+  };
+}
+
+function buildConcreteTransferChallenge(blueprint: LessonBlueprint): LessonSection {
+  const transferQuestion =
+    blueprint.questions.find((question) => question.difficulty === 'stretch') ??
+    blueprint.questions.find((question) => question.difficulty === 'core') ??
+    blueprint.questions[1] ??
+    blueprint.questions[0];
+
+  if (!transferQuestion) {
+    return {
+      title: 'Transfer Challenge',
+      body: `Try one more version of **${blueprint.topicName}**. Say what stays the same from the original method, what changes, and what first adapted step you would take.`
+    };
+  }
+
+  return {
+    title: 'Transfer Challenge',
+    body: [
+      `Try one more version of **${blueprint.topicName}**.`,
+      '',
+      renderQuestionBlueprintPrompt(transferQuestion),
+      '',
+      'Answer the task using the information above. Name what clue or evidence matters first, then show the next step.'
+    ].join('\n')
+  };
+}
+
 function createMathBlueprints(subjectName: string, band: GradeBand): LessonBlueprint[] {
   if (band === 'foundation') {
     return [
@@ -992,18 +1048,12 @@ export function buildLearningProgram(
           body: `**Step 1.** Read the problem carefully and identify what **${blueprint.topicName}** is asking you to do.\n\n**Step 2.** Apply the key rule — state it explicitly before calculating anything.\n\n**Step 3.** Show each step of your reasoning and keep track of units or labels.\n\n**Step 4.** Check your answer against what the problem asked — does it make sense?`
         },
         workedExample: blueprint.example,
-        practicePrompt: {
-          title: 'Active Practice',
-          body: `Now try it yourself. Apply what you have learned about **${blueprint.topicName}** to a similar problem. Write out each step, explain your reasoning, and check your answer before moving on.`
-        },
+        practicePrompt: buildConcretePracticePrompt(blueprint),
         commonMistakes: {
           title: 'Common Mistakes',
           body: `The most common error with **${blueprint.topicName}** is rushing past the reasoning step and writing only the answer. Always name the rule or concept first, then apply it step by step. A second common error is not checking the answer — always substitute back or re-read the question to confirm.`
         },
-        transferChallenge: {
-          title: 'Transfer Challenge',
-          body: `Can you apply **${blueprint.topicName}** to a problem you have not seen before? Think about where this pattern or rule shows up in a slightly different form — different numbers, different context, or a multi-step problem. Identify the same core idea and adapt the method.`
-        },
+        transferChallenge: buildConcreteTransferChallenge(blueprint),
         // Three-part summary: core rule + mistake warning + transfer hook
         summary: {
           title: 'Summary',

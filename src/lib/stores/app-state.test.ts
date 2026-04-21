@@ -2388,7 +2388,8 @@ describe('topic discovery completion linkage', () => {
       expect.arrayContaining([
         expect.objectContaining({ content: 'Artifact mental model body.' }),
         expect.objectContaining({
-          content: 'Artifact concepts body.\n\nWhat feels clear so far? Tell me where you want to slow down.'
+          content:
+            'Artifact concepts body.\n\nWhich idea should we check first: the key idea above? Name one and tell me the key rule in your own words.'
         })
       ])
     );

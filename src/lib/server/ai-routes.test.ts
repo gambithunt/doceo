@@ -83,7 +83,28 @@ describe('ai routes', () => {
             user: { id: 'auth-user-1' }
           }
         })
-      }
+      },
+      from: vi.fn((table: string) => {
+        if (table === 'profiles') {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn().mockResolvedValue({
+                  data: { id: 'student-1' }
+                })
+              }))
+            }))
+          };
+        }
+
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null })
+            }))
+          }))
+        };
+      })
     });
     checkUserQuota.mockResolvedValue({
       allowed: true,
@@ -154,6 +175,65 @@ describe('ai routes', () => {
       'tutor',
       expect.objectContaining({
         question: 'What is photosynthesis?'
+      })
+    );
+  });
+
+  it('tutor route logs the full edge payload so usage telemetry is preserved', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        response: {
+          problemType: 'concept',
+          studentGoal: 'Understand the concept',
+          diagnosis: 'Needs one next step',
+          responseStage: 'guided_step',
+          teacherResponse: 'Try the next step.',
+          checkForUnderstanding: 'What would you do next?'
+        },
+        provider: 'github-models',
+        modelTier: 'default',
+        model: 'openai/gpt-4o-mini',
+        usage: {
+          prompt_tokens: 1200,
+          completion_tokens: 300
+        },
+        latencyMs: 480
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/tutor/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/tutor', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            question: 'What is photosynthesis?',
+            topic: 'Plants',
+            subject: 'Biology',
+            grade: 'Grade 6',
+            currentAttempt: ''
+          },
+          profileId: 'student-1'
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(logAiInteraction).toHaveBeenCalledWith(
+      'student-1',
+      expect.any(String),
+      expect.stringContaining('"usage"'),
+      'github-models',
+      expect.objectContaining({
+        mode: 'tutor',
+        latencyMs: 480
       })
     );
   });
@@ -388,7 +468,7 @@ describe('ai routes', () => {
       expect.objectContaining({
         route: 'lesson-plan',
         status: 'success',
-        promptVersion: 'lesson-plan-v1',
+        promptVersion: 'lesson-plan-v3',
         model: 'openai/gpt-4.1-mini'
       })
     );
@@ -881,5 +961,193 @@ describe('ai routes', () => {
     } as never);
 
     expect(response.status).toBe(200);
+  });
+
+  it('subject hints route logs usage telemetry using the authenticated profile id', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        response: {
+          hints: ['Photosynthesis', 'Plant Cells', 'Chloroplasts', 'Leaves', 'Water Transport']
+        },
+        provider: 'github-models',
+        modelTier: 'fast',
+        model: 'openai/gpt-4.1-nano',
+        usage: {
+          prompt_tokens: 250,
+          completion_tokens: 100
+        },
+        latencyMs: 190
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/subject-hints/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/subject-hints', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            curriculumId: 'caps',
+            curriculumName: 'CAPS',
+            gradeId: 'grade-6',
+            gradeLabel: 'Grade 6',
+            term: 'Term 1',
+            subject: {
+              id: 'subject-biology',
+              name: 'Biology',
+              topics: [
+                {
+                  id: 'topic-1',
+                  name: 'Plants',
+                  subtopics: [
+                    { id: 'subtopic-1', name: 'Photosynthesis' },
+                    { id: 'subtopic-2', name: 'Plant Cells' }
+                  ]
+                }
+              ]
+            }
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(logAiInteraction).toHaveBeenCalledWith(
+      'student-1',
+      expect.any(String),
+      expect.stringContaining('"usage"'),
+      'github-models',
+      expect.objectContaining({
+        mode: 'subject-hints',
+        latencyMs: 190
+      })
+    );
+  });
+
+  it('topic shortlist route logs usage telemetry for the requesting student', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        response: {
+          matchedSection: 'Plants',
+          subtopics: []
+        },
+        provider: 'github-models',
+        modelTier: 'fast',
+        model: 'openai/gpt-4.1-nano',
+        usage: {
+          prompt_tokens: 410,
+          completion_tokens: 90
+        },
+        latencyMs: 210
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/topic-shortlist/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/topic-shortlist', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            studentId: 'student-1',
+            studentName: 'Student',
+            country: 'South Africa',
+            curriculum: 'CAPS',
+            grade: 'Grade 6',
+            subject: 'Biology',
+            term: 'Term 1',
+            year: '2026',
+            studentInput: 'Plants',
+            availableTopics: []
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(logAiInteraction).toHaveBeenCalledWith(
+      'student-1',
+      expect.any(String),
+      expect.stringContaining('"usage"'),
+      'github-models',
+      expect.objectContaining({
+        mode: 'topic-shortlist',
+        latencyMs: 210
+      })
+    );
+  });
+
+  it('revision evaluate route logs usage telemetry using the authenticated profile id', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        content: JSON.stringify({
+          correctness: 0.8,
+          reasoning: 0.7,
+          completeness: 0.9
+        }),
+        provider: 'github-models',
+        modelTier: 'fast',
+        model: 'openai/gpt-4.1-nano',
+        usage: {
+          prompt_tokens: 600,
+          completion_tokens: 120
+        },
+        latencyMs: 160
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/revision-evaluate/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/revision-evaluate', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            answer: 'Plants use sunlight to make food.',
+            question: {
+              id: 'question-1',
+              questionType: 'explain',
+              prompt: 'Explain photosynthesis.',
+              expectedSkills: ['describe photosynthesis'],
+              misconceptionTags: []
+            },
+            topic: {
+              topicTitle: 'Photosynthesis',
+              subject: 'Biology'
+            }
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(logAiInteraction).toHaveBeenCalledWith(
+      'student-1',
+      expect.any(String),
+      expect.stringContaining('"usage"'),
+      'github-models',
+      expect.objectContaining({
+        mode: 'revision-evaluate',
+        latencyMs: 160
+      })
+    );
   });
 });

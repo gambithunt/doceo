@@ -80,6 +80,7 @@ export async function POST({ request, fetch }) {
   await Promise.all([
     logAiInteraction(payload.student.id, JSON.stringify(requestPayload), JSON.stringify(functionPayload), 'github-models', {
       mode: 'lesson-chat',
+      latencyMs: (functionPayload as { latencyMs?: number }).latencyMs ?? null,
       modelTier: (functionPayload as { modelTier?: string }).modelTier,
       model: (functionPayload as { model?: string }).model
     }),

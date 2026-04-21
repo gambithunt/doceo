@@ -7,6 +7,7 @@ import { deduplicateSubjects, yearSlug } from '$lib/utils/strings';
 import { getRecommendedCountryId, getSelectionMode } from '$lib/data/onboarding';
 import { findSubjectKey } from '$lib/data/subject-catalog';
 import type { CountryRecommendationSignals } from '$lib/data/onboarding';
+import { APP_STATE_STORAGE_KEY, readThemePreference, writeThemePreference } from '$lib/theme';
 import {
   applyLessonAssistantResponse,
   buildInitialLessonMessages,
@@ -92,8 +93,6 @@ import type {
   TopicShortlistResponse
 } from '$lib/types';
 import type { UniversityVerificationState } from '$lib/types';
-
-const STORAGE_KEY = 'doceo-app-state';
 
 interface BootstrapResponse {
   state: AppState;
@@ -202,27 +201,55 @@ function detectBrowserCountrySignals(): CountryRecommendationSignals {
 
 function readState(): AppState {
   const browserSignals = detectBrowserCountrySignals();
+  const fallbackState = createInitialState(browserSignals);
+  const storedTheme = readThemePreference(browser ? localStorage : undefined);
 
   if (!browser) {
-    return createInitialState(browserSignals);
+    return fallbackState;
   }
 
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = localStorage.getItem(APP_STATE_STORAGE_KEY);
 
   if (!stored) {
-    return createInitialState(browserSignals);
+    return storedTheme
+      ? {
+          ...fallbackState,
+          ui: {
+            ...fallbackState.ui,
+            theme: storedTheme
+          }
+        }
+      : fallbackState;
   }
 
   try {
-    return normalizeAppState(JSON.parse(stored));
+    const normalized = normalizeAppState(JSON.parse(stored));
+    return storedTheme
+      ? {
+          ...normalized,
+          ui: {
+            ...normalized.ui,
+            theme: storedTheme
+          }
+        }
+      : normalized;
   } catch {
-    return createInitialState(browserSignals);
+    return storedTheme
+      ? {
+          ...fallbackState,
+          ui: {
+            ...fallbackState.ui,
+            theme: storedTheme
+          }
+        }
+      : fallbackState;
   }
 }
 
 function persistState(state: AppState): void {
   if (browser) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(APP_STATE_STORAGE_KEY, JSON.stringify(state));
+    writeThemePreference(state.ui.theme, localStorage);
   }
 }
 
@@ -2827,11 +2854,20 @@ export function createAppStore(initialState: AppState = readState()) {
         await supabase.auth.signOut().catch(() => undefined);
       }
 
+      const preservedTheme = readThemePreference(browser ? localStorage : undefined) ?? currentState().ui.theme;
+
       if (browser) {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(APP_STATE_STORAGE_KEY);
       }
 
-      set(createInitialState());
+      const resetState = createInitialState();
+      set({
+        ...resetState,
+        ui: {
+          ...resetState.ui,
+          theme: preservedTheme
+        }
+      });
       await goto('/');
     },
     selectOnboardingCountry: async (countryId: string) => {

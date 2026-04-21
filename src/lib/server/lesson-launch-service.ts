@@ -19,6 +19,20 @@ interface LessonLaunchDependencies {
   }) => Promise<void> | void;
 }
 
+function matchesRequestedArtifactVersion(
+  record: { pedagogyVersion: string; promptVersion: string } | null,
+  dependencies: Pick<LessonLaunchDependencies, 'pedagogyVersion' | 'promptVersion'>
+): boolean {
+  if (!record) {
+    return false;
+  }
+
+  return (
+    record.pedagogyVersion === dependencies.pedagogyVersion &&
+    record.promptVersion === dependencies.promptVersion
+  );
+}
+
 function buildScope(student: UserProfile): LessonArtifactScope {
   return {
     countryId: student.countryId || null,
@@ -164,7 +178,12 @@ export function createLessonLaunchService(dependencies: LessonLaunchDependencies
         ? await dependencies.artifactRepository.getQuestionArtifactForLessonArtifact(preferredLesson.id, scope)
         : null;
 
-      if (preferredLesson && preferredQuestions) {
+      if (
+        preferredLesson &&
+        preferredQuestions &&
+        matchesRequestedArtifactVersion(preferredLesson, dependencies) &&
+        matchesRequestedArtifactVersion(preferredQuestions, dependencies)
+      ) {
         await dependencies.onLaunchObserved?.({
           source: 'artifact_reuse',
           nodeId: node.id,

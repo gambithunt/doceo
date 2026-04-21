@@ -108,11 +108,14 @@ function messageRequestsLearnerAnswer(message: LessonMessage | null): boolean {
 
   return [
     /try this (one|question) yourself/i,
+    /answer the task above/i,
     /put it in your own words/i,
-    /what feels clear so far/i,
-    /tell me where you want to slow down/i,
+    /which idea should we check first/i,
+    /what should you identify first/i,
+    /what rule, clue, or first step/i,
     /what would you say/i,
-    /tell me if that version feels clearer/i
+    /tell me if that version feels clearer/i,
+    /start with the task above/i
   ].some((pattern) => pattern.test(trimmed));
 }
 

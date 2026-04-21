@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
+import { logAiInteractionForRequest } from '$lib/server/ai-telemetry';
 
 const InstitutionVerifyBodySchema = z.object({
   query: z.string().min(1).max(200),
@@ -41,6 +42,17 @@ export async function POST({ request, fetch }): Promise<Response> {
       { status: 503 }
     );
   }
+
+  await logAiInteractionForRequest({
+    request,
+    requestPayload: JSON.stringify({ query, country }),
+    responsePayload: JSON.stringify(edge.payload),
+    provider: edge.payload.provider,
+    mode: 'institution-verify',
+    modelTier: (edge.payload as { modelTier?: string }).modelTier,
+    model: (edge.payload as { model?: string }).model,
+    latencyMs: (edge.payload as { latencyMs?: number }).latencyMs ?? null
+  });
 
   return json({
     suggestions: edge.payload.suggestions ?? [],

@@ -10,6 +10,7 @@ const {
   fetchGrades,
   fetchSubjects,
   loadLearningProgram,
+  createServerLessonArtifactRepository,
   createServerSupabaseFromRequest,
   isSupabaseConfigured
 } = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const {
   fetchGrades: vi.fn(),
   fetchSubjects: vi.fn(),
   loadLearningProgram: vi.fn(),
+  createServerLessonArtifactRepository: vi.fn(),
   createServerSupabaseFromRequest: vi.fn(),
   isSupabaseConfigured: vi.fn()
 }));
@@ -42,6 +44,10 @@ vi.mock('$lib/server/learning-program-repository', () => ({
   loadLearningProgram
 }));
 
+vi.mock('$lib/server/lesson-artifact-repository', () => ({
+  createServerLessonArtifactRepository
+}));
+
 vi.mock('$lib/server/supabase', () => ({
   createServerSupabaseFromRequest,
   isSupabaseConfigured
@@ -60,6 +66,7 @@ describe('state bootstrap route', () => {
       questions: createInitialState().questions,
       source: 'local'
     });
+    createServerLessonArtifactRepository.mockReturnValue(null);
   });
 
   it('hydrates onboarding options for the saved curriculum and grade', async () => {
@@ -393,6 +400,212 @@ describe('state bootstrap route', () => {
     expect(payload.state.questions).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: artifactQuestion.id, lessonId: artifactLesson.id })])
     );
+  });
+
+  it('backfills missing artifact-backed lesson content from the artifact repository during bootstrap hydration', async () => {
+    const base = createInitialState();
+    const artifactLesson = {
+      ...base.lessons[0]!,
+      id: 'artifact-lesson-fiscal-policy-1',
+      title: 'Economics: Fiscal Policy',
+      topicId: 'artifact-topic-fiscal-policy',
+      subtopicId: 'artifact-subtopic-fiscal-policy',
+      guidedConstruction: { title: 'Guided Construction', body: 'Artifact guided construction body.' }
+    };
+    const artifactQuestion = {
+      ...base.questions[0]!,
+      id: 'artifact-question-fiscal-policy-1',
+      lessonId: artifactLesson.id,
+      topicId: artifactLesson.topicId,
+      subtopicId: artifactLesson.subtopicId
+    };
+
+    loadAppState.mockResolvedValue({
+      ...base,
+      lessons: [],
+      questions: [],
+      lessonSessions: [
+        {
+          id: 'artifact-session-fiscal-policy-1',
+          studentId: 'user-123',
+          subjectId: artifactLesson.subjectId,
+          subject: 'Economics',
+          nodeId: 'artifact-node-fiscal-policy',
+          lessonArtifactId: 'artifact-record-fiscal-policy-1',
+          questionArtifactId: 'question-artifact-record-fiscal-policy-1',
+          topicId: artifactLesson.topicId,
+          topicTitle: 'Fiscal Policy',
+          topicDescription: 'Government spending and taxation.',
+          curriculumReference: 'CAPS Grade 12',
+          matchedSection: 'Fiscal Policy',
+          lessonId: artifactLesson.id,
+          currentStage: 'concepts',
+          stagesCompleted: ['orientation'],
+          messages: [],
+          questionCount: 0,
+          reteachCount: 0,
+          confidenceScore: 0.5,
+          needsTeacherReview: false,
+          stuckConcept: null,
+          startedAt: '2026-04-20T12:00:00.000Z',
+          lastActiveAt: '2026-04-20T12:00:00.000Z',
+          completedAt: null,
+          status: 'active',
+          lessonRating: null,
+          topicDiscovery: undefined,
+          profileUpdates: []
+        }
+      ]
+    });
+    createServerLessonArtifactRepository.mockReturnValue({
+      getLessonArtifactById: vi.fn().mockResolvedValue({
+        id: 'artifact-record-fiscal-policy-1',
+        nodeId: 'artifact-node-fiscal-policy',
+        payload: {
+          lesson: artifactLesson
+        }
+      }),
+      getQuestionArtifactById: vi.fn().mockResolvedValue({
+        id: 'question-artifact-record-fiscal-policy-1',
+        nodeId: 'artifact-node-fiscal-policy',
+        payload: {
+          questions: [artifactQuestion]
+        }
+      })
+    });
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123'
+            }
+          }
+        })
+      }
+    });
+    loadOnboardingProgress.mockResolvedValue({
+      completed: true,
+      completedAt: null,
+      selectedCountryId: 'za',
+      selectedCurriculumId: 'caps',
+      selectedGradeId: 'grade-12',
+      schoolYear: '2026',
+      term: 'Term 1',
+      selectedSubjectIds: ['graph-subject-economics'],
+      selectedSubjectNames: ['Economics'],
+      customSubjects: [],
+      selectionMode: 'structured',
+      recommendation: {
+        subjectId: 'graph-subject-economics',
+        subjectName: 'Economics',
+        reason: 'Recommended by graph-backed onboarding.'
+      }
+    });
+    fetchCountries.mockResolvedValue([{ id: 'za', name: 'South Africa' }]);
+    fetchCurriculums.mockResolvedValue([
+      { id: 'caps', countryId: 'za', name: 'CAPS', description: 'Curriculum and Assessment Policy Statement' }
+    ]);
+    fetchGrades.mockResolvedValue([{ id: 'grade-12', curriculumId: 'caps', label: 'Grade 12', order: 12 }]);
+    fetchSubjects.mockResolvedValue([
+      {
+        id: 'graph-subject-economics',
+        curriculumId: 'caps',
+        gradeId: 'grade-12',
+        name: 'Economics',
+        category: 'core'
+      }
+    ]);
+    loadLearningProgram.mockResolvedValue({
+      curriculum: base.curriculum,
+      lessons: base.lessons,
+      questions: base.questions,
+      source: 'supabase'
+    });
+
+    const { GET } = await import('./+server');
+    const response = await GET({
+      request: new Request('http://localhost/api/state/bootstrap', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+    const payload = await response.json();
+
+    expect(payload.state.lessons).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: artifactLesson.id, title: artifactLesson.title })])
+    );
+    expect(payload.state.questions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: artifactQuestion.id, lessonId: artifactLesson.id })])
+    );
+  });
+
+  it('repairs legacy generic lesson prompts in saved session messages during bootstrap hydration', async () => {
+    const base = createInitialState();
+    const lesson = base.lessons[0]!;
+
+    loadAppState.mockResolvedValue({
+      ...base,
+      lessonSessions: [
+        {
+          ...base.lessonSessions[0]!,
+          id: 'legacy-session-1',
+          lessonId: lesson.id,
+          currentStage: 'practice',
+          messages: [
+            {
+              id: 'stage-practice',
+              role: 'system',
+              type: 'stage_start',
+              content: '◆ Active Practice',
+              stage: 'practice',
+              timestamp: '2026-04-20T12:00:00.000Z',
+              metadata: null
+            },
+            {
+              id: 'legacy-practice-message',
+              role: 'assistant',
+              type: 'teaching',
+              content:
+                'Now try it yourself. Apply what you have learned about **Fractions** to a similar problem. Write out each step, explain your reasoning, and check your answer before moving on.\n\nWhat feels clear so far? Tell me where you want to slow down.',
+              stage: 'practice',
+              timestamp: '2026-04-20T12:00:01.000Z',
+              metadata: null
+            }
+          ]
+        }
+      ]
+    });
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123'
+            }
+          }
+        })
+      }
+    });
+    loadOnboardingProgress.mockResolvedValue(null);
+
+    const { GET } = await import('./+server');
+    const response = await GET({
+      request: new Request('http://localhost/api/state/bootstrap', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+    const payload = await response.json();
+    const repairedMessage = payload.state.lessonSessions[0].messages.find(
+      (message: { id: string }) => message.id === 'legacy-practice-message'
+    );
+
+    expect(repairedMessage.content).toContain('Start with the task above');
+    expect(repairedMessage.content).not.toContain('Apply what you have learned');
+    expect(repairedMessage.content).not.toContain('Tell me where you want to slow down.');
   });
 
   it('returns an authenticated degraded state with explicit errors when onboarding catalog reads fail', async () => {

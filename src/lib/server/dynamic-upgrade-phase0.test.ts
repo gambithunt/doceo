@@ -24,7 +24,7 @@ describe('dynamic upgrade phase 0 audit', () => {
     const lessonPlanRoute = readWorkspaceFile('src/routes/api/ai/lesson-plan/+server.ts');
 
     expect(appStateSource).toContain("fetch('/api/curriculum/program'");
-    expect(appStateSource).toContain('launchLesson: (lessonId: string) =>');
+    expect(appStateSource).toContain('launchLesson: async (lessonId: string) =>');
     expect(appStateSource).toContain('startLessonFromShortlist: async (topic: ShortlistedTopic) =>');
     expect(appStateSource).toContain('startLessonFromSelection: async (subjectId: string, sectionName: string) =>');
     expect(curriculumProgramRoute).toContain("import { loadLearningProgram } from '$lib/server/learning-program-repository';");

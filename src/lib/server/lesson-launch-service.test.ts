@@ -220,6 +220,60 @@ describe('lesson launch service', () => {
     expect(second.questionArtifactId).toBe(first.questionArtifactId);
   });
 
+  it('regenerates instead of reusing a ready artifact when the prompt version changes', async () => {
+    const first = await service.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+
+    const nextVersionService = createLessonLaunchService({
+      graphRepository,
+      artifactRepository,
+      generateLessonPlan: generator,
+      pedagogyVersion: 'v1',
+      promptVersion: 'v2',
+      onLaunchObserved
+    });
+
+    generator.mockResolvedValueOnce({
+      ...createGeneratedLessonResponse(),
+      lesson: {
+        ...createGeneratedLessonResponse().lesson,
+        id: 'generated-lesson-fractions-v2'
+      },
+      questions: [
+        {
+          ...createGeneratedLessonResponse().questions[0]!,
+          id: 'generated-question-1-v2',
+          lessonId: 'generated-lesson-fractions-v2'
+        }
+      ]
+    });
+
+    const relaunched = await nextVersionService.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+
+    expect(generator).toHaveBeenCalledTimes(2);
+    expect(relaunched.lessonArtifactId).not.toBe(first.lessonArtifactId);
+    expect(relaunched.questionArtifactId).not.toBe(first.questionArtifactId);
+  });
+
   it('creates a new artifact on launch when the previous preferred artifact becomes stale from low ratings', async () => {
     const first = await service.launchLesson({
       request: {

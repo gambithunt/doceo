@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
+import { logAiInteractionForRequest } from '$lib/server/ai-telemetry';
 
 const TopicShortlistBodySchema = z.object({
   request: z.object({
@@ -53,6 +54,18 @@ export async function POST({ request, fetch }) {
   if (!functionPayload.response || functionPayload.provider !== 'github-models') {
     return json({ error: 'AI edge function returned invalid shortlist data.' }, { status: 502 });
   }
+
+  await logAiInteractionForRequest({
+    request,
+    profileId: payload.request.studentId,
+    requestPayload: JSON.stringify(payload.request),
+    responsePayload: JSON.stringify(functionPayload),
+    provider: functionPayload.provider,
+    mode: 'topic-shortlist',
+    modelTier: functionPayload.modelTier,
+    model: functionPayload.model,
+    latencyMs: (functionPayload as { latencyMs?: number }).latencyMs ?? null
+  });
 
   return json(functionPayload);
 }

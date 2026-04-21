@@ -24,6 +24,7 @@
   let composer = $state('');
   let chatElement = $state<HTMLDivElement | null>(null);
   let expandedConcepts = $state(new Set<string>());
+  let askedConceptKeys = $state(new Set<string>());
   let composerFocused = $state(false);
   let showScrollDown = $state(false);
   let celebratingStage = $state<LessonStage | null>(null);
@@ -59,7 +60,12 @@
     expandedConcepts = next;
   }
 
-  function askAboutConcept(concept: ConceptItem): void {
+  function askAboutConcept(concept: ConceptItem, key: string): void {
+    if (askedConceptKeys.has(key)) {
+      return;
+    }
+
+    askedConceptKeys = new Set([...askedConceptKeys, key]);
     const parts = [`[CONCEPT: ${concept.name}]`];
     const knownContent = [concept.summary, concept.detail].filter(Boolean).join(' ');
     if (knownContent) {
@@ -354,6 +360,10 @@
   }
 
   function ttsLabelForState(state: LessonTtsState): string {
+    if (state === 'loading') {
+      return 'Tutor audio loading';
+    }
+
     if (state === 'playing') {
       return 'Stop tutor audio';
     }
@@ -401,6 +411,8 @@
     }
 
     const requestToken = ++ttsPlaybackRequest;
+    activeTtsMessageId = message.id;
+    activeTtsState = 'loading';
     const result = await lessonTts.play({
       lessonSessionId: lessonSession.id,
       lessonMessageId: message.id,
@@ -408,6 +420,10 @@
     }, {
       onStateChange: (nextState) => updateTtsState(message.id, nextState)
     });
+
+    if (requestToken !== ttsPlaybackRequest) {
+      return;
+    }
 
     if (result.started && requestToken === ttsPlaybackRequest) {
       clearTtsUpgradeNotice();
@@ -440,6 +456,10 @@
     }
 
     const state = ttsStateForMessage(message);
+    if (state === 'loading') {
+      return;
+    }
+
     if (state === 'playing') {
       ttsPlaybackRequest += 1;
       lessonTts.stop();
@@ -548,8 +568,13 @@
                           <div>{@html renderSimpleMarkdown(concept.example)}</div>
                         </div>
                         <div class="concept-actions">
-                          <button type="button" class="concept-ask-link" onclick={() => askAboutConcept(concept)}>
-                            <span>Ask Doceo to explain this</span>
+                          <button
+                            type="button"
+                            class="concept-ask-link"
+                            onclick={() => askAboutConcept(concept, key)}
+                            disabled={askedConceptKeys.has(key)}
+                          >
+                            <span>{askedConceptKeys.has(key) ? 'Explanation requested' : 'Ask Doceo to explain this'}</span>
                             <span aria-hidden="true">→</span>
                           </button>
                         </div>
@@ -589,6 +614,7 @@
                   class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
                   class:compact-reply={isCompactUserReply(message)}
                   class:bubble-with-tts={canPlayTutorBubble(message)}
+                  data-interaction-mode={canPlayTutorBubble(message) ? 'button-only' : 'bubble'}
                   data-motion-variant={bubbleMotionVariant(message)}
                 >
                   {#if message.type === 'question'}
@@ -614,7 +640,9 @@
                         class="bubble-tts-control"
                         data-tts-state={ttsState}
                         aria-label={ttsLabelForState(ttsState)}
-                        aria-pressed={ttsState !== 'idle'}
+                        aria-pressed={ttsState === 'playing' || ttsState === 'paused'}
+                        aria-busy={ttsState === 'loading'}
+                        disabled={ttsState === 'loading'}
                         onclick={() => toggleTutorBubbleAudio(message)}
                       >
                         <span class="sr-only">{ttsLabelForState(ttsState)}</span>
@@ -1450,6 +1478,16 @@
     box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 10%, rgba(15, 23, 42, 0.12));
   }
 
+  .bubble-tts-control[data-tts-state='loading'] {
+    border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+    background: color-mix(in srgb, var(--accent-dim) 62%, var(--surface-soft));
+    color: color-mix(in srgb, var(--accent) 52%, var(--text) 48%);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent),
+      0 10px 20px color-mix(in srgb, var(--accent) 12%, rgba(15, 23, 42, 0.1));
+    animation: tts-arm 360ms var(--ease-soft);
+  }
+
   .bubble-tts-control[data-tts-state='playing'] {
     border-color: color-mix(in srgb, var(--accent) 42%, transparent);
     background: color-mix(in srgb, var(--accent-dim) 78%, var(--surface-soft));
@@ -1466,7 +1504,8 @@
   }
 
   .bubble-tts-control[data-tts-state='playing']::after,
-  .bubble-tts-control[data-tts-state='paused']::after {
+  .bubble-tts-control[data-tts-state='paused']::after,
+  .bubble-tts-control[data-tts-state='loading']::after {
     content: '';
     position: absolute;
     inset: 4px;
@@ -1475,8 +1514,16 @@
     opacity: 0.2;
   }
 
+  .bubble-tts-control[data-tts-state='loading']::after {
+    animation: tts-loading-ring 0.9s ease-in-out infinite;
+  }
+
   .bubble-tts-control[data-tts-state='playing']::after {
     animation: tts-pulse 1.1s ease-in-out infinite;
+  }
+
+  .bubble-tts-control:disabled {
+    cursor: default;
   }
 
   .bubble-tts-control:focus-visible {
@@ -1487,6 +1534,10 @@
   .bubble-tts-icon {
     width: 1rem;
     height: 1rem;
+  }
+
+  .bubble-tts-control[data-tts-state='loading'] .bubble-tts-icon {
+    animation: tts-loading-icon 1s ease-in-out infinite;
   }
 
   .bubble-tts-upgrade {
@@ -1868,6 +1919,17 @@
         0 0 0 1px color-mix(in srgb, var(--color-success) 12%, transparent),
         0 16px 30px color-mix(in srgb, var(--color-success) 12%, transparent);
     }
+
+    .bubble[data-interaction-mode='button-only']:hover {
+      transform: none;
+      box-shadow: var(--glass-inset-tile);
+    }
+
+    .bubble.assistant.wrap[data-interaction-mode='button-only']:hover {
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--color-success) 10%, transparent),
+        0 10px 22px color-mix(in srgb, var(--color-success) 10%, transparent);
+    }
   }
 
   .bubble.assistant:active,
@@ -1877,6 +1939,10 @@
 
   .bubble.assistant.wrap:active {
     transform: translateY(-1px) scale(0.988);
+  }
+
+  .bubble[data-interaction-mode='button-only']:active {
+    transform: none;
   }
 
   .bubble-body :global(hr) {
@@ -2555,6 +2621,15 @@
     transform: none;
   }
 
+  .concept-ask-link:disabled {
+    cursor: default;
+    color: var(--text-soft);
+    background: color-mix(in srgb, var(--surface-soft) 82%, var(--accent) 18%);
+    border-color: color-mix(in srgb, var(--border) 78%, var(--accent) 22%);
+    box-shadow: none;
+    opacity: 0.82;
+  }
+
   /* ── Debug ── */
   .debug {
     font: inherit;
@@ -2979,6 +3054,52 @@
     50% {
       transform: scale(1);
       opacity: 0.34;
+    }
+  }
+
+  @keyframes tts-arm {
+    0% {
+      transform: scale(0.92);
+    }
+
+    58% {
+      transform: scale(1.06);
+    }
+
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes tts-loading-ring {
+    0% {
+      transform: scale(0.78);
+      opacity: 0.12;
+    }
+
+    60% {
+      transform: scale(1.02);
+      opacity: 0.3;
+    }
+
+    100% {
+      transform: scale(1.08);
+      opacity: 0.06;
+    }
+  }
+
+  @keyframes tts-loading-icon {
+    0%,
+    100% {
+      transform: scale(1) rotate(0deg);
+    }
+
+    35% {
+      transform: scale(1.08) rotate(-8deg);
+    }
+
+    65% {
+      transform: scale(1.08) rotate(8deg);
     }
   }
 

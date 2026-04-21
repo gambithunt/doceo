@@ -94,7 +94,8 @@ export function buildFallbackTopicShortlist(request: TopicShortlistRequest): Top
     })
     .sort((left, right) => right.score - left.score);
 
-  const bestMatch = scored[0]?.item;
+  const bestScored = scored[0];
+  const bestMatch = bestScored && bestScored.score > 0 ? bestScored.item : null;
   const learnerTopic = {
     id: `shortlist-picked-${normalize(request.subject)}-${normalize(request.studentInput).replace(/[^a-z0-9]+/g, '-')}`,
     title: toTopicLabel(request.studentInput),
@@ -131,6 +132,7 @@ export function buildFallbackTopicShortlist(request: TopicShortlistRequest): Top
     matchedSection:
       bestMatch?.subtopicName ??
       bestMatch?.topicName ??
+      toTopicLabel(request.studentInput) ??
       request.availableTopics[0]?.subtopicName ??
       request.availableTopics[0]?.topicName ??
       request.subject,

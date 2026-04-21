@@ -1,3 +1,5 @@
+import { PROVIDERS } from '$lib/ai/providers';
+
 export interface TokenCounts {
   inputTokens: number;
   outputTokens: number;
@@ -14,13 +16,15 @@ interface Pricing {
   outputPer1M: number;
 }
 
-// USD per 1M tokens (GitHub Models / OpenAI pricing)
-const MODEL_PRICING: Record<string, Pricing> = {
-  'openai/gpt-4.1-nano': { inputPer1M: 0.10, outputPer1M: 0.40 },
-  'openai/gpt-4o-mini': { inputPer1M: 0.15, outputPer1M: 0.60 },
-  'openai/gpt-4.1-mini': { inputPer1M: 0.40, outputPer1M: 1.60 },
-  'openai/gpt-4o': { inputPer1M: 2.50, outputPer1M: 10.00 },
-};
+// USD per 1M tokens, kept in sync with the provider catalog.
+const MODEL_PRICING: Record<string, Pricing> = Object.fromEntries(
+  PROVIDERS.flatMap((provider) =>
+    provider.models.map((model) => [
+      model.id,
+      { inputPer1M: model.inputPer1M, outputPer1M: model.outputPer1M }
+    ] satisfies [string, Pricing])
+  )
+);
 
 const TIER_PRICING: Record<string, Pricing> = {
   fast: { inputPer1M: 0.10, outputPer1M: 0.40 },

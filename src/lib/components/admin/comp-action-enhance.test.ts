@@ -1,14 +1,34 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { createAdminFormEnhance } = vi.hoisted(() => ({
+  createAdminFormEnhance: vi.fn()
+}));
+
+vi.mock('$lib/admin-form-enhance', () => ({
+  createAdminFormEnhance
+}));
+
 import { createAdminCompFormEnhance } from './comp-action-enhance';
 
 describe('createAdminCompFormEnhance', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    createAdminFormEnhance.mockImplementation((options) => options);
+  });
+
   it('updates the current page and invalidates the users route after a successful action', async () => {
     const invalidateUsers = vi.fn().mockResolvedValue(undefined);
     const update = vi.fn().mockResolvedValue(undefined);
-    const enhance = createAdminCompFormEnhance(invalidateUsers);
 
-    await enhance()({
-      result: { type: 'success', status: 200, data: { success: true } },
+    const enhanceOptions = createAdminCompFormEnhance(invalidateUsers) as {
+      onResult: (input: {
+        result: { type: string };
+        update: typeof update;
+      }) => Promise<void>;
+    };
+
+    await enhanceOptions.onResult({
+      result: { type: 'success' },
       update
     });
 
@@ -19,10 +39,16 @@ describe('createAdminCompFormEnhance', () => {
   it('updates the current page without invalidating the users route when the action fails', async () => {
     const invalidateUsers = vi.fn().mockResolvedValue(undefined);
     const update = vi.fn().mockResolvedValue(undefined);
-    const enhance = createAdminCompFormEnhance(invalidateUsers);
 
-    await enhance()({
-      result: { type: 'failure', status: 400, data: { error: 'Invalid values' } },
+    const enhanceOptions = createAdminCompFormEnhance(invalidateUsers) as {
+      onResult: (input: {
+        result: { type: string };
+        update: typeof update;
+      }) => Promise<void>;
+    };
+
+    await enhanceOptions.onResult({
+      result: { type: 'failure' },
       update
     });
 

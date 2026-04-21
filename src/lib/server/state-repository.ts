@@ -81,6 +81,7 @@ export async function loadAppState(profileId: string): Promise<AppState> {
     return normalizeAppState({
       ...base,
       profile: { ...base.profile, id: profileId },
+      curriculum: snapshotState.curriculum,
       // Preserve onboarding data from the snapshot so subject selections,
       // education type, and other onboarding fields survive the session-row
       // reconstruction path instead of falling back to createInitialState defaults.
@@ -88,6 +89,8 @@ export async function loadAppState(profileId: string): Promise<AppState> {
         ? snapshotState.onboarding
         : base.onboarding,
       learnerProfile: learnerProfileResult.data?.profile_json ?? base.learnerProfile,
+      lessons: snapshotState.lessons,
+      questions: snapshotState.questions,
       lessonSessions: sessionRows.map((row) => row.session_json),
       revisionTopics: (revisionResult.data ?? []).map(
         (row: { topic_json: AppState['revisionTopics'][number] }) => row.topic_json
@@ -240,6 +243,7 @@ export async function logAiInteraction(
     mode?: string;
     modelTier?: string;
     model?: string;
+    latencyMs?: number | null;
   }
 ): Promise<void> {
   const supabase = createServerSupabaseAdmin();
@@ -280,6 +284,7 @@ export async function logAiInteraction(
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     cost_usd: costUsd,
+    latency_ms: meta?.latencyMs ?? null,
     request_payload: wrapPayload(requestPayload),
     response_payload: wrapPayload(response),
     created_at: new Date().toISOString()

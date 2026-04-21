@@ -6,6 +6,7 @@
   import { createInitialState } from '$lib/data/platform';
   import { supabase } from '$lib/supabase';
   import { appState } from '$lib/stores/app-state';
+  import { THEME_BOOTSTRAP_SCRIPT } from '$lib/theme';
   import type { AppState } from '$lib/types';
 
   let { children } = $props();
@@ -62,6 +63,10 @@
     unsubscribe();
   });
 </script>
+
+<svelte:head>
+  {@html `<script>${THEME_BOOTSTRAP_SCRIPT}</script>`}
+</svelte:head>
 
 {#if ready}
   {@render children()}

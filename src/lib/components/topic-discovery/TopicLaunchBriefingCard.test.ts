@@ -53,7 +53,8 @@ describe('TopicLaunchBriefingCard', () => {
     });
 
     expect(screen.getByRole('heading', { name: 'Equivalent Fractions' })).toBeInTheDocument();
-    expect(screen.getByText('Synthesizing equations...')).toBeInTheDocument();
+    expect(screen.getByText('Synthesizing equations')).toBeInTheDocument();
+    expect(screen.getByTestId('launch-briefing-status-dots')).toBeInTheDocument();
   });
 
   it('keeps the content visible when reduced motion is preferred', () => {
@@ -69,7 +70,7 @@ describe('TopicLaunchBriefingCard', () => {
     });
 
     expect(screen.getByRole('heading', { name: 'Equivalent Fractions' })).toBeInTheDocument();
-    expect(screen.getByText('Synthesizing equations...')).toBeInTheDocument();
+    expect(screen.getByText('Synthesizing equations')).toBeInTheDocument();
   });
 
   it('rotates the overlay spinner phrase after 1.5 seconds', async () => {
@@ -84,11 +85,11 @@ describe('TopicLaunchBriefingCard', () => {
       }
     });
 
-    expect(screen.getByText('Synthesizing equations...')).toBeInTheDocument();
+    expect(screen.getByText('Synthesizing equations')).toBeInTheDocument();
 
     await vi.advanceTimersByTimeAsync(1500);
 
-    expect(screen.getByText('Calculating patterns...')).toBeInTheDocument();
+    expect(screen.getByText('Calculating patterns')).toBeInTheDocument();
   });
 
   it('keeps phrase rotation inside the current subject family', async () => {
@@ -104,7 +105,7 @@ describe('TopicLaunchBriefingCard', () => {
     });
 
     await vi.advanceTimersByTimeAsync(3000);
-    expect(screen.getByText('Crunching variables...')).toBeInTheDocument();
+    expect(screen.getByText('Crunching variables')).toBeInTheDocument();
 
     rerender({
       family: 'language',
@@ -113,9 +114,9 @@ describe('TopicLaunchBriefingCard', () => {
       supportingLine: 'Finding the clearest way in.'
     });
 
-    expect(screen.getByText('Perusing themes...')).toBeInTheDocument();
+    expect(screen.getByText('Perusing themes')).toBeInTheDocument();
     await vi.advanceTimersByTimeAsync(1500);
-    expect(screen.getByText('Inferring verbs...')).toBeInTheDocument();
+    expect(screen.getByText('Inferring verbs')).toBeInTheDocument();
   });
 
   it('keeps the animated dots rendered beside the status line while phrases rotate', async () => {

@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
+import { logAiInteractionForRequest } from '$lib/server/ai-telemetry';
 import type { RevisionEvaluationPayload } from '$lib/types';
 
 interface RevisionEvaluateRequest {
@@ -113,6 +114,16 @@ export async function POST({ request, fetch }) {
       provider: aiResult.payload.provider,
       model: aiResult.payload.model
     };
+
+    await logAiInteractionForRequest({
+      request,
+      requestPayload: JSON.stringify(evalRequest),
+      responsePayload: JSON.stringify(aiResult.payload),
+      provider: aiResult.payload.provider,
+      mode: 'revision-evaluate',
+      model: aiResult.payload.model,
+      latencyMs: (aiResult.payload as { latencyMs?: number }).latencyMs ?? null
+    });
 
     return json(evaluationResult);
   } catch (error) {

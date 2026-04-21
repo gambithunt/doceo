@@ -314,6 +314,7 @@ interface GithubModelsResponse {
       content: string;
     };
   }>;
+  usage?: Record<string, unknown>;
 }
 
 interface GithubModelsMessage {
@@ -1197,7 +1198,8 @@ async function callGithubModels(
   endpoint: string,
   token: string,
   body: GithubModelsRequestBody
-): Promise<string | null> {
+): Promise<{ content: string | null; usage: Record<string, unknown> | null; latencyMs: number }> {
+  const startedAt = Date.now();
   const upstream = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -1214,7 +1216,11 @@ async function callGithubModels(
   }
 
   const payload = (await upstream.json()) as GithubModelsResponse;
-  return payload.choices[0]?.message.content ?? null;
+  return {
+    content: payload.choices[0]?.message.content ?? null,
+    usage: payload.usage && typeof payload.usage === 'object' ? payload.usage : null,
+    latencyMs: Date.now() - startedAt
+  };
 }
 
 function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: string): GithubModelsRequestBody {
@@ -1276,71 +1282,78 @@ function buildModeResponse(
   request: EdgePayload['request'],
   content: string,
   modelTier: ModelTier,
-  model: string
+  model: string,
+  usage: Record<string, unknown> | null,
+  latencyMs: number
 ): Record<string, unknown> | null {
+  const telemetry = {
+    ...(usage ? { usage } : {}),
+    latencyMs
+  };
+
   switch (mode) {
     case 'tutor': {
       const response = parseTutorResponse(content);
       return response
-        ? { response, provider: PROVIDER, modelTier, model }
+        ? { response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'subject-hints': {
       const response = parseSubjectHintsResponse(content);
       return response
-        ? { response, provider: PROVIDER, modelTier, model }
+        ? { response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'topic-shortlist': {
       const response = parseTopicShortlistResponse(content);
       return response
-        ? { response, provider: PROVIDER, modelTier, model }
+        ? { response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'lesson-selector': {
       const response = parseLessonSelectorResponse(content);
       return response
-        ? { response, provider: PROVIDER, modelTier, model }
+        ? { response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'lesson-plan': {
       const response = parseLessonPlanResponse(content, request as LessonPlanRequest);
       return response
-        ? { ...response, provider: PROVIDER, modelTier, model }
+        ? { ...response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'lesson-chat': {
       const response = parseLessonChatResponse(content);
       return response
-        ? { ...response, provider: PROVIDER, modelTier, model }
+        ? { ...response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'subject-verify': {
       const result = parseSubjectVerifyResponse(content);
       return result
-        ? { result, provider: PROVIDER, modelTier, model }
+        ? { result, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'institution-verify': {
       const result = parseInstitutionVerifyResponse(content);
       return result
-        ? { ...result, provider: PROVIDER, modelTier, model }
+        ? { ...result, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'programme-verify': {
       const result = parseProgrammeVerifyResponse(content);
       return result
-        ? { ...result, provider: PROVIDER, modelTier, model }
+        ? { ...result, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'revision-pack': {
       const response = parseRevisionPackResponse(content, request as RevisionPackEdgeRequest);
       return response
-        ? { ...response, provider: PROVIDER, modelTier, model }
+        ? { ...response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
     case 'revision-evaluate': {
-      return { content, provider: PROVIDER, modelTier, model };
+      return { content, provider: PROVIDER, modelTier, model, ...telemetry };
     }
   }
 }
@@ -1388,13 +1401,22 @@ Deno.serve(async (request) => {
 
   try {
     const githubRequest = buildModeRequest(mode, payload.request, resolvedModel);
-    const content = await callGithubModels(githubEndpoint, githubToken, githubRequest);
+    const result = await callGithubModels(githubEndpoint, githubToken, githubRequest);
+    const content = result.content;
 
     if (!content) {
       return jsonResponse({ error: 'GitHub Models returned no content.' }, 500);
     }
 
-    const responseBody = buildModeResponse(mode, payload.request, content, resolvedModelTier, resolvedModel);
+    const responseBody = buildModeResponse(
+      mode,
+      payload.request,
+      content,
+      resolvedModelTier,
+      resolvedModel,
+      result.usage,
+      result.latencyMs
+    );
 
     if (!responseBody) {
       return jsonResponse({ error: `GitHub Models returned invalid ${mode} data.` }, 500);
@@ -1406,12 +1428,25 @@ Deno.serve(async (request) => {
         provider: PROVIDER,
         mode,
         modelTier: resolvedModelTier,
-        model: resolvedModel
+        model: resolvedModel,
+        latencyMs: result.latencyMs,
+        inputTokens: Number(result.usage?.prompt_tokens ?? result.usage?.input_tokens ?? 0),
+        outputTokens: Number(result.usage?.completion_tokens ?? result.usage?.output_tokens ?? 0)
       })
     );
 
     return jsonResponse(responseBody);
   } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'ai_edge_failure',
+        provider: PROVIDER,
+        mode,
+        modelTier: resolvedModelTier,
+        model: resolvedModel,
+        error: error instanceof Error ? error.message : 'AI request failed.'
+      })
+    );
     return jsonResponse(
       {
         error: error instanceof Error ? error.message : 'AI request failed.'

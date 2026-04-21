@@ -85,6 +85,157 @@ export function getGradeBand(grade: string): GradeBand {
   return 'senior';
 }
 
+function buildBoundedPracticePrompt(topicTitle: string, subjectName: string, lens: ReturnType<typeof getSubjectLens>): string {
+  return [
+    `Use the worked example as a model for **${topicTitle}** in ${subjectName}.`,
+    ``,
+    `**Task:** Name the ${lens.conceptWord} or rule you would use, point to the clue, value, quote, or piece of evidence that makes it fit, and show the first step clearly.`,
+    ``,
+    `**Response frame:**`,
+    `1. Rule or ${lens.conceptWord}: ...`,
+    `2. Clue or evidence from the lesson: ...`,
+    `3. First step: ...`,
+    ``,
+    `Stay with the information already given in the lesson. Do not start by inventing a separate practical example.`
+  ].join('\n');
+}
+
+function buildBoundedTransferChallenge(topicTitle: string, subjectName: string, lens: ReturnType<typeof getSubjectLens>): string {
+  return [
+    `Try a slightly changed version of **${topicTitle}** in ${subjectName}.`,
+    ``,
+    `**Task:** Say what stays the same from the original method or idea, what changes in this new case, and what first adapted step you would take.`,
+    ``,
+    `**Response frame:**`,
+    `1. What stays the same: ...`,
+    `2. What changes: ...`,
+    `3. First adapted step with ${lens.evidenceWord}: ...`,
+    ``,
+    `Keep your answer tied to the given task or case, not an unrelated example.`
+  ].join('\n');
+}
+
+const LEGACY_GENERIC_STAGE_PROMPT_PATTERN = /what feels clear so far\?\s*tell me where you want to slow down\./i;
+const LEGACY_GENERIC_PRACTICE_PATTERN = /apply (?:what you have learned about )?.+?to a similar problem/i;
+const LEGACY_GENERIC_TRANSFER_PATTERN = /can you apply .+?to a problem you have not seen before\?/i;
+const LEGACY_GENERIC_CHECK_PATTERN = /put it in your own words|main idea here/i;
+
+function extractLessonTopicName(lesson: Pick<Lesson, 'title'>): string {
+  const [, rest = ''] = lesson.title.split(':');
+  const candidate = rest.trim() || lesson.title.trim();
+  return candidate.length > 0 ? candidate : 'this topic';
+}
+
+function formatConceptPromptOptions(lesson: Lesson): string {
+  const names = lesson.keyConcepts?.map((concept) => `**${concept.name}**`).slice(0, 3) ?? [];
+
+  if (names.length === 0) {
+    return 'the key idea above';
+  }
+
+  if (names.length === 1) {
+    return names[0]!;
+  }
+
+  if (names.length === 2) {
+    return `${names[0]} or ${names[1]}`;
+  }
+
+  return `${names[0]}, ${names[1]}, or ${names[2]}`;
+}
+
+export function buildStageLearnerPrompt(lesson: Lesson, stage: LessonStage): string {
+  const topicName = extractLessonTopicName(lesson);
+
+  if (stage === 'orientation') {
+    return `What do you already connect with in **${topicName}**? Name one idea that feels familiar or one question you want answered first.`;
+  }
+
+  if (stage === 'concepts') {
+    return `Which idea should we check first: ${formatConceptPromptOptions(lesson)}? Name one and tell me the key rule in your own words.`;
+  }
+
+  if (stage === 'construction') {
+    return 'Using the steps above, what should you identify first before you do anything else? If you want help, say **rule**, **first step**, or **example**.';
+  }
+
+  if (stage === 'examples') {
+    return 'In the worked example above, which clue told you what move to make first?';
+  }
+
+  if (stage === 'practice') {
+    return 'Start with the task above. What rule, clue, or first step will you use? If you want help, say **rule**, **first step**, or **example**.';
+  }
+
+  if (stage === 'check') {
+    return 'Answer the task above. Start by naming the rule, clue, or piece of evidence you will use first. Then show the first step.';
+  }
+
+  return 'What is the first move you would make from here?';
+}
+
+function canonicalStageTeachingContent(lesson: Lesson, stage: LessonStage, teachingIndex: number): string | null {
+  const assistantMessages = buildInitialLessonMessages(lesson, stage).filter(
+    (message) => message.role === 'assistant' && message.type === 'teaching'
+  );
+
+  return assistantMessages[teachingIndex - 1]?.content ?? null;
+}
+
+function shouldRepairStageTeachingMessage(
+  message: Pick<LessonMessage, 'content' | 'stage'>,
+  teachingIndex: number
+): boolean {
+  if (message.stage === 'concepts' && teachingIndex === 2) {
+    return LEGACY_GENERIC_STAGE_PROMPT_PATTERN.test(message.content);
+  }
+
+  if (message.stage === 'practice' && teachingIndex === 1) {
+    return (
+      LEGACY_GENERIC_STAGE_PROMPT_PATTERN.test(message.content) ||
+      LEGACY_GENERIC_PRACTICE_PATTERN.test(message.content)
+    );
+  }
+
+  if (message.stage === 'check' && teachingIndex === 1) {
+    return LEGACY_GENERIC_CHECK_PATTERN.test(message.content);
+  }
+
+  if (
+    (message.stage === 'orientation' || message.stage === 'construction' || message.stage === 'examples') &&
+    teachingIndex === 1
+  ) {
+    return LEGACY_GENERIC_STAGE_PROMPT_PATTERN.test(message.content);
+  }
+
+  return false;
+}
+
+function buildCheckQuestionOptions(lens: ReturnType<typeof getSubjectLens>): QuestionOption[] {
+  return [
+    {
+      id: 'a',
+      label: 'A',
+      text: `Name the ${lens.conceptWord} or rule first, then use evidence from the question.`
+    },
+    {
+      id: 'b',
+      label: 'B',
+      text: 'Start with a practical example from daily life, even if the question already gives enough information.'
+    },
+    {
+      id: 'c',
+      label: 'C',
+      text: 'Write only the final answer and add steps later if someone asks for them.'
+    },
+    {
+      id: 'd',
+      label: 'D',
+      text: 'Repeat the topic name and hope the marker can infer the method.'
+    }
+  ];
+}
+
 export function getSubjectLens(subjectName: string, grade?: string): {
   conceptWord: string;
   actionWord: string;
@@ -496,7 +647,7 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
         id: `msg-${crypto.randomUUID()}`,
         role: 'assistant',
         type: 'teaching',
-        content: `${lesson.concepts.body}\n\nWhat feels clear so far? Tell me where you want to slow down.`,
+        content: `${lesson.concepts.body}\n\n${buildStageLearnerPrompt(lesson, 'concepts')}`,
         stage,
         timestamp: isoNow(),
         metadata: defaultMeta
@@ -527,7 +678,7 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
         id: `msg-${crypto.randomUUID()}`,
         role: 'assistant',
         type: 'teaching',
-        content: `${lesson.practicePrompt.body}\n\nPut it in your own words. What would you say is the main idea here?`,
+        content: `${lesson.practicePrompt.body}\n\n${buildStageLearnerPrompt(lesson, 'check')}`,
         stage,
         timestamp: isoNow(),
         metadata: defaultMeta
@@ -546,10 +697,7 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
 
   // ── Default: orientation / construction / examples / practice / complete ──
   const intro = getLessonSectionForStage(lesson, stage);
-  const closingPrompt =
-    stage === 'orientation'
-      ? 'Does this connect for you? Ask me anything — or tell me what stands out.'
-      : 'What feels clear so far? Tell me where you want to slow down.';
+  const closingPrompt = buildStageLearnerPrompt(lesson, stage);
 
   return [
     buildStageStartMessage(stage),
@@ -563,6 +711,41 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
       metadata: defaultMeta
     }
   ];
+}
+
+export function repairLessonSessionMessages(
+  lessonSession: LessonSession,
+  lesson: Lesson
+): LessonSession {
+  const teachingCounts: Partial<Record<LessonStage, number>> = {};
+
+  return {
+    ...lessonSession,
+    messages: lessonSession.messages.map((message) => {
+      if (message.role !== 'assistant' || message.type !== 'teaching') {
+        return message;
+      }
+
+      const stage = message.stage;
+      teachingCounts[stage] = (teachingCounts[stage] ?? 0) + 1;
+      const teachingIndex = teachingCounts[stage] ?? 1;
+
+      if (!shouldRepairStageTeachingMessage(message, teachingIndex)) {
+        return message;
+      }
+
+      const repairedContent = canonicalStageTeachingContent(lesson, stage, teachingIndex);
+
+      if (!repairedContent) {
+        return message;
+      }
+
+      return {
+        ...message,
+        content: repairedContent
+      };
+    })
+  };
 }
 
 export function buildLessonSessionFromTopic(
@@ -658,7 +841,7 @@ export function buildDynamicLessonFromTopic(input: {
     },
     practicePrompt: {
       title: 'Active Practice',
-      body: `Now it's your turn. Try applying **${topicTitle}** to a similar problem. Attempt it first before checking. Write out each step and explain why you made each move. If you get stuck, name the exact step where you lost the thread — that is usually where the ${lens.conceptWord} needs revisiting.`
+      body: buildBoundedPracticePrompt(topicTitle, input.subjectName, lens)
     },
     commonMistakes: {
       title: 'Common Mistakes',
@@ -666,7 +849,7 @@ export function buildDynamicLessonFromTopic(input: {
     },
     transferChallenge: {
       title: 'Transfer Challenge',
-      body: `Can you apply **${topicTitle}** in a slightly different context? Think about a situation in ${input.subjectName} where the same ${lens.conceptWord} shows up but looks different on the surface. Identify the pattern, adapt the rule, and explain why it still applies. This is how you move from knowing to understanding.`
+      body: buildBoundedTransferChallenge(topicTitle, input.subjectName, lens)
     },
     summary: {
       title: 'Summary',
@@ -714,37 +897,50 @@ function buildDynamicConceptItems(
 }
 
 export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: string, topicTitle: string): Question[] {
+  const lens = getSubjectLens(subjectName, lesson.grade);
+  const options = buildCheckQuestionOptions(lens);
+
   return [
     {
       id: lesson.practiceQuestionIds[0],
       lessonId: lesson.id,
-      type: 'short-answer',
-      prompt: `Explain how ${topicTitle} works in ${subjectName}. What is the key rule and why does it matter?`,
-      expectedAnswer: `explain how ${slugify(topicTitle)} works`,
-      acceptedAnswers: [],
-      rubric: `A strong answer names the key rule for ${topicTitle}, explains why it works, and does not just repeat the topic name. The learner should show understanding, not memorisation.`,
-      explanation: `Understanding ${topicTitle} means being able to say what the rule is, why it applies, and how to use it — not just naming the topic.`,
+      type: 'multiple-choice',
+      prompt: `Which response shows the best first move when you answer a question on **${topicTitle}**?`,
+      expectedAnswer: options[0]!.label,
+      acceptedAnswers: [options[0]!.label, options[0]!.text],
+      rubric: `The strongest answer starts by naming the ${lens.conceptWord} or rule and then grounds the response in the information already given in the question. It should not rely on a random practical example, a guessed final answer, or repeating the topic name.`,
+      explanation: `A good first move is concrete: identify the rule or ${lens.conceptWord} you are using, then point to the clue or evidence that makes it fit.`,
       hintLevels: [
-        `Start by naming the main rule or pattern for ${topicTitle}.`,
-        `Then explain what that rule means in ${subjectName} and when you would use it.`
+        `Look for the option that starts with the rule, method, or ${lens.conceptWord}.`,
+        `Avoid options that jump to a practical example, a final answer, or the topic name on its own.`
       ],
       misconceptionTags: [slugify(topicTitle), slugify(subjectName)],
       difficulty: 'foundation',
       topicId: lesson.topicId,
-      subtopicId: lesson.subtopicId
+      subtopicId: lesson.subtopicId,
+      options
     },
     {
       id: lesson.masteryQuestionIds[0],
       lessonId: lesson.id,
       type: 'step-by-step',
-      prompt: `Show how you would apply ${topicTitle} to solve a problem in ${subjectName}. Walk through your reasoning step by step.`,
-      expectedAnswer: `apply ${slugify(topicTitle)} step by step`,
+      prompt: [
+        `Use this task for **${topicTitle}** in ${subjectName}:`,
+        ``,
+        lesson.practicePrompt.body,
+        ``,
+        `Now write:`,
+        `1. the ${lens.conceptWord} or rule you would use,`,
+        `2. the clue, value, quote, or piece of evidence you would use,`,
+        `3. the first step you would take.`
+      ].join('\n'),
+      expectedAnswer: `name the ${slugify(lens.conceptWord)} and show the first step for ${slugify(topicTitle)}`,
       acceptedAnswers: [],
-      rubric: `The answer should show at least two steps of reasoning connected to ${topicTitle}, not just a final answer. The learner must justify each step.`,
-      explanation: `Applying ${topicTitle} means showing the method, not just the result. Each step should be explained so the reasoning is visible.`,
+      rubric: `A strong answer completes all three parts in order: it names the correct ${lens.conceptWord} or rule, points to relevant evidence from the task, and shows the first step clearly. It should not skip straight to a final answer or drift into an unrelated practical example.`,
+      explanation: `A real response to ${topicTitle} starts with the method and the evidence from the given task. Once those are clear, the first step becomes checkable instead of guessed.`,
       hintLevels: [
-        `Write down what ${topicTitle} is asking you to do first.`,
-        `Then apply the rule one step at a time and explain each move.`
+        `Start by naming the ${lens.conceptWord} or rule before you do anything else.`,
+        `Use the task above and show the first step, not the whole final answer.`
       ],
       misconceptionTags: [slugify(`${topicTitle}-application`)],
       difficulty: 'core',

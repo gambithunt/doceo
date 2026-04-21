@@ -178,4 +178,22 @@ describe('lesson-chat', () => {
     expect(prompt).toContain('Do not stay on the exact same concepts-stage checkpoint more than 2 times');
     expect(prompt).toContain('Soft-Stuck Same-Point Stays: 2');
   });
+
+  it('buildSystemPrompt tells the tutor to ask concrete answerable questions before open explanation', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, { currentStage: 'check' });
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: session,
+      message: 'continue',
+      messageType: 'response'
+    });
+
+    expect(prompt).toContain('Ask a concrete, answerable question first');
+    expect(prompt).toContain('Do not default to asking for a practical or real-world example');
+    expect(prompt).toContain('identify, choose, solve, quote, classify, correct, or complete the next step');
+  });
 });

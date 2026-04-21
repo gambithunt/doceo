@@ -118,6 +118,7 @@ export async function POST({ request, fetch }) {
       edge.payload.provider,
       {
         mode: 'revision-pack',
+        latencyMs: (edge.payload as { latencyMs?: number }).latencyMs ?? null,
         modelTier: edge.payload.modelTier,
         model: edge.payload.model
       }

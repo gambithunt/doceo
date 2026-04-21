@@ -40,10 +40,17 @@ export function createLessonPlanSystemPrompt(): string {
     '  concepts      — The 2-3 core concepts or rules. Connect each one to the previous. No flat lists — each idea needs a brief "why".',
     '  guidedConstruction — Step-by-step method. At least 4 numbered steps (format: **Step N.** ...). Show explicit reasoning at each step.',
     '  workedExample — One fully worked, specific example with actual numbers, terms, or references for this exact topic. Show every step.',
-    '  practicePrompt — A direct challenge for the student to try themselves. Specific enough that they know exactly what to do.',
+    '  practicePrompt — A self-contained practice task. Include the information, expression, sentence, short passage, case, or scenario needed to begin. Specific enough that they know exactly what to do.',
     '  commonMistakes — The 2-3 most common errors students make with this specific topic. Be concrete, not generic.',
-    '  transferChallenge — A harder application that asks the student to use the same idea in a slightly different context.',
+    '  transferChallenge — A harder but still self-contained application. Change one condition or context, but keep the task answerable from the prompt itself.',
     '  summary       — Three-part structure: (1) **Core rule:** one sentence. (2) **Watch out for:** one sentence naming the main mistake. (3) **Transfer:** one sentence stating what mastery unlocks.',
+    '',
+    'Practice and transfer rules:',
+    '  - Do not ask the learner to invent their own practical example as the main task.',
+    '  - Do not use broad wording like "Explain how this works" as the entire question.',
+    '  - Do not use generic learner check lines like "What feels clear so far?" or "Tell me where you want to slow down." inside lesson content.',
+    '  - Prefer clear task verbs: identify, solve, calculate, quote, label, rewrite, compare, classify, correct, complete, justify.',
+    '  - Ask one thing at a time, or give a short numbered response frame.',
     '',
     'All bodies must be non-empty, substantive (not placeholder text), and use markdown where helpful (bold for key terms, numbered steps for procedures).',
     'Grade-appropriate means: Grade 4-6 uses concrete whole numbers and simple vocabulary; Grade 7-9 introduces formal notation gradually; Grade 10-12 uses full formal language, proofs where relevant, and exam-style phrasing.',
@@ -92,11 +99,33 @@ const REQUIRED_SECTIONS = [
 
 type SectionKey = typeof REQUIRED_SECTIONS[number];
 
+const GENERIC_LEARNER_CHECK_PATTERN = /what feels clear so far|tell me where you want to slow down/i;
+const GENERIC_PRACTICE_PATTERN = /apply (?:what you have learned about )?.+?to a similar problem/i;
+const GENERIC_TRANSFER_PATTERN = /can you apply .+?to a problem you have not seen before\?/i;
+
 function isValidSection(value: unknown): value is LessonSection {
   if (!value || typeof value !== 'object') return false;
   const s = value as Record<string, unknown>;
   return typeof s.title === 'string' && s.title.length > 0
     && typeof s.body === 'string' && s.body.length > 0;
+}
+
+function usesLegacyGenericPrompt(section: LessonSection, key: SectionKey): boolean {
+  const body = section.body.trim();
+
+  if (GENERIC_LEARNER_CHECK_PATTERN.test(body)) {
+    return true;
+  }
+
+  if (key === 'practicePrompt' && GENERIC_PRACTICE_PATTERN.test(body)) {
+    return true;
+  }
+
+  if (key === 'transferChallenge' && GENERIC_TRANSFER_PATTERN.test(body)) {
+    return true;
+  }
+
+  return false;
 }
 
 function isValidConceptItem(value: unknown): value is ConceptItem {
@@ -127,6 +156,7 @@ export function parseLessonPlanResponse(
   // Validate all 9 required sections
   for (const key of REQUIRED_SECTIONS) {
     if (!isValidSection(parsed[key])) return null;
+    if (usesLegacyGenericPrompt(parsed[key] as LessonSection, key)) return null;
   }
 
   // Build a base dynamic lesson for IDs, grade, subjectId, keyConcepts fallback

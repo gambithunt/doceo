@@ -205,7 +205,7 @@ export async function getAdminKpis(): Promise<AdminKpi> {
   const completionRate = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
 
   const aiSpendToday = (aiInteractionsResult.data ?? []).reduce(
-    (sum, row) => sum + (typeof row.cost_usd === 'number' ? row.cost_usd : 0),
+    (sum, row) => sum + toNumber(row.cost_usd),
     0
   );
 
@@ -1003,7 +1003,7 @@ export async function getAiSpendByRoute(since: Date): Promise<Array<{
     const route = (row.mode as string | null) ?? 'lesson-chat';
     const entry = routeStats.get(route) ?? { requests: 0, cost: 0 };
     entry.requests++;
-    entry.cost += typeof row.cost_usd === 'number' ? row.cost_usd : 0;
+    entry.cost += toNumber(row.cost_usd);
     routeStats.set(route, entry);
   }
 

@@ -30,10 +30,11 @@ export async function POST({ request, fetch }) {
   await logAiInteraction(
     payload.profileId,
     JSON.stringify(payload.request),
-    JSON.stringify(functionPayload.response),
+    JSON.stringify(functionPayload),
     functionPayload.provider,
     {
       mode: 'tutor',
+      latencyMs: (functionPayload as { latencyMs?: number }).latencyMs ?? null,
       modelTier: functionPayload.modelTier,
       model: functionPayload.model
     }
