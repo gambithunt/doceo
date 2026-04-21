@@ -77,7 +77,7 @@ export async function requireAdminSession(request: Request): Promise<AdminSessio
   const { data: profile } = await admin
     .from('profiles')
     .select('id, role')
-    .eq('id', user.id)
+    .eq('auth_user_id', user.id)
     .maybeSingle<{ id: string; role: string }>();
 
   if (!isAdminRole(profile?.role)) {

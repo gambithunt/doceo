@@ -151,6 +151,26 @@ describe('requireAdminSession', () => {
     });
   });
 
+  it('matches the admin profile through auth_user_id instead of assuming profiles.id equals auth uid', async () => {
+    mockUserClient('auth-user-1');
+    const { select, eq } = mockAdminProfile({ id: 'profile-1', role: 'admin' });
+
+    const result = await requireAdminSession(
+      new Request('http://localhost/admin', {
+        headers: {
+          Authorization: 'Bearer header-token'
+        }
+      })
+    );
+
+    expect(select).toHaveBeenCalledWith('id, role');
+    expect(eq).toHaveBeenCalledWith('auth_user_id', 'auth-user-1');
+    expect(result).toEqual({
+      authUserId: 'auth-user-1',
+      profileId: 'profile-1'
+    });
+  });
+
   it('fails closed when no admin transport token is present', async () => {
     await expect(requireAdminSession(new Request('http://localhost/admin'))).rejects.toMatchObject({
       status: 303,

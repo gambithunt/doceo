@@ -2,6 +2,7 @@
   import '../app.css';
   import { browser } from '$app/environment';
   import { onDestroy, onMount } from 'svelte';
+  import { createAdminSessionTokenSync } from '$lib/admin-session-token-sync';
   import { createInitialState } from '$lib/data/platform';
   import { supabase } from '$lib/supabase';
   import { appState } from '$lib/stores/app-state';
@@ -30,15 +31,25 @@
     })();
 
     if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
+      const tokenSync = createAdminSessionTokenSync(document, window.location.protocol);
+
+      let disposeTokenSync: (() => void) | null = null;
+
+      void tokenSync
+        .initialize(supabase.auth, () => {
           void appState.initializeRemoteState();
-        }
-      });
+        })
+        .then((dispose) => {
+          if (active) {
+            disposeTokenSync = dispose;
+          } else {
+            dispose();
+          }
+        });
 
       return () => {
         active = false;
-        subscription.unsubscribe();
+        disposeTokenSync?.();
       };
     }
 
