@@ -3,6 +3,7 @@ import {
   buildDynamicLessonFromTopic,
   buildDynamicQuestionsForLesson
 } from '$lib/lesson-system';
+import { validateConceptRecords } from '$lib/lesson-concept-contract';
 import type {
   ConceptItem,
   Lesson,
@@ -104,10 +105,22 @@ function createV2LessonPlanSystemPrompt(): string {
     'Return JSON only — no markdown wrapper, no explanation, just a single valid JSON object.',
     '',
     'The JSON object must contain exactly these top-level keys:',
-    '  start, loops, synthesis, independentAttempt, exitCheck',
+    '  start, concepts, loops, synthesis, independentAttempt, exitCheck',
     '',
     '"start", "synthesis", "independentAttempt", and "exitCheck" must each be objects with:',
     '  title (string), body (string)',
+    '',
+    '"concepts" must be an array with 2 to 4 items, matching the teaching order of the loops.',
+    'Each concept object must contain these required keys:',
+    '  name (string),',
+    '  one_line_definition (string),',
+    '  example (string),',
+    '  quick_check (string),',
+    '  concept_type (string),',
+    '  curriculum_alignment (object with topic_match, grade_match, alignment_note)',
+    '',
+    'Each concept object may also include:',
+    '  why_it_matters, prerequisites, common_misconception, extended_example, difficulty_level, synonyms, tags, visual_hint, follow_up_questions',
     '',
     '"loops" must be an array with 2 to 4 items, targeting 3 by default.',
     'Each loop object must contain:',
@@ -121,6 +134,7 @@ function createV2LessonPlanSystemPrompt(): string {
     '',
     'Loop design rules:',
     '  - Each loop should teach one tightly bounded concept.',
+    '  - Each loop title must match the corresponding concept name in the concepts array.',
     '  - The example must be specific and worked enough that the learner can imitate the move.',
     '  - The learnerTask must be self-contained and answerable from the prompt.',
     '  - The retrievalCheck must test the same concept, not a different skill.',
@@ -290,21 +304,31 @@ function buildLegacySectionsFromV2(flowV2: LessonFlowV2Artifact): Pick<
   | 'transferChallenge'
   | 'summary'
 > {
+  const concepts = flowV2.concepts && flowV2.concepts.length > 0
+    ? flowV2.concepts
+    : buildConceptItemsFromLoops(flowV2.loops);
+
   return {
     orientation: flowV2.start,
     mentalModel: flowV2.loops[0]?.teaching ?? flowV2.start,
     concepts: {
       title: 'Core Concepts',
-      body: flowV2.loops.map((loop) => `- **${loop.title}:** ${loop.mustHitConcepts.join(', ')}`).join('\n')
+      body: concepts
+        .map((concept) => `- **${concept.name}:** ${concept.oneLineDefinition ?? concept.summary}`)
+        .join('\n')
     },
     guidedConstruction: flowV2.loops[0]?.learnerTask ?? flowV2.start,
     workedExample: flowV2.loops[0]?.example ?? flowV2.synthesis,
     practicePrompt: flowV2.independentAttempt,
     commonMistakes: {
       title: 'Critical Misconceptions',
-      body: flowV2.loops
-        .map((loop) => `- **${loop.title}:** ${loop.criticalMisconceptionTags.join(', ')}`)
-        .join('\n')
+      body: concepts.some((concept) => concept.commonMisconception)
+        ? concepts
+          .map((concept) => `- **${concept.name}:** ${concept.commonMisconception ?? 'Review the key misconception for this idea.'}`)
+          .join('\n')
+        : flowV2.loops
+          .map((loop) => `- **${loop.title}:** ${loop.criticalMisconceptionTags.join(', ')}`)
+          .join('\n')
     },
     transferChallenge: flowV2.exitCheck,
     summary: flowV2.synthesis
@@ -316,7 +340,10 @@ function buildConceptItemsFromLoops(loops: LessonFlowV2Loop[]): ConceptItem[] {
     name: loop.title,
     summary: loop.mustHitConcepts.join(', '),
     detail: loop.teaching.body,
-    example: loop.example.body
+    example: loop.example.body,
+    oneLineDefinition: loop.mustHitConcepts[0] ?? loop.title,
+    quickCheck: loop.retrievalCheck.body,
+    conceptType: 'loop_concept'
   }));
 }
 
@@ -358,12 +385,21 @@ function parseV2LessonPlan(
   parsed: Record<string, unknown>,
   request: LessonPlanRequest
 ): LessonPlanResponse | null {
+  const conceptValidation = validateConceptRecords(parsed.concepts, {
+    topicTitle: request.topicTitle,
+    grade: request.student.grade,
+    subject: request.subject
+  });
+
   if (
     !isValidSection(parsed.start) ||
+    conceptValidation.hardFailures.length > 0 ||
+    conceptValidation.softFailures.length > 0 ||
     !Array.isArray(parsed.loops) ||
     parsed.loops.length < 2 ||
     parsed.loops.length > 4 ||
     !parsed.loops.every(isValidLoop) ||
+    conceptValidation.concepts.length !== parsed.loops.length ||
     !isValidSection(parsed.synthesis) ||
     !isValidSection(parsed.independentAttempt) ||
     !isValidSection(parsed.exitCheck)
@@ -374,6 +410,7 @@ function parseV2LessonPlan(
   const flowV2: LessonFlowV2Artifact = {
     groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
     start: parsed.start,
+    concepts: conceptValidation.concepts,
     loops: parsed.loops as LessonFlowV2Loop[],
     synthesis: parsed.synthesis,
     independentAttempt: parsed.independentAttempt,
@@ -392,7 +429,7 @@ function parseV2LessonPlan(
     ...buildLegacySectionsFromV2(flowV2),
     lessonFlowVersion: 'v2' as const,
     flowV2,
-    keyConcepts: buildConceptItemsFromLoops(flowV2.loops)
+    keyConcepts: conceptValidation.concepts
   };
 
   return {

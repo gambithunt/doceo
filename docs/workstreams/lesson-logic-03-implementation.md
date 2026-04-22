@@ -106,14 +106,21 @@ Excluded:
 
 ### Tasks
 
-- [ ] Add additive concept contract types in `types.ts` without breaking current consumers
-- [ ] Add additive `v2` payload fields for first-class concept records instead of relying only on derived loop titles
-- [ ] Add concept validation utility with hard-fail / soft-fail rules
-- [ ] Update `lesson-plan` prompt and version constants so the new concept contract is requested explicitly
-- [ ] Update `v2` parsing in `lesson-plan.ts` to validate concepts before accepting payloads
-- [ ] Decide and document the reset-friendly artifact rollout path for the new concept contract
-- [ ] Update fallback builders in `lesson-system.ts` / `lesson-plan.ts` to populate stronger concept data
-- [ ] Keep `LessonWorkspace` rendering aligned with the new concept shape
+- [x] Add additive concept contract types in `types.ts` without breaking current consumers
+- [x] Add additive `v2` payload fields for first-class concept records instead of relying only on derived loop titles
+- [x] Add concept validation utility with hard-fail / soft-fail rules
+- [x] Update `lesson-plan` prompt and version constants so the new concept contract is requested explicitly
+- [x] Update `v2` parsing in `lesson-plan.ts` to validate concepts before accepting payloads
+- [x] Decide and document the reset-friendly artifact rollout path for the new concept contract
+- [x] Update fallback builders in `lesson-system.ts` / `lesson-plan.ts` to populate stronger concept data
+- [x] Keep `LessonWorkspace` rendering aligned with the new concept shape
+
+### Phase 1 rollout note
+
+- Rollout decision: use a reset-friendly version bump for `v2` artifacts instead of adding broad legacy adapters.
+- Implemented path: the `v2` launch contract now uses `promptVersion = lesson-plan-v5` and `pedagogyVersion = phase4-v3`.
+- Reuse implication: older `v2` artifacts without first-class concept records do not match the new version gate, so fresh generation/regeneration wins automatically.
+- Compatibility boundary for this phase: current UI consumers still read `summary/detail/example`, while the richer concept metadata is stored additively alongside those fields.
 
 ### TDD Plan
 
@@ -206,11 +213,11 @@ Excluded:
 
 ### Tasks
 
-- [ ] Add a store-level lesson control action API distinct from `sendLessonMessage`
-- [ ] Move unlocked local progression path off synthetic learner messages
-- [ ] Update `LessonWorkspace.svelte` to call the new control action for progression controls
-- [ ] Keep learner-authored replies and support-intent replies on the existing chat path
-- [ ] Preserve local `v2` progression behavior and evaluation behavior
+- [x] Add a store-level lesson control action API distinct from `sendLessonMessage`
+- [x] Move unlocked local progression path off synthetic learner messages
+- [x] Update `LessonWorkspace.svelte` to call the new control action for progression controls
+- [x] Keep learner-authored replies and support-intent replies on the existing chat path
+- [x] Preserve local `v2` progression behavior and evaluation behavior
 
 ### TDD Plan
 
@@ -291,11 +298,11 @@ Excluded:
 
 ### Tasks
 
-- [ ] Add active lesson card component structure inside `LessonWorkspace.svelte`
-- [ ] Add helper derivations for current card title/state/content from existing `v2` checkpoint/session data
-- [ ] Move primary progression button into the local card action area
-- [ ] Preserve current support actions as secondary actions outside the primary card action
-- [ ] Keep current transcript rendering available below/after the active card
+- [x] Add active lesson card component structure inside `LessonWorkspace.svelte`
+- [x] Add helper derivations for current card title/state/content from existing `v2` checkpoint/session data
+- [x] Move primary progression button into the local card action area
+- [x] Preserve current support actions as secondary actions outside the primary card action
+- [x] Keep current transcript rendering available below/after the active card
 
 ### TDD Plan
 
@@ -381,12 +388,12 @@ Excluded:
 
 ### Tasks
 
-- [ ] Extend lesson session/card state minimally to support the early diagnostic step
-- [ ] Add concept-1 early-diagnostic substate to the lesson session/card state without expanding the global checkpoint enum in this phase
-- [ ] Generate/populate diagnostic prompt and options from the first-class concept record for concept 1
-- [ ] Render stacked mini cards from the concept record inside the active lesson card
-- [ ] Add dynamic local CTA labels for concept/explanation/check states
-- [ ] Preserve existing evaluation/remediation semantics for post-diagnostic progression
+- [x] Extend lesson session/card state minimally to support the early diagnostic step
+- [x] Add concept-1 early-diagnostic substate to the lesson session/card state without expanding the global checkpoint enum in this phase
+- [x] Generate/populate diagnostic prompt and options from the first-class concept record for concept 1
+- [x] Render stacked mini cards from the concept record inside the active lesson card
+- [x] Add dynamic local CTA labels for concept/explanation/check states
+- [x] Preserve existing evaluation/remediation semantics for post-diagnostic progression
 
 ### TDD Plan
 
@@ -476,10 +483,10 @@ Excluded:
 
 ### Tasks
 
-- [ ] Add visibility rules for current and recent exchanges
-- [ ] Add collapsed summary rendering for older conversation
-- [ ] Add completed-unit summary items driven primarily by concept records and completion state, not by replaying transcript snippets
-- [ ] Keep expansion on demand minimal and secondary
+- [x] Add visibility rules for current and recent exchanges
+- [x] Add collapsed summary rendering for older conversation
+- [x] Add completed-unit summary items driven primarily by concept records and completion state, not by replaying transcript snippets
+- [x] Keep expansion on demand minimal and secondary
 
 ### TDD Plan
 
@@ -557,10 +564,10 @@ Excluded:
 
 ### Tasks
 
-- [ ] Add minimal motion classes/transition hooks for card state changes
-- [ ] Add tactile interaction states for primary lesson controls
-- [ ] Add restrained reveal/collapse treatment for mini cards and summaries
-- [ ] Verify light/dark and mobile behavior
+- [x] Add minimal motion classes/transition hooks for card state changes
+- [x] Add tactile interaction states for primary lesson controls
+- [x] Add restrained reveal/collapse treatment for mini cards and summaries
+- [x] Verify light/dark and mobile behavior
 
 ### TDD Plan
 

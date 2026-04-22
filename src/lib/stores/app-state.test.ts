@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { createInitialState } from '$lib/data/platform';
-import { getNextStepPrompt } from '$lib/components/lesson-workspace-ui';
 import { buildRevisionSession } from '$lib/revision/engine';
 import type {
   DashboardTopicDiscoverySuggestion,
@@ -157,6 +156,30 @@ function createV2Lesson(baseLesson: Lesson, overrides: Partial<Lesson> = {}): Le
         title: 'Start',
         body: 'Start with the big picture.'
       },
+      concepts: [
+        {
+          name: 'Core idea one',
+          summary: 'The first rule to notice.',
+          detail: 'This is the first core idea in detail.',
+          example: 'Use the first example to see the rule in action.',
+          oneLineDefinition: 'Core idea one names the first rule before you do anything else.',
+          quickCheck: 'Which statement best matches core idea one?',
+          conceptType: 'core_rule',
+          whyItMatters: 'It keeps the learner from guessing the method.',
+          commonMisconception: 'Jump straight to an answer without naming the rule.'
+        },
+        {
+          name: 'Core idea two',
+          summary: 'The second rule to notice.',
+          detail: 'This is the second core idea in detail.',
+          example: 'Use the second example to extend the pattern.',
+          oneLineDefinition: 'Core idea two checks that the same pattern still holds.',
+          quickCheck: 'Which statement best matches core idea two?',
+          conceptType: 'application_check',
+          whyItMatters: 'It helps the learner verify the pattern on a new step.',
+          commonMisconception: 'Assume the pattern still works without checking the clue.'
+        }
+      ],
       loops: [
         {
           id: 'lesson-v2-runtime-1-loop-1',
@@ -2503,7 +2526,7 @@ describe('topic discovery completion linkage', () => {
     );
   });
 
-  it('guarantees progression when unlocked Next step is pressed once after the soft-stuck threshold', async () => {
+  it('progresses an unlocked lesson control without appending a synthetic learner bubble', async () => {
     const baseState = createInitialState();
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
@@ -2542,7 +2565,7 @@ describe('topic discovery completion linkage', () => {
       ]
     });
 
-    await store.sendLessonMessage(getNextStepPrompt('concepts'));
+    await store.sendLessonControl('next_step');
 
     const state = get(store);
     const session = state.lessonSessions.find((item) => item.id === 'next-step-session-1');
@@ -2551,7 +2574,53 @@ describe('topic discovery completion linkage', () => {
     );
 
     expect(session?.currentStage).toBe('construction');
+    expect(session?.messages.some((message) => message.role === 'user')).toBe(false);
     expect(requestedUrls).not.toContain('/api/ai/lesson-chat');
+  });
+
+  it('records lesson controls separately from learner message analytics', async () => {
+    const baseState = createInitialState();
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    ));
+
+    const store = createAppStore({
+      ...baseState,
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'next-step-session-analytics'
+      },
+      lessonSessions: [
+        createLessonSession({
+          id: 'next-step-session-analytics',
+          status: 'active',
+          currentStage: 'concepts',
+          stagesCompleted: ['orientation'],
+          completedAt: null,
+          lessonId: baseState.lessons[0]!.id,
+          topicId: baseState.curriculum.subjects[0]!.topics[0]!.id,
+          softStuckCount: 2,
+          messages: []
+        })
+      ]
+    });
+
+    await store.sendLessonControl('next_step');
+
+    const state = get(store);
+
+    expect(state.analytics[0]).toEqual(
+      expect.objectContaining({
+        type: 'lesson_control_used',
+        detail: 'next_step'
+      })
+    );
+    expect(state.analytics.map((event) => event.type)).not.toContain('lesson_message_sent');
   });
 
   it('sends Help me start as support intent and stores the reply as a support bubble', async () => {
@@ -2657,7 +2726,7 @@ describe('topic discovery completion linkage', () => {
       ]
     });
 
-    await store.sendLessonMessage(getNextStepPrompt('concepts'));
+    await store.sendLessonControl('next_step');
 
     const state = get(store);
     const session = state.lessonSessions.find((item) => item.id === 'next-step-session-2');
@@ -2803,6 +2872,166 @@ describe('topic discovery completion linkage', () => {
     );
   });
 
+  it('routes the first concept Next step into a one-time local early diagnostic substate before advancing checkpoints', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, {
+      id: 'lesson-v2-runtime-diagnostic-1',
+      title: 'Mathematics: Equivalent Fractions'
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat' || url === '/api/ai/lesson-evaluate') {
+        throw new Error('The concept-1 early diagnostic should stay local.');
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      lessons: [v2Lesson],
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'v2-diagnostic-session-1'
+      },
+      lessonSessions: [
+        createV2LessonSession({
+          id: 'v2-diagnostic-session-1',
+          lessonId: v2Lesson.id,
+          currentStage: 'concepts',
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_teach',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false,
+            cardSubstate: 'default',
+            concept1EarlyDiagnosticCompleted: false
+          },
+          messages: [
+            {
+              id: 'msg-v2-loop-teach',
+              role: 'assistant',
+              type: 'teaching',
+              content: 'Teach the first core idea.',
+              stage: 'concepts',
+              timestamp: '2026-04-22T10:00:00.000Z',
+              metadata: null
+            }
+          ]
+        })
+      ]
+    });
+
+    await store.sendLessonControl('next_step');
+
+    const state = get(store);
+    const updated = state.lessonSessions.find((item) => item.id === 'v2-diagnostic-session-1');
+
+    expect(updated?.v2State).toEqual(
+      expect.objectContaining({
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        cardSubstate: 'concept1_early_diagnostic',
+        concept1EarlyDiagnosticCompleted: false
+      })
+    );
+    expect(updated?.messages).toHaveLength(1);
+  });
+
+  it('submits the concept-1 early diagnostic locally and advances into the existing loop example path', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, {
+      id: 'lesson-v2-runtime-diagnostic-2',
+      title: 'Mathematics: Equivalent Fractions'
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat' || url === '/api/ai/lesson-evaluate') {
+        throw new Error('The concept-1 early diagnostic should stay local.');
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      lessons: [v2Lesson],
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'v2-diagnostic-session-2'
+      },
+      lessonSessions: [
+        createV2LessonSession({
+          id: 'v2-diagnostic-session-2',
+          lessonId: v2Lesson.id,
+          currentStage: 'concepts',
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_teach',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false,
+            cardSubstate: 'concept1_early_diagnostic',
+            concept1EarlyDiagnosticCompleted: false
+          },
+          messages: [
+            {
+              id: 'msg-v2-loop-teach',
+              role: 'assistant',
+              type: 'teaching',
+              content: 'Teach the first core idea.',
+              stage: 'concepts',
+              timestamp: '2026-04-22T10:00:00.000Z',
+              metadata: null
+            }
+          ]
+        })
+      ]
+    });
+
+    await store.submitLessonDiagnostic('a');
+
+    const state = get(store);
+    const updated = state.lessonSessions.find((item) => item.id === 'v2-diagnostic-session-2');
+
+    expect(updated?.v2State).toEqual(
+      expect.objectContaining({
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      })
+    );
+    expect(updated?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: 'Here is the first worked example.'
+        })
+      ])
+    );
+  });
+
   it('uses the local unlocked Next step path for v2 checkpoints without falling back to legacy stage progression', async () => {
     const baseState = createInitialState();
     const v2Lesson = createV2Lesson(baseState.lessons[0]!, {
@@ -2868,7 +3097,7 @@ describe('topic discovery completion linkage', () => {
       lessonSessions: [session]
     });
 
-    await store.sendLessonMessage('Show me the next part of the example so I can see how it works.');
+    await store.sendLessonControl('next_step');
 
     const state = get(store);
     const updated = state.lessonSessions.find((item) => item.id === session.id);

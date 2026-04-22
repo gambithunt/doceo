@@ -74,8 +74,11 @@ describe('lesson-plan system prompt', () => {
   it('requests loop-based lesson output for v2 generation', () => {
     const prompt = createLessonPlanSystemPrompt({ lessonFlowVersion: 'v2' });
 
-    expect(prompt).toContain('start, loops, synthesis, independentAttempt, exitCheck');
+    expect(prompt).toContain('start, concepts, loops, synthesis, independentAttempt, exitCheck');
     expect(prompt).toContain('loops');
+    expect(prompt).toContain('one_line_definition');
+    expect(prompt).toContain('quick_check');
+    expect(prompt).toContain('curriculum_alignment');
     expect(prompt).toContain('mustHitConcepts');
     expect(prompt).toContain('criticalMisconceptionTags');
   });
@@ -112,6 +115,53 @@ function makeValidV2AiPayload(overrides: Record<string, unknown> = {}) {
       message: {
         content: JSON.stringify({
           start: { title: 'Start', body: 'Quadratic equations help you find the x-values where a parabola crosses the axis.' },
+          concepts: [
+            {
+              name: 'Standard Form',
+              one_line_definition: 'A quadratic must be rewritten as ax^2 + bx + c = 0 before you choose a solving method.',
+              example: '2x^2 + 4 = 6x becomes 2x^2 - 6x + 4 = 0.',
+              quick_check: 'Rewrite x^2 + 9 = 4x into standard form.',
+              concept_type: 'procedure',
+              curriculum_alignment: {
+                topic_match: 'Quadratic Equations',
+                grade_match: 'Grade 10',
+                alignment_note: 'Standard form is the entry point for solving quadratics in this topic.'
+              },
+              why_it_matters: 'It puts every term in one place so the structure of the quadratic is visible.',
+              common_misconception: 'Trying to factor or use the formula before moving every term to one side.',
+              extended_example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0, which shows a = 1, b = -4, c = 9.'
+            },
+            {
+              name: 'Factoring',
+              one_line_definition: 'Factoring solves a quadratic by splitting it into brackets whose product is zero.',
+              example: 'x^2 - 5x + 6 factors to (x - 2)(x - 3) = 0.',
+              quick_check: 'Factor x^2 + x - 6.',
+              concept_type: 'strategy',
+              curriculum_alignment: {
+                topic_match: 'Quadratic Equations',
+                grade_match: 'Grade 10',
+                alignment_note: 'Factoring is a core solving method at this level when simple factors exist.'
+              },
+              why_it_matters: 'It turns one quadratic expression into two simpler linear conditions.',
+              common_misconception: 'Choosing numbers that multiply correctly but do not add to the middle coefficient.',
+              extended_example: 'For x^2 + x - 6, the correct pair is 3 and -2 because 3 x -2 = -6 and 3 + -2 = 1.'
+            },
+            {
+              name: 'Checking Solutions',
+              one_line_definition: 'Substitute each solution back into the original equation to confirm it works.',
+              example: 'If x = 2, then 2^2 - 5(2) + 6 = 4 - 10 + 6 = 0.',
+              quick_check: 'Check whether x = -3 solves x^2 + x - 6 = 0.',
+              concept_type: 'verification',
+              curriculum_alignment: {
+                topic_match: 'Quadratic Equations',
+                grade_match: 'Grade 10',
+                alignment_note: 'Checking solutions confirms that a factorised answer actually satisfies the equation.'
+              },
+              why_it_matters: 'A checked answer catches sign mistakes and false roots before you move on.',
+              common_misconception: 'Stopping after factorising without testing the answers in the original equation.',
+              extended_example: 'Substitute x = 3 into x^2 - 5x + 6 = 0 to confirm 9 - 15 + 6 = 0.'
+            }
+          ],
           loops: [
             {
               id: 'loop-1',
@@ -241,6 +291,116 @@ describe('parseLessonPlanResponse', () => {
     expect(parseLessonPlanResponse(malformed, baseRequest, { lessonFlowVersion: 'v2' })).toBeNull();
   });
 
+  it('rejects v2 payloads with vague concept records', () => {
+    const malformed = makeValidV2AiPayload({
+      concepts: [
+        {
+          name: 'Understanding Quadratics',
+          one_line_definition: 'This topic helps you understand quadratic equations better.',
+          example: 'You will use this in many questions about quadratics.',
+          quick_check: 'Explain the topic again in your own words.',
+          concept_type: 'topic',
+          curriculum_alignment: {
+            topic_match: 'Quadratic Equations',
+            grade_match: 'Grade 10',
+            alignment_note: 'This is about the topic in general.'
+          }
+        },
+        {
+          name: 'Factoring',
+          one_line_definition: 'Factoring splits a quadratic into brackets.',
+          example: 'x^2 - 5x + 6 = (x - 2)(x - 3).',
+          quick_check: 'Factor x^2 + x - 6.',
+          concept_type: 'strategy',
+          curriculum_alignment: {
+            topic_match: 'Quadratic Equations',
+            grade_match: 'Grade 10',
+            alignment_note: 'Factoring is used in this topic.'
+          }
+        }
+      ]
+    });
+
+    expect(parseLessonPlanResponse(malformed, baseRequest, { lessonFlowVersion: 'v2' })).toBeNull();
+  });
+
+  it('rejects v2 payloads with duplicate or near-duplicate concept records', () => {
+    const malformed = makeValidV2AiPayload({
+      concepts: [
+        {
+          name: 'Standard Form',
+          one_line_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
+          example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+          quick_check: 'Rewrite 2x^2 + 4 = 6x into standard form.',
+          concept_type: 'procedure',
+          curriculum_alignment: {
+            topic_match: 'Quadratic Equations',
+            grade_match: 'Grade 10',
+            alignment_note: 'This is the standard rearrangement step.'
+          }
+        },
+        {
+          name: 'Writing in Standard Form',
+          one_line_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0 before solving.',
+          example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+          quick_check: 'Move all terms in 2x^2 + 4 = 6x to one side.',
+          concept_type: 'procedure',
+          curriculum_alignment: {
+            topic_match: 'Quadratic Equations',
+            grade_match: 'Grade 10',
+            alignment_note: 'This repeats the same rearrangement idea.'
+          }
+        },
+        {
+          name: 'Checking Solutions',
+          one_line_definition: 'Substitute each solution back into the original equation.',
+          example: 'If x = 2, then 2^2 - 5(2) + 6 = 0.',
+          quick_check: 'Check whether x = -3 solves x^2 + x - 6 = 0.',
+          concept_type: 'verification',
+          curriculum_alignment: {
+            topic_match: 'Quadratic Equations',
+            grade_match: 'Grade 10',
+            alignment_note: 'Checking prevents sign mistakes from slipping through.'
+          }
+        }
+      ]
+    });
+
+    expect(parseLessonPlanResponse(malformed, baseRequest, { lessonFlowVersion: 'v2' })).toBeNull();
+  });
+
+  it('rejects v2 payloads when concept records are missing required fields', () => {
+    const malformed = makeValidV2AiPayload({
+      concepts: [
+        {
+          name: 'Standard Form',
+          one_line_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
+          example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+          concept_type: 'procedure',
+          curriculum_alignment: {
+            topic_match: 'Quadratic Equations',
+            grade_match: 'Grade 10',
+            alignment_note: 'This is the first solving step.'
+          }
+        },
+        {
+          name: 'Factoring',
+          one_line_definition: 'Factoring splits a quadratic into brackets.',
+          example: 'x^2 - 5x + 6 = (x - 2)(x - 3).',
+          quick_check: 'Factor x^2 + x - 6.',
+          concept_type: 'strategy',
+          curriculum_alignment: {
+            topic_match: 'Quadratic Equations',
+            grade_match: 'Grade 10',
+            alignment_note: 'Factoring is used in this topic.'
+          }
+        }
+      ]
+    });
+
+    expect(parseLessonPlanResponse(malformed, baseRequest, { lessonFlowVersion: 'v2' })).toBeNull();
+  });
+
   it('parses valid v2 payloads into a loop lesson with required metadata', () => {
     const result = parseLessonPlanResponse(makeValidV2AiPayload(), baseRequest, { lessonFlowVersion: 'v2' });
 
@@ -248,6 +408,17 @@ describe('parseLessonPlanResponse', () => {
     expect(result?.lesson.flowV2?.loops).toHaveLength(3);
     expect(result?.lesson.flowV2?.loops[0]?.mustHitConcepts.length).toBeGreaterThan(0);
     expect(result?.lesson.flowV2?.loops[0]?.criticalMisconceptionTags.length).toBeGreaterThan(0);
+  });
+
+  it('preserves richer concept metadata on valid v2 payloads', () => {
+    const result = parseLessonPlanResponse(makeValidV2AiPayload(), baseRequest, { lessonFlowVersion: 'v2' });
+    const firstConcept = result?.lesson.keyConcepts?.[0];
+
+    expect(firstConcept?.oneLineDefinition).toContain('ax^2 + bx + c = 0');
+    expect(firstConcept?.quickCheck).toContain('standard form');
+    expect(firstConcept?.conceptType).toBe('procedure');
+    expect(firstConcept?.curriculumAlignment?.alignmentNote).toContain('solving quadratics');
+    expect(result?.lesson.flowV2?.concepts?.[0]?.quickCheck).toContain('standard form');
   });
 });
 

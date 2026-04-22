@@ -33,6 +33,7 @@ export type ResponseStage =
   | 'final_explanation';
 export type AssistantAction = 'advance' | 'reteach' | 'side_thread' | 'complete' | 'stay';
 export type LessonSupportIntent = 'help_me_start';
+export type LessonControlAction = 'next_step';
 export type LessonMessageType =
   | 'teaching'
   | 'check'
@@ -57,6 +58,7 @@ export type LessonFlowV2Checkpoint =
   | 'independent_attempt'
   | 'exit_check'
   | 'complete';
+export type LessonFlowV2CardSubstate = 'default' | 'concept1_early_diagnostic';
 export type LessonRemediationStep = 'none' | 'hint' | 'scaffold' | 'mini_reteach' | 'worked_example';
 export type LessonResidueGapStatus = 'partial' | 'skipped' | 'blocked';
 export type LessonAbandonmentFrictionSignal =
@@ -194,11 +196,30 @@ export interface LessonSection {
   body: string;
 }
 
+export interface ConceptCurriculumAlignment {
+  topicMatch: string;
+  gradeMatch: string;
+  alignmentNote: string;
+}
+
 export interface ConceptItem {
   name: string;
   summary: string;
   detail: string;
   example: string;
+  oneLineDefinition?: string;
+  quickCheck?: string;
+  conceptType?: string;
+  curriculumAlignment?: ConceptCurriculumAlignment;
+  whyItMatters?: string;
+  prerequisites?: string[];
+  commonMisconception?: string;
+  extendedExample?: string;
+  difficultyLevel?: string;
+  synonyms?: string[];
+  tags?: string[];
+  visualHint?: string;
+  followUpQuestions?: string[];
 }
 
 export interface LessonFlowV2Loop {
@@ -215,6 +236,7 @@ export interface LessonFlowV2Loop {
 export interface LessonFlowV2Artifact {
   groupedLabels: ReadonlyArray<LessonGroupedLabelBucket>;
   start: LessonSection;
+  concepts?: ConceptItem[];
   loops: LessonFlowV2Loop[];
   synthesis: LessonSection;
   independentAttempt: LessonSection;
@@ -260,6 +282,8 @@ export interface LessonFlowV2SessionState {
   labelBucket: LessonGroupedLabelBucket;
   skippedGaps: LessonResidueGap[];
   needsTeacherReview: boolean;
+  cardSubstate?: LessonFlowV2CardSubstate;
+  concept1EarlyDiagnosticCompleted?: boolean;
 }
 
 export interface Lesson {
@@ -339,7 +363,8 @@ export interface AnalyticsEvent {
     | 'revision_generated'
     | 'ask_question_submitted'
     | 'topic_shortlisted'
-    | 'lesson_message_sent';
+    | 'lesson_message_sent'
+    | 'lesson_control_used';
   createdAt: string;
   detail: string;
 }
@@ -729,6 +754,12 @@ export interface LessonMessage {
   timestamp: string;
   metadata?: DoceoMeta | null;
   conceptItems?: ConceptItem[];
+  v2Context?: LessonMessageV2Context | null;
+}
+
+export interface LessonMessageV2Context {
+  loopIndex: number | null;
+  checkpoint: LessonFlowV2Checkpoint;
 }
 
 export interface LessonRating {

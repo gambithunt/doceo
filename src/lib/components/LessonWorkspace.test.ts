@@ -21,7 +21,6 @@ vi.mock('$lib/payments/checkout', () => ({
 }));
 
 import LessonWorkspace from './LessonWorkspace.svelte';
-import { getNextStepPrompt } from '$lib/components/lesson-workspace-ui';
 import { createInitialState } from '$lib/data/platform';
 import { appState } from '$lib/stores/app-state';
 import type { AppState, Lesson, LessonMessage, LessonSession } from '$lib/types';
@@ -67,6 +66,30 @@ function createV2Lesson(baseLesson: Lesson): Lesson {
         title: 'Start',
         body: 'Start with the big picture.'
       },
+      concepts: [
+        {
+          name: 'Core idea one',
+          summary: 'The first rule to notice.',
+          detail: 'This is the first core idea in detail.',
+          example: 'Use the first example to see the rule in action.',
+          oneLineDefinition: 'Core idea one names the first rule before you do anything else.',
+          quickCheck: 'Which statement best matches core idea one?',
+          conceptType: 'core_rule',
+          whyItMatters: 'It keeps the learner from guessing the method.',
+          commonMisconception: 'Jump straight to an answer without naming the rule.'
+        },
+        {
+          name: 'Core idea two',
+          summary: 'The second rule to notice.',
+          detail: 'This is the second core idea in detail.',
+          example: 'Use the second example to extend the pattern.',
+          oneLineDefinition: 'Core idea two checks that the same pattern still holds.',
+          quickCheck: 'Which statement best matches core idea two?',
+          conceptType: 'application_check',
+          whyItMatters: 'It helps the learner verify the pattern on a new step.',
+          commonMisconception: 'Assume the pattern still works without checking the clue.'
+        }
+      ],
       loops: [
         {
           id: 'lesson-v2-workspace-1-loop-1',
@@ -89,6 +112,28 @@ function createV2Lesson(baseLesson: Lesson): Lesson {
           },
           mustHitConcepts: ['core idea one'],
           criticalMisconceptionTags: ['core-idea-one-gap']
+        },
+        {
+          id: 'lesson-v2-workspace-1-loop-2',
+          title: 'Loop 2',
+          teaching: {
+            title: 'Teach Loop 2',
+            body: 'Teach the second core idea.'
+          },
+          example: {
+            title: 'Example Loop 2',
+            body: 'Here is the second worked example.'
+          },
+          learnerTask: {
+            title: 'Try Loop 2',
+            body: 'Try the second task on your own.'
+          },
+          retrievalCheck: {
+            title: 'Check Loop 2',
+            body: 'Explain the second idea in your own words.'
+          },
+          mustHitConcepts: ['core idea two'],
+          criticalMisconceptionTags: ['core-idea-two-gap']
         }
       ],
       synthesis: {
@@ -174,6 +219,18 @@ function buildV2WorkspaceState(messages: LessonMessage[], sessionOverrides: Part
 
 function renderWorkspace(messages: LessonMessage[], sessionOverrides: Partial<LessonSession> = {}): AppState {
   const nextState = buildWorkspaceState(messages, sessionOverrides);
+
+  render(LessonWorkspace, {
+    props: {
+      state: nextState
+    }
+  });
+
+  return nextState;
+}
+
+function renderV2Workspace(messages: LessonMessage[], sessionOverrides: Partial<LessonSession> = {}): AppState {
+  const nextState = buildV2WorkspaceState(messages, sessionOverrides);
 
   render(LessonWorkspace, {
     props: {
@@ -385,11 +442,12 @@ describe('LessonWorkspace Phase 2 support surface', () => {
 describe('LessonWorkspace Phase 3 stage-aware actions', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(appState, 'sendLessonControl').mockResolvedValue(undefined);
     vi.spyOn(appState, 'sendLessonMessage').mockResolvedValue(undefined);
     vi.spyOn(appState, 'updateComposerDraft').mockImplementation(() => {});
   });
 
-  it('sends the stage-aware continuation prompt for orientation', async () => {
+  it('routes Next step through the lesson control path instead of sendLessonMessage', async () => {
     renderWorkspace([
       createMessage({
         role: 'assistant',
@@ -400,30 +458,27 @@ describe('LessonWorkspace Phase 3 stage-aware actions', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: 'Next step' }));
 
-    expect(appState.sendLessonMessage).toHaveBeenCalledWith(
-      'Continue into the key ideas so I can get the big picture first.'
-    );
+    expect(appState.sendLessonControl).toHaveBeenCalledWith('next_step');
+    expect(appState.sendLessonMessage).not.toHaveBeenCalled();
   });
 
-  it('sends a scaffolded next-step prompt for practice instead of a bypass prompt', async () => {
+  it('does not render a synthetic learner bubble when Next step is clicked', async () => {
     renderWorkspace([
       createMessage({
         role: 'assistant',
         type: 'teaching',
-        content: 'Try this one yourself first.',
-        stage: 'practice'
+        content: 'Let us start with the big picture.'
       })
-    ], { currentStage: 'practice' });
+    ]);
 
     await fireEvent.click(screen.getByRole('button', { name: 'Next step' }));
 
-    expect(appState.sendLessonMessage).toHaveBeenCalledWith(
-      'Help me take the next step in this practice question without giving away the answer.'
-    );
-    expect(appState.sendLessonMessage).not.toHaveBeenCalledWith("I'm ready for the next step.");
+    expect(screen.queryByText('Continue into the key ideas so I can get the big picture first.')).not.toBeInTheDocument();
+    expect(appState.sendLessonControl).toHaveBeenCalledWith('next_step');
+    expect(appState.sendLessonMessage).not.toHaveBeenCalled();
   });
 
-  it('sends a start-the-question prompt for Help me start in practice', async () => {
+  it('keeps Help me start on the learner/support message path in practice', async () => {
     renderWorkspace([
       createMessage({
         role: 'assistant',
@@ -438,6 +493,7 @@ describe('LessonWorkspace Phase 3 stage-aware actions', () => {
     expect(appState.sendLessonMessage).toHaveBeenCalledWith(
       'Help me start this practice question with the first move only.'
     );
+    expect(appState.sendLessonControl).not.toHaveBeenCalled();
   });
 
   it('sends stage-aware prompts for Give me an example and Explain it differently', async () => {
@@ -571,21 +627,354 @@ describe('LessonWorkspace Phase 3 trustworthy Next step contract', () => {
   });
 });
 
+describe('LessonWorkspace Phase 3 focused lesson card', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(appState, 'sendLessonControl').mockResolvedValue(undefined);
+    vi.spyOn(appState, 'sendLessonMessage').mockResolvedValue(undefined);
+  });
+
+  it('renders a focused lesson card for active v2 sessions with checkpoint-aware state, title, and content', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Here is the first worked example.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+
+    expect(within(activeCard).getByText('Loop 1 • Example')).toBeInTheDocument();
+    expect(within(activeCard).getByRole('heading', { name: 'Example Loop 1' })).toBeInTheDocument();
+    expect(within(activeCard).getByText('Here is the first worked example.')).toBeInTheDocument();
+  });
+
+  it('keeps the primary progression CTA local to the focused card for active v2 sessions', async () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Here is the first worked example.',
+        stage: 'concepts'
+      })
+    ]);
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+
+    expect(within(activeCard).getByRole('button', { name: 'Try it yourself' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Lesson support' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Try it yourself' })).toHaveLength(1);
+
+    await fireEvent.click(within(activeCard).getByRole('button', { name: 'Try it yourself' }));
+
+    expect(appState.sendLessonControl).toHaveBeenCalledWith('next_step');
+    expect(appState.sendLessonMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps the lesson conversation visible beneath the focused v2 card as secondary context', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'assistant-v2-anchor',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Here is the first worked example.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'assistant-v2-follow-up',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Now notice how the same pattern repeats.',
+        stage: 'concepts'
+      })
+    ]);
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+    const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
+
+    expect(conversation).toBeInTheDocument();
+    expect(within(conversation).getByText('Here is the first worked example.')).toBeInTheDocument();
+    expect(within(conversation).getByText('Now notice how the same pattern repeats.')).toBeInTheDocument();
+    expect(activeCard.compareDocumentPosition(conversation)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('renders the tutor audio control inside the focused lesson card for the active teaching message', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'active-card-audio-message',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Here is the first worked example.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_example',
+          loopIndex: 0
+        }
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+
+    expect(within(activeCard).getByRole('button', { name: 'Play tutor audio' })).toBeInTheDocument();
+  });
+
+  it('uses the focused lesson card tutor audio control to play the active teaching message', async () => {
+    const message = createMessage({
+      id: 'active-card-audio-message',
+      role: 'assistant',
+      type: 'teaching',
+      content: 'Here is the first worked example.',
+      stage: 'concepts',
+      v2Context: {
+        checkpoint: 'loop_example',
+        loopIndex: 0
+      }
+    });
+    const routeResponse = Promise.withResolvers<{
+      ok: boolean;
+      json: () => Promise<{
+        ok: true;
+        audioUrl: string;
+        mimeType: string;
+        provider: string;
+        fallbackUsed: boolean;
+        cacheHit: boolean;
+        expiresAt: string;
+      }>;
+    }>();
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(routeResponse.promise));
+
+    renderV2Workspace([message], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+    const control = within(activeCard).getByRole('button', { name: 'Play tutor audio' });
+    const clickPromise = fireEvent.click(control);
+    await tick();
+
+    expect(control).toHaveAttribute('data-tts-state', 'loading');
+
+    routeResponse.resolve({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        ok: true,
+        audioUrl: 'https://storage.example/audio.mp3',
+        mimeType: 'audio/mpeg',
+        provider: 'openai',
+        fallbackUsed: false,
+        cacheHit: false,
+        expiresAt: '2026-04-20T10:15:00.000Z'
+      })
+    });
+
+    await clickPromise;
+    await tick();
+
+    const fetchOptions = (fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1];
+
+    expect(fetch).toHaveBeenCalledWith('/api/tts/lesson', expect.any(Object));
+    expect(fetchOptions).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          lessonSessionId: 'lesson-session-1',
+          lessonMessageId: message.id,
+          content: 'Here is the first worked example.'
+        })
+      })
+    );
+    expect(within(activeCard).getByRole('button', { name: 'Stop tutor audio' })).toBeInTheDocument();
+  });
+});
+
+describe('LessonWorkspace Phase 4 early diagnostic and concept cards', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(appState, 'sendLessonControl').mockResolvedValue(undefined);
+    vi.spyOn(appState, 'sendLessonMessage').mockResolvedValue(undefined);
+    vi.spyOn(appState, 'submitLessonDiagnostic').mockResolvedValue(undefined);
+  });
+
+  it('renders stacked concept mini cards inside the focused lesson card', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+
+    expect(within(activeCard).getByText('Core idea one')).toBeInTheDocument();
+    expect(within(activeCard).getByText('Core idea two')).toBeInTheDocument();
+  });
+
+  it('renders the early diagnostic question and options inside the focused card in the concept-1 diagnostic state', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'concept1_early_diagnostic',
+        concept1EarlyDiagnosticCompleted: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+
+    expect(within(activeCard).getByText('Which statement best matches core idea one?')).toBeInTheDocument();
+    expect(within(activeCard).getByRole('radio', { name: /Core idea one names the first rule/i })).toBeInTheDocument();
+    expect(within(activeCard).getByRole('radio', { name: /Jump straight to an answer/i })).toBeInTheDocument();
+  });
+
+  it('uses a concept-state CTA label before the early diagnostic opens', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: false
+      }
+    });
+
+    expect(screen.getByRole('button', { name: 'Check concept 1' })).toBeInTheDocument();
+  });
+
+  it('uses an explanation-state CTA label in the focused card example state', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Here is the first worked example.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+
+    expect(screen.getByRole('button', { name: 'Try it yourself' })).toBeInTheDocument();
+  });
+
+  it('uses a check-state CTA label in the focused card check state', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Explain the first idea in your own words.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_check',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+
+    expect(screen.getByRole('button', { name: 'Bring it together' })).toBeInTheDocument();
+  });
+});
+
 describe('LessonWorkspace Phase 4 wrap-before-progress flow', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(appState, 'sendLessonControl').mockResolvedValue(undefined);
     vi.spyOn(appState, 'sendLessonMessage').mockResolvedValue(undefined);
   });
 
   it('renders the wrap bubble with distinct styling before the next stage content', () => {
     renderWorkspace([
-      createMessage({
-        id: 'user-next-step',
-        role: 'user',
-        type: 'response',
-        content: getNextStepPrompt('concepts'),
-        stage: 'concepts'
-      }),
       createMessage({
         id: 'assistant-wrap',
         role: 'assistant',
@@ -646,8 +1035,9 @@ describe('LessonWorkspace Phase 4 wrap-before-progress flow', () => {
 
     await fireEvent.click(nextStep);
 
-    expect(appState.sendLessonMessage).toHaveBeenCalledTimes(1);
-    expect(appState.sendLessonMessage).toHaveBeenCalledWith(getNextStepPrompt('concepts'));
+    expect(appState.sendLessonControl).toHaveBeenCalledTimes(1);
+    expect(appState.sendLessonControl).toHaveBeenCalledWith('next_step');
+    expect(appState.sendLessonMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -688,6 +1078,267 @@ describe('LessonWorkspace Phase 5 bubble motion hooks', () => {
     expect(regularBubble).not.toHaveClass('enter-wrap');
     expect(wrapBubble).toHaveAttribute('data-motion-variant', 'wrap');
     expect(wrapBubble).toHaveClass('enter-assistant', 'enter-wrap');
+  });
+});
+
+describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () => {
+  it('keeps the current exchange and the last two transcript items visible while collapsing older detail', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'older-user',
+        role: 'user',
+        type: 'response',
+        content: 'Older learner reply from loop 1.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'older-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Older tutor explanation from loop 1.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'recent-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Recent tutor explanation from loop 2.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'recent-user',
+        role: 'user',
+        type: 'response',
+        content: 'Recent learner reply from loop 2.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'current-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Current tutor guidance from loop 2.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+
+    const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
+
+    expect(within(conversation).queryByText('Older learner reply from loop 1.')).not.toBeInTheDocument();
+    expect(within(conversation).queryByText('Older tutor explanation from loop 1.')).not.toBeInTheDocument();
+    expect(within(conversation).getByText('Recent tutor explanation from loop 2.')).toBeInTheDocument();
+    expect(within(conversation).getByText('Recent learner reply from loop 2.')).toBeInTheDocument();
+    expect(within(conversation).getByText('Current tutor guidance from loop 2.')).toBeInTheDocument();
+  });
+
+  it('renders a minimal collapsed summary control for older conversation and reveals detail on demand', async () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'older-user',
+        role: 'user',
+        type: 'response',
+        content: 'Older learner reply from loop 1.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'older-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Older tutor explanation from loop 1.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'recent-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Recent tutor explanation from loop 2.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'recent-user',
+        role: 'user',
+        type: 'response',
+        content: 'Recent learner reply from loop 2.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'current-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Current tutor guidance from loop 2.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+
+    const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
+    const summaryToggle = within(conversation).getByRole('button', {
+      name: 'Show earlier conversation (2 items)'
+    });
+
+    expect(summaryToggle).toBeInTheDocument();
+    expect(summaryToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(summaryToggle).toHaveAttribute('aria-controls', 'collapsed-transcript-panel');
+    expect(within(conversation).queryByText('Older tutor explanation from loop 1.')).not.toBeInTheDocument();
+
+    await fireEvent.click(summaryToggle);
+
+    expect(summaryToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(within(conversation).getByText('Older learner reply from loop 1.')).toBeInTheDocument();
+    expect(within(conversation).getByText('Older tutor explanation from loop 1.')).toBeInTheDocument();
+    expect(within(conversation).getByRole('button', { name: 'Hide earlier conversation' })).toBeInTheDocument();
+  });
+
+  it('renders completed units as compact summaries from concept records instead of replaying their full transcript', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'loop-1-teach',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Full loop 1 explanation that should stay collapsed.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'loop-1-check',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Loop 1 check transcript detail that should stay collapsed.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'loop-2-user',
+        role: 'user',
+        type: 'response',
+        content: 'I think the second rule keeps the same pattern.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'loop-2-follow-up',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Yes, now check it against the clue before you commit.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'loop-2-example',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Here is the second worked example.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+
+    const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
+    const completedUnit = within(conversation).getByText('Completed concept 1').closest('article');
+
+    expect(completedUnit).toBeInTheDocument();
+    expect(within(completedUnit!).getByText('Core idea one')).toBeInTheDocument();
+    expect(
+      within(completedUnit!).getByText(
+        'Core idea one names the first rule before you do anything else.'
+      )
+    ).toBeInTheDocument();
+    expect(within(conversation).queryByText('Full loop 1 explanation that should stay collapsed.')).not.toBeInTheDocument();
+    expect(
+      within(conversation).queryByText('Loop 1 check transcript detail that should stay collapsed.')
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps completed-loop transcript bubbles collapsed even when only a few newer messages exist', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'loop-1-user',
+        role: 'user',
+        type: 'response',
+        content: 'Older learner reply from loop 1.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_practice',
+          loopIndex: 0
+        }
+      }),
+      createMessage({
+        id: 'loop-1-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Older tutor feedback from loop 1.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_practice',
+          loopIndex: 0
+        }
+      }),
+      createMessage({
+        id: 'loop-2-teach',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Current tutor guidance from loop 2.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_teach',
+          loopIndex: 1
+        }
+      })
+    ], {
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+
+    const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
+
+    expect(within(conversation).queryByText('Older learner reply from loop 1.')).not.toBeInTheDocument();
+    expect(within(conversation).queryByText('Older tutor feedback from loop 1.')).not.toBeInTheDocument();
+    expect(within(conversation).getByText('Current tutor guidance from loop 2.')).toBeInTheDocument();
+    expect(
+      within(conversation).getByRole('button', { name: 'Show earlier conversation (2 items)' })
+    ).toBeInTheDocument();
   });
 });
 
@@ -922,7 +1573,10 @@ describe('LessonWorkspace Phase 5 progress strip states', () => {
     });
 
     expect(screen.getByText('See the idea working in real situations.')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Play tutor audio')).toHaveLength(1);
+    expect(within(screen.getByRole('region', { name: 'Active lesson' })).getByLabelText('Play tutor audio')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Lesson conversation' })).getAllByLabelText('Play tutor audio')
+    ).toHaveLength(1);
     expect(screen.getByText("Good. Let's move into Worked Example.").closest('article')).not.toHaveClass('bubble-with-tts');
   });
 });

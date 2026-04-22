@@ -3,6 +3,7 @@ import {
   LESSON_STAGE_ORDER,
   applyLessonAssistantResponse,
   buildDynamicLessonFromTopic,
+  buildDynamicLessonFlowV2FromTopic,
   buildDynamicQuestionsForLesson,
   buildInitialLessonMessages,
   buildInitialLessonMessagesForSession,
@@ -434,7 +435,11 @@ describe('lesson-system', () => {
     });
 
     expect(normalized.lessonSessions[0]?.lessonFlowVersion).toBe('v2');
-    expect(normalized.lessonSessions[0]?.v2State).toEqual(v2Session.v2State);
+    expect(normalized.lessonSessions[0]?.v2State).toEqual({
+      ...v2Session.v2State,
+      cardSubstate: 'default',
+      concept1EarlyDiagnosticCompleted: false
+    });
   });
 
   // --- New lesson structure tests ---
@@ -576,6 +581,19 @@ describe('lesson-system', () => {
       flowV2: {
         groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
         start: { title: 'Start', body: 'Start block' },
+        concepts: [
+          {
+            name: 'Equivalent fractions',
+            summary: 'Fractions can look different and still have the same value.',
+            detail: 'Equivalent fractions name the same amount even when the numerator and denominator change.',
+            example: '1/2 and 2/4 represent the same amount.',
+            oneLineDefinition: 'Equivalent fractions represent the same value with different numbers.',
+            quickCheck: 'Which statement best matches equivalent fractions?',
+            conceptType: 'core_rule',
+            whyItMatters: 'It helps the learner compare value instead of surface form.',
+            commonMisconception: 'Bigger numbers must always mean a bigger fraction.'
+          }
+        ],
         loops: [
           {
             id: 'loop-1',
@@ -612,7 +630,9 @@ describe('lesson-system', () => {
         totalLoops: 1,
         activeLoopIndex: 0,
         activeCheckpoint: 'start',
-        labelBucket: 'orientation'
+        labelBucket: 'orientation',
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: false
       })
     );
     expect(session.residue).toBeNull();
@@ -1708,5 +1728,43 @@ describe('lesson-system', () => {
 
     expect(result.metadata?.action).toBe('stay');
     expect(result.displayContent).toContain('Impact on Ecosystems and Human Life');
+  });
+
+  it('buildDynamicLessonFlowV2FromTopic fallback concepts satisfy the stronger minimum contract', () => {
+    const lesson = buildDynamicLessonFlowV2FromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 10',
+      topicTitle: 'Quadratic Equations',
+      topicDescription: 'Solving quadratic equations by factoring and the quadratic formula.',
+      curriculumReference: 'CAPS · Grade 10 · Mathematics'
+    });
+
+    expect(lesson.flowV2?.concepts).toHaveLength(3);
+    for (const concept of lesson.flowV2?.concepts ?? []) {
+      expect(concept.name.length).toBeGreaterThan(0);
+      expect(concept.oneLineDefinition?.length ?? 0).toBeGreaterThan(0);
+      expect(concept.example.length).toBeGreaterThan(0);
+      expect(concept.quickCheck?.length ?? 0).toBeGreaterThan(0);
+      expect(concept.conceptType?.length ?? 0).toBeGreaterThan(0);
+      expect(concept.curriculumAlignment?.topicMatch).toBe('Quadratic Equations');
+      expect(concept.curriculumAlignment?.gradeMatch).toBe('Grade 10');
+    }
+  });
+
+  it('buildDynamicLessonFlowV2FromTopic fallback concepts expose concrete example and quick-check data', () => {
+    const lesson = buildDynamicLessonFlowV2FromTopic({
+      subjectId: 'subject-math',
+      subjectName: 'Mathematics',
+      grade: 'Grade 10',
+      topicTitle: 'Quadratic Equations',
+      topicDescription: 'Solving quadratic equations by factoring and the quadratic formula.',
+      curriculumReference: 'CAPS · Grade 10 · Mathematics'
+    });
+    const firstConcept = lesson.keyConcepts?.[0];
+
+    expect(firstConcept?.example).not.toMatch(/quick test|you use it in many|read the problem again/i);
+    expect(firstConcept?.quickCheck).toMatch(/rewrite|factor|check|solve|state/i);
+    expect(firstConcept?.detail).toContain(firstConcept?.oneLineDefinition ?? '');
   });
 });

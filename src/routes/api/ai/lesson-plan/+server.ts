@@ -54,8 +54,8 @@ function resolveLessonPlanVersion(
   if (lessonFlowVersion === 'v2') {
     return {
       lessonFlowVersion: 'v2',
-      promptVersion: 'lesson-plan-v4',
-      pedagogyVersion: 'phase4-v2'
+      promptVersion: 'lesson-plan-v5',
+      pedagogyVersion: 'phase4-v3'
     };
   }
 

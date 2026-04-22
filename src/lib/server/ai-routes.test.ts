@@ -413,6 +413,124 @@ describe('ai routes', () => {
     expect(Array.isArray(payload.lesson.flowV2?.loops)).toBe(true);
   });
 
+  it('lesson plan route selects the new concept-contract prompt version by default for v2', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        provider: 'github-models',
+        modelTier: 'thinking',
+        model: 'openai/gpt-4.1-mini',
+        lesson: {
+          id: 'lesson-v2-1',
+          title: 'Mathematics: Quadratic Equations',
+          topicId: 'topic-1',
+          subtopicId: 'topic-1',
+          subjectId: 'subject-1',
+          grade: 'Grade 10',
+          lessonFlowVersion: 'v2',
+          orientation: { title: 'Orientation', body: 'Body' },
+          mentalModel: { title: 'Model', body: 'Body' },
+          concepts: { title: 'Concepts', body: 'Body' },
+          guidedConstruction: { title: 'Construction', body: 'Body' },
+          workedExample: { title: 'Example', body: 'Body' },
+          practicePrompt: { title: 'Practice', body: 'Body' },
+          commonMistakes: { title: 'Mistakes', body: 'Body' },
+          transferChallenge: { title: 'Transfer', body: 'Body' },
+          summary: { title: 'Summary', body: 'Body' },
+          keyConcepts: [],
+          flowV2: {
+            groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+            concepts: [
+              {
+                name: 'Standard Form',
+                summary: 'Rewrite to ax^2 + bx + c = 0.',
+                detail: 'Move every term to one side before solving.',
+                example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+                oneLineDefinition: 'A quadratic must be rewritten as ax^2 + bx + c = 0 before choosing a method.',
+                quickCheck: 'Rewrite 2x^2 + 4 = 6x into standard form.',
+                conceptType: 'procedure',
+                curriculumAlignment: {
+                  topicMatch: 'Quadratic Equations',
+                  gradeMatch: 'Grade 10',
+                  alignmentNote: 'Standard form is a core entry step in this topic.'
+                }
+              }
+            ],
+            start: { title: 'Start', body: 'Start block' },
+            loops: [
+              {
+                id: 'loop-1',
+                title: 'Standard Form',
+                teaching: { title: 'Teach', body: 'Teach body' },
+                example: { title: 'Example', body: 'Example body' },
+                learnerTask: { title: 'Task', body: 'Task body' },
+                retrievalCheck: { title: 'Check', body: 'Check body' },
+                mustHitConcepts: ['standard form'],
+                criticalMisconceptionTags: ['solving-before-rearranging']
+              }
+            ],
+            synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+            independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+            exitCheck: { title: 'Exit Check', body: 'Exit body' }
+          },
+          practiceQuestionIds: [],
+          masteryQuestionIds: []
+        },
+        questions: []
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 10',
+              gradeId: 'grade-10',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Mathematics',
+            topicTitle: 'Quadratic Equations',
+            topicDescription: 'Solving quadratic equations by factoring and the quadratic formula.',
+            curriculumReference: 'IEB · Grade 10 · Mathematics',
+            lessonFlowVersion: 'v2'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    const event = createServerDynamicOperationsService().recordGenerationEvent.mock.calls[0]?.[0];
+    expect(event).toEqual(
+      expect.objectContaining({
+        route: 'lesson-plan',
+        status: 'success',
+        promptVersion: 'lesson-plan-v5',
+        pedagogyVersion: 'phase4-v3',
+        model: 'openai/gpt-4.1-mini'
+      })
+    );
+  });
+
   it('lesson plan route returns 402 with a structured quota error when the user is over budget', async () => {
     checkUserQuota.mockResolvedValue({
       allowed: false,

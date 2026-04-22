@@ -24,6 +24,7 @@ import type {
   Topic,
   UserProfile
 } from '$lib/types';
+import { createConceptItem } from '$lib/lesson-concept-contract';
 import {
   advanceLessonFlowV2State,
   createLessonFlowV2SessionState,
@@ -730,6 +731,43 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
   ];
 }
 
+function getLessonMessageV2Context(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+) {
+  if (!isLessonFlowV2Session(lessonSession) || !lessonSession.v2State) {
+    return null;
+  }
+
+  const checkpoint = lessonSession.v2State.activeCheckpoint;
+
+  return {
+    checkpoint,
+    loopIndex: checkpoint.startsWith('loop_') ? lessonSession.v2State.activeLoopIndex : null
+  };
+}
+
+export function annotateLessonMessageForSession<T extends LessonMessage>(
+  message: T,
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+): T {
+  const v2Context = getLessonMessageV2Context(lessonSession);
+
+  return v2Context ? { ...message, v2Context } : message;
+}
+
+export function annotateLessonMessagesForSession(
+  messages: LessonMessage[],
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+): LessonMessage[] {
+  const v2Context = getLessonMessageV2Context(lessonSession);
+
+  if (!v2Context) {
+    return messages;
+  }
+
+  return messages.map((message) => ({ ...message, v2Context }));
+}
+
 function createDefaultLessonStayMeta(): DoceoMeta {
   return {
     action: 'stay',
@@ -856,7 +894,7 @@ export function buildLessonEvaluationAssistantMessage(
           ? `${evaluation.feedback} We will keep going, but this gap is marked to revisit.`
           : `${evaluation.feedback} Let's support the missing idea with a ${remediationStep.replace(/_/g, ' ')}.`;
 
-  return {
+  return annotateLessonMessageForSession({
     id: `msg-${crypto.randomUUID()}`,
     role: 'assistant',
     type: evaluation.mode === 'advance' || evaluation.mode === 'skip_with_accountability' ? 'feedback' : 'teaching',
@@ -891,12 +929,12 @@ export function buildLessonEvaluationAssistantMessage(
             : [...evaluation.missingMustHitConcepts, ...evaluation.criticalMisconceptions].slice(0, 3)
       }
     }
-  };
+  }, lessonSession);
 }
 
 export function buildInitialLessonMessagesForSession(lesson: Lesson, lessonSession: LessonSession): LessonMessage[] {
   return isLessonFlowV2Session(lessonSession)
-    ? buildV2CheckpointMessages(lesson, lessonSession)
+    ? annotateLessonMessagesForSession(buildV2CheckpointMessages(lesson, lessonSession), lessonSession)
     : buildInitialLessonMessages(lesson, lessonSession.currentStage);
 }
 
@@ -1101,7 +1139,7 @@ export function buildDynamicLessonFromTopic(input: {
         `**Transfer:** If you can ${lens.actionWord.split(' and ')[0]} on a problem you haven't seen before, you're ready for exam questions on ${topicTitle}.`
       ].join('\n')
     },
-    keyConcepts: buildDynamicConceptItems(topicTitle, input.subjectName, lens),
+    keyConcepts: buildDynamicConceptItems(topicTitle, input.subjectName, lens, input.grade),
     flowV2: null,
     practiceQuestionIds: [`${rootId}-q-1`],
     masteryQuestionIds: [`${rootId}-q-2`]
@@ -1111,27 +1149,55 @@ export function buildDynamicLessonFromTopic(input: {
 function buildDynamicConceptItems(
   topicTitle: string,
   subjectName: string,
-  lens: ReturnType<typeof getSubjectLens>
+  lens: ReturnType<typeof getSubjectLens>,
+  grade: string
 ): ConceptItem[] {
   return [
-    {
-      name: `What ${topicTitle} Is`,
-      summary: `The core definition — what makes ${topicTitle} what it is.`,
-      detail: `Every instance of **${topicTitle}** in ${subjectName} has a **${lens.conceptWord}** at its centre. Before applying any rule, you need to be able to name what ${topicTitle} is and why it matters in this subject. Start here: identify the ${lens.conceptWord}, then describe it in your own words.`,
-      example: `A quick test: can you point to the ${lens.conceptWord} in a problem? If yes, you've found ${topicTitle}. If not, read the problem again looking specifically for it.`
-    },
-    {
-      name: `Why the Rule Works`,
-      summary: `The reasoning behind the rule — not just the what, but the why.`,
-      detail: `Knowing why **${topicTitle}** works prevents the most common mistake: ${lens.misconception}. The rule is grounded in how ${lens.conceptWord}s behave in ${subjectName}. When you understand the reason, you can adapt it to situations you haven't seen before.`,
-      example: lens.example
-    },
-    {
-      name: `When to Apply It`,
-      summary: `Spotting the right moment to use ${topicTitle}.`,
-      detail: `Not every problem calls for **${topicTitle}**, but when it does, ${lens.evidenceWord} gives you the signal. The key habit is to ${lens.actionWord} — do this before writing anything down. Rushing past this step is what leads to ${lens.misconception}.`,
-      example: `If you see a problem that asks you to ${lens.actionWord.split(' and ')[0]}, that is your cue. Name the ${lens.conceptWord} first, then proceed.`
-    }
+    createConceptItem({
+      name: `Core Rule`,
+      oneLineDefinition: `In ${subjectName}, ${topicTitle} depends on naming the main ${lens.conceptWord} or rule before you begin.`,
+      example: lens.example,
+      quickCheck: `State the main rule for ${topicTitle}, then name the clue that tells you it applies.`,
+      conceptType: 'core_rule',
+      curriculumAlignment: {
+        topicMatch: topicTitle,
+        gradeMatch: grade,
+        alignmentNote: `${topicTitle} at ${grade} requires the learner to identify the core rule before solving.`
+      },
+      whyItMatters: `If the learner can name the rule first, they are less likely to fall into ${lens.misconception}.`,
+      commonMisconception: lens.misconception,
+      extendedExample: `In a ${subjectName} question on ${topicTitle}, start by naming the ${lens.conceptWord} or rule, then point to the evidence that makes it fit.`
+    }),
+    createConceptItem({
+      name: `Worked Pattern`,
+      oneLineDefinition: `A strong ${topicTitle} answer follows a visible pattern: identify the rule, use the evidence, and show the first justified step.`,
+      example: lens.example,
+      quickCheck: `Explain why the first worked step in ${topicTitle} is valid, not just what the final answer is.`,
+      conceptType: 'worked_pattern',
+      curriculumAlignment: {
+        topicMatch: topicTitle,
+        gradeMatch: grade,
+        alignmentNote: `${topicTitle} at ${grade} should be taught through a concrete worked pattern the learner can copy.`
+      },
+      whyItMatters: `Seeing the pattern helps the learner imitate the method instead of guessing a final answer.`,
+      commonMisconception: lens.misconception,
+      extendedExample: `Use this pattern for ${topicTitle}: name the ${lens.conceptWord}, use the ${lens.evidenceWord}, and justify the first step before moving on.`
+    }),
+    createConceptItem({
+      name: `Check And Apply`,
+      oneLineDefinition: `After the first step in ${topicTitle}, the learner should check the evidence again so the rule still matches the problem.`,
+      example: `A reliable check in ${topicTitle} is to compare each step against the ${lens.evidenceWord} and confirm you have not slipped into ${lens.misconception}.`,
+      quickCheck: `Check one fresh ${topicTitle} step: say what rule you would use, what evidence supports it, and what mistake you must avoid.`,
+      conceptType: 'application_check',
+      curriculumAlignment: {
+        topicMatch: topicTitle,
+        gradeMatch: grade,
+        alignmentNote: `${topicTitle} at ${grade} should end with a concrete application and a clear self-check.`
+      },
+      whyItMatters: `This habit helps the learner transfer the idea to a new problem instead of only copying the worked example.`,
+      commonMisconception: lens.misconception,
+      extendedExample: `On a new ${topicTitle} problem, a strong response says which rule fits, names the evidence, and explains the first step clearly.`
+    })
   ];
 }
 
@@ -1236,7 +1302,7 @@ export function buildDynamicLessonFlowV2FromTopic(input: {
     },
     retrievalCheck: {
       title: `Check ${concept.name}`,
-      body: buildDynamicLoopCheck(concept.name, input.topicTitle)
+      body: concept.quickCheck ?? buildDynamicLoopCheck(concept.name, input.topicTitle)
     },
     mustHitConcepts: [concept.name],
     criticalMisconceptionTags: [slugify(concept.name), slugify(input.topicTitle)]
@@ -1251,6 +1317,7 @@ export function buildDynamicLessonFlowV2FromTopic(input: {
         title: 'Start',
         body: base.orientation.body
       },
+      concepts: conceptItems,
       loops,
       synthesis: {
         title: 'Synthesis',

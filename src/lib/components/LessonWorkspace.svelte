@@ -7,11 +7,12 @@
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
   import {
+    deriveActiveLessonCardForSession,
+    deriveConversationViewForSession,
     deriveNextStepCtaStateForSession,
     getStageContextCopyForSession,
     getVisibleProgressStagesForSession,
-    getVisibleQuickActionDefinitionsForSession,
-    getNextStepPromptForSession
+    getVisibleQuickActionDefinitionsForSession
   } from '$lib/components/lesson-workspace-ui';
   import { launchCheckout } from '$lib/payments/checkout';
   import { appState } from '$lib/stores/app-state';
@@ -27,6 +28,9 @@
   let chatElement = $state<HTMLDivElement | null>(null);
   let expandedConcepts = $state(new Set<string>());
   let askedConceptKeys = $state(new Set<string>());
+  let selectedDiagnosticOptionId = $state<string | null>(null);
+  let activeDiagnosticPrompt = $state<string | null>(null);
+  let showCollapsedTranscript = $state(false);
   let composerFocused = $state(false);
   let showScrollDown = $state(false);
   let celebratingStage = $state<LessonStage | null>(null);
@@ -50,6 +54,13 @@
     if (!str) return str;
     const lower = str.toLowerCase();
     return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }
+
+  function toDataState(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   function toggleConcept(key: string): void {
@@ -126,10 +137,63 @@
       ? deriveNextStepCtaStateForSession(lessonSession)
       : { disabled: false, cue: null }
   );
-  const nextStepPrompt = $derived(
+  const activeLessonCard = $derived(
     lessonSession && lessonSession.currentStage !== 'complete'
-      ? getNextStepPromptForSession(lessonSession)
+      ? deriveActiveLessonCardForSession(lessonSession, lesson)
       : null
+  );
+  const activeLessonCardTtsMessage = $derived.by(() => {
+    if (!lessonSession || !activeLessonCard) {
+      return null;
+    }
+
+    const activeCheckpoint = lessonSession.v2State?.activeCheckpoint ?? null;
+    const activeLoopIndex =
+      activeCheckpoint && activeCheckpoint.startsWith('loop_')
+        ? lessonSession.v2State?.activeLoopIndex ?? null
+        : null;
+
+    for (let index = lessonSession.messages.length - 1; index >= 0; index -= 1) {
+      const message = lessonSession.messages[index];
+      if (
+        !message ||
+        !canPlayTutorBubble(message) ||
+        message.metadata?.response_mode === 'support'
+      ) {
+        continue;
+      }
+
+      if (message.content === activeLessonCard.body) {
+        return message;
+      }
+
+      if (
+        activeCheckpoint &&
+        message.v2Context?.checkpoint === activeCheckpoint &&
+        message.v2Context?.loopIndex === activeLoopIndex
+      ) {
+        return message;
+      }
+    }
+
+    return null;
+  });
+  const conversationView = $derived(
+    lessonSession ? deriveConversationViewForSession(lessonSession, lesson) : {
+      completedUnits: [],
+      collapsedMessages: [],
+      visibleMessages: []
+    }
+  );
+  const activeLessonCardMotionKey = $derived(
+    activeLessonCard
+      ? [
+          activeLessonCard.stateLabel,
+          activeLessonCard.title,
+          activeLessonCard.ctaLabel,
+          activeLessonCard.diagnostic?.prompt ?? ''
+        ].join('::')
+      : 'none'
   );
   const finalVisibleStage = $derived(visibleStages.at(-1) ?? null);
   const finalConnectorAfterStage = $derived(
@@ -162,6 +226,24 @@
     if (chatElement && !showScrollDown) {
       chatElement.scrollTo({ top: chatElement.scrollHeight, behavior: 'smooth' });
     }
+  });
+
+  $effect(() => {
+    const diagnosticPrompt = activeLessonCard?.diagnostic?.prompt ?? null;
+    if (diagnosticPrompt === activeDiagnosticPrompt) {
+      return;
+    }
+
+    activeDiagnosticPrompt = diagnosticPrompt;
+    selectedDiagnosticOptionId = null;
+  });
+
+  $effect(() => {
+    if (conversationView.collapsedMessages.length > 0) {
+      return;
+    }
+
+    showCollapsedTranscript = false;
   });
 
   $effect(() => {
@@ -291,6 +373,31 @@
     composer = reply;
     appState.updateComposerDraft(reply);
     submit();
+  }
+
+  function sendNextStepControl(): void {
+    if (!lessonSession || lessonSession.currentStage === 'complete' || nextStepCtaState.disabled) {
+      return;
+    }
+
+    void appState.sendLessonControl('next_step');
+  }
+
+  function submitActiveLessonCardAction(): void {
+    if (!activeLessonCard) {
+      return;
+    }
+
+    if (activeLessonCard.primaryAction === 'submit_diagnostic') {
+      if (!selectedDiagnosticOptionId) {
+        return;
+      }
+
+      void appState.submitLessonDiagnostic(selectedDiagnosticOptionId);
+      return;
+    }
+
+    sendNextStepControl();
   }
 
   async function submitLessonRating(): Promise<void> {
@@ -573,192 +680,368 @@
     </header>
 
     <section class="lesson-body">
-      <!-- Chat area -->
-      <div class="chat-wrap">
-        <div class="chat-area" bind:this={chatElement} onscroll={onChatScroll}>
-          {#each lessonSession.messages as message, messageIndex}
-            {#if message.type === 'stage_start'}
-              <div class="stage-transition" aria-hidden="true">
-                <span class="stage-transition-pill">
-                  {stageEmoji(message.stage)} {toSentenceCase(getStageLabel(message.stage))}
-                </span>
+      {#if activeLessonCard}
+        <section
+          class="active-lesson-card"
+          aria-label="Active lesson"
+          data-card-state={toDataState(activeLessonCard.stateLabel)}
+        >
+          {#key activeLessonCardMotionKey}
+            <div class="active-lesson-card-transition-group">
+              <div class="active-lesson-card-header">
+                <p class="active-lesson-card-state">{activeLessonCard.stateLabel}</p>
+                <h3>{activeLessonCard.title}</h3>
+                <p class="active-lesson-card-context">{getStageContextCopyForSession(lessonSession)}</p>
               </div>
-            {:else if message.type === 'concept_cards'}
-              <div class="concept-cards-panel">
-                <p class="concept-cards-label">Pick a concept to go deeper 🔍</p>
-                {#each message.conceptItems ?? [] as concept, conceptIndex}
-                  {@const key = `${message.id}-${conceptIndex}`}
-                  <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
-                    <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
-                      <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
-                      <div class="concept-card-title">
-                        <span class="concept-name">{concept.name}</span>
-                        <span class="concept-summary">{concept.summary}</span>
-                      </div>
-                      <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
-                    </button>
-                    {#if expandedConcepts.has(key)}
-                      <div class="concept-card-body">
-                        <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
-                        <div class="concept-example">
-                          <span class="concept-example-label">Example</span>
-                          <div>{@html renderSimpleMarkdown(concept.example)}</div>
-                        </div>
-                        <div class="concept-actions">
-                          <button
-                            type="button"
-                            class="concept-ask-link"
-                            onclick={() => askAboutConcept(concept, key)}
-                            disabled={askedConceptKeys.has(key)}
-                          >
-                            <span>{askedConceptKeys.has(key) ? 'Explanation requested' : 'Ask Doceo to explain this'}</span>
-                            <span aria-hidden="true">→</span>
-                          </button>
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {/each}
-              </div>
-              {#if supportAnchorIndex === messageIndex}
-                <section class="lesson-support-object" aria-label="Lesson support">
-                  <p class="lesson-support-copy">{getStageContextCopyForSession(lessonSession)}</p>
-                  {#if nextStepCtaState.cue}
-                    <p class="lesson-support-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
-                  {/if}
-                  {#if !useDesktopActionRow}
-                    <div class="lesson-support-actions">
-                      <button
-                        type="button"
-                        class="btn btn-primary lesson-support-cta"
-                        onclick={() => nextStepPrompt && sendQuickReply(nextStepPrompt)}
-                        disabled={nextStepCtaState.disabled}
-                        aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
-                      >
-                        <span>Next step</span>
-                        <span class="next-step-arrow" aria-hidden="true">→</span>
-                      </button>
-                    </div>
-                  {/if}
-                </section>
-              {/if}
-            {:else}
+
               <div
-                class="message-support-cluster"
-                class:is-support-anchor={supportAnchorIndex === messageIndex}
+                class="active-lesson-card-body-shell"
+                class:active-lesson-card-body-shell-with-tts={Boolean(activeLessonCardTtsMessage)}
               >
-                <article
-                  class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
-                  class:compact-reply={isCompactUserReply(message)}
-                  class:bubble-with-tts={canPlayTutorBubble(message)}
-                  data-interaction-mode={canPlayTutorBubble(message) ? 'button-only' : 'bubble'}
-                  data-motion-variant={bubbleMotionVariant(message)}
-                >
-                  {#if message.type === 'question'}
-                    {@const questionCard = parseQuestionCard(message.content)}
-                    <div class="question-kicker">
-                      <span class="question-icon" aria-hidden="true">?</span>
-                      <small>Question</small>
-                    </div>
-                    {#if questionCard.concept}
-                      <span class="question-chip">{questionCard.concept}</span>
-                    {/if}
-                    <div class="bubble-body question-body">
-                      <p>{questionCard.prompt}</p>
-                    </div>
-                  {:else}
-                    {#if message.type === 'side_thread'}
-                      <small>↳ Side thread</small>
-                    {:else if message.metadata?.response_mode === 'support'}
-                      <small>Hint</small>
-                    {/if}
-                    {#if canPlayTutorBubble(message)}
-                      {@const ttsState = ttsStateForMessage(message)}
-                      <button
-                        type="button"
-                        class="bubble-tts-control"
-                        data-tts-state={ttsState}
-                        aria-label={ttsLabelForState(ttsState)}
-                        aria-pressed={ttsState === 'playing' || ttsState === 'paused'}
-                        aria-busy={ttsState === 'loading'}
-                        disabled={ttsState === 'loading'}
-                        onclick={() => toggleTutorBubbleAudio(message)}
-                      >
-                        <span class="sr-only">{ttsLabelForState(ttsState)}</span>
-                        <svg class="bubble-tts-icon" viewBox="0 0 24 24" aria-hidden="true">
-                          <path
-                            d="M3 10v4h4l5 4V6L7 10H3Zm12.5 2a3.5 3.5 0 0 0-2-3.15v6.29A3.5 3.5 0 0 0 15.5 12Z"
-                            fill="currentColor"
-                          />
-                          <path
-                            d="M16 6.5a7 7 0 0 1 0 11"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-linecap="round"
-                            stroke-width="1.8"
-                          />
-                        </svg>
-                      </button>
-                    {/if}
-                    {@const promptSplit =
-                      message.role === 'assistant' && message.type === 'teaching'
-                        ? message.metadata?.response_mode === 'support'
-                          ? { body: message.content, prompt: null }
-                          : splitTutorPrompt(message.content)
-                        : { body: message.content, prompt: null }}
-                    <div class="bubble-body">
-                      {@html renderSimpleMarkdown(promptSplit.body)}
-                      {#if promptSplit.prompt}
-                        <div class="bubble-prompt">{@html renderSimpleMarkdown(promptSplit.prompt)}</div>
-                      {/if}
-                    </div>
-                    {#if ttsUpgradeMessageId === message.id}
-                      <div class="bubble-tts-upgrade" role="status" aria-live="polite">
-                        <p class="bubble-tts-upgrade-copy">
-                          Tutor audio is available on Standard and Premium. Upgrade to listen to lesson explanations.
-                        </p>
-                        <div class="bubble-tts-upgrade-actions">
-                          <button
-                            type="button"
-                            class="btn btn-secondary btn-compact bubble-tts-upgrade-button"
-                            onclick={upgradeTutorAudio}
-                            disabled={ttsUpgradePending}
-                          >
-                            {ttsUpgradePending ? 'Opening checkout…' : 'Upgrade to listen'}
-                          </button>
-                        </div>
-                        {#if ttsUpgradeError}
-                          <p class="bubble-tts-upgrade-error">{ttsUpgradeError}</p>
+                {#if activeLessonCardTtsMessage}
+                  {@render tutorAudioControl(activeLessonCardTtsMessage, 'active-lesson-card-tts-control')}
+                {/if}
+                <div class="active-lesson-card-body">
+                  {@html renderSimpleMarkdown(activeLessonCard.body)}
+                </div>
+              </div>
+              {#if activeLessonCardTtsMessage}
+                {@render tutorAudioUpgradeNotice(activeLessonCardTtsMessage.id)}
+              {/if}
+
+              {#if activeLessonCard.conceptMiniCards.length > 0}
+                <div class="active-lesson-card-concepts">
+                  <p class="active-lesson-card-concepts-label">Core ideas in this lesson</p>
+                  <div class="active-lesson-card-concept-stack">
+                    {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
+                      {@const key = `active-card-concept-${conceptIndex}`}
+                      <div class="concept-card concept-card-mini" class:expanded={expandedConcepts.has(key)}>
+                        <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
+                          <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
+                          <div class="concept-card-title">
+                            <span class="concept-name">{concept.name}</span>
+                            <span class="concept-summary">{concept.oneLineDefinition ?? concept.summary}</span>
+                          </div>
+                          <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
+                        </button>
+                        {#if expandedConcepts.has(key)}
+                          <div class="concept-card-body">
+                            {#if concept.whyItMatters}
+                              <p class="active-lesson-card-concept-note">{concept.whyItMatters}</p>
+                            {/if}
+                            <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
+                            <div class="concept-example">
+                              <span class="concept-example-label">Example</span>
+                              <div>{@html renderSimpleMarkdown(concept.example)}</div>
+                            </div>
+                            <div class="concept-actions">
+                              <button
+                                type="button"
+                                class="concept-ask-link"
+                                onclick={() => askAboutConcept(concept, key)}
+                                disabled={askedConceptKeys.has(key)}
+                              >
+                                <span>{askedConceptKeys.has(key) ? 'Explanation requested' : 'Ask Doceo to explain this'}</span>
+                                <span aria-hidden="true">→</span>
+                              </button>
+                            </div>
+                          </div>
                         {/if}
                       </div>
-                    {/if}
-                  {/if}
-                </article>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
 
-                {#if supportAnchorIndex === messageIndex}
-                  <section class="lesson-support-object" aria-label="Lesson support">
-                    <p class="lesson-support-copy">{getStageContextCopyForSession(lessonSession)}</p>
-                    {#if nextStepCtaState.cue}
-                      <p class="lesson-support-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
-                    {/if}
-                    {#if !useDesktopActionRow}
-                      <div class="lesson-support-actions">
-                        <button
-                          type="button"
-                          class="btn btn-primary lesson-support-cta"
-                          onclick={() => nextStepPrompt && sendQuickReply(nextStepPrompt)}
-                          disabled={nextStepCtaState.disabled}
-                          aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
-                        >
-                          <span>Next step</span>
-                          <span class="next-step-arrow" aria-hidden="true">→</span>
-                        </button>
-                      </div>
-                    {/if}
-                  </section>
+              {#if activeLessonCard.diagnostic}
+                <section class="active-lesson-card-diagnostic" aria-label="Concept 1 quick check">
+                  <p class="active-lesson-card-diagnostic-label">Quick check</p>
+                  <h4>{activeLessonCard.diagnostic.prompt}</h4>
+                  <div class="active-lesson-card-diagnostic-options" role="radiogroup" aria-label={activeLessonCard.diagnostic.prompt}>
+                    {#each activeLessonCard.diagnostic.options as option}
+                      <label class="diagnostic-option" class:selected={selectedDiagnosticOptionId === option.id}>
+                        <input
+                          type="radio"
+                          name="concept-1-diagnostic"
+                          value={option.id}
+                          checked={selectedDiagnosticOptionId === option.id}
+                          onchange={() => (selectedDiagnosticOptionId = option.id)}
+                        />
+                        <span class="diagnostic-option-copy">
+                          <strong>{option.label}</strong>
+                          <span>{option.text}</span>
+                        </span>
+                      </label>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
+
+              <div class="active-lesson-card-actions">
+                <div class="active-lesson-card-primary">
+                  <button
+                    type="button"
+                    class="btn btn-primary lesson-support-cta active-lesson-card-cta"
+                    onclick={submitActiveLessonCardAction}
+                    disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
+                    aria-describedby={
+                      activeLessonCard.primaryAction === 'submit_diagnostic'
+                        ? undefined
+                        : nextStepCtaState.cue
+                          ? nextStepCueId
+                          : undefined
+                    }
+                  >
+                    <span>{activeLessonCard.ctaLabel}</span>
+                    <span class="next-step-arrow" aria-hidden="true">→</span>
+                  </button>
+                  {#if activeLessonCard.primaryAction !== 'submit_diagnostic' && nextStepCtaState.cue}
+                    <p class="lesson-support-cue active-lesson-card-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
+                  {/if}
+                </div>
+
+                <div class="active-lesson-card-secondary">
+                  {#each visibleQuickActions as action}
+                    <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
+                      {action.label}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          {/key}
+        </section>
+      {/if}
+
+      {#snippet tutorAudioControl(message, variantClass)}
+        {@const ttsState = ttsStateForMessage(message)}
+        <button
+          type="button"
+          class={`bubble-tts-control ${variantClass}`}
+          data-tts-state={ttsState}
+          aria-label={ttsLabelForState(ttsState)}
+          aria-pressed={ttsState === 'playing' || ttsState === 'paused'}
+          aria-busy={ttsState === 'loading'}
+          disabled={ttsState === 'loading'}
+          onclick={() => toggleTutorBubbleAudio(message)}
+        >
+          <span class="sr-only">{ttsLabelForState(ttsState)}</span>
+          <svg class="bubble-tts-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M3 10v4h4l5 4V6L7 10H3Zm12.5 2a3.5 3.5 0 0 0-2-3.15v6.29A3.5 3.5 0 0 0 15.5 12Z"
+              fill="currentColor"
+            />
+            <path
+              d="M16 6.5a7 7 0 0 1 0 11"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-width="1.8"
+            />
+          </svg>
+        </button>
+      {/snippet}
+
+      {#snippet tutorAudioUpgradeNotice(messageId)}
+        {#if ttsUpgradeMessageId === messageId}
+          <div class="bubble-tts-upgrade" role="status" aria-live="polite">
+            <p class="bubble-tts-upgrade-copy">
+              Tutor audio is available on Standard and Premium. Upgrade to listen to lesson explanations.
+            </p>
+            <div class="bubble-tts-upgrade-actions">
+              <button
+                type="button"
+                class="btn btn-secondary btn-compact bubble-tts-upgrade-button"
+                onclick={upgradeTutorAudio}
+                disabled={ttsUpgradePending}
+              >
+                {ttsUpgradePending ? 'Opening checkout…' : 'Upgrade to listen'}
+              </button>
+            </div>
+            {#if ttsUpgradeError}
+              <p class="bubble-tts-upgrade-error">{ttsUpgradeError}</p>
+            {/if}
+          </div>
+        {/if}
+      {/snippet}
+
+      {#snippet lessonSupportObject()}
+        <section class="lesson-support-object" aria-label="Lesson support">
+          <p class="lesson-support-copy">{getStageContextCopyForSession(lessonSession)}</p>
+          {#if nextStepCtaState.cue}
+            <p class="lesson-support-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
+          {/if}
+          {#if !useDesktopActionRow}
+            <div class="lesson-support-actions">
+              <button
+                type="button"
+                class="btn btn-primary lesson-support-cta"
+                onclick={sendNextStepControl}
+                disabled={nextStepCtaState.disabled}
+                aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
+              >
+                <span>Next step</span>
+                <span class="next-step-arrow" aria-hidden="true">→</span>
+              </button>
+            </div>
+          {/if}
+        </section>
+      {/snippet}
+
+      {#snippet transcriptEntry(entry, history)}
+        {@const message = entry.message}
+        {@const messageIndex = entry.index}
+
+        {#if message.type === 'stage_start'}
+          <div class="stage-transition" class:transcript-history-item={history} aria-hidden="true">
+            <span class="stage-transition-pill">
+              {stageEmoji(message.stage)} {toSentenceCase(getStageLabel(message.stage))}
+            </span>
+          </div>
+        {:else if message.type === 'concept_cards'}
+          <div class="concept-cards-panel" class:transcript-history-item={history}>
+            <p class="concept-cards-label">Pick a concept to go deeper 🔍</p>
+            {#each message.conceptItems ?? [] as concept, conceptIndex}
+              {@const key = `${message.id}-${conceptIndex}`}
+              <div class="concept-card" class:expanded={expandedConcepts.has(key)}>
+                <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
+                  <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
+                  <div class="concept-card-title">
+                    <span class="concept-name">{concept.name}</span>
+                    <span class="concept-summary">{concept.summary}</span>
+                  </div>
+                  <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
+                </button>
+                {#if expandedConcepts.has(key)}
+                  <div class="concept-card-body">
+                    <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
+                    <div class="concept-example">
+                      <span class="concept-example-label">Example</span>
+                      <div>{@html renderSimpleMarkdown(concept.example)}</div>
+                    </div>
+                    <div class="concept-actions">
+                      <button
+                        type="button"
+                        class="concept-ask-link"
+                        onclick={() => askAboutConcept(concept, key)}
+                        disabled={askedConceptKeys.has(key)}
+                      >
+                        <span>{askedConceptKeys.has(key) ? 'Explanation requested' : 'Ask Doceo to explain this'}</span>
+                        <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  </div>
                 {/if}
               </div>
+            {/each}
+          </div>
+
+          {#if supportAnchorIndex === messageIndex && !activeLessonCard && !history}
+            {@render lessonSupportObject()}
+          {/if}
+        {:else}
+          <div
+            class="message-support-cluster"
+            class:transcript-history-item={history}
+            class:is-support-anchor={supportAnchorIndex === messageIndex}
+          >
+            <article
+              class={`bubble ${bubbleClass(message)} ${bubbleAnimationClass(message)}`}
+              class:compact-reply={isCompactUserReply(message)}
+              class:bubble-with-tts={canPlayTutorBubble(message)}
+              data-interaction-mode={canPlayTutorBubble(message) ? 'button-only' : 'bubble'}
+              data-motion-variant={bubbleMotionVariant(message)}
+            >
+              {#if message.type === 'question'}
+                {@const questionCard = parseQuestionCard(message.content)}
+                <div class="question-kicker">
+                  <span class="question-icon" aria-hidden="true">?</span>
+                  <small>Question</small>
+                </div>
+                {#if questionCard.concept}
+                  <span class="question-chip">{questionCard.concept}</span>
+                {/if}
+                <div class="bubble-body question-body">
+                  <p>{questionCard.prompt}</p>
+                </div>
+              {:else}
+                {#if message.type === 'side_thread'}
+                  <small>↳ Side thread</small>
+                {:else if message.metadata?.response_mode === 'support'}
+                  <small>Hint</small>
+                {/if}
+                {#if canPlayTutorBubble(message)}
+                  {@render tutorAudioControl(message, '')}
+                {/if}
+                {@const promptSplit =
+                  message.role === 'assistant' && message.type === 'teaching'
+                    ? message.metadata?.response_mode === 'support'
+                      ? { body: message.content, prompt: null }
+                      : splitTutorPrompt(message.content)
+                    : { body: message.content, prompt: null }}
+                <div class="bubble-body">
+                  {@html renderSimpleMarkdown(promptSplit.body)}
+                  {#if promptSplit.prompt}
+                    <div class="bubble-prompt">{@html renderSimpleMarkdown(promptSplit.prompt)}</div>
+                  {/if}
+                </div>
+                {#if activeLessonCardTtsMessage?.id !== message.id}
+                  {@render tutorAudioUpgradeNotice(message.id)}
+                {/if}
+              {/if}
+            </article>
+
+            {#if supportAnchorIndex === messageIndex && !activeLessonCard && !history}
+              {@render lessonSupportObject()}
             {/if}
+          </div>
+        {/if}
+      {/snippet}
+
+      <!-- Chat area -->
+      <section class="chat-wrap" aria-label="Lesson conversation">
+        <div class="chat-area" bind:this={chatElement} onscroll={onChatScroll}>
+          {#if conversationView.completedUnits.length > 0}
+            <section class="completed-unit-summary-list" aria-label="Completed lesson units">
+              {#each conversationView.completedUnits as unit}
+                <article class="completed-unit-summary">
+                  <p class="completed-unit-summary-label">{unit.label}</p>
+                  <h4>{unit.title}</h4>
+                  <p class="completed-unit-summary-copy">{unit.summary}</p>
+                  {#if unit.supportingText}
+                    <p class="completed-unit-summary-supporting">{unit.supportingText}</p>
+                  {/if}
+                </article>
+              {/each}
+            </section>
+          {/if}
+
+          {#if conversationView.collapsedMessages.length > 0}
+            <section class="collapsed-transcript-shell">
+              <button
+                type="button"
+                class="collapsed-transcript-toggle"
+                aria-expanded={showCollapsedTranscript}
+                aria-controls="collapsed-transcript-panel"
+                onclick={() => (showCollapsedTranscript = !showCollapsedTranscript)}
+              >
+                {showCollapsedTranscript
+                  ? 'Hide earlier conversation'
+                  : `Show earlier conversation (${conversationView.collapsedMessages.length} items)`}
+              </button>
+
+              {#if showCollapsedTranscript}
+                <div class="collapsed-transcript-panel" id="collapsed-transcript-panel">
+                  {#each conversationView.collapsedMessages as entry (entry.message.id)}
+                    {@render transcriptEntry(entry, true)}
+                  {/each}
+                </div>
+              {/if}
+            </section>
+          {/if}
+
+          {#each conversationView.visibleMessages as entry (entry.message.id)}
+            {@render transcriptEntry(entry, false)}
           {/each}
 
           {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
@@ -773,7 +1056,7 @@
             ↓ New message
           </button>
         {/if}
-      </div>
+      </section>
 
       <!-- Composer -->
       <div class="input-area">
@@ -872,29 +1155,31 @@
             {/if}
           </section>
         {:else}
-          <div class="lesson-action-row">
-            <div class="quick-actions">
-              {#each visibleQuickActions as action}
-                <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
-                  {action.label}
-                </button>
-              {/each}
-            </div>
-            {#if useDesktopActionRow}
-              <div class="progress-action-slot">
-                <button
-                  type="button"
-                  class="btn btn-primary lesson-support-cta lesson-support-cta-row"
-                  onclick={() => nextStepPrompt && sendQuickReply(nextStepPrompt)}
-                  disabled={nextStepCtaState.disabled}
-                  aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
-                >
-                  <span>Next step</span>
-                  <span class="next-step-arrow" aria-hidden="true">→</span>
-                </button>
+          {#if !activeLessonCard}
+            <div class="lesson-action-row">
+              <div class="quick-actions">
+                {#each visibleQuickActions as action}
+                  <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
+                    {action.label}
+                  </button>
+                {/each}
               </div>
-            {/if}
-          </div>
+              {#if useDesktopActionRow}
+                <div class="progress-action-slot">
+                  <button
+                    type="button"
+                    class="btn btn-primary lesson-support-cta lesson-support-cta-row"
+                    onclick={sendNextStepControl}
+                    disabled={nextStepCtaState.disabled}
+                    aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
+                  >
+                    <span>Next step</span>
+                    <span class="next-step-arrow" aria-hidden="true">→</span>
+                  </button>
+                </div>
+              {/if}
+            </div>
+          {/if}
           <div class="composer">
             <textarea
               rows={composerFocused || composer.length > 0 ? 2 : 1}
@@ -1490,11 +1775,232 @@
   .lesson-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 0;
     min-height: 0;
     overflow: hidden;
     padding: 0;
+  }
+
+  .active-lesson-card {
+    display: grid;
+    gap: 1rem;
+    padding: 1.2rem 1.2rem 1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--accent) 12%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 94%, transparent)
+      );
+    transition:
+      background 220ms var(--ease-soft),
+      border-color 220ms var(--ease-soft),
+      box-shadow 220ms var(--ease-soft);
+  }
+
+  .active-lesson-card-transition-group {
+    display: grid;
+    gap: inherit;
+    animation: card-state-settle 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .active-lesson-card[data-card-state='concept-1-quick-check'] {
+    box-shadow:
+      var(--glass-inset-tile),
+      0 0 0 1px color-mix(in srgb, var(--color-blue) 12%, transparent);
+  }
+
+  .active-lesson-card-header {
+    display: grid;
+    gap: 0.42rem;
+  }
+
+  .active-lesson-card-state {
+    margin: 0;
+    color: color-mix(in srgb, var(--accent) 78%, var(--text) 22%);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .active-lesson-card h3 {
+    margin: 0;
+    color: var(--text);
+    font-size: clamp(1.05rem, 2vw, 1.4rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+  }
+
+  .active-lesson-card-context {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.92rem;
+    line-height: 1.52;
+    max-width: 42rem;
+  }
+
+  .active-lesson-card-body-shell {
+    position: relative;
+  }
+
+  .active-lesson-card-body-shell-with-tts .active-lesson-card-body {
+    padding-right: 3.8rem;
+  }
+
+  .active-lesson-card-body {
+    display: grid;
+    gap: 0.7rem;
+    padding: 1rem 1.05rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-strong));
+    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+    box-shadow: var(--glass-inset-tile);
+  }
+
+  .active-lesson-card-tts-control {
+    top: 0.8rem;
+    right: 0.8rem;
+  }
+
+  .active-lesson-card-body :global(p),
+  .active-lesson-card-body :global(ul),
+  .active-lesson-card-body :global(li),
+  .active-lesson-card-body :global(ol) {
+    margin: 0;
+  }
+
+  .active-lesson-card-body :global(ul),
+  .active-lesson-card-body :global(ol) {
+    padding-left: 1.35rem;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .active-lesson-card-concepts {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .active-lesson-card-concepts-label,
+  .active-lesson-card-diagnostic-label {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .active-lesson-card-concept-stack {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .concept-card-mini {
+    max-width: 100%;
+  }
+
+  .active-lesson-card-concept-note {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .active-lesson-card-diagnostic {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem 1.05rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-strong));
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface-strong));
+  }
+
+  .active-lesson-card-diagnostic h4 {
+    margin: 0;
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  .active-lesson-card-diagnostic-options {
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .diagnostic-option {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.7rem;
+    align-items: start;
+    padding: 0.85rem 0.9rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 84%, transparent);
+    background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+    cursor: pointer;
+    transition:
+      border-color var(--motion-fast) var(--ease-soft),
+      background var(--motion-fast) var(--ease-soft),
+      box-shadow var(--motion-fast) var(--ease-soft);
+  }
+
+  .diagnostic-option.selected {
+    border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface-strong));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .diagnostic-option input {
+    margin-top: 0.15rem;
+    accent-color: var(--accent);
+  }
+
+  .diagnostic-option-copy {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+
+  .diagnostic-option-copy strong {
+    color: var(--text);
+    font-size: 0.84rem;
+    line-height: 1.2;
+  }
+
+  .diagnostic-option-copy span {
+    color: var(--text-soft);
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+
+  .active-lesson-card-actions {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .active-lesson-card-primary {
+    display: grid;
+    gap: 0.5rem;
+    justify-items: start;
+  }
+
+  .active-lesson-card-cta {
+    min-height: 2.7rem;
+    padding-inline: 1.1rem;
+    transition:
+      transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow var(--motion-fast) var(--ease-soft),
+      filter var(--motion-fast) var(--ease-soft);
+  }
+
+  .active-lesson-card-cue {
+    max-width: 32rem;
+  }
+
+  .active-lesson-card-secondary {
+    display: flex;
+    gap: 0.55rem;
+    flex-wrap: wrap;
   }
 
   /* ── Chat area ── */
@@ -1504,6 +2010,10 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+
+  .active-lesson-card + .chat-wrap {
+    background: color-mix(in srgb, var(--surface) 84%, transparent);
   }
 
   .chat-area {
@@ -1516,6 +2026,115 @@
     scroll-behavior: smooth;
     overscroll-behavior: contain;
     flex: 1;
+  }
+
+  .completed-unit-summary-list {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .completed-unit-summary {
+    display: grid;
+    gap: 0.38rem;
+    padding: 0.9rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-strong));
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--accent) 8%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 94%, transparent)
+      );
+    box-shadow: var(--glass-inset-tile);
+    animation: summary-card-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+      border-color var(--motion-fast) var(--ease-soft),
+      box-shadow var(--motion-fast) var(--ease-soft),
+      transform 180ms var(--ease-soft);
+  }
+
+  .completed-unit-summary-label {
+    margin: 0;
+    color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  .completed-unit-summary h4 {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.96rem;
+    line-height: 1.3;
+  }
+
+  .completed-unit-summary-copy,
+  .completed-unit-summary-supporting {
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .completed-unit-summary-copy {
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+
+  .completed-unit-summary-supporting {
+    color: var(--text-soft);
+    font-size: 0.84rem;
+  }
+
+  .collapsed-transcript-shell {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .collapsed-transcript-toggle {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.82rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 90%, transparent);
+    background: color-mix(in srgb, var(--surface-soft) 90%, transparent);
+    color: var(--text-soft);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft),
+      color var(--motion-fast) var(--ease-soft),
+      transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow var(--motion-fast) var(--ease-soft);
+  }
+
+  .collapsed-transcript-toggle:hover {
+    background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border-strong));
+    color: var(--text);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 8%, rgba(15, 23, 42, 0.08));
+  }
+
+  .collapsed-transcript-toggle:active {
+    transform: translateY(0) scale(0.985);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 8%, rgba(15, 23, 42, 0.08));
+  }
+
+  .collapsed-transcript-panel {
+    display: grid;
+    gap: 0.9rem;
+    padding: 0.2rem 0 0;
+    overflow: hidden;
+    animation: transcript-reveal 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .transcript-history-item {
+    opacity: 0.82;
+    animation: history-item-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .scroll-down-pill {
@@ -1868,12 +2487,22 @@
     box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
     letter-spacing: -0.01em;
     font-size: 0.9rem;
+    transition:
+      transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow var(--motion-fast) var(--ease-soft),
+      filter var(--motion-fast) var(--ease-soft);
   }
 
   .lesson-support-cta:hover {
+    transform: translateY(-1px);
     box-shadow:
       0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
       0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .lesson-support-cta:active {
+    transform: translateY(0) scale(0.985);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 18%, transparent);
   }
 
   .lesson-support-cta:disabled {
@@ -2083,6 +2712,15 @@
     line-height: 1.68;
   }
 
+  .collapsed-transcript-toggle:focus-visible,
+  .concept-card-header:focus-visible,
+  .concept-ask-link:focus-visible,
+  .lesson-support-cta:focus-visible,
+  .quick:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+    outline-offset: 2px;
+  }
+
   @media (hover: hover) and (pointer: fine) {
     .bubble.assistant:hover,
     .bubble.user:hover {
@@ -2126,121 +2764,6 @@
     border: 0;
     border-top: 1px solid currentColor;
     opacity: 0.2;
-  }
-
-  /* ── Rail ── */
-  .lesson-rail {
-    display: grid;
-    align-content: start;
-    gap: 0.8rem;
-    padding: 1.3rem 1.1rem 1rem 0;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  .rail-card {
-    display: grid;
-    gap: 0.6rem;
-    padding: 1rem 1.05rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-strong);
-    background: var(--glass-bg-tile);
-    backdrop-filter: var(--glass-blur-tile);
-    box-shadow: var(--glass-inset-tile);
-  }
-
-  .rail-kicker {
-    margin: 0;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    text-transform: none;
-    color: var(--muted);
-  }
-
-  .rail-card p {
-    margin: 0;
-  }
-
-  .rail-card p {
-    color: var(--text-soft);
-    font-size: 0.88rem;
-    line-height: 1.48;
-  }
-
-  .rail-actions {
-    display: grid;
-    gap: 0.5rem;
-  }
-
-  .rail-action {
-    justify-content: flex-start;
-    text-align: left;
-    font-size: 0.86rem;
-  }
-
-  /* Next Up card */
-  .next-card {
-    background: linear-gradient(
-      160deg,
-      color-mix(in srgb, var(--accent) 9%, var(--surface-strong)),
-      color-mix(in srgb, var(--surface-soft) 88%, transparent)
-    );
-    border-color: color-mix(in srgb, var(--accent) 24%, var(--border-strong));
-    animation: slide-from-right 360ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .next-stage-button {
-    justify-self: start;
-    width: auto;
-    min-height: 2.5rem;
-    padding-inline: 1rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
-    letter-spacing: -0.01em;
-    font-size: 0.9rem;
-  }
-
-  .next-stage-button:hover {
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
-      0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
-  }
-
-  .next-stage-arrow {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.92rem;
-    line-height: 1;
-    transition: transform var(--motion-fast) var(--ease-soft);
-  }
-
-  .rail-divider {
-    height: 1px;
-    background: color-mix(in srgb, var(--border-strong) 60%, transparent);
-    margin: 0.1rem 0;
-  }
-
-  .rail-secondary-actions {
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  /* Mission card */
-  .mission-content {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.8rem;
-  }
-
-  .mission-text {
-    display: grid;
-    gap: 0.45rem;
-    flex: 1;
-    min-width: 0;
   }
 
   .stage-count {
@@ -2288,154 +2811,6 @@
     font-weight: 700;
     color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%);
     line-height: 1;
-  }
-
-  /* ── Mobile FAB rail ── */
-  .rail-fab-group {
-    /* Hidden on desktop — shown via media query */
-    display: none;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.55rem;
-    position: absolute;
-    bottom: 1rem;
-    right: 0.75rem;
-    z-index: 20;
-  }
-
-  .fab-dial-item {
-    opacity: 0;
-    transform: translateY(14px) scale(0.88);
-    pointer-events: none;
-    transition:
-      opacity 200ms var(--ease-spring),
-      transform 220ms var(--ease-spring);
-  }
-
-  .fab-dial-item.fab-visible {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    pointer-events: auto;
-  }
-
-  .fab-dial-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.42rem;
-    padding: 0.52rem 0.88rem 0.52rem 0.72rem;
-    border-radius: 999px;
-    border: 1px solid var(--border-strong);
-    background: var(--glass-bg-tile);
-    backdrop-filter: var(--glass-blur-tile);
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14), var(--glass-inset-tile);
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text-soft);
-    cursor: pointer;
-    white-space: nowrap;
-    transition:
-      background 150ms var(--ease-soft),
-      border-color 150ms var(--ease-soft),
-      color 150ms var(--ease-soft),
-      transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      box-shadow 150ms var(--ease-soft);
-  }
-
-  .fab-dial-btn:hover {
-    background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg-tile));
-    border-color: color-mix(in srgb, var(--accent) 22%, var(--border-strong));
-    color: var(--text);
-    transform: translateX(-2px);
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16), var(--glass-inset-tile);
-  }
-
-  .fab-dial-btn.fab-active {
-    background: color-mix(in srgb, var(--accent) 14%, var(--glass-bg-tile));
-    border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
-    color: color-mix(in srgb, var(--accent) 85%, var(--text) 15%);
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 16%, rgba(15, 23, 42, 0.1));
-  }
-
-  .fab-dial-icon {
-    font-size: 0.88rem;
-    line-height: 1;
-    flex-shrink: 0;
-  }
-
-  .fab-dial-label {
-    font-size: 0.8rem;
-  }
-
-  /* Popup is hidden on desktop, shown in mobile media query */
-  .fab-popup {
-    display: none;
-  }
-
-  .fab-popup-kicker {
-    margin: 0;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--muted);
-    letter-spacing: 0.01em;
-  }
-
-  .fab-popup p {
-    margin: 0;
-  }
-
-  .fab-popup p {
-    font-size: 0.86rem;
-    color: var(--text-soft);
-    line-height: 1.48;
-  }
-
-  .fab-trigger {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 50%;
-    border: 1px solid var(--border-strong);
-    background: var(--glass-bg-tile);
-    backdrop-filter: var(--glass-blur-tile);
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14), var(--glass-inset-tile);
-    display: grid;
-    place-items: center;
-    font: inherit;
-    color: var(--text-soft);
-    cursor: pointer;
-    flex-shrink: 0;
-    align-self: flex-end;
-    transition:
-      background 150ms var(--ease-soft),
-      border-color 150ms var(--ease-soft),
-      color 150ms var(--ease-soft),
-      transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1),
-      box-shadow 200ms var(--ease-soft);
-  }
-
-  .fab-trigger:hover {
-    transform: scale(1.1);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
-    color: var(--text);
-    background: color-mix(in srgb, var(--accent) 6%, var(--glass-bg-tile));
-    border-color: color-mix(in srgb, var(--accent) 18%, var(--border-strong));
-  }
-
-  .fab-trigger.fab-trigger-open {
-    background: color-mix(in srgb, var(--accent) 14%, var(--glass-bg-tile));
-    border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
-    color: color-mix(in srgb, var(--accent) 85%, var(--text) 15%);
-    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 16%, rgba(15, 23, 42, 0.1));
-  }
-
-  .fab-trigger.fab-trigger-pulse {
-    animation: fab-pulse 1.4s cubic-bezier(0.22, 1, 0.36, 1) 900ms 2;
-  }
-
-  .fab-trigger-icon {
-    font-size: 1.1rem;
-    line-height: 1;
-    transition: transform 200ms var(--ease-spring);
   }
 
   /* ── Input area ── */
@@ -2490,7 +2865,7 @@
   }
 
   .quick:active {
-    transform: scale(0.95);
+    transform: scale(0.97);
   }
 
   .composer {
@@ -2648,7 +3023,10 @@
     background: var(--chat-assistant-bg);
     backdrop-filter: var(--glass-blur-tile);
     overflow: hidden;
-    transition: border-color 140ms ease, box-shadow 140ms ease;
+    transition:
+      border-color 140ms ease,
+      box-shadow 140ms ease,
+      transform 180ms var(--ease-soft);
   }
 
   .concept-card.expanded {
@@ -2657,6 +3035,7 @@
     box-shadow:
       0 10px 28px color-mix(in srgb, var(--accent) 8%, rgba(15, 23, 42, 0.06)),
       0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
+    transform: translateY(-1px);
   }
 
   .concept-card-header {
@@ -2673,6 +3052,9 @@
     font-size: 0.93rem;
     text-align: left;
     line-height: 1.4;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      transform 180ms var(--ease-soft);
   }
 
   .concept-marker {
@@ -2689,6 +3071,11 @@
 
   .concept-card-header:hover {
     background: color-mix(in srgb, var(--accent) 6%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .concept-card-header:active {
+    transform: translateY(0);
   }
 
   .concept-card-title {
@@ -2713,21 +3100,25 @@
     font-size: 0.62rem;
     opacity: 0.32;
     flex-shrink: 0;
-    transition: opacity 140ms ease;
+    transition:
+      opacity 140ms ease,
+      transform 180ms var(--ease-soft);
   }
 
   .concept-card.expanded .concept-chevron {
     opacity: 0.7;
+    transform: rotate(180deg);
   }
 
   .concept-card-body {
     padding: 0 1.05rem 1.05rem;
     display: grid;
     gap: 0.8rem;
-    animation: content-fade 200ms ease;
+    animation: concept-panel-reveal 220ms cubic-bezier(0.22, 1, 0.36, 1);
     border-top: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
     margin-top: -1px;
     padding-top: 0.9rem;
+    overflow: hidden;
   }
 
   .concept-detail {
@@ -2789,13 +3180,22 @@
     font-weight: 600;
     color: color-mix(in srgb, var(--accent) 82%, var(--text) 18%);
     cursor: pointer;
+    transition:
+      background var(--motion-fast) var(--ease-soft),
+      border-color var(--motion-fast) var(--ease-soft),
+      box-shadow var(--motion-fast) var(--ease-soft),
+      transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .concept-ask-link:hover {
     background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft));
     border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
-    transform: none;
+    transform: translateY(-1px);
+  }
+
+  .concept-ask-link:active {
+    transform: translateY(0) scale(0.985);
   }
 
   .concept-ask-link:disabled {
@@ -2817,7 +3217,6 @@
   /* ── Tablet (780px): switch to flex so all 3 zones stack cleanly ── */
   @media (max-width: 780px) {
     .lesson-body {
-      /* Flex column avoids the 2-row grid clipping the rail as a 3rd implicit row */
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -2828,38 +3227,8 @@
       min-height: 0;
     }
 
-    .lesson-rail {
-      display: none;
-    }
-
-    .rail-fab-group {
-      display: flex;
-    }
-
-    /* Popup: anchored to chat-wrap (position: relative), vertically centered */
-    .fab-popup {
-      display: grid;
-      position: absolute;
-      /* Sit to the left of the FAB group, with comfortable clearance */
-      right: 4rem;
-      /* Vertically centered in the chat area */
-      top: 50%;
-      transform: translateY(-50%);
-      width: min(260px, calc(100vw - 5.5rem));
-      gap: 0.65rem;
-      background: var(--glass-bg-tile);
-      backdrop-filter: var(--glass-blur-tile);
-      border: 1px solid var(--border-strong);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-strong), var(--glass-inset-tile);
-      padding: 1rem;
-      z-index: 15;
-      animation: fab-card-in 230ms cubic-bezier(0.22, 1, 0.36, 1);
-    }
-
     .input-area {
       flex: none;
-      /* Reset grid-column span (only needed in 2-col grid) */
       grid-column: unset;
     }
 
@@ -2911,6 +3280,26 @@
 
     .lesson-body {
       border-radius: var(--radius-md);
+    }
+
+    .active-lesson-card {
+      padding: 0.95rem 0.85rem 0.9rem;
+      gap: 0.85rem;
+    }
+
+    .active-lesson-card-body {
+      padding: 0.85rem 0.9rem;
+    }
+
+    .active-lesson-card-secondary {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: 0.05rem;
+    }
+
+    .active-lesson-card-secondary::-webkit-scrollbar {
+      display: none;
     }
 
     .chat-area {
@@ -2973,6 +3362,21 @@
   }
 
   @media (min-width: 900px) {
+    .active-lesson-card {
+      gap: 1.05rem;
+      padding: 1.35rem 1.35rem 1.1rem;
+    }
+
+    .active-lesson-card-actions {
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: start;
+      column-gap: 0.85rem;
+    }
+
+    .active-lesson-card-secondary {
+      align-items: center;
+    }
+
     .lesson-support-object {
       width: min(100%, 32rem);
       gap: 0.4rem;
@@ -3290,6 +3694,70 @@
     }
   }
 
+  @keyframes card-state-settle {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.988);
+      filter: blur(4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0);
+    }
+  }
+
+  @keyframes summary-card-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes transcript-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes history-item-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    to {
+      opacity: 0.82;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes concept-panel-reveal {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+      clip-path: inset(0 0 18% 0 round 0.9rem);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+      clip-path: inset(0 0 0 0 round 0.9rem);
+    }
+  }
+
   @keyframes companion-cta-drop {
     from {
       opacity: 0;
@@ -3406,40 +3874,19 @@
     }
   }
 
-  @keyframes fab-card-in {
-    from {
-      opacity: 0;
-      transform: translateY(-50%) translateX(10px) scale(0.96);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(-50%) translateX(0) scale(1);
-    }
-  }
-
-  @keyframes fab-pulse {
-    0%,
-    100% {
-      transform: scale(1);
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
-    }
-
-    50% {
-      transform: scale(1.14);
-      box-shadow:
-        0 6px 18px rgba(15, 23, 42, 0.14),
-        0 0 0 6px color-mix(in srgb, var(--accent) 22%, transparent);
-    }
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .top-bar,
     .progress-rail,
     .input-area,
     .confirm-card,
+    .active-lesson-card,
+    .active-lesson-card-transition-group,
     .stage-transition,
     .stage-connector,
+    .completed-unit-summary,
+    .collapsed-transcript-toggle,
+    .collapsed-transcript-panel,
+    .transcript-history-item,
     .bubble,
     .bubble-body,
     .node-dot,
@@ -3448,11 +3895,12 @@
     .arc-fill,
     .quick,
     .send,
-    .lesson-rail,
-    .fab-dial-item,
-    .fab-dial-btn,
-    .fab-trigger,
-    .fab-popup {
+    .concept-card,
+    .concept-card-header,
+    .concept-card-body,
+    .concept-chevron,
+    .concept-ask-link,
+    .lesson-support-cta {
       animation: none !important;
       transition: none !important;
       filter: none !important;

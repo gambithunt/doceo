@@ -22,7 +22,9 @@ export function createEmptyLessonFlowV2SessionState(): LessonFlowV2SessionState 
     remediationStep: 'none',
     labelBucket: 'orientation',
     skippedGaps: [],
-    needsTeacherReview: false
+    needsTeacherReview: false,
+    cardSubstate: 'default',
+    concept1EarlyDiagnosticCompleted: false
   };
 }
 
@@ -35,7 +37,9 @@ export function createLessonFlowV2SessionState(lesson: Pick<Lesson, 'flowV2'>): 
     remediationStep: 'none',
     labelBucket: 'orientation',
     skippedGaps: [],
-    needsTeacherReview: false
+    needsTeacherReview: false,
+    cardSubstate: 'default',
+    concept1EarlyDiagnosticCompleted: false
   };
 }
 
@@ -57,7 +61,13 @@ export function normalizeLessonSessionRecord<T extends LessonSession>(
   return {
     ...session,
     lessonFlowVersion,
-    v2State: lessonFlowVersion === 'v2' ? session.v2State ?? createEmptyLessonFlowV2SessionState() : null,
+    v2State:
+      lessonFlowVersion === 'v2'
+        ? {
+            ...createEmptyLessonFlowV2SessionState(),
+            ...(session.v2State ?? {})
+          }
+        : null,
     residue: session.residue ?? null
   };
 }

@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { derived, get, writable } from 'svelte/store';
-import type { RevisionTurnScores } from '$lib/types';
+import type { LessonControlAction, RevisionTurnScores } from '$lib/types';
 import { getAuthenticatedHeaders } from '$lib/authenticated-fetch';
 import { deduplicateSubjects, yearSlug } from '$lib/utils/strings';
 import { getRecommendedCountryId, getSelectionMode } from '$lib/data/onboarding';
@@ -9,6 +9,7 @@ import { findSubjectKey } from '$lib/data/subject-catalog';
 import type { CountryRecommendationSignals } from '$lib/data/onboarding';
 import { APP_STATE_STORAGE_KEY, readThemePreference, writeThemePreference } from '$lib/theme';
 import {
+  annotateLessonMessageForSession,
   applyLessonAbandonmentResidue,
   applyLessonAssistantResponse,
   applyLessonResidueSummary,
@@ -26,10 +27,12 @@ import {
 } from '$lib/lesson-system';
 import { advanceLessonFlowV2State, getLessonStageForV2Checkpoint } from '$lib/lesson-flow-v2';
 import {
+  deriveConcept1EarlyDiagnostic,
   detectLessonSupportIntentForSession,
   deriveNextStepCtaStateForSession,
-  getNextStepPromptForSession,
-  getVisiblePromptStageForSession
+  getVisiblePromptStageForSession,
+  isConcept1EarlyDiagnosticActive,
+  shouldUseConcept1EarlyDiagnostic
 } from '$lib/components/lesson-workspace-ui';
 import {
   applyRevisionTurn,
@@ -381,16 +384,117 @@ function getLessonForSession(state: AppState, session: LessonSession): Lesson {
   return state.lessons.find((lesson) => lesson.id === session.lessonId) ?? buildLessonStateStub(session, state.profile.grade);
 }
 
-function isUnlockedNextStepRequest(session: LessonSession, message: string): boolean {
+function isEnabledLessonControl(session: LessonSession, control: LessonControlAction): boolean {
   if (session.currentStage === 'complete') {
     return false;
   }
 
-  if (deriveNextStepCtaStateForSession(session).disabled) {
-    return false;
+  if (control === 'next_step') {
+    if (isConcept1EarlyDiagnosticActive(session)) {
+      return false;
+    }
+    return !deriveNextStepCtaStateForSession(session).disabled;
   }
 
-  return message === getNextStepPromptForSession(session);
+  return false;
+}
+
+function buildLessonControlAnalytics(
+  state: AppState,
+  session: LessonSession,
+  control: LessonControlAction,
+  completed: boolean
+): AppState['analytics'] {
+  return [
+    createAnalyticsEvent('lesson_control_used', control),
+    ...(completed ? [createAnalyticsEvent('lesson_completed', `${session.topicTitle} complete`)] : []),
+    ...state.analytics
+  ];
+}
+
+function enterConcept1EarlyDiagnosticSubstate(session: LessonSession): LessonSession {
+  if (session.lessonFlowVersion !== 'v2' || !session.v2State) {
+    return session;
+  }
+
+  return {
+    ...session,
+    lastActiveAt: new Date().toISOString(),
+    v2State: {
+      ...session.v2State,
+      cardSubstate: 'concept1_early_diagnostic'
+    }
+  };
+}
+
+function submitConcept1EarlyDiagnosticAnswer(
+  state: AppState,
+  session: LessonSession,
+  optionId: string
+): LessonSession {
+  if (session.lessonFlowVersion !== 'v2' || !session.v2State || !isConcept1EarlyDiagnosticActive(session)) {
+    return session;
+  }
+
+  const lesson = getLessonForSession(state, session);
+  const diagnostic = deriveConcept1EarlyDiagnostic(lesson);
+
+  if (!diagnostic) {
+    return session;
+  }
+
+  const timestamp = new Date().toISOString();
+  const nextV2State = advanceLessonFlowV2State({
+    ...session.v2State,
+    cardSubstate: 'default',
+    concept1EarlyDiagnosticCompleted: true
+  });
+  const nextStage = getLessonStageForV2Checkpoint(nextV2State.activeCheckpoint);
+  const completedStages =
+    nextStage !== session.currentStage
+      ? Array.from(new Set([...session.stagesCompleted, session.currentStage]))
+      : session.stagesCompleted;
+  const previewSession: LessonSession = {
+    ...session,
+    currentStage: nextStage,
+    stagesCompleted: completedStages,
+    lastActiveAt: timestamp,
+    v2State: {
+      ...nextV2State,
+      revisionAttemptCount: 0,
+      remediationStep: 'none',
+      cardSubstate: 'default',
+      concept1EarlyDiagnosticCompleted: true
+    }
+  };
+  const diagnosticFeedback: LessonMessage = {
+    id: `msg-${crypto.randomUUID()}`,
+    role: 'assistant',
+    type: 'feedback',
+    content:
+      optionId === diagnostic.correctOptionId
+        ? 'Good. You picked the core rule. Now see it working in an example.'
+        : 'Keep the core rule in mind while you look at the example next.',
+    stage: session.currentStage,
+    timestamp,
+    metadata: {
+      action: 'stay',
+      next_stage: null,
+      reteach_style: null,
+      reteach_count: 0,
+      confidence_assessment: session.confidenceScore,
+      profile_update: {}
+    }
+  };
+
+  return {
+    ...previewSession,
+    messages: [
+      ...session.messages,
+      diagnosticFeedback,
+      ...buildInitialLessonMessagesForSession(lesson, previewSession)
+    ]
+  };
 }
 
 function buildWrapTransitionMessage(
@@ -859,6 +963,71 @@ export function createAppStore(initialState: AppState = readState()) {
     }
 
     return lessonSessions.map((item) => (item.id === nextLessonSession.id ? nextLessonSession : item));
+  }
+
+  function advanceLessonSessionFromControl(
+    state: AppState,
+    session: LessonSession,
+    control: LessonControlAction
+  ): { nextState: AppState; completedDiscoverySession: LessonSession | null } {
+    if (!isEnabledLessonControl(session, control)) {
+      return {
+        nextState: state,
+        completedDiscoverySession: null
+      };
+    }
+
+    if (
+      control === 'next_step' &&
+      session.lessonFlowVersion === 'v2' &&
+      session.v2State &&
+      shouldUseConcept1EarlyDiagnostic(session)
+    ) {
+      const nextSession = enterConcept1EarlyDiagnosticSubstate(session);
+
+      return {
+        nextState: persistAndSync({
+          ...state,
+          analytics: buildLessonControlAnalytics(state, nextSession, control, false),
+          lessonSessions: upsertLessonSession(state.lessonSessions, nextSession)
+        }),
+        completedDiscoverySession: null
+      };
+    }
+
+    const currentLesson = getLessonForSession(state, session);
+    let nextSession = advanceLessonSessionWithWrap(state, session);
+
+    if (nextSession.status === 'complete') {
+      nextSession = applyLessonResidueSummary(nextSession, currentLesson);
+    }
+
+    const completedDiscoverySession =
+      session.status !== 'complete' && nextSession.status === 'complete' && nextSession.topicDiscovery
+        ? nextSession
+        : null;
+
+    const nextStateBase: AppState = {
+      ...state,
+      analytics: buildLessonControlAnalytics(state, nextSession, control, nextSession.status === 'complete'),
+      lessonSessions: upsertLessonSession(state.lessonSessions, nextSession),
+      ui: {
+        ...state.ui,
+        pendingAssistantSessionId:
+          state.ui.pendingAssistantSessionId === session.id ? null : state.ui.pendingAssistantSessionId
+      }
+    };
+
+    return {
+      nextState:
+        nextSession.status === 'complete'
+          ? persistAndSync({
+              ...nextStateBase,
+              revisionTopics: upsertRevisionTopicFromSession(nextStateBase.revisionTopics, nextSession)
+            })
+          : persistAndSync(nextStateBase),
+      completedDiscoverySession
+    };
   }
 
   function buildDirectTopicOption(state: AppState, subjectName: string, studentInput: string): ShortlistedTopic {
@@ -2439,7 +2608,7 @@ export function createAppStore(initialState: AppState = readState()) {
         lessonSession.currentStage !== 'complete'
           ? detectLessonSupportIntentForSession(lessonSession, message)
           : null;
-      const userMessage = {
+      const userMessage = annotateLessonMessageForSession({
         id: `msg-${crypto.randomUUID()}`,
         role: 'user' as const,
         type: messageType,
@@ -2447,7 +2616,7 @@ export function createAppStore(initialState: AppState = readState()) {
         stage: lessonSession.currentStage,
         timestamp: new Date().toISOString(),
         metadata: null
-      };
+      }, lessonSession);
 
       update((state) =>
         persistAndSync({
@@ -2493,55 +2662,6 @@ export function createAppStore(initialState: AppState = readState()) {
 
         const latest = currentState();
         const currentSession = latest.lessonSessions.find((item) => item.id === lessonSession.id) ?? lessonSession;
-
-        if (isUnlockedNextStepRequest(currentSession, message.trim())) {
-          resolved = true;
-          if (pendingTimer) {
-            clearTimeout(pendingTimer);
-          }
-          let completedDiscoverySession: LessonSession | null = null;
-          update((state) => {
-            const current = state.lessonSessions.find((item) => item.id === lessonSession.id) ?? currentSession;
-            const currentLesson = getLessonForSession(state, current);
-            let nextSession = advanceLessonSessionWithWrap(state, current);
-
-            if (nextSession.status === 'complete') {
-              nextSession = applyLessonResidueSummary(nextSession, currentLesson);
-            }
-
-            const nextState: AppState = {
-              ...state,
-              analytics:
-                nextSession.status === 'complete'
-                  ? [createAnalyticsEvent('lesson_completed', `${nextSession.topicTitle} complete`), ...state.analytics]
-                  : state.analytics,
-              lessonSessions: upsertLessonSession(state.lessonSessions, nextSession),
-              ui: {
-                ...state.ui,
-                pendingAssistantSessionId:
-                  state.ui.pendingAssistantSessionId === lessonSession.id ? null : state.ui.pendingAssistantSessionId
-              }
-            };
-
-            if (current.status !== 'complete' && nextSession.status === 'complete' && nextSession.topicDiscovery) {
-              completedDiscoverySession = nextSession;
-            }
-
-            if (nextSession.status === 'complete') {
-              return persistAndSync({
-                ...nextState,
-                revisionTopics: upsertRevisionTopicFromSession(nextState.revisionTopics, nextSession)
-              });
-            }
-
-            return persistAndSync(nextState);
-          });
-
-          if (completedDiscoverySession) {
-            await recordTopicDiscoveryLessonCompleted(completedDiscoverySession);
-          }
-          return;
-        }
 
         const currentLesson = getLessonForSession(latest, currentSession);
         const useLessonEvaluation =
@@ -2708,7 +2828,7 @@ export function createAppStore(initialState: AppState = readState()) {
                   support_intent: 'help_me_start' as const
                 }
               : baseAssistantMetadata;
-          const assistantMessage = {
+          const assistantMessage = annotateLessonMessageForSession({
             id: `msg-${crypto.randomUUID()}`,
             role: 'assistant' as const,
             type:
@@ -2721,7 +2841,7 @@ export function createAppStore(initialState: AppState = readState()) {
             stage: current.currentStage,
             timestamp: new Date().toISOString(),
             metadata: assistantMetadata
-          };
+          }, current);
           let nextSession = applyLessonAssistantResponse(current, assistantMessage);
 
           if (!nextSession.topicDiscovery && current.topicDiscovery) {
@@ -2806,6 +2926,44 @@ export function createAppStore(initialState: AppState = readState()) {
           })
         );
       }
+    },
+    sendLessonControl: async (control: LessonControlAction) => {
+      const snapshot = currentState();
+      const lessonSession = getActiveLessonSession(snapshot);
+
+      if (!lessonSession || !isEnabledLessonControl(lessonSession, control)) {
+        return;
+      }
+
+      let completedDiscoverySession: LessonSession | null = null;
+      update((state) => {
+        const current = state.lessonSessions.find((item) => item.id === lessonSession.id) ?? lessonSession;
+        const advanced = advanceLessonSessionFromControl(state, current, control);
+        completedDiscoverySession = advanced.completedDiscoverySession;
+        return advanced.nextState;
+      });
+
+      if (completedDiscoverySession) {
+        await recordTopicDiscoveryLessonCompleted(completedDiscoverySession);
+      }
+    },
+    submitLessonDiagnostic: async (optionId: string) => {
+      const snapshot = currentState();
+      const lessonSession = getActiveLessonSession(snapshot);
+
+      if (!lessonSession || optionId.trim().length === 0 || !isConcept1EarlyDiagnosticActive(lessonSession)) {
+        return;
+      }
+
+      update((state) => {
+        const current = state.lessonSessions.find((item) => item.id === lessonSession.id) ?? lessonSession;
+        const nextSession = submitConcept1EarlyDiagnosticAnswer(state, current, optionId);
+
+        return persistAndSync({
+          ...state,
+          lessonSessions: upsertLessonSession(state.lessonSessions, nextSession)
+        });
+      });
     },
     submitLessonRating: async (
       sessionId: string,

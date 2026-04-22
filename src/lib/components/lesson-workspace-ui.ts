@@ -1,11 +1,14 @@
 import { LESSON_STAGE_ORDER, SOFT_STUCK_STAY_THRESHOLD } from '$lib/lesson-system';
 import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
 import type {
+  ConceptItem,
   Lesson,
+  LessonFlowV2Checkpoint,
   LessonGroupedLabelBucket,
   LessonMessage,
   LessonSession,
   LessonStage,
+  QuestionOption,
   LessonSupportIntent
 } from '$lib/types';
 
@@ -20,6 +23,41 @@ export interface LessonWorkspaceQuickActionDefinition {
 export interface LessonWorkspaceNextStepCtaState {
   disabled: boolean;
   cue: string | null;
+}
+
+export interface LessonWorkspaceActiveCard {
+  stateLabel: string;
+  title: string;
+  body: string;
+  ctaLabel: string;
+  primaryAction: 'next_step' | 'submit_diagnostic';
+  conceptMiniCards: ConceptItem[];
+  diagnostic: LessonWorkspaceEarlyDiagnostic | null;
+}
+
+export interface LessonWorkspaceEarlyDiagnostic {
+  prompt: string;
+  options: QuestionOption[];
+  correctOptionId: string;
+}
+
+export interface LessonWorkspaceCompletedUnitSummary {
+  id: string;
+  label: string;
+  title: string;
+  summary: string;
+  supportingText: string | null;
+}
+
+export interface LessonWorkspaceMessageEntry {
+  index: number;
+  message: LessonMessage;
+}
+
+export interface LessonWorkspaceConversationView {
+  completedUnits: LessonWorkspaceCompletedUnitSummary[];
+  collapsedMessages: LessonWorkspaceMessageEntry[];
+  visibleMessages: LessonWorkspaceMessageEntry[];
 }
 
 export const LESSON_WORKSPACE_VISIBLE_STAGES = LESSON_STAGE_ORDER.filter(
@@ -137,6 +175,365 @@ export function getVisibleProgressStagesForSession(
   );
 
   return groupedLabels?.length ? groupedLabels : ['orientation', 'concepts', 'practice', 'check'];
+}
+
+function getLoopStateLabel(loopIndex: number, label: string): string {
+  return `Loop ${loopIndex + 1} • ${label}`;
+}
+
+function getCompletedLoopCount(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+): number {
+  if (lessonSession.lessonFlowVersion !== 'v2' || !lessonSession.v2State) {
+    return 0;
+  }
+
+  switch (lessonSession.v2State.activeCheckpoint) {
+    case 'start':
+      return 0;
+    case 'loop_teach':
+    case 'loop_example':
+    case 'loop_practice':
+    case 'loop_check':
+      return lessonSession.v2State.activeLoopIndex;
+    case 'synthesis':
+    case 'independent_attempt':
+    case 'exit_check':
+    case 'complete':
+      return lessonSession.v2State.totalLoops;
+  }
+}
+
+const LOOP_CHECKPOINTS = new Set<LessonFlowV2Checkpoint>([
+  'loop_teach',
+  'loop_example',
+  'loop_practice',
+  'loop_check'
+]);
+
+function isLoopCheckpoint(checkpoint: LessonFlowV2Checkpoint): boolean {
+  return LOOP_CHECKPOINTS.has(checkpoint);
+}
+
+function getStructuredExchangeKey(message: LessonMessage): string | null {
+  if (!message.v2Context) {
+    return null;
+  }
+
+  return `${message.v2Context.loopIndex ?? 'global'}:${message.v2Context.checkpoint}`;
+}
+
+function isCompletedLoopMessage(message: LessonMessage, completedLoopCount: number): boolean {
+  return Boolean(
+    message.v2Context &&
+      message.v2Context.loopIndex !== null &&
+      message.v2Context.loopIndex < completedLoopCount &&
+      isLoopCheckpoint(message.v2Context.checkpoint)
+  );
+}
+
+function getLegacyExchangeKey(entry: LessonWorkspaceMessageEntry): string {
+  if (entry.message.type === 'stage_start' || entry.message.type === 'concept_cards') {
+    return `legacy-structure:${entry.index}`;
+  }
+
+  return `legacy-message:${entry.index}`;
+}
+
+export function deriveConversationViewForSession(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State' | 'messages' | 'status'>,
+  lesson: Pick<Lesson, 'flowV2'> | null = null,
+  recentExchangeCount = 3
+): LessonWorkspaceConversationView {
+  const allMessageEntries = lessonSession.messages.map((message, index) => ({ index, message }));
+
+  if (
+    lessonSession.lessonFlowVersion !== 'v2' ||
+    !lessonSession.v2State ||
+    lessonSession.status === 'complete' ||
+    !lesson?.flowV2
+  ) {
+    return {
+      completedUnits: [],
+      collapsedMessages: [],
+      visibleMessages: allMessageEntries
+    };
+  }
+
+  const completedLoopCount = Math.min(
+    getCompletedLoopCount(lessonSession),
+    lesson.flowV2.loops.length,
+    lesson.flowV2.concepts?.length ?? lesson.flowV2.loops.length
+  );
+  const completedUnits = Array.from({ length: completedLoopCount }, (_, index) => {
+    const concept = lesson.flowV2?.concepts?.[index];
+    const loop = lesson.flowV2?.loops[index];
+
+    return {
+      id: loop?.id ?? `completed-unit-${index}`,
+      label: `Completed concept ${index + 1}`,
+      title: concept?.name ?? loop?.title ?? `Concept ${index + 1}`,
+      summary:
+        concept?.oneLineDefinition ??
+        concept?.summary ??
+        loop?.teaching.title ??
+        `Completed concept ${index + 1}.`,
+      supportingText: concept?.whyItMatters ?? concept?.example ?? null
+    };
+  });
+
+  const structuredEntries = allMessageEntries.filter((entry) => getStructuredExchangeKey(entry.message));
+  const activeStructuredStartIndex =
+    structuredEntries.find(
+      (entry) => !isCompletedLoopMessage(entry.message, completedLoopCount)
+    )?.index ?? null;
+
+  if (structuredEntries.length === 0) {
+    const visibleStartIndex = Math.max(allMessageEntries.length - recentExchangeCount, 0);
+
+    return {
+      completedUnits,
+      collapsedMessages: allMessageEntries.slice(0, visibleStartIndex),
+      visibleMessages: allMessageEntries.slice(visibleStartIndex)
+    };
+  }
+
+  const candidateEntries = allMessageEntries.filter((entry) => {
+    if (isCompletedLoopMessage(entry.message, completedLoopCount)) {
+      return false;
+    }
+
+    if (!entry.message.v2Context && activeStructuredStartIndex !== null && entry.index < activeStructuredStartIndex) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const exchangeOrder: string[] = [];
+  let previousExchangeKey: string | null = null;
+
+  for (const entry of candidateEntries) {
+    const exchangeKey = getStructuredExchangeKey(entry.message) ?? getLegacyExchangeKey(entry);
+    if (exchangeKey !== previousExchangeKey) {
+      exchangeOrder.push(exchangeKey);
+      previousExchangeKey = exchangeKey;
+    }
+  }
+
+  const visibleExchangeKeys = new Set(exchangeOrder.slice(-recentExchangeCount));
+  const visibleMessages = candidateEntries.filter((entry) =>
+    visibleExchangeKeys.has(getStructuredExchangeKey(entry.message) ?? getLegacyExchangeKey(entry))
+  );
+  const visibleMessageIds = new Set(visibleMessages.map((entry) => entry.message.id));
+
+  return {
+    completedUnits,
+    collapsedMessages: allMessageEntries.filter((entry) => !visibleMessageIds.has(entry.message.id)),
+    visibleMessages
+  };
+}
+
+export function shouldUseConcept1EarlyDiagnostic(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+): boolean {
+  return (
+    lessonSession.lessonFlowVersion === 'v2' &&
+    Boolean(lessonSession.v2State) &&
+    lessonSession.v2State?.activeCheckpoint === 'loop_teach' &&
+    lessonSession.v2State?.activeLoopIndex === 0 &&
+    !(lessonSession.v2State?.concept1EarlyDiagnosticCompleted ?? false)
+  );
+}
+
+export function isConcept1EarlyDiagnosticActive(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+): boolean {
+  return (
+    shouldUseConcept1EarlyDiagnostic(lessonSession) &&
+    (lessonSession.v2State?.cardSubstate ?? 'default') === 'concept1_early_diagnostic'
+  );
+}
+
+function buildFallbackDiagnosticOptions(concept: ConceptItem): QuestionOption[] {
+  return [
+    {
+      id: 'a',
+      label: 'A',
+      text: concept.oneLineDefinition ?? concept.summary
+    },
+    {
+      id: 'b',
+      label: 'B',
+      text:
+        concept.commonMisconception ??
+        `Skip the rule and jump straight to the final answer for ${concept.name}.`
+    },
+    {
+      id: 'c',
+      label: 'C',
+      text:
+        concept.whyItMatters ??
+        `Use only the example for ${concept.name} without naming the core idea.`
+    },
+    {
+      id: 'd',
+      label: 'D',
+      text: `Pick the example instead of the idea: ${concept.example}`
+    }
+  ];
+}
+
+export function deriveConcept1EarlyDiagnostic(
+  lesson: Pick<Lesson, 'flowV2'> | null
+): LessonWorkspaceEarlyDiagnostic | null {
+  const concept = lesson?.flowV2?.concepts?.[0];
+
+  if (!concept) {
+    return null;
+  }
+
+  return {
+    prompt: concept.quickCheck ?? `Which statement best matches ${concept.name}?`,
+    options: buildFallbackDiagnosticOptions(concept),
+    correctOptionId: 'a'
+  };
+}
+
+function getActiveLessonCardCtaLabel(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+): string {
+  if (isConcept1EarlyDiagnosticActive(lessonSession)) {
+    return 'Submit quick check';
+  }
+
+  if (shouldUseConcept1EarlyDiagnostic(lessonSession)) {
+    return 'Check concept 1';
+  }
+
+  if (lessonSession.lessonFlowVersion !== 'v2' || !lessonSession.v2State) {
+    return 'Next step';
+  }
+
+  switch (lessonSession.v2State.activeCheckpoint) {
+    case 'start':
+      return 'Start lesson';
+    case 'loop_teach':
+      return 'See an example';
+    case 'loop_example':
+      return 'Try it yourself';
+    case 'loop_practice':
+      return 'Check what stuck';
+    case 'loop_check':
+      return lessonSession.v2State.activeLoopIndex + 1 < lessonSession.v2State.totalLoops
+        ? 'Next concept'
+        : 'Bring it together';
+    case 'synthesis':
+      return 'Independent attempt';
+    case 'independent_attempt':
+      return 'Final check';
+    case 'exit_check':
+      return 'Finish lesson';
+    case 'complete':
+      return 'Next step';
+  }
+}
+
+export function deriveActiveLessonCardForSession(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'> &
+    Partial<Pick<LessonSession, 'status'>>,
+  lesson: Pick<Lesson, 'flowV2'> | null = null
+): LessonWorkspaceActiveCard | null {
+  if (
+    lessonSession.lessonFlowVersion !== 'v2' ||
+    !lessonSession.v2State ||
+    lessonSession.status === 'complete' ||
+    !lesson?.flowV2
+  ) {
+    return null;
+  }
+
+  const loop = lesson.flowV2.loops[lessonSession.v2State.activeLoopIndex] ?? null;
+  const diagnostic = isConcept1EarlyDiagnosticActive(lessonSession)
+    ? deriveConcept1EarlyDiagnostic(lesson)
+    : null;
+  const baseCard = {
+    ctaLabel: getActiveLessonCardCtaLabel(lessonSession),
+    primaryAction: diagnostic ? ('submit_diagnostic' as const) : ('next_step' as const),
+    conceptMiniCards: lesson.flowV2.concepts ?? [],
+    diagnostic
+  };
+
+  switch (lessonSession.v2State.activeCheckpoint) {
+    case 'start':
+      return {
+        stateLabel: 'Start',
+        title: lesson.flowV2.start.title,
+        body: lesson.flowV2.start.body,
+        ...baseCard
+      };
+    case 'loop_teach':
+      return loop
+        ? {
+            stateLabel: diagnostic
+              ? 'Concept 1 • Quick check'
+              : getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Teach'),
+            title: loop.teaching.title,
+            body: loop.teaching.body,
+            ...baseCard
+          }
+        : null;
+    case 'loop_example':
+      return loop
+        ? {
+            stateLabel: getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Example'),
+            title: loop.example.title,
+            body: loop.example.body,
+            ...baseCard
+          }
+        : null;
+    case 'loop_practice':
+      return loop
+        ? {
+            stateLabel: getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Practice'),
+            title: loop.learnerTask.title,
+            body: loop.learnerTask.body,
+            ...baseCard
+          }
+        : null;
+    case 'loop_check':
+      return loop
+        ? {
+            stateLabel: getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Check'),
+            title: loop.retrievalCheck.title,
+            body: loop.retrievalCheck.body,
+            ...baseCard
+          }
+        : null;
+    case 'synthesis':
+      return {
+        stateLabel: 'Synthesis',
+        title: lesson.flowV2.synthesis.title,
+        body: lesson.flowV2.synthesis.body,
+        ...baseCard
+      };
+    case 'independent_attempt':
+      return {
+        stateLabel: 'Independent attempt',
+        title: lesson.flowV2.independentAttempt.title,
+        body: lesson.flowV2.independentAttempt.body,
+        ...baseCard
+      };
+    case 'exit_check':
+      return {
+        stateLabel: 'Exit check',
+        title: lesson.flowV2.exitCheck.title,
+        body: lesson.flowV2.exitCheck.body,
+        ...baseCard
+      };
+    case 'complete':
+      return null;
+  }
 }
 
 export function detectLessonSupportIntent(
