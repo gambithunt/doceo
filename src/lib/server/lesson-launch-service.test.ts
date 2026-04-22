@@ -274,6 +274,164 @@ describe('lesson launch service', () => {
     expect(relaunched.questionArtifactId).not.toBe(first.questionArtifactId);
   });
 
+  it('regenerates instead of reusing a ready artifact when the pedagogy version changes', async () => {
+    const first = await service.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+
+    const nextPedagogyService = createLessonLaunchService({
+      graphRepository,
+      artifactRepository,
+      generateLessonPlan: generator,
+      pedagogyVersion: 'phase4-v2',
+      promptVersion: 'v1',
+      onLaunchObserved
+    });
+
+    generator.mockResolvedValueOnce({
+      ...createGeneratedLessonResponse(),
+      lesson: {
+        ...createGeneratedLessonResponse().lesson,
+        id: 'generated-lesson-fractions-phase4',
+        lessonFlowVersion: 'v2',
+        flowV2: {
+          groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+          start: { title: 'Start', body: 'Start block' },
+          loops: [
+            {
+              id: 'loop-1',
+              title: 'Loop 1',
+              teaching: { title: 'Teach', body: 'Teach body' },
+              example: { title: 'Example', body: 'Example body' },
+              learnerTask: { title: 'Task', body: 'Task body' },
+              retrievalCheck: { title: 'Check', body: 'Check body' },
+              mustHitConcepts: ['equivalence'],
+              criticalMisconceptionTags: ['wrong-denominator']
+            }
+          ],
+          synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+          independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+          exitCheck: { title: 'Exit Check', body: 'Exit body' }
+        }
+      },
+      questions: [
+        {
+          ...createGeneratedLessonResponse().questions[0]!,
+          id: 'generated-question-phase4',
+          lessonId: 'generated-lesson-fractions-phase4'
+        }
+      ]
+    });
+
+    const relaunched = await nextPedagogyService.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+
+    expect(generator).toHaveBeenCalledTimes(2);
+    expect(relaunched.lessonArtifactId).not.toBe(first.lessonArtifactId);
+    expect(relaunched.questionArtifactId).not.toBe(first.questionArtifactId);
+  });
+
+  it('reuses matching v2 artifacts without cross-loading legacy artifacts', async () => {
+    const v2Response = {
+      ...createGeneratedLessonResponse(),
+      lesson: {
+        ...createGeneratedLessonResponse().lesson,
+        id: 'generated-lesson-fractions-v2-loop',
+        lessonFlowVersion: 'v2' as const,
+        flowV2: {
+          groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+          start: { title: 'Start', body: 'Start block' },
+          loops: [
+            {
+              id: 'loop-1',
+              title: 'Loop 1',
+              teaching: { title: 'Teach', body: 'Teach body' },
+              example: { title: 'Example', body: 'Example body' },
+              learnerTask: { title: 'Task', body: 'Task body' },
+              retrievalCheck: { title: 'Check', body: 'Check body' },
+              mustHitConcepts: ['equivalence'],
+              criticalMisconceptionTags: ['wrong-denominator']
+            },
+            {
+              id: 'loop-2',
+              title: 'Loop 2',
+              teaching: { title: 'Teach', body: 'Teach body 2' },
+              example: { title: 'Example', body: 'Example body 2' },
+              learnerTask: { title: 'Task', body: 'Task body 2' },
+              retrievalCheck: { title: 'Check', body: 'Check body 2' },
+              mustHitConcepts: ['simplifying'],
+              criticalMisconceptionTags: ['lost-equivalence']
+            }
+          ],
+          synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+          independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+          exitCheck: { title: 'Exit Check', body: 'Exit body' }
+        }
+      },
+      questions: [
+        {
+          ...createGeneratedLessonResponse().questions[0]!,
+          id: 'generated-question-v2-loop',
+          lessonId: 'generated-lesson-fractions-v2-loop'
+        }
+      ]
+    };
+    const v2Generator = vi.fn().mockResolvedValue(v2Response);
+    const v2Service = createLessonLaunchService({
+      graphRepository,
+      artifactRepository,
+      generateLessonPlan: v2Generator,
+      pedagogyVersion: 'phase4-v2',
+      promptVersion: 'lesson-plan-v4',
+      onLaunchObserved
+    });
+
+    const first = await v2Service.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+    const second = await v2Service.launchLesson({
+      request: {
+        student: createProfile(),
+        subjectId: 'graph-subject-mathematics',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions',
+        topicDescription: 'Fractions with the same value.',
+        curriculumReference: 'CAPS · Grade 6 · Mathematics',
+        nodeId: 'graph-subtopic-equivalent-fractions'
+      }
+    });
+
+    expect(v2Generator).toHaveBeenCalledTimes(1);
+    expect(first.lesson.lessonFlowVersion).toBe('v2');
+    expect(second.lessonArtifactId).toBe(first.lessonArtifactId);
+    expect(second.questionArtifactId).toBe(first.questionArtifactId);
+  });
+
   it('creates a new artifact on launch when the previous preferred artifact becomes stale from low ratings', async () => {
     const first = await service.launchLesson({
       request: {

@@ -1,109 +1,80 @@
 # Topic Discovery
 
-Dashboard topic discovery is an additive recommendation layer for the learner dashboard.
+Topic discovery is the dashboard recommendation layer for launching lessons.
 
-- It suggests topics for the active `subjectId + curriculumId + gradeId`.
-- It can mix existing graph-backed topics with model-generated candidates.
-- It does not create graph nodes on discovery reads.
-- Lesson launch remains the only place that can create a missing topic node.
+## Scope
+
+- Route entrypoint: `src/routes/api/curriculum/topic-discovery/+server.ts`
+- Event routes:
+  - `/api/curriculum/topic-discovery/click`
+  - `/api/curriculum/topic-discovery/feedback`
+  - `/api/curriculum/topic-discovery/complete`
+  - `/api/curriculum/topic-discovery/refresh`
+- Server helpers:
+  - `src/lib/server/topic-discovery-runtime.ts`
+  - `src/lib/server/topic-discovery-repository.ts`
+  - `src/lib/server/topic-discovery-ranking.ts`
+- UI components live under `src/lib/components/topic-discovery`
+
+## What The Route Does
+
+- Accepts `subjectId`, `curriculumId`, and `gradeId`.
+- Reads graph-backed topics for the current scope.
+- Calls the dashboard discovery edge function for additive candidates when discovery is enabled.
+- Validates and bounds the payload before returning it to the dashboard.
+- Returns graph-only results when the edge path is disabled, fails, times out, or returns invalid data.
+
+## Important Constraints
+
+- Discovery never creates graph nodes on read.
+- Graph node creation and signature reconciliation happen on lesson launch.
+- Refresh responses are exploratory and should not poison the steady-state cache.
+- The route currently caps discovery results to a bounded list instead of returning the full upstream payload.
 
 ## Event Semantics
 
-Topic discovery writes append-only recommendation events to `topic_discovery_events`.
+Discovery events are stored separately from lesson artifact feedback.
 
-- `suggestion_impression`: reserved for future display impressions; not currently emitted by the dashboard.
-- `suggestion_clicked`: the learner selected a suggestion or launched from it.
-- `suggestion_refreshed`: a suggestion appeared in a successful refresh response and was logged for exploration tracking.
-- `thumbs_up`: positive recommendation feedback for the suggestion itself.
-- `thumbs_down`: negative recommendation feedback for the suggestion itself.
-- `lesson_started`: a lesson was successfully launched from a discovery suggestion.
-- `lesson_completed`: a lesson launched from discovery reached completion.
-- `lesson_abandoned`: reserved for future weak negative engagement tracking.
+- `suggestion_impression` is reserved for future use.
+- `suggestion_clicked` records selection intent.
+- `suggestion_refreshed` records a refresh-displayed candidate.
+- `thumbs_up` and `thumbs_down` affect discovery ranking only.
+- `lesson_started` and `lesson_completed` connect downstream engagement back to the suggestion.
 
-Recommendation events stay separate from lesson artifact quality feedback.
+## Topic Signature
 
-- Topic discovery thumbs affect recommendation ranking only.
-- Lesson artifact rating continues to flow through `/api/lesson-artifacts/rate`.
-- Graph trust and artifact quality remain driven by the existing lesson and graph pipelines.
-- Completion and reteach pressure are used only as indirect recommendation signals in topic discovery scoring.
-
-## Topic Signature Rules
-
-`topic_signature` is the stable identifier for recommendation aggregation before a topic has a real graph node.
-
-Format:
+Before a node is fully resolved, discovery aggregates by:
 
 - `subjectId::curriculumId::gradeId::normalizedTopicLabel`
 
-Normalization rules:
+That signature survives until lesson launch can reconcile it to a real node.
 
-- trim leading and trailing whitespace
-- collapse internal whitespace to a single space
-- lowercase the label
+## Ranking
 
-Example:
+Ranking is intentionally simple and inspectable.
 
-- `caps-grade-6-mathematics::caps::grade-6::equivalent fractions`
+Current score inputs include:
 
-Once lesson launch creates or resolves a graph node, discovery history can be reconciled from `topic_signature` onto `node_id` without losing the pre-launch recommendation signals.
-
-## Ranking Tuning Knobs
-
-Topic discovery ranking is defined in [topic-discovery-ranking.ts](/Users/delon/Documents/code/projects/doceo/src/lib/server/topic-discovery-ranking.ts).
-
-Current score inputs:
-
-- unique clicks and total clicks
-- thumbs up and thumbs down
+- unique clicks
+- total clicks
+- thumbs up
+- thumbs down
 - lesson starts
 - lesson completions
-- optional lesson abandonment
-- freshness / recency decay
+- recency decay
 - exploration boost for low-sample topics
-- reteach pressure as a weak negative completion modifier
+- reteach pressure as a weak negative signal
 
-Primary tuning knobs:
+The ranking code is the canonical source of truth. Do not re-encode ranking heuristics inside client components.
 
-- `explorationWeight`
-- `recencyHalfLifeDays`
-- the per-signal weights inside `scoreTopicDiscoveryAggregate`
+## Runtime Guards
 
-The current weighting intentionally favors simple, inspectable arithmetic over speculative ranking complexity. Tune the weights in server code, not in client components.
+- `DOCEO_ENABLE_DASHBOARD_TOPIC_DISCOVERY=false` disables model-assisted discovery
+- `DOCEO_TOPIC_DISCOVERY_CACHE_TTL_MS` controls the non-refresh cache TTL
+- `DOCEO_TOPIC_DISCOVERY_EDGE_TIMEOUT_MS` bounds the edge wait time
 
-## Refresh, Caching, And Cancellation
+## Operational Notes
 
-Dashboard discovery should remain safe under rapid subject changes and transient edge failures.
-
-- The dashboard cancels stale in-flight discovery requests when the selected subject changes.
-- A refresh request supersedes an older in-flight default load.
-- The server route caches non-refresh responses for a short TTL by `subjectId + curriculumId + gradeId + provider + model`.
-- `forceRefresh = true` bypasses the cache.
-- Refresh responses are not written into the default cache, so exploratory results do not poison the steady-state result set.
-- If the edge function is unavailable, invalid, or times out, the route falls back to graph-only suggestions when available.
-
-## Observability
-
-The route and edge function log structured discovery outcomes for:
-
-- successful responses
-- refresh successes
-- graph-only fallback paths
-- invalid edge payloads
-- upstream exceptions and timeout cases
-
-Route logs include subject scope, provider, model, topic count, and latency. Refresh outcomes are logged separately from default load outcomes.
-
-## Rollout Guard
-
-Safe deployment depends on a small, explicit guardrail set.
-
-- `DOCEO_ENABLE_DASHBOARD_TOPIC_DISCOVERY=false` disables model-assisted discovery and returns graph-only fallback results.
-- `DOCEO_TOPIC_DISCOVERY_CACHE_TTL_MS` controls the non-refresh route cache TTL.
-- `DOCEO_TOPIC_DISCOVERY_EDGE_TIMEOUT_MS` bounds how long the server route waits on the edge function before falling back.
-
-Recommended rollout:
-
-1. deploy migrations and edge function
-2. enable the route with the default fallback behavior intact
-3. monitor success, fallback, and refresh logs
-4. disable with the feature flag if edge failures or poor suggestion quality appear in production
+- Discovery requests are cancellable in the dashboard when the learner changes subject quickly.
+- Refresh requests can exclude already-seen topic signatures.
+- Lesson launch records discovery-originated lesson starts and may reconcile signatures to nodes when a provisional topic becomes concrete.

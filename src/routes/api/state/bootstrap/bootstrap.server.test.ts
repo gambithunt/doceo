@@ -608,6 +608,117 @@ describe('state bootstrap route', () => {
     expect(repairedMessage.content).not.toContain('Tell me where you want to slow down.');
   });
 
+  it('skips legacy prompt repair for v2 sessions during bootstrap hydration', async () => {
+    const base = createInitialState();
+    const lesson = {
+      ...base.lessons[0]!,
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalence'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+
+    loadAppState.mockResolvedValue({
+      ...base,
+      lessons: [lesson],
+      lessonSessions: [
+        {
+          id: 'v2-session-1',
+          studentId: 'user-123',
+          subjectId: lesson.subjectId,
+          subject: 'Mathematics',
+          lessonFlowVersion: 'v2',
+          topicId: lesson.topicId,
+          topicTitle: 'Equivalent Fractions',
+          topicDescription: 'Fractions with the same value.',
+          curriculumReference: 'CAPS Grade 6',
+          matchedSection: 'Fractions',
+          lessonId: lesson.id,
+          currentStage: 'practice',
+          stagesCompleted: ['orientation', 'concepts'],
+          messages: [
+            {
+              id: 'v2-practice-message',
+              role: 'assistant',
+              type: 'teaching',
+              content:
+                'Now try it yourself. Apply what you have learned about **Fractions** to a similar problem. Write out each step, explain your reasoning, and check your answer before moving on.\n\nWhat feels clear so far? Tell me where you want to slow down.',
+              stage: 'practice',
+              timestamp: '2026-04-20T12:00:01.000Z',
+              metadata: null
+            }
+          ],
+          questionCount: 0,
+          reteachCount: 0,
+          softStuckCount: 0,
+          confidenceScore: 0.5,
+          needsTeacherReview: false,
+          stuckConcept: null,
+          startedAt: '2026-04-20T12:00:00.000Z',
+          lastActiveAt: '2026-04-20T12:00:01.000Z',
+          completedAt: null,
+          status: 'active',
+          lessonRating: null,
+          v2State: {
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_practice',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'practice',
+            skippedGaps: [],
+            needsTeacherReview: false
+          },
+          residue: null,
+          profileUpdates: []
+        }
+      ]
+    });
+    createServerSupabaseFromRequest.mockReturnValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: {
+            user: {
+              id: 'user-123'
+            }
+          }
+        })
+      }
+    });
+    loadOnboardingProgress.mockResolvedValue(null);
+
+    const { GET } = await import('./+server');
+    const response = await GET({
+      request: new Request('http://localhost/api/state/bootstrap', {
+        headers: {
+          Authorization: 'Bearer token'
+        }
+      })
+    } as never);
+    const payload = await response.json();
+    const repairedMessage = payload.state.lessonSessions[0].messages.find(
+      (message: { id: string }) => message.id === 'v2-practice-message'
+    );
+
+    expect(repairedMessage.content).toContain('Apply what you have learned');
+    expect(repairedMessage.content).toContain('Tell me where you want to slow down.');
+  });
+
   it('returns an authenticated degraded state with explicit errors when onboarding catalog reads fail', async () => {
     createServerSupabaseFromRequest.mockReturnValue({
       auth: {

@@ -320,7 +320,7 @@ export async function logAiInteraction(
 
 export async function logLessonSignal(
   profileId: string,
-  session: LessonSession,
+  session: Pick<LessonSession, 'id' | 'subject' | 'topicTitle'>,
   meta: DoceoMeta
 ): Promise<void> {
   const supabase = createServerSupabaseAdmin();

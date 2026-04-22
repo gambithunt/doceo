@@ -5,6 +5,7 @@ import { getNextStepPrompt } from '$lib/components/lesson-workspace-ui';
 import { buildRevisionSession } from '$lib/revision/engine';
 import type {
   DashboardTopicDiscoverySuggestion,
+  Lesson,
   LessonSession,
   RevisionPackRequest,
   RevisionPackResponse,
@@ -143,6 +144,102 @@ function createLessonSession(overrides: Partial<LessonSession> = {}): LessonSess
     profileUpdates: [],
     ...overrides
   };
+}
+
+function createV2Lesson(baseLesson: Lesson, overrides: Partial<Lesson> = {}): Lesson {
+  return {
+    ...baseLesson,
+    id: 'lesson-v2-runtime-1',
+    lessonFlowVersion: 'v2',
+    flowV2: {
+      groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+      start: {
+        title: 'Start',
+        body: 'Start with the big picture.'
+      },
+      loops: [
+        {
+          id: 'lesson-v2-runtime-1-loop-1',
+          title: 'Loop 1',
+          teaching: {
+            title: 'Teach Loop 1',
+            body: 'Teach the first core idea.'
+          },
+          example: {
+            title: 'Example Loop 1',
+            body: 'Here is the first worked example.'
+          },
+          learnerTask: {
+            title: 'Try Loop 1',
+            body: 'Try the first task on your own.'
+          },
+          retrievalCheck: {
+            title: 'Check Loop 1',
+            body: 'Explain the first idea in your own words.'
+          },
+          mustHitConcepts: ['core idea one'],
+          criticalMisconceptionTags: ['core-idea-one-gap']
+        },
+        {
+          id: 'lesson-v2-runtime-1-loop-2',
+          title: 'Loop 2',
+          teaching: {
+            title: 'Teach Loop 2',
+            body: 'Teach the second core idea.'
+          },
+          example: {
+            title: 'Example Loop 2',
+            body: 'Here is the second worked example.'
+          },
+          learnerTask: {
+            title: 'Try Loop 2',
+            body: 'Try the second task on your own.'
+          },
+          retrievalCheck: {
+            title: 'Check Loop 2',
+            body: 'Explain the second idea in your own words.'
+          },
+          mustHitConcepts: ['core idea two'],
+          criticalMisconceptionTags: ['core-idea-two-gap']
+        }
+      ],
+      synthesis: {
+        title: 'Synthesis',
+        body: 'Bring the ideas together.'
+      },
+      independentAttempt: {
+        title: 'Independent Attempt',
+        body: 'Solve the new task on your own.'
+      },
+      exitCheck: {
+        title: 'Exit Check',
+        body: 'Summarize the main rule and apply it once.'
+      }
+    },
+    ...overrides
+  };
+}
+
+function createV2LessonSession(overrides: Partial<LessonSession> = {}): LessonSession {
+  return createLessonSession({
+    lessonFlowVersion: 'v2',
+    lessonId: 'lesson-v2-runtime-1',
+    currentStage: 'concepts',
+    stagesCompleted: ['orientation'],
+    status: 'active',
+    completedAt: null,
+    v2State: {
+      totalLoops: 2,
+      activeLoopIndex: 0,
+      activeCheckpoint: 'loop_check',
+      revisionAttemptCount: 0,
+      remediationStep: 'none',
+      labelBucket: 'concepts',
+      skippedGaps: [],
+      needsTeacherReview: false
+    },
+    ...overrides
+  });
 }
 
 function createDiscoverySuggestion(
@@ -1334,10 +1431,14 @@ describe('unified lesson launch pipeline', () => {
   it('uses the same lesson-plan route for curriculum launches and stores node/artifact ids on the session', async () => {
     const baseState = createInitialState();
     const lesson = baseState.lessons[0]!;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
 
       if (url === '/api/ai/lesson-plan') {
+        const body = JSON.parse(String(init?.body)) as { request: { lessonFlowVersion: string } };
+
+        expect(body.request.lessonFlowVersion).toBe('v2');
+
         return new Response(
           JSON.stringify({
             provider: 'github-models',
@@ -2582,6 +2683,480 @@ describe('topic discovery completion linkage', () => {
     expect(wrapIndex).toBeGreaterThan(-1);
     expect(stageStartIndex).toBeGreaterThan(wrapIndex);
     expect(stageContentIndex).toBeGreaterThan(stageStartIndex);
+  });
+
+  it('routes v2 learner answers through lesson-evaluate and appends the next checkpoint content', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, {
+      id: 'lesson-v2-runtime-1',
+      title: 'Mathematics: Equivalent Fractions'
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat') {
+        throw new Error('v2 checkpoint answers should not use lesson-chat.');
+      }
+
+      if (url === '/api/ai/lesson-evaluate') {
+        const body = JSON.parse(String(init?.body)) as {
+          request: {
+            checkpoint: string;
+            lessonSessionId: string;
+            lessonArtifactId: string | null;
+          };
+        };
+
+        expect(body.request.checkpoint).toBe('loop_check');
+        expect(body.request.lessonSessionId).toBe('v2-evaluate-session-1');
+        expect(body.request.lessonArtifactId).toBe('artifact-v2-lesson-1');
+
+        return new Response(
+          JSON.stringify({
+            score: 0.86,
+            mustHitConceptsMet: ['core idea one'],
+            missingMustHitConcepts: [],
+            criticalMisconceptions: [],
+            feedback: 'That captures the first rule accurately.',
+            mode: 'advance',
+            provider: 'local-heuristic',
+            model: 'heuristic'
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      profile: {
+        ...baseState.profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      },
+      lessons: [v2Lesson],
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'v2-evaluate-session-1'
+      },
+      lessonSessions: [
+        createV2LessonSession({
+          id: 'v2-evaluate-session-1',
+          lessonId: v2Lesson.id,
+          lessonArtifactId: 'artifact-v2-lesson-1',
+          questionArtifactId: 'artifact-v2-question-1',
+          nodeId: 'graph-topic-fractions',
+          messages: [
+            {
+              id: 'msg-v2-check',
+              role: 'assistant',
+              type: 'teaching',
+              content: 'Explain the first idea in your own words.',
+              stage: 'concepts',
+              timestamp: '2026-04-21T18:00:00.000Z',
+              metadata: null
+            }
+          ]
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('Equivalent fractions have the same value.');
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'v2-evaluate-session-1');
+    const requestedUrls = fetchMock.mock.calls.map(([input]) =>
+      typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+    );
+
+    expect(requestedUrls).toContain('/api/ai/lesson-evaluate');
+    expect(requestedUrls).not.toContain('/api/ai/lesson-chat');
+    expect(session).toEqual(
+      expect.objectContaining({
+        currentStage: 'concepts',
+        lessonArtifactId: 'artifact-v2-lesson-1',
+        nodeId: 'graph-topic-fractions',
+        v2State: expect.objectContaining({
+          activeLoopIndex: 1,
+          activeCheckpoint: 'loop_teach',
+          labelBucket: 'concepts'
+        })
+      })
+    );
+    expect(session?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: 'Teach the second core idea.'
+        })
+      ])
+    );
+  });
+
+  it('uses the local unlocked Next step path for v2 checkpoints without falling back to legacy stage progression', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, {
+      id: 'lesson-v2-runtime-2',
+      title: 'Mathematics: Equivalent Fractions'
+    });
+    const session = createV2LessonSession({
+      id: 'v2-next-step-session-1',
+      lessonId: v2Lesson.id,
+      lessonArtifactId: 'artifact-v2-lesson-2',
+      questionArtifactId: 'artifact-v2-question-2',
+      currentStage: 'concepts',
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      messages: [
+        {
+          id: 'msg-v2-example',
+          role: 'assistant',
+          type: 'teaching',
+          content: 'Here is the first worked example.',
+          stage: 'concepts',
+          timestamp: '2026-04-21T18:10:00.000Z',
+          metadata: null
+        }
+      ]
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-chat' || url === '/api/ai/lesson-evaluate') {
+        throw new Error('Unlocked v2 Next step should progress locally.');
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      profile: {
+        ...baseState.profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      },
+      lessons: [v2Lesson],
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: session.id
+      },
+      lessonSessions: [session]
+    });
+
+    await store.sendLessonMessage('Show me the next part of the example so I can see how it works.');
+
+    const state = get(store);
+    const updated = state.lessonSessions.find((item) => item.id === session.id);
+    const wrapMessage = updated?.messages.find((message) => message.type === 'wrap');
+
+    expect(updated?.currentStage).toBe('concepts');
+    expect(updated?.v2State).toEqual(
+      expect.objectContaining({
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_practice',
+        labelBucket: 'concepts'
+      })
+    );
+    expect(updated?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: 'Try the first task on your own.'
+        })
+      ])
+    );
+    expect(wrapMessage?.content).toContain('Active Practice');
+  });
+
+  it('persists final v2 residue on completion and includes it in the revision handoff topic', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, {
+      id: 'lesson-v2-runtime-3',
+      title: 'Mathematics: Equivalent Fractions'
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/ai/lesson-evaluate') {
+        return new Response(
+          JSON.stringify({
+            score: 0.91,
+            mustHitConceptsMet: ['core idea one'],
+            missingMustHitConcepts: [],
+            criticalMisconceptions: [],
+            feedback: 'That captures the rule clearly.',
+            mode: 'advance',
+            provider: 'local-heuristic',
+            model: 'heuristic'
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      return new Response(JSON.stringify({ recorded: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      profile: {
+        ...baseState.profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      },
+      lessons: [v2Lesson],
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'v2-complete-session-1'
+      },
+      lessonSessions: [
+        createV2LessonSession({
+          id: 'v2-complete-session-1',
+          lessonId: v2Lesson.id,
+          currentStage: 'check',
+          stagesCompleted: ['orientation', 'concepts', 'practice'],
+          lessonArtifactId: 'artifact-v2-lesson-3',
+          nodeId: 'graph-topic-fractions',
+          topicDiscovery: {
+            topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+            topicLabel: 'Equivalent Fractions',
+            source: 'graph_existing',
+            requestId: 'request-v2-complete-1',
+            rankPosition: 1
+          },
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 1,
+            activeCheckpoint: 'exit_check',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'check',
+            skippedGaps: [
+              {
+                concept: 'core idea two',
+                status: 'partial',
+                critical: false,
+                loopId: 'lesson-v2-runtime-3-loop-2',
+                remediationStep: 'scaffold',
+                needsTeacherReview: false
+              }
+            ],
+            needsTeacherReview: false
+          },
+          messages: [
+            {
+              id: 'msg-v2-exit-check',
+              role: 'assistant',
+              type: 'teaching',
+              content: 'Summarize the main rule and apply it once.',
+              stage: 'check',
+              timestamp: '2026-04-21T18:20:00.000Z',
+              metadata: null
+            },
+            {
+              id: 'msg-v2-user-exit',
+              role: 'user',
+              type: 'response',
+              content: 'Equivalent fractions have the same value even when the numbers look different.',
+              stage: 'check',
+              timestamp: '2026-04-21T18:21:00.000Z',
+              metadata: null
+            }
+          ]
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('Equivalent fractions have the same value and represent the same amount.');
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'v2-complete-session-1');
+    const revisionTopic = state.revisionTopics.find((item) => item.lessonSessionId === 'v2-complete-session-1');
+
+    expect(session?.status).toBe('complete');
+    expect(session?.residue).toEqual(
+      expect.objectContaining({
+        taughtConcepts: expect.arrayContaining(['core idea one', 'core idea two']),
+        masteredConcepts: ['core idea one'],
+        partialConcepts: ['core idea two'],
+        revisitNext: ['core idea two'],
+        confidenceScore: 0.91,
+        learnerReflection: 'Equivalent fractions have the same value and represent the same amount.',
+        confidenceReflection: 'Equivalent fractions have the same value and represent the same amount.'
+      })
+    );
+    expect(revisionTopic?.lessonResidue).toEqual(
+      expect.objectContaining({
+        masteredConcepts: ['core idea one'],
+        partialConcepts: ['core idea two'],
+        confidenceScore: 0.91,
+        learnerReflection: 'Equivalent fractions have the same value and represent the same amount.'
+      })
+    );
+  });
+
+  it('persists mid-loop abandonment residue and records discovery abandonment without ending the session', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, {
+      id: 'lesson-v2-runtime-4',
+      title: 'Mathematics: Equivalent Fractions'
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+
+      if (url === '/api/curriculum/topic-discovery/abandon') {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+
+        expect(body).toEqual(
+          expect.objectContaining({
+            subjectId: baseState.curriculum.subjects[0]!.id,
+            curriculumId: baseState.profile.curriculumId,
+            gradeId: baseState.profile.gradeId,
+            topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+            topicLabel: 'Equivalent Fractions',
+            nodeId: 'graph-topic-fractions',
+            source: 'graph_existing',
+            lessonSessionId: 'v2-abandon-session-1',
+            requestId: 'request-v2-abandon-1',
+            rankPosition: 2,
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_practice',
+            remediationStep: 'hint',
+            unresolvedGap: 'core idea one'
+          })
+        );
+
+        return new Response(JSON.stringify({ recorded: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      profile: {
+        ...baseState.profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      },
+      lessons: [v2Lesson],
+      ui: {
+        ...baseState.ui,
+        currentScreen: 'lesson',
+        learningMode: 'learn',
+        activeLessonSessionId: 'v2-abandon-session-1'
+      },
+      lessonSessions: [
+        createV2LessonSession({
+          id: 'v2-abandon-session-1',
+          lessonId: v2Lesson.id,
+          status: 'active',
+          completedAt: null,
+          lessonArtifactId: 'artifact-v2-lesson-4',
+          nodeId: 'graph-topic-fractions',
+          topicDiscovery: {
+            topicSignature: 'subject-1::caps::grade-6::equivalent fractions',
+            topicLabel: 'Equivalent Fractions',
+            source: 'graph_existing',
+            requestId: 'request-v2-abandon-1',
+            rankPosition: 2
+          },
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_practice',
+            revisionAttemptCount: 1,
+            remediationStep: 'hint',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false
+          },
+          messages: [
+            {
+              id: 'msg-v2-practice',
+              role: 'assistant',
+              type: 'teaching',
+              content: 'Try the first task on your own.',
+              stage: 'concepts',
+              timestamp: '2026-04-21T18:30:00.000Z',
+              metadata: {
+                action: 'stay',
+                next_stage: null,
+                reteach_style: null,
+                reteach_count: 0,
+                confidence_assessment: 0.58,
+                lesson_score: 0.58,
+                must_hit_concepts_met: [],
+                missing_must_hit_concepts: ['core idea one'],
+                critical_misconceptions: [],
+                remediation_step: 'hint',
+                revision_attempt_used: true,
+                profile_update: {}
+              }
+            }
+          ]
+        })
+      ]
+    });
+
+    await store.closeLessonToDashboard();
+
+    const state = get(store);
+    const session = state.lessonSessions.find((item) => item.id === 'v2-abandon-session-1');
+    const requestedUrls = fetchMock.mock.calls.map(([input]) =>
+      typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+    );
+
+    expect(state.ui.currentScreen).toBe('dashboard');
+    expect(session?.status).toBe('active');
+    expect(session?.residue?.abandonment).toEqual(
+      expect.objectContaining({
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_practice',
+        remediationStep: 'hint',
+        unresolvedGap: 'core idea one'
+      })
+    );
+    expect(requestedUrls).toContain('/api/curriculum/topic-discovery/abandon');
   });
 
   describe('AI evaluation on demand (Phase 7)', () => {

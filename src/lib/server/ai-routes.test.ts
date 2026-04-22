@@ -361,6 +361,58 @@ describe('ai routes', () => {
     );
   });
 
+  it('lesson plan route falls back to the local v2 builder when v2 generation is unavailable', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: false,
+      status: 502,
+      error: 'AI edge function failed with 500.'
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Photosynthesis',
+            topicDescription: 'How plants make food',
+            curriculumReference: 'IEB · Grade 6 · Biology',
+            lessonFlowVersion: 'v2'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.provider).toBe('local-fallback');
+    expect(payload.lesson.lessonFlowVersion).toBe('v2');
+    expect(Array.isArray(payload.lesson.flowV2?.loops)).toBe(true);
+  });
+
   it('lesson plan route returns 402 with a structured quota error when the user is over budget', async () => {
     checkUserQuota.mockResolvedValue({
       allowed: false,
@@ -1173,6 +1225,127 @@ describe('ai routes', () => {
       expect.objectContaining({
         mode: 'revision-evaluate',
         latencyMs: 160
+      })
+    );
+  });
+
+  it('lesson evaluate route falls back to the heuristic evaluator when AI evaluation is unavailable', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: false,
+      status: 502,
+      error: 'AI evaluation failed'
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-evaluate/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-evaluate', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            studentId: 'student-1',
+            lessonSessionId: 'lesson-session-1',
+            nodeId: 'graph-topic-fractions',
+            lessonArtifactId: 'artifact-lesson-1',
+            answer: 'Equivalent fractions have the same value.',
+            checkpoint: 'loop_check',
+            lesson: {
+              topicTitle: 'Equivalent Fractions',
+              subject: 'Mathematics',
+              loopTitle: 'Loop 1',
+              prompt: 'Explain why 1/2 and 2/4 are equivalent.',
+              mustHitConcepts: ['same value'],
+              criticalMisconceptionTags: ['wrong-denominator']
+            },
+            revisionAttemptCount: 0,
+            remediationStep: 'none'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.provider).toBe('local-heuristic');
+    expect(payload.mode).toBeTruthy();
+  });
+
+  it('lesson evaluate route logs lesson signals and preserves session telemetry context', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      payload: {
+        content: JSON.stringify({
+          score: 0.81,
+          mustHitConceptsMet: ['same value'],
+          missingMustHitConcepts: [],
+          criticalMisconceptions: [],
+          feedback: 'That captures the rule.',
+          mode: 'advance'
+        }),
+        provider: 'github-models',
+        model: 'gpt-4.1-mini',
+        latencyMs: 140
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-evaluate/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-evaluate', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            studentId: 'student-1',
+            lessonSessionId: 'lesson-session-2',
+            nodeId: 'graph-topic-fractions',
+            lessonArtifactId: 'artifact-lesson-2',
+            answer: 'Equivalent fractions have the same value.',
+            checkpoint: 'loop_check',
+            lesson: {
+              topicTitle: 'Equivalent Fractions',
+              subject: 'Mathematics',
+              loopTitle: 'Loop 1',
+              prompt: 'Explain why 1/2 and 2/4 are equivalent.',
+              mustHitConcepts: ['same value'],
+              criticalMisconceptionTags: ['wrong-denominator']
+            },
+            revisionAttemptCount: 0,
+            remediationStep: 'none'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(logAiInteraction).toHaveBeenCalledWith(
+      'student-1',
+      expect.stringContaining('"lessonSessionId":"lesson-session-2"'),
+      expect.stringContaining('"mode":"advance"'),
+      'github-models',
+      expect.objectContaining({
+        mode: 'lesson-evaluate',
+        model: 'gpt-4.1-mini',
+        latencyMs: 140
+      })
+    );
+    expect(logLessonSignal).toHaveBeenCalledWith(
+      'student-1',
+      expect.objectContaining({
+        id: 'lesson-session-2',
+        subject: 'Mathematics',
+        topicTitle: 'Equivalent Fractions'
+      }),
+      expect.objectContaining({
+        action: 'advance',
+        confidence_assessment: 0.81
       })
     );
   });

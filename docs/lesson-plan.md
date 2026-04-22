@@ -1,114 +1,89 @@
-# Lesson Experience
+# Lesson System
 
-## What it is
+The lesson system is the current source of truth for lesson launch, session behavior, and lesson-linked media.
 
-The lesson screen is a one-on-one chat between the student and Doceo, an adaptive AI tutor. The student works through a topic in a structured sequence of stages. At any point they can ask a question, slow down, or ask for an example — the tutor responds in context and then returns to the lesson.
+## Ownership
 
----
+- Client orchestration: `src/lib/stores/app-state.ts`
+- Lesson session logic: `src/lib/lesson-system.ts`
+- Launch service: `src/lib/server/lesson-launch-service.ts`
+- Artifact storage: `src/lib/server/lesson-artifact-repository.ts`
+- Route entrypoint: `src/routes/api/ai/lesson-plan/+server.ts`
+- Workspace UI: `src/lib/components/LessonWorkspace.svelte`
 
-## Layout
+## Launch Pipeline
 
-Four stacked regions, fixed height, no scroll on the outer shell:
+1. The client sends a `LessonPlanRequest` to `/api/ai/lesson-plan`.
+2. The server checks quota for authenticated users.
+3. The launch service resolves a graph node by `nodeId`, `topicId`, or label.
+4. If no node exists, the service creates a provisional topic node.
+5. The artifact repository looks for a preferred lesson artifact and matching question artifact in the current scope.
+6. If reusable artifacts exist for the active pedagogy and prompt versions, the route reuses them.
+7. Otherwise the route generates a fresh lesson plan through the AI edge path, stores new artifacts, and records observability.
 
-1. **Top bar** — subject label, topic title, close button
-2. **Progress rail** — horizontal strip of stage chips (Orientation · Key Concepts · Guided Construction · Examples · Active Practice · Check Understanding), each showing completed / active / upcoming state
-3. **Chat area** — scrollable message feed
-4. **Input area** — quick-reply buttons + textarea composer + send button
+## Lesson Shape
 
----
+Every lesson still carries nine authored sections:
 
-## Lesson stages
+- `orientation`
+- `mentalModel`
+- `concepts`
+- `guidedConstruction`
+- `workedExample`
+- `practicePrompt`
+- `commonMistakes`
+- `transferChallenge`
+- `summary`
 
-Each stage is opened by the system with a stage-start badge and a teaching message. The AI advances stages when the student demonstrates understanding.
+These sections exist in the lesson payload even though the live learner session is staged differently in the chat UI.
 
-| Stage | Label | Purpose |
-|---|---|---|
-| `orientation` | Orientation | Hook and relevance — why this topic matters |
-| `concepts` | Key Concepts | Core rules, language, and structure |
-| `construction` | Guided Construction | Step-by-step reasoning walkthrough |
-| `examples` | Examples | Concrete worked example with full explanation |
-| `practice` | Active Practice | Student attempts a similar problem |
-| `check` | Check Understanding | Student explains or applies the idea |
-| `complete` | — | Session closes, topic moves to revision |
+## Live Session Stages
 
----
+The learner-visible session stages are:
 
-## Message types
+- `orientation`
+- `concepts`
+- `construction`
+- `examples`
+- `practice`
+- `check`
+- `complete`
 
-| Type | Role | Visual |
-|---|---|---|
-| `stage_start` | system | Centred pill badge |
-| `teaching` | assistant | Left-aligned bubble (default) |
-| `feedback` | assistant | Accent-tinted bubble (used on advance) |
-| `side_thread` | assistant | Blue-tinted bubble (off-topic question) |
-| `concept_cards` | system | Expandable disclosure panel injected at concepts stage start |
-| `question` | user | Dark right-aligned bubble |
-| `response` | user | Dark right-aligned bubble |
+The tutor does not advance purely because the learner says "ok" or "continue". Progression is driven by the session logic and the assistant action returned for the turn.
 
----
+## Tutor Actions
 
-## Tutor behaviour
+Lesson turns resolve to one of these actions:
 
-The AI receives a structured system prompt containing:
-- Student profile (name, grade, curriculum, country, term, year)
-- Full lesson plan (orientation, key concepts, guided construction, worked example)
-- Pre-loaded concept card names (so the AI knows what cards the student can see)
-- Current stage and session history (capped at last 20 messages)
-- Learner profile signals (learning style, struggle/excelled topics)
+- `advance`
+- `reteach`
+- `side_thread`
+- `complete`
+- `stay`
 
-**Advance**: when the student clearly understands the current stage, the AI returns a brief 1–2 sentence acknowledgment with `action: advance`. The system inserts the next stage opening automatically — the AI never repeats stage content. Short acknowledgements ("ok", "sure", "continue", "yes") do **not** trigger an advance — the AI asks a specific check question and waits for a substantive response.
+These actions are applied by the lesson system helpers, not by ad hoc UI logic.
 
-**Reteach**: when the student is confused, the AI returns `action: reteach` with a different angle (step-by-step / analogy / example).
+## Concept Cards
 
-**Side thread**: off-topic questions get `action: side_thread`. The AI answers within the topic context and returns to the lesson.
+- Lessons can carry `keyConcepts`.
+- On the concepts stage, the workspace injects a `concept_cards` system message and renders expandable cards.
+- "Ask Doceo to explain this" sends a message prefixed with `[CONCEPT: ...]`.
+- The concept protocol stays in-band with the lesson instead of opening a separate help surface.
 
-**Concept clarification**: when the student presses "Ask Doceo to explain this" on a concept card, the message is prefixed with `[CONCEPT: name]`. The AI treats this as an in-lesson clarification — not a side thread — and responds with a plain-language explanation, a concrete example, and a check question. `action` is always `stay`.
+## Rating And Artifact Quality
 
-**Voice**: always addressed directly to the student by name using "you/your". Never "students will" or "learners should". Doceo is the smartest, warmest friend the student has — plain words, concrete analogies, genuine warmth when understanding clicks.
+- Lesson rating is submitted through `/api/lesson-artifacts/rate`.
+- Ratings update `lesson_artifact_feedback`, summary quality metrics, and downstream graph evidence.
+- Admins can prefer, stale, reject, or request regeneration for artifacts.
 
----
+## TTS
 
-## Fallback
+- Lesson TTS runs through `/api/tts/lesson`.
+- The service checks entitlement, resolves the default and fallback provider from admin settings, computes a cache key, and persists cached audio artifacts.
+- Current TTS scope is lesson playback, not general platform narration.
 
-When no AI is configured, a local deterministic fallback (`buildLocalLessonChatResponse`) handles all responses:
-- Question replies: topic-anchored, never echoes the student's message text
-- Response replies: advance / reteach / stay based on confusion keywords
-- Stage advancement uses the same `action` metadata contract as the AI
+## Fallback Behavior
 
----
-
-## Lesson content
-
-Lessons are either:
-- **Seeded** — from `curriculum_lessons` in Supabase (static, pre-written content)
-- **Dynamic** — built at runtime by `buildDynamicLessonFromTopic` when no seed lesson exists for the chosen topic
-
-Dynamic lessons use subject-specific lens templates (concept word, action word, misconception, worked example) to generate second-person lesson content for any topic.
-
-### Key Concepts (`keyConcepts`)
-
-Every lesson carries a `keyConcepts: ConceptItem[]` array. Each `ConceptItem` has:
-
-```ts
-{
-  name: string;      // concept label shown on the card
-  summary: string;   // one sentence shown collapsed
-  detail: string;    // plain-English explanation shown expanded
-  example: string;   // concrete example shown expanded
-}
-```
-
-For seeded lessons these are authored content. For dynamic lessons the AI lesson-plan step generates them at lesson creation time (via `parseLessonPlanResponse` in the edge function). If the AI omits them, `buildDynamicConceptItems` generates template-based fallbacks.
-
-When the lesson enters the concepts stage, `buildInitialLessonMessages` injects a `concept_cards` message carrying the full `ConceptItem[]`. The `LessonWorkspace` component renders this as an expandable panel — collapsed by default, each card expanding on tap.
-
----
-
-## Learner profile
-
-Every AI response includes a `profile_update` block. After each exchange:
-- Learning style signals are adjusted using EMA (not overwritten)
-- Concepts struggled with / excelled at are updated (capped at 25 each)
-- Session counters (questions asked, reteach events) are incremented
-
-On app bootstrap, profile signals are reconstructed from the `lesson_signals` table using exponential decay weighting (14-day half-life) so recent sessions carry more weight.
+- In development, lesson-plan generation can fall back to `buildFallbackLessonPlan` when the AI route fails.
+- The live lesson chat flow also has deterministic local helpers for some runtime behavior.
+- These fallbacks are development-oriented safety nets, not the main production path.

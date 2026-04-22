@@ -4,6 +4,7 @@ import {
   SOFT_STUCK_STAY_THRESHOLD,
   stripDoceoMeta
 } from '$lib/lesson-system';
+import { isLessonFlowV2Session } from '$lib/lesson-flow-v2';
 import { getLatestTutorPrompt, getLatestTutorTeachingAnchor } from '$lib/lesson-tutor-prompt';
 import type { Lesson, LessonChatRequest, LessonChatResponse } from '$lib/types';
 
@@ -31,6 +32,31 @@ function getLastMessageType(lessonSession: LessonChatRequest['lessonSession']): 
 }
 
 function getCurrentStageContent(request: LessonChatRequest): string {
+  if (isLessonFlowV2Session(request.lessonSession) && request.lesson?.flowV2 && request.lessonSession.v2State) {
+    const loop = request.lesson.flowV2.loops[request.lessonSession.v2State.activeLoopIndex] ?? null;
+
+    switch (request.lessonSession.v2State.activeCheckpoint) {
+      case 'start':
+        return request.lesson.flowV2.start.body;
+      case 'loop_teach':
+        return loop?.teaching.body ?? request.lesson.concepts.body;
+      case 'loop_example':
+        return loop?.example.body ?? request.lesson.workedExample.body;
+      case 'loop_practice':
+        return loop?.learnerTask.body ?? request.lesson.practicePrompt.body;
+      case 'loop_check':
+        return loop?.retrievalCheck.body ?? request.lesson.commonMistakes.body;
+      case 'synthesis':
+        return request.lesson.flowV2.synthesis.body;
+      case 'independent_attempt':
+        return request.lesson.flowV2.independentAttempt.body;
+      case 'exit_check':
+        return request.lesson.flowV2.exitCheck.body;
+      case 'complete':
+        return request.lesson.summary.body;
+    }
+  }
+
   const stage = request.lessonSession.currentStage;
   const lesson = request.lesson!;
 
@@ -97,6 +123,13 @@ export function buildSystemPrompt(request: LessonChatRequest): string {
   "confidence_assessment": <float 0.0–1.0>,
   "needs_teacher_review": false,
   "stuck_concept": null,
+  "lesson_score": null,
+  "must_hit_concepts_met": [],
+  "missing_must_hit_concepts": [],
+  "critical_misconceptions": [],
+  "remediation_step": null,
+  "revision_attempt_used": false,
+  "skip_with_accountability": false,
   "profile_update": {
     "step_by_step": <float 0–1 or omit>,
     "analogies_preference": <float 0–1 or omit>,
@@ -154,6 +187,15 @@ Rules:
     ``,
     `--- SESSION ---`,
     `Current Stage: ${request.lessonSession.currentStage}`,
+    `Lesson Flow Version: ${request.lessonSession.lessonFlowVersion ?? 'v1'}`,
+    ...(isLessonFlowV2Session(request.lessonSession) && request.lessonSession.v2State
+      ? [
+          `Current V2 Checkpoint: ${request.lessonSession.v2State.activeCheckpoint}`,
+          `Current Loop Index: ${request.lessonSession.v2State.activeLoopIndex}`,
+          `Revision Attempt Count: ${request.lessonSession.v2State.revisionAttemptCount}`,
+          `Current Remediation Step: ${request.lessonSession.v2State.remediationStep}`
+        ]
+      : []),
     `Support Intent: ${request.supportIntent ?? 'none'}`,
     `Current Stage Content: ${getCurrentStageContent(request)}`,
     `Latest Tutor Prompt Awaiting Answer: ${getLatestTutorPrompt(request.lessonSession) ?? 'none'}`,
@@ -187,6 +229,7 @@ Rules:
     `Do not ask beyond the taught envelope. Your next question must be answerable from the Current Stage Content, the Latest Tutor Teaching Anchor, and the learner's latest reply. If you need a broader inference, teach the bridge sentence first and only then ask one bounded follow-up.`,
     `In the examples stage, stay inside the worked example already shown. Ask about a clue, step, effect, or consequence already present in that example before you ask for any broader interpretation.`,
     `If Support Intent is help_me_start, target the Latest Tutor Prompt Awaiting Answer, not the stage in general. Reduce multi-part prompts to the first unresolved part. Stay on the current task. Give one concrete first move, add one short clue tied to the exact stage content, and stop there. Do not add a new bottom-of-bubble question. End with a soft handoff such as "Try just that first move now." or "Start with that move."`,
+    `If Lesson Flow Version is v2, keep responses aligned with the active checkpoint and current remediation state. Use the optional lesson_score, must_hit_concepts_met, missing_must_hit_concepts, critical_misconceptions, remediation_step, revision_attempt_used, and skip_with_accountability metadata fields when they help the runtime understand your response.`,
     `If the student's message contains [CONCEPT: name], they are asking for a clearer explanation of a concept card they just read. The [STUDENT_HAS_READ: ...] field shows the exact text they already saw — do NOT restate or paraphrase it. Instead, give them a completely fresh angle: a new analogy, a real-world comparison, or a simpler breakdown that says "in other words...". Keep it to 3–5 sentences. End with a short, specific question to check whether it clicked (e.g. "Does that help? Can you tell me what xylem does in your own words?"). This is an in-lesson clarification — NOT a side_thread. Set action to "stay".`,
     ``,
     `--- DOCEO_META FORMAT (required at end of every response) ---`,

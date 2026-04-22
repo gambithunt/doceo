@@ -7,12 +7,11 @@
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
   import {
-    deriveNextStepCtaState,
-    getNextStepPrompt,
-    getStageContextCopy,
-    getVisibleQuickActionDefinitions,
-    LESSON_WORKSPACE_VISIBLE_STAGES,
-    type VisibleLessonStage
+    deriveNextStepCtaStateForSession,
+    getStageContextCopyForSession,
+    getVisibleProgressStagesForSession,
+    getVisibleQuickActionDefinitionsForSession,
+    getNextStepPromptForSession
   } from '$lib/components/lesson-workspace-ui';
   import { launchCheckout } from '$lib/payments/checkout';
   import { appState } from '$lib/stores/app-state';
@@ -20,6 +19,9 @@
 
   const { state: viewState }: { state: AppState } = $props();
   const lessonSession = $derived(getActiveLessonSession(viewState));
+  const lesson = $derived(
+    lessonSession ? viewState.lessons.find((item) => item.id === lessonSession.lessonId) ?? null : null
+  );
   const lessonTts = createLessonTts();
   let composer = $state('');
   let chatElement = $state<HTMLDivElement | null>(null);
@@ -90,13 +92,15 @@
     };
   }
 
-  const visibleStages = LESSON_WORKSPACE_VISIBLE_STAGES;
+  const visibleStages = $derived(
+    lessonSession ? getVisibleProgressStagesForSession(lessonSession, lesson) : []
+  );
   const lessonProgressDisplay = $derived(
     lessonSession
       ? deriveLessonProgressDisplay(lessonSession)
       : {
           stageNumber: 1,
-          visibleStageCount: visibleStages.length,
+          visibleStageCount: 0,
           progressPercent: 0
         }
   );
@@ -114,17 +118,17 @@
   );
   const visibleQuickActions = $derived(
     lessonSession && lessonSession.currentStage !== 'complete'
-      ? getVisibleQuickActionDefinitions(lessonSession.currentStage as VisibleLessonStage)
+      ? getVisibleQuickActionDefinitionsForSession(lessonSession)
       : []
   );
   const nextStepCtaState = $derived(
     lessonSession && lessonSession.currentStage !== 'complete'
-      ? deriveNextStepCtaState(lessonSession)
+      ? deriveNextStepCtaStateForSession(lessonSession)
       : { disabled: false, cue: null }
   );
   const nextStepPrompt = $derived(
     lessonSession && lessonSession.currentStage !== 'complete'
-      ? getNextStepPrompt(lessonSession.currentStage as VisibleLessonStage)
+      ? getNextStepPromptForSession(lessonSession)
       : null
   );
   const finalVisibleStage = $derived(visibleStages.at(-1) ?? null);
@@ -237,6 +241,28 @@
   function statusForStage(stage: LessonStage): 'completed' | 'active' | 'upcoming' {
     if (!lessonSession) {
       return 'upcoming';
+    }
+
+    if (lessonSession.lessonFlowVersion === 'v2' && lessonSession.v2State) {
+      if (lessonSession.status === 'complete') {
+        return 'completed';
+      }
+
+      const activeStage = lessonSession.v2State.labelBucket;
+      if (activeStage === 'complete') {
+        return 'completed';
+      }
+
+      const stageIndex = visibleStages.indexOf(stage as (typeof visibleStages)[number]);
+      const activeIndex = visibleStages.indexOf(activeStage);
+
+      if (stageIndex !== -1 && activeIndex !== -1) {
+        if (stageIndex < activeIndex) {
+          return 'completed';
+        }
+
+        return stageIndex === activeIndex ? 'active' : 'upcoming';
+      }
     }
 
     if (lessonSession.stagesCompleted.includes(stage)) {
@@ -442,7 +468,7 @@
 
     activeTtsMessageId = null;
     activeTtsState = 'idle';
-    applyTtsErrorNotice(message.id, result.error);
+    applyTtsErrorNotice(message.id, 'error' in result ? result.error : null);
   }
 
   async function upgradeTutorAudio(): Promise<void> {
@@ -596,7 +622,7 @@
               </div>
               {#if supportAnchorIndex === messageIndex}
                 <section class="lesson-support-object" aria-label="Lesson support">
-                  <p class="lesson-support-copy">{getStageContextCopy(lessonSession.currentStage)}</p>
+                  <p class="lesson-support-copy">{getStageContextCopyForSession(lessonSession)}</p>
                   {#if nextStepCtaState.cue}
                     <p class="lesson-support-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
                   {/if}
@@ -711,7 +737,7 @@
 
                 {#if supportAnchorIndex === messageIndex}
                   <section class="lesson-support-object" aria-label="Lesson support">
-                    <p class="lesson-support-copy">{getStageContextCopy(lessonSession.currentStage)}</p>
+                    <p class="lesson-support-copy">{getStageContextCopyForSession(lessonSession)}</p>
                     {#if nextStepCtaState.cue}
                       <p class="lesson-support-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
                     {/if}

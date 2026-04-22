@@ -213,6 +213,56 @@ describe('topic discovery interaction routes', () => {
     );
   });
 
+  it('records lesson abandonment events with checkpoint residue metadata', async () => {
+    const repository = createServerTopicDiscoveryRepository();
+    const { POST } = await import('../../routes/api/curriculum/topic-discovery/abandon/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/curriculum/topic-discovery/abandon', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subjectId: 'caps-grade-6-mathematics',
+          curriculumId: 'caps',
+          gradeId: 'grade-6',
+          topicSignature: 'caps-grade-6-mathematics::caps::grade-6::equivalent fractions',
+          topicLabel: 'Equivalent Fractions',
+          nodeId: 'graph-topic-fractions',
+          source: 'graph_existing',
+          lessonSessionId: 'lesson-session-9',
+          requestId: 'discovery-request-9',
+          rankPosition: 2,
+          activeLoopIndex: 1,
+          activeCheckpoint: 'loop_check',
+          remediationStep: 'scaffold',
+          unresolvedGap: 'core idea two',
+          frictionSignal: 'confidence_drop',
+          abandonedAt: '2026-04-02T12:15:00.000Z'
+        })
+      })
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(repository.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'lesson_abandoned',
+        lessonSessionId: 'lesson-session-9',
+        metadata: {
+          requestId: 'discovery-request-9',
+          rankPosition: 2,
+          activeLoopIndex: 1,
+          activeCheckpoint: 'loop_check',
+          remediationStep: 'scaffold',
+          unresolvedGap: 'core idea two',
+          frictionSignal: 'confidence_drop',
+          abandonedAt: '2026-04-02T12:15:00.000Z'
+        }
+      })
+    );
+  });
+
   it('returns 400 for invalid feedback payloads', async () => {
     const { POST } = await import('../../routes/api/curriculum/topic-discovery/feedback/+server');
     const response = await POST({
@@ -265,6 +315,34 @@ describe('topic discovery interaction routes', () => {
     await expect(response.json()).resolves.toEqual({
       recorded: false,
       error: 'Invalid topic discovery completion payload.'
+    });
+  });
+
+  it('returns 400 for invalid abandonment payloads', async () => {
+    const { POST } = await import('../../routes/api/curriculum/topic-discovery/abandon/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/curriculum/topic-discovery/abandon', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subjectId: 'caps-grade-6-mathematics',
+          curriculumId: 'caps',
+          gradeId: 'grade-6',
+          topicSignature: 'caps-grade-6-mathematics::caps::grade-6::fractions',
+          topicLabel: 'Fractions',
+          source: 'graph_existing',
+          lessonSessionId: '',
+          activeLoopIndex: -1
+        })
+      })
+    } as never);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      recorded: false,
+      error: 'Invalid topic discovery abandonment payload.'
     });
   });
 

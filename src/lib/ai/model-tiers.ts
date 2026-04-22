@@ -7,6 +7,7 @@ export type AiMode =
   | 'lesson-selector'
   | 'lesson-plan'
   | 'lesson-chat'
+  | 'lesson-evaluate'
   | 'revision-pack'
   | 'revision-evaluate'
   | 'subject-verify'
@@ -22,6 +23,7 @@ const DEFAULT_MODEL_TIER_BY_MODE: Record<AiMode, ModelTier> = {
   'programme-verify': 'fast',
   tutor: 'default',
   'lesson-chat': 'default',
+  'lesson-evaluate': 'fast',
   'lesson-plan': 'thinking',
   'revision-pack': 'thinking',
   'revision-evaluate': 'fast'

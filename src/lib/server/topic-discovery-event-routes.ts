@@ -36,6 +36,25 @@ export const TopicDiscoveryCompletionSchema = TopicDiscoveryEventBaseSchema.exte
   questionCount: z.number().int().min(0).optional(),
   completedAt: z.string().min(1).optional()
 });
+export const TopicDiscoveryAbandonmentSchema = TopicDiscoveryEventBaseSchema.extend({
+  lessonSessionId: z.string().min(1),
+  activeLoopIndex: z.number().int().min(0).optional(),
+  activeCheckpoint: z.enum([
+    'start',
+    'loop_teach',
+    'loop_example',
+    'loop_practice',
+    'loop_check',
+    'synthesis',
+    'independent_attempt',
+    'exit_check',
+    'complete'
+  ]).optional(),
+  remediationStep: z.enum(['none', 'hint', 'scaffold', 'mini_reteach', 'worked_example']).optional(),
+  unresolvedGap: z.string().min(1).nullable().optional(),
+  frictionSignal: z.enum(['friction', 'confusion', 'overload', 'interruption', 'boredom', 'confidence_drop']).nullable().optional(),
+  abandonedAt: z.string().min(1).optional()
+});
 
 async function resolveProfileId(request: Request): Promise<string | null> {
   const userClient = createServerSupabaseFromRequest(request);

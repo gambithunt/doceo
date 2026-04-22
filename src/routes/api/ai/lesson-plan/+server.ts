@@ -13,7 +13,7 @@ import { createServerTopicDiscoveryRepository } from '$lib/server/topic-discover
 import { createServerSupabaseFromRequest } from '$lib/server/supabase';
 import { checkUserQuota, LESSON_COST_ESTIMATES_USD } from '$lib/server/quota-check';
 import { parseAiCostWithPricing } from '$lib/server/admin/cost-calculator';
-import type { LessonPlanRequest, LessonPlanResponse } from '$lib/types';
+import type { LessonFlowVersion, LessonPlanRequest, LessonPlanResponse } from '$lib/types';
 
 const LessonPlanBodySchema = z.object({
   request: z.object({
@@ -31,6 +31,7 @@ const LessonPlanBodySchema = z.object({
     topicTitle: z.string().min(1),
     topicDescription: z.string(),
     curriculumReference: z.string(),
+    lessonFlowVersion: z.enum(['v1', 'v2']).optional(),
     nodeId: z.string().nullable().optional(),
     topicId: z.string().optional(),
     topicDiscovery: z.object({
@@ -45,9 +46,25 @@ const LessonPlanBodySchema = z.object({
   })
 });
 
-const LESSON_PLAN_PROMPT_VERSION = 'lesson-plan-v3';
-const LESSON_PLAN_PEDAGOGY_VERSION = 'phase3-v1';
 type GeneratedLessonPlanResponse = LessonPlanResponse & { estimatedCostUsd?: number | null };
+
+function resolveLessonPlanVersion(
+  lessonFlowVersion: LessonFlowVersion | undefined
+): { lessonFlowVersion: LessonFlowVersion; promptVersion: string; pedagogyVersion: string } {
+  if (lessonFlowVersion === 'v2') {
+    return {
+      lessonFlowVersion: 'v2',
+      promptVersion: 'lesson-plan-v4',
+      pedagogyVersion: 'phase4-v2'
+    };
+  }
+
+  return {
+    lessonFlowVersion: 'v1',
+    promptVersion: 'lesson-plan-v3',
+    pedagogyVersion: 'phase3-v1'
+  };
+}
 
 async function recordTopicDiscoveryLaunch(input: {
   lessonRequest: LessonPlanRequest;
@@ -112,6 +129,7 @@ export async function POST({ request, fetch }) {
   }
 
   const lessonRequest = parsed.data.request as unknown as LessonPlanRequest;
+  const version = resolveLessonPlanVersion(lessonRequest.lessonFlowVersion);
   const graphRepository = createServerGraphRepository();
   const artifactRepository = createServerLessonArtifactRepository();
   const dynamicOperations = createServerDynamicOperationsService();
@@ -156,8 +174,8 @@ export async function POST({ request, fetch }) {
     }
 
     if (!edge.ok || !edge.payload) {
-      if (dev) {
-        return buildFallbackLessonPlan(launchRequest);
+      if (dev || version.lessonFlowVersion === 'v2') {
+        return buildFallbackLessonPlan(launchRequest, { lessonFlowVersion: version.lessonFlowVersion });
       }
 
       throw Object.assign(new Error(edge.error ?? 'Lesson generation unavailable.'), {
@@ -167,9 +185,14 @@ export async function POST({ request, fetch }) {
 
     const functionPayload = edge.payload;
 
-    if (functionPayload.provider !== 'github-models' || !functionPayload.lesson?.orientation?.body) {
-      if (dev) {
-        return buildFallbackLessonPlan(launchRequest);
+    const lessonMatchesRequestedFlow =
+      version.lessonFlowVersion === 'v1'
+        ? (functionPayload.lesson?.lessonFlowVersion ?? 'v1') === 'v1'
+        : functionPayload.lesson?.lessonFlowVersion === 'v2' && Array.isArray(functionPayload.lesson?.flowV2?.loops);
+
+    if (functionPayload.provider !== 'github-models' || !functionPayload.lesson?.orientation?.body || !lessonMatchesRequestedFlow) {
+      if (dev || version.lessonFlowVersion === 'v2') {
+        return buildFallbackLessonPlan(launchRequest, { lessonFlowVersion: version.lessonFlowVersion });
       }
 
       throw Object.assign(new Error('Lesson generation returned an invalid payload.'), {
@@ -216,8 +239,8 @@ export async function POST({ request, fetch }) {
         status: 'success',
         source: 'generated_direct',
         profileId: lessonRequest.student.id,
-        promptVersion: LESSON_PLAN_PROMPT_VERSION,
-        pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
+        promptVersion: version.promptVersion,
+        pedagogyVersion: version.pedagogyVersion,
         provider: generated.provider,
         model: generated.model ?? null,
         modelTier: generated.modelTier,
@@ -231,8 +254,8 @@ export async function POST({ request, fetch }) {
       graphRepository,
       artifactRepository,
       generateLessonPlan,
-      pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
-      promptVersion: LESSON_PLAN_PROMPT_VERSION,
+      pedagogyVersion: version.pedagogyVersion,
+      promptVersion: version.promptVersion,
       onLaunchObserved: async (event) => {
         await recordTopicDiscoveryLaunch({
           lessonRequest,
@@ -247,8 +270,8 @@ export async function POST({ request, fetch }) {
           nodeId: event.nodeId,
           artifactId: event.lessonArtifactId,
           secondaryArtifactId: event.questionArtifactId,
-          promptVersion: LESSON_PLAN_PROMPT_VERSION,
-          pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
+          promptVersion: version.promptVersion,
+          pedagogyVersion: version.pedagogyVersion,
           provider: event.provider,
           model: event.model,
           latencyMs: Date.now() - startedAt,
@@ -264,8 +287,8 @@ export async function POST({ request, fetch }) {
       status: 'failure',
       source: 'generated',
       profileId: lessonRequest.student.id,
-      promptVersion: LESSON_PLAN_PROMPT_VERSION,
-      pedagogyVersion: LESSON_PLAN_PEDAGOGY_VERSION,
+      promptVersion: version.promptVersion,
+      pedagogyVersion: version.pedagogyVersion,
       latencyMs: Date.now() - startedAt,
       payload: {
         error: error instanceof Error ? error.message : 'Unknown lesson generation error'

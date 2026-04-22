@@ -2,6 +2,7 @@ export type ThemeMode = 'light' | 'dark';
 export type LearningMode = 'learn' | 'revision';
 export type { ModelTier } from '$lib/ai/model-tiers';
 export type EducationType = 'School' | 'University';
+export type LessonFlowVersion = 'v1' | 'v2';
 export type AppScreen =
   | 'landing'
   | 'onboarding'
@@ -45,6 +46,27 @@ export type LessonMessageType =
 export type LessonSessionStatus = 'active' | 'complete' | 'archived';
 export type ConfidenceLevel = 'low' | 'medium' | 'high';
 export type ReteachStyle = 'analogy' | 'example' | 'step_by_step' | 'visual';
+export type LessonGroupedLabelBucket = 'orientation' | 'concepts' | 'practice' | 'check' | 'complete';
+export type LessonFlowV2Checkpoint =
+  | 'start'
+  | 'loop_teach'
+  | 'loop_example'
+  | 'loop_practice'
+  | 'loop_check'
+  | 'synthesis'
+  | 'independent_attempt'
+  | 'exit_check'
+  | 'complete';
+export type LessonRemediationStep = 'none' | 'hint' | 'scaffold' | 'mini_reteach' | 'worked_example';
+export type LessonResidueGapStatus = 'partial' | 'skipped' | 'blocked';
+export type LessonAbandonmentFrictionSignal =
+  | 'friction'
+  | 'confusion'
+  | 'overload'
+  | 'interruption'
+  | 'boredom'
+  | 'confidence_drop';
+export type LessonEvaluationMode = 'advance' | 'targeted_revision' | 'remediation' | 'skip_with_accountability';
 
 export interface UserProfile {
   id: string;
@@ -179,6 +201,67 @@ export interface ConceptItem {
   example: string;
 }
 
+export interface LessonFlowV2Loop {
+  id: string;
+  title: string;
+  teaching: LessonSection;
+  example: LessonSection;
+  learnerTask: LessonSection;
+  retrievalCheck: LessonSection;
+  mustHitConcepts: string[];
+  criticalMisconceptionTags: string[];
+}
+
+export interface LessonFlowV2Artifact {
+  groupedLabels: ReadonlyArray<LessonGroupedLabelBucket>;
+  start: LessonSection;
+  loops: LessonFlowV2Loop[];
+  synthesis: LessonSection;
+  independentAttempt: LessonSection;
+  exitCheck: LessonSection;
+}
+
+export interface LessonResidueGap {
+  concept: string;
+  status: LessonResidueGapStatus;
+  critical: boolean;
+  loopId?: string | null;
+  remediationStep?: LessonRemediationStep | null;
+  needsTeacherReview?: boolean;
+}
+
+export interface LessonAbandonmentResidue {
+  activeLoopIndex: number;
+  activeCheckpoint: LessonFlowV2Checkpoint;
+  remediationStep: LessonRemediationStep;
+  unresolvedGap: string | null;
+  frictionSignal: LessonAbandonmentFrictionSignal | null;
+}
+
+export interface LessonResidueSummary {
+  taughtConcepts: string[];
+  masteredConcepts: string[];
+  partialConcepts: string[];
+  skippedConcepts: string[];
+  confidenceScore: number | null;
+  learnerReflection: string | null;
+  confidenceReflection: string | null;
+  revisitNext: string[];
+  gaps: LessonResidueGap[];
+  abandonment?: LessonAbandonmentResidue | null;
+}
+
+export interface LessonFlowV2SessionState {
+  totalLoops: number;
+  activeLoopIndex: number;
+  activeCheckpoint: LessonFlowV2Checkpoint;
+  revisionAttemptCount: number;
+  remediationStep: LessonRemediationStep;
+  labelBucket: LessonGroupedLabelBucket;
+  skippedGaps: LessonResidueGap[];
+  needsTeacherReview: boolean;
+}
+
 export interface Lesson {
   id: string;
   topicId: string;
@@ -186,6 +269,7 @@ export interface Lesson {
   title: string;
   subjectId: string;
   grade: string;
+  lessonFlowVersion?: LessonFlowVersion;
   orientation: LessonSection;
   mentalModel: LessonSection;
   concepts: LessonSection;
@@ -196,6 +280,7 @@ export interface Lesson {
   transferChallenge: LessonSection;
   summary: LessonSection;
   keyConcepts?: ConceptItem[];
+  flowV2?: LessonFlowV2Artifact | null;
   practiceQuestionIds: string[];
   masteryQuestionIds: string[];
 }
@@ -585,6 +670,36 @@ export interface LearnerProfile extends LearnerProfileSignals {
   last_updated_at: string;
 }
 
+export interface LessonEvaluationRequest {
+  studentId: string;
+  lessonSessionId: string;
+  nodeId?: string | null;
+  lessonArtifactId?: string | null;
+  answer: string;
+  checkpoint: LessonFlowV2Checkpoint;
+  lesson: {
+    topicTitle: string;
+    subject: string;
+    loopTitle: string | null;
+    prompt: string;
+    mustHitConcepts: string[];
+    criticalMisconceptionTags: string[];
+  };
+  revisionAttemptCount: number;
+  remediationStep: LessonRemediationStep;
+}
+
+export interface LessonEvaluationResult {
+  score: number;
+  mustHitConceptsMet: string[];
+  missingMustHitConcepts: string[];
+  criticalMisconceptions: string[];
+  feedback: string;
+  mode: LessonEvaluationMode;
+  provider: string;
+  model: string;
+}
+
 export interface DoceoMeta {
   action: AssistantAction;
   next_stage: LessonStage | null;
@@ -595,6 +710,13 @@ export interface DoceoMeta {
   stuck_concept?: string | null;
   response_mode?: 'lesson_flow' | 'support';
   support_intent?: LessonSupportIntent | null;
+  lesson_score?: number | null;
+  must_hit_concepts_met?: string[];
+  missing_must_hit_concepts?: string[];
+  critical_misconceptions?: string[];
+  remediation_step?: LessonRemediationStep | null;
+  revision_attempt_used?: boolean;
+  skip_with_accountability?: boolean;
   profile_update: LearnerProfileUpdate;
 }
 
@@ -622,6 +744,7 @@ export interface LessonSession {
   studentId: string;
   subjectId: string;
   subject: string;
+  lessonFlowVersion?: LessonFlowVersion;
   nodeId?: string | null;
   lessonArtifactId?: string | null;
   questionArtifactId?: string | null;
@@ -645,6 +768,8 @@ export interface LessonSession {
   completedAt: string | null;
   status: LessonSessionStatus;
   lessonRating?: LessonRating | null;
+  v2State?: LessonFlowV2SessionState | null;
+  residue?: LessonResidueSummary | null;
   topicDiscovery?: {
     topicSignature: string;
     topicLabel: string;
@@ -681,6 +806,7 @@ export interface LessonPlanRequest {
   topicTitle: string;
   topicDescription: string;
   curriculumReference: string;
+  lessonFlowVersion?: LessonFlowVersion;
   nodeId?: string | null;
   topicId?: string;
   topicDiscovery?: {
@@ -698,6 +824,8 @@ export interface LessonPlanResponse {
   lesson: Lesson;
   questions: Question[];
   provider: string;
+  pedagogyVersion?: string;
+  promptVersion?: string;
   nodeId?: string;
   lessonArtifactId?: string;
   questionArtifactId?: string;
@@ -762,6 +890,7 @@ export interface RevisionTopic {
   forgettingVelocity: number;
   misconceptionSignals: RevisionMisconceptionSignal[];
   calibration: RevisionTopicCalibration;
+  lessonResidue?: LessonResidueSummary | null;
   isSynthetic?: boolean;
   hasLesson?: boolean;
 }

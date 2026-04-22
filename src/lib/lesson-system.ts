@@ -6,16 +6,32 @@ import type {
   Lesson,
   LessonChatRequest,
   LessonChatResponse,
+  LessonEvaluationRequest,
+  LessonAbandonmentResidue,
+  LessonFlowV2Loop,
+  LessonFlowV2SessionState,
   LessonMessage,
+  LessonRemediationStep,
+  LessonResidueSummary,
   LessonSession,
   LessonStage,
+  QuestionOption,
   Question,
   RevisionTopic,
+  LessonEvaluationResult,
   Subject,
   Subtopic,
   Topic,
   UserProfile
 } from '$lib/types';
+import {
+  advanceLessonFlowV2State,
+  createLessonFlowV2SessionState,
+  getLessonStageForV2Checkpoint,
+  isLessonFlowV2Lesson,
+  isLessonFlowV2Session,
+  normalizeLessonFlowVersion
+} from '$lib/lesson-flow-v2';
 import { getLatestTutorPrompt, getLatestTutorTeachingAnchor } from '$lib/lesson-tutor-prompt';
 
 function createDefaultRevisionCalibration() {
@@ -714,10 +730,221 @@ export function buildInitialLessonMessages(lesson: Lesson, stage: LessonStage): 
   ];
 }
 
+function createDefaultLessonStayMeta(): DoceoMeta {
+  return {
+    action: 'stay',
+    next_stage: null,
+    reteach_style: null,
+    reteach_count: 0,
+    confidence_assessment: 0.5,
+    profile_update: {}
+  };
+}
+
+function buildV2TeachingMessage(content: string, stage: LessonStage): LessonMessage {
+  return {
+    id: `msg-${crypto.randomUUID()}`,
+    role: 'assistant',
+    type: 'teaching',
+    content,
+    stage,
+    timestamp: isoNow(),
+    metadata: createDefaultLessonStayMeta()
+  };
+}
+
+function buildV2CheckpointMessages(lesson: Lesson, lessonSession: LessonSession): LessonMessage[] {
+  const stage = lessonSession.currentStage;
+  const checkpoint = lessonSession.v2State?.activeCheckpoint ?? 'start';
+  const loop = lesson.flowV2?.loops[lessonSession.v2State?.activeLoopIndex ?? 0] ?? null;
+
+  switch (checkpoint) {
+    case 'start':
+      return [
+        buildStageStartMessage(stage),
+        buildV2TeachingMessage(lesson.flowV2?.start.body ?? lesson.orientation.body, stage)
+      ];
+    case 'loop_teach':
+      return [
+        ...(lessonSession.v2State?.activeLoopIndex === 0 ? [buildStageStartMessage(stage)] : []),
+        buildV2TeachingMessage(loop?.teaching.body ?? lesson.concepts.body, stage)
+      ];
+    case 'loop_example':
+      return [buildV2TeachingMessage(loop?.example.body ?? lesson.workedExample.body, stage)];
+    case 'loop_practice':
+      return [buildV2TeachingMessage(loop?.learnerTask.body ?? lesson.practicePrompt.body, stage)];
+    case 'loop_check':
+      return [buildV2TeachingMessage(loop?.retrievalCheck.body ?? lesson.commonMistakes.body, stage)];
+    case 'synthesis':
+      return [buildV2TeachingMessage(lesson.flowV2?.synthesis.body ?? lesson.summary.body, stage)];
+    case 'independent_attempt':
+      return [
+        buildStageStartMessage(stage),
+        buildV2TeachingMessage(lesson.flowV2?.independentAttempt.body ?? lesson.transferChallenge.body, stage)
+      ];
+    case 'exit_check':
+      return [
+        buildStageStartMessage(stage),
+        buildV2TeachingMessage(lesson.flowV2?.exitCheck.body ?? lesson.summary.body, stage)
+      ];
+    case 'complete':
+      return [];
+  }
+}
+
+function getNextRemediationStep(current: LessonRemediationStep) {
+  switch (current) {
+    case 'none':
+      return 'hint' as const;
+    case 'hint':
+      return 'scaffold' as const;
+    case 'scaffold':
+      return 'mini_reteach' as const;
+    case 'mini_reteach':
+      return 'worked_example' as const;
+    case 'worked_example':
+      return 'worked_example' as const;
+  }
+}
+
+function buildSkippedGapRecordsFromMetadata(metadata: DoceoMeta, lessonSession: LessonSession) {
+  const loopId = lessonSession.v2State ? `${lessonSession.lessonId}-loop-${lessonSession.v2State.activeLoopIndex + 1}` : null;
+
+  return [
+    ...(metadata.missing_must_hit_concepts ?? []).map((concept) => ({
+      concept,
+      status: 'skipped' as const,
+      critical: false,
+      loopId,
+      remediationStep: lessonSession.v2State?.remediationStep ?? null,
+      needsTeacherReview: metadata.needs_teacher_review ?? false
+    })),
+    ...(metadata.critical_misconceptions ?? []).map((concept) => ({
+      concept,
+      status: 'blocked' as const,
+      critical: true,
+      loopId,
+      remediationStep: lessonSession.v2State?.remediationStep ?? null,
+      needsTeacherReview: true
+    }))
+  ];
+}
+
+export function buildLessonEvaluationAssistantMessage(
+  lessonSession: LessonSession,
+  evaluation: LessonEvaluationResult
+): LessonMessage {
+  if (!isLessonFlowV2Session(lessonSession) || !lessonSession.v2State) {
+    throw new Error('Lesson evaluation messages are only supported for v2 lesson sessions.');
+  }
+
+  const remediationStep = getNextRemediationStep(lessonSession.v2State.remediationStep);
+  const exhaustedRepeatedGap =
+    evaluation.missingMustHitConcepts.length > 0 &&
+    lessonSession.v2State.revisionAttemptCount > 0 &&
+    lessonSession.v2State.remediationStep === 'worked_example';
+  const needsTeacherReview =
+    exhaustedRepeatedGap ||
+    (evaluation.criticalMisconceptions.length > 0 &&
+      (lessonSession.v2State.revisionAttemptCount > 0 || remediationStep === 'worked_example'));
+  const content =
+    evaluation.mode === 'advance'
+      ? `Good. ${evaluation.feedback}`
+      : evaluation.mode === 'targeted_revision'
+        ? `${evaluation.feedback} Revise it once, then answer again.`
+        : evaluation.mode === 'skip_with_accountability'
+          ? `${evaluation.feedback} We will keep going, but this gap is marked to revisit.`
+          : `${evaluation.feedback} Let's support the missing idea with a ${remediationStep.replace(/_/g, ' ')}.`;
+
+  return {
+    id: `msg-${crypto.randomUUID()}`,
+    role: 'assistant',
+    type: evaluation.mode === 'advance' || evaluation.mode === 'skip_with_accountability' ? 'feedback' : 'teaching',
+    content,
+    stage: lessonSession.currentStage,
+    timestamp: isoNow(),
+    metadata: {
+      action:
+        evaluation.mode === 'advance' || evaluation.mode === 'skip_with_accountability'
+          ? 'advance'
+          : evaluation.mode === 'targeted_revision'
+            ? 'stay'
+            : 'reteach',
+      next_stage: null,
+      reteach_style: evaluation.mode === 'remediation' ? 'step_by_step' : null,
+      reteach_count: evaluation.mode === 'remediation' ? lessonSession.reteachCount + 1 : lessonSession.reteachCount,
+      confidence_assessment: evaluation.score,
+      needs_teacher_review: needsTeacherReview,
+      stuck_concept: evaluation.missingMustHitConcepts[0] ?? evaluation.criticalMisconceptions[0] ?? null,
+      lesson_score: evaluation.score,
+      must_hit_concepts_met: evaluation.mustHitConceptsMet,
+      missing_must_hit_concepts: evaluation.missingMustHitConcepts,
+      critical_misconceptions: evaluation.criticalMisconceptions,
+      remediation_step: evaluation.mode === 'remediation' ? remediationStep : lessonSession.v2State.remediationStep,
+      revision_attempt_used: evaluation.mode === 'targeted_revision',
+      skip_with_accountability: evaluation.mode === 'skip_with_accountability',
+      profile_update: {
+        quiz_performance: evaluation.score,
+        struggled_with:
+          evaluation.mode === 'advance'
+            ? []
+            : [...evaluation.missingMustHitConcepts, ...evaluation.criticalMisconceptions].slice(0, 3)
+      }
+    }
+  };
+}
+
+export function buildInitialLessonMessagesForSession(lesson: Lesson, lessonSession: LessonSession): LessonMessage[] {
+  return isLessonFlowV2Session(lessonSession)
+    ? buildV2CheckpointMessages(lesson, lessonSession)
+    : buildInitialLessonMessages(lesson, lessonSession.currentStage);
+}
+
+export function buildLessonEvaluationRequest(
+  lessonSession: LessonSession,
+  lesson: Lesson,
+  answer: string
+): LessonEvaluationRequest {
+  if (!isLessonFlowV2Session(lessonSession) || !lessonSession.v2State) {
+    throw new Error('Lesson evaluation requests are only supported for v2 lesson sessions.');
+  }
+
+  const loop = lesson.flowV2?.loops[lessonSession.v2State.activeLoopIndex] ?? null;
+  const prompt =
+    lessonSession.v2State.activeCheckpoint === 'independent_attempt'
+      ? lesson.flowV2?.independentAttempt.body ?? lesson.practicePrompt.body
+      : lessonSession.v2State.activeCheckpoint === 'exit_check'
+        ? lesson.flowV2?.exitCheck.body ?? lesson.summary.body
+        : loop?.retrievalCheck.body ?? loop?.learnerTask.body ?? lesson.practicePrompt.body;
+
+  return {
+    studentId: lessonSession.studentId,
+    lessonSessionId: lessonSession.id,
+    nodeId: lessonSession.nodeId ?? null,
+    lessonArtifactId: lessonSession.lessonArtifactId ?? null,
+    answer,
+    checkpoint: lessonSession.v2State.activeCheckpoint,
+    lesson: {
+      topicTitle: lessonSession.topicTitle,
+      subject: lessonSession.subject,
+      loopTitle: loop?.title ?? null,
+      prompt,
+      mustHitConcepts: loop?.mustHitConcepts ?? [],
+      criticalMisconceptionTags: loop?.criticalMisconceptionTags ?? []
+    },
+    revisionAttemptCount: lessonSession.v2State.revisionAttemptCount,
+    remediationStep: lessonSession.v2State.remediationStep
+  };
+}
+
 export function repairLessonSessionMessages(
   lessonSession: LessonSession,
   lesson: Lesson
 ): LessonSession {
+  if (isLessonFlowV2Session(lessonSession) || isLessonFlowV2Lesson(lesson)) {
+    return lessonSession;
+  }
+
   const teachingCounts: Partial<Record<LessonStage, number>> = {};
 
   return {
@@ -765,11 +992,13 @@ export function buildLessonSessionFromTopic(
     topicDiscovery?: LessonSession['topicDiscovery'];
   }
 ): LessonSession {
-  return {
+  const lessonFlowVersion = normalizeLessonFlowVersion(lesson.lessonFlowVersion);
+  const session: LessonSession = {
     id: `lesson-session-${crypto.randomUUID()}`,
     studentId: profile.id,
     subjectId: subject.id,
     subject: subject.name,
+    lessonFlowVersion,
     nodeId: overrides?.nodeId ?? null,
     lessonArtifactId: overrides?.lessonArtifactId ?? null,
     questionArtifactId: overrides?.questionArtifactId ?? null,
@@ -781,7 +1010,7 @@ export function buildLessonSessionFromTopic(
     lessonId: lesson.id,
     currentStage: 'orientation',
     stagesCompleted: [],
-    messages: buildInitialLessonMessages(lesson, 'orientation'),
+    messages: [],
     questionCount: 0,
     reteachCount: 0,
     softStuckCount: 0,
@@ -793,8 +1022,15 @@ export function buildLessonSessionFromTopic(
     completedAt: null,
     status: 'active',
     lessonRating: null,
+    v2State: lessonFlowVersion === 'v2' ? createLessonFlowV2SessionState(lesson) : null,
+    residue: null,
     topicDiscovery: overrides?.topicDiscovery,
     profileUpdates: []
+  };
+
+  return {
+    ...session,
+    messages: buildInitialLessonMessagesForSession(lesson, session)
   };
 }
 
@@ -819,6 +1055,7 @@ export function buildDynamicLessonFromTopic(input: {
     subtopicId,
     subjectId: input.subjectId,
     grade: input.grade,
+    lessonFlowVersion: 'v1',
     title: `${input.subjectName}: ${topicTitle}`,
     orientation: {
       title: 'Orientation',
@@ -865,6 +1102,7 @@ export function buildDynamicLessonFromTopic(input: {
       ].join('\n')
     },
     keyConcepts: buildDynamicConceptItems(topicTitle, input.subjectName, lens),
+    flowV2: null,
     practiceQuestionIds: [`${rootId}-q-1`],
     masteryQuestionIds: [`${rootId}-q-2`]
   };
@@ -949,6 +1187,89 @@ export function buildDynamicQuestionsForLesson(lesson: Lesson, subjectName: stri
       subtopicId: lesson.subtopicId
     }
   ];
+}
+
+const DEFAULT_V2_GROUPED_LABELS = ['orientation', 'concepts', 'practice', 'check', 'complete'] as const;
+
+function buildDynamicLoopTask(topicTitle: string, conceptName: string, conceptDetail: string): string {
+  return [
+    `Use **${conceptName}** to answer one clear prompt about **${topicTitle}**.`,
+    '',
+    `Start from this idea: ${conceptDetail}`,
+    '',
+    'Write 2-3 sentences or steps that show the rule, the evidence, and your conclusion.'
+  ].join('\n');
+}
+
+function buildDynamicLoopCheck(conceptName: string, topicTitle: string): string {
+  return [
+    `Quick check for **${conceptName}** in **${topicTitle}**:`,
+    '',
+    `State the core idea in one sentence, then name one mistake that would show you have misunderstood it.`
+  ].join('\n');
+}
+
+export function buildDynamicLessonFlowV2FromTopic(input: {
+  subjectId: string;
+  subjectName: string;
+  grade: string;
+  topicTitle: string;
+  topicDescription: string;
+  curriculumReference: string;
+}): Lesson {
+  const base = buildDynamicLessonFromTopic(input);
+  const conceptItems = base.keyConcepts ?? [];
+  const loops: LessonFlowV2Loop[] = conceptItems.slice(0, 4).map((concept, index) => ({
+    id: `${base.id}-loop-${index + 1}`,
+    title: concept.name,
+    teaching: {
+      title: `Teach ${concept.name}`,
+      body: concept.detail
+    },
+    example: {
+      title: `Example ${index + 1}`,
+      body: concept.example
+    },
+    learnerTask: {
+      title: `Try ${concept.name}`,
+      body: buildDynamicLoopTask(input.topicTitle, concept.name, concept.detail)
+    },
+    retrievalCheck: {
+      title: `Check ${concept.name}`,
+      body: buildDynamicLoopCheck(concept.name, input.topicTitle)
+    },
+    mustHitConcepts: [concept.name],
+    criticalMisconceptionTags: [slugify(concept.name), slugify(input.topicTitle)]
+  }));
+
+  return {
+    ...base,
+    lessonFlowVersion: 'v2',
+    flowV2: {
+      groupedLabels: [...DEFAULT_V2_GROUPED_LABELS],
+      start: {
+        title: 'Start',
+        body: base.orientation.body
+      },
+      loops,
+      synthesis: {
+        title: 'Synthesis',
+        body: base.summary.body
+      },
+      independentAttempt: {
+        title: 'Independent Attempt',
+        body: base.transferChallenge.body
+      },
+      exitCheck: {
+        title: 'Exit Check',
+        body: [
+          `Final check for **${input.topicTitle}**:`,
+          '',
+          `Explain the main rule, apply it to one fresh example, and name the misconception you must avoid.`
+        ].join('\n')
+      }
+    }
+  };
 }
 
 function normalizeLearnerReply(value: string): string {
@@ -1412,6 +1733,102 @@ export function applyLessonAssistantResponse(
     };
   }
 
+  if (isLessonFlowV2Session(lessonSession) && lessonSession.v2State) {
+    if (metadata.action === 'reteach') {
+      return {
+        ...next,
+        reteachCount: metadata.reteach_count,
+        softStuckCount: 0,
+        needsTeacherReview: metadata.needs_teacher_review ?? lessonSession.needsTeacherReview,
+        stuckConcept: metadata.stuck_concept ?? lessonSession.stuckConcept,
+        v2State: {
+          ...lessonSession.v2State,
+          remediationStep: metadata.remediation_step ?? lessonSession.v2State.remediationStep,
+          needsTeacherReview: metadata.needs_teacher_review ?? lessonSession.v2State.needsTeacherReview
+        },
+        profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
+      };
+    }
+
+    const nextV2State: LessonFlowV2SessionState =
+      metadata.action === 'advance'
+        ? advanceLessonFlowV2State(lessonSession.v2State)
+        : metadata.action === 'complete' || metadata.next_stage === 'complete'
+          ? {
+              ...lessonSession.v2State,
+              activeCheckpoint: 'complete' as const,
+              labelBucket: 'complete' as const
+            }
+          : lessonSession.v2State;
+    const nextStage = getLessonStageForV2Checkpoint(nextV2State.activeCheckpoint);
+    const completedStages =
+      nextStage !== lessonSession.currentStage
+        ? Array.from(new Set([...lessonSession.stagesCompleted, lessonSession.currentStage]))
+        : lessonSession.stagesCompleted;
+
+    if (
+      metadata.action === 'complete' ||
+      metadata.next_stage === 'complete' ||
+      nextV2State.activeCheckpoint === 'complete'
+    ) {
+      return {
+        ...next,
+        currentStage: 'complete',
+        stagesCompleted: completedStages,
+        reteachCount: metadata.reteach_count,
+        softStuckCount: 0,
+        status: 'complete',
+        completedAt: next.lastActiveAt,
+        v2State: nextV2State,
+        profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
+      };
+    }
+
+    if (metadata.action === 'advance') {
+      return {
+        ...next,
+        currentStage: nextStage,
+        stagesCompleted: completedStages,
+        reteachCount: 0,
+        softStuckCount: 0,
+        needsTeacherReview: metadata.needs_teacher_review ?? lessonSession.needsTeacherReview,
+        v2State: {
+          ...nextV2State,
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          skippedGaps:
+            metadata.skip_with_accountability
+              ? [...lessonSession.v2State.skippedGaps, ...buildSkippedGapRecordsFromMetadata(metadata, lessonSession)]
+              : lessonSession.v2State.skippedGaps,
+          needsTeacherReview: metadata.needs_teacher_review ?? lessonSession.v2State.needsTeacherReview
+        },
+        profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
+      };
+    }
+
+    if (metadata.action === 'stay') {
+      return {
+        ...next,
+        softStuckCount:
+          assistantMessage.stage === lessonSession.currentStage ? currentSoftStuckCount + 1 : 1,
+        v2State: {
+          ...nextV2State,
+          revisionAttemptCount:
+            metadata.revision_attempt_used
+              ? lessonSession.v2State.revisionAttemptCount + 1
+              : lessonSession.v2State.revisionAttemptCount
+        },
+        profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
+      };
+    }
+
+    return {
+      ...next,
+      v2State: nextV2State,
+      profileUpdates: [...lessonSession.profileUpdates, metadata.profile_update]
+    };
+  }
+
   if (metadata.action === 'reteach') {
     return {
       ...next,
@@ -1480,6 +1897,214 @@ export function applyLessonAssistantResponse(
   };
 }
 
+function getTaughtConceptsForLesson(lesson: Lesson): string[] {
+  if (lesson.lessonFlowVersion === 'v2' && lesson.flowV2) {
+    return Array.from(new Set(lesson.flowV2.loops.flatMap((loop) => loop.mustHitConcepts))).filter(Boolean);
+  }
+
+  return Array.from(new Set(lesson.keyConcepts?.map((concept) => concept.name) ?? [])).filter(Boolean);
+}
+
+function getEvaluationMetadataHistory(lessonSession: LessonSession): DoceoMeta[] {
+  return lessonSession.messages
+    .filter((message) => message.role === 'assistant' && message.metadata)
+    .map((message) => message.metadata!)
+    .filter(
+      (metadata) =>
+        metadata.lesson_score !== undefined ||
+        (metadata.must_hit_concepts_met?.length ?? 0) > 0 ||
+        (metadata.missing_must_hit_concepts?.length ?? 0) > 0 ||
+        (metadata.critical_misconceptions?.length ?? 0) > 0
+    );
+}
+
+function uniqueOrdered(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  for (const value of values) {
+    const normalized = value?.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    ordered.push(normalized);
+  }
+
+  return ordered;
+}
+
+function buildPartialResidueGaps(
+  metadataHistory: DoceoMeta[],
+  masteredConcepts: Set<string>,
+  skippedConcepts: Set<string>
+) {
+  return uniqueOrdered(metadataHistory.flatMap((metadata) => metadata.missing_must_hit_concepts ?? []))
+    .filter((concept) => !masteredConcepts.has(concept) && !skippedConcepts.has(concept))
+    .map((concept) => ({
+      concept,
+      status: 'partial' as const,
+      critical: false,
+      needsTeacherReview: false
+    }));
+}
+
+function buildResidueConfidenceScore(
+  lessonSession: LessonSession,
+  metadataHistory: DoceoMeta[]
+): number | null {
+  const latestScore = metadataHistory.at(-1)?.lesson_score ?? lessonSession.confidenceScore;
+  return Number.isFinite(latestScore) ? latestScore : null;
+}
+
+function buildLearnerReflection(
+  lessonSession: LessonSession
+): string | null {
+  const exitCheckReflection = lessonSession.messages
+    .slice()
+    .reverse()
+    .find((message) => message.role === 'user' && message.type === 'response' && message.stage === 'check')?.content
+    ?.trim();
+
+  if (exitCheckReflection) {
+    return exitCheckReflection;
+  }
+
+  return lessonSession.messages
+    .slice()
+    .reverse()
+    .find((message) => message.role === 'user' && message.type === 'response')?.content
+    ?.trim() ?? null;
+}
+
+function deriveAbandonmentFrictionSignal(lessonSession: LessonSession): LessonAbandonmentResidue['frictionSignal'] {
+  if (!lessonSession.v2State) {
+    return null;
+  }
+
+  if (lessonSession.v2State.needsTeacherReview) {
+    return 'confusion';
+  }
+
+  if (
+    lessonSession.v2State.remediationStep === 'mini_reteach' ||
+    lessonSession.v2State.remediationStep === 'worked_example'
+  ) {
+    return 'overload';
+  }
+
+  if (lessonSession.v2State.revisionAttemptCount > 0 || (lessonSession.softStuckCount ?? 0) > 0) {
+    return 'confidence_drop';
+  }
+
+  if (lessonSession.questionCount === 0 && lessonSession.messages.length <= 3) {
+    return 'interruption';
+  }
+
+  return 'friction';
+}
+
+export function buildLessonResidueSummary(
+  lessonSession: LessonSession,
+  lesson: Lesson
+): LessonResidueSummary | null {
+  if (!isLessonFlowV2Session(lessonSession) || !lessonSession.v2State) {
+    return lessonSession.residue ?? null;
+  }
+
+  const taughtConcepts = getTaughtConceptsForLesson(lesson);
+  const metadataHistory = getEvaluationMetadataHistory(lessonSession);
+  const masteredConcepts = uniqueOrdered(metadataHistory.flatMap((metadata) => metadata.must_hit_concepts_met ?? []));
+  const skippedGaps = lessonSession.v2State.skippedGaps ?? [];
+  const skippedConcepts = new Set(skippedGaps.map((gap) => gap.concept));
+  const masteredConceptSet = new Set(masteredConcepts);
+  const partialGaps = buildPartialResidueGaps(metadataHistory, masteredConceptSet, skippedConcepts);
+  const allGaps = [
+    ...partialGaps,
+    ...skippedGaps.filter((gap) => !partialGaps.some((partialGap) => partialGap.concept === gap.concept && partialGap.status === gap.status))
+  ];
+  const partialConcepts = uniqueOrdered(allGaps.filter((gap) => gap.status === 'partial').map((gap) => gap.concept));
+  const skippedConceptList = uniqueOrdered(allGaps.filter((gap) => gap.status !== 'partial').map((gap) => gap.concept));
+
+  const confidenceScore = buildResidueConfidenceScore(lessonSession, metadataHistory);
+  const learnerReflection = buildLearnerReflection(lessonSession);
+
+  return {
+    taughtConcepts,
+    masteredConcepts,
+    partialConcepts,
+    skippedConcepts: skippedConceptList,
+    confidenceScore,
+    learnerReflection,
+    confidenceReflection: learnerReflection,
+    revisitNext: uniqueOrdered([...partialConcepts, ...skippedConceptList]).slice(0, 3),
+    gaps: allGaps,
+    abandonment: null
+  };
+}
+
+export function applyLessonResidueSummary(
+  lessonSession: LessonSession,
+  lesson: Lesson
+): LessonSession {
+  return {
+    ...lessonSession,
+    residue: buildLessonResidueSummary(lessonSession, lesson)
+  };
+}
+
+export function applyLessonAbandonmentResidue(
+  lessonSession: LessonSession,
+  lesson: Lesson
+): LessonSession {
+  if (!isLessonFlowV2Session(lessonSession) || !lessonSession.v2State || lessonSession.status === 'complete') {
+    return lessonSession;
+  }
+
+  const summary = buildLessonResidueSummary(lessonSession, lesson);
+  const unresolvedGap =
+    summary?.revisitNext[0] ??
+    lessonSession.v2State.skippedGaps.at(-1)?.concept ??
+    lessonSession.stuckConcept ??
+    null;
+  const confidenceScore = buildResidueConfidenceScore(lessonSession, getEvaluationMetadataHistory(lessonSession));
+  const learnerReflection = buildLearnerReflection(lessonSession);
+
+  return {
+    ...lessonSession,
+    residue: summary
+      ? {
+          ...summary,
+          abandonment: {
+            activeLoopIndex: lessonSession.v2State.activeLoopIndex,
+            activeCheckpoint: lessonSession.v2State.activeCheckpoint,
+            remediationStep: lessonSession.v2State.remediationStep,
+            unresolvedGap,
+            frictionSignal: deriveAbandonmentFrictionSignal(lessonSession)
+          }
+        }
+      : {
+          taughtConcepts: [],
+          masteredConcepts: [],
+          partialConcepts: [],
+          skippedConcepts: [],
+          confidenceScore,
+          learnerReflection,
+          confidenceReflection: learnerReflection,
+          revisitNext: unresolvedGap ? [unresolvedGap] : [],
+          gaps: lessonSession.v2State.skippedGaps,
+          abandonment: {
+            activeLoopIndex: lessonSession.v2State.activeLoopIndex,
+            activeCheckpoint: lessonSession.v2State.activeCheckpoint,
+            remediationStep: lessonSession.v2State.remediationStep,
+            unresolvedGap,
+            frictionSignal: deriveAbandonmentFrictionSignal(lessonSession)
+          }
+        }
+  };
+}
+
 export function buildRevisionTopicFromLesson(lessonSession: LessonSession): RevisionTopic {
   const baseDate = lessonSession.completedAt ?? lessonSession.lastActiveAt;
   const nextRevision = new Date(baseDate);
@@ -1499,7 +2124,8 @@ export function buildRevisionTopicFromLesson(lessonSession: LessonSession): Revi
     retentionStability: Math.max(0.35, lessonSession.confidenceScore),
     forgettingVelocity: 0.55,
     misconceptionSignals: [],
-    calibration: createDefaultRevisionCalibration()
+    calibration: createDefaultRevisionCalibration(),
+    lessonResidue: lessonSession.residue ?? null
   };
 }
 

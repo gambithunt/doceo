@@ -1,5 +1,18 @@
-import { buildDynamicLessonFromTopic, buildDynamicQuestionsForLesson } from '$lib/lesson-system';
-import type { ConceptItem, Lesson, LessonPlanRequest, LessonPlanResponse, LessonSection } from '$lib/types';
+import {
+  buildDynamicLessonFlowV2FromTopic,
+  buildDynamicLessonFromTopic,
+  buildDynamicQuestionsForLesson
+} from '$lib/lesson-system';
+import type {
+  ConceptItem,
+  Lesson,
+  LessonFlowV2Artifact,
+  LessonFlowV2Loop,
+  LessonFlowVersion,
+  LessonPlanRequest,
+  LessonPlanResponse,
+  LessonSection
+} from '$lib/types';
 
 export interface GithubModelsMessage {
   role: 'system' | 'user' | 'assistant';
@@ -20,9 +33,35 @@ export interface GithubModelsSuccessResponse {
   }>;
 }
 
+export interface LessonPlanOptions {
+  lessonFlowVersion?: LessonFlowVersion;
+}
+
+const REQUIRED_LEGACY_SECTIONS = [
+  'orientation',
+  'mentalModel',
+  'concepts',
+  'guidedConstruction',
+  'workedExample',
+  'practicePrompt',
+  'commonMistakes',
+  'transferChallenge',
+  'summary'
+] as const;
+
+type LegacySectionKey = typeof REQUIRED_LEGACY_SECTIONS[number];
+
+const GENERIC_LEARNER_CHECK_PATTERN = /what feels clear so far|tell me where you want to slow down/i;
+const GENERIC_PRACTICE_PATTERN = /apply (?:what you have learned about )?.+?to a similar problem/i;
+const GENERIC_TRANSFER_PATTERN = /can you apply .+?to a problem you have not seen before\?/i;
+
+function resolveLessonFlowVersion(options?: LessonPlanOptions): LessonFlowVersion {
+  return options?.lessonFlowVersion === 'v2' ? 'v2' : 'v1';
+}
+
 // ── System Prompt ────────────────────────────────────────────────────────────
 
-export function createLessonPlanSystemPrompt(): string {
+function createLegacyLessonPlanSystemPrompt(): string {
   return [
     'You are Doceo, a lesson-generation assistant for South African school students.',
     'Generate a complete, specific lesson plan for the exact learner-selected topic — not a nearby generic topic.',
@@ -58,6 +97,57 @@ export function createLessonPlanSystemPrompt(): string {
   ].join('\n');
 }
 
+function createV2LessonPlanSystemPrompt(): string {
+  return [
+    'You are Doceo, a lesson-generation assistant for South African school students.',
+    'Generate a loop-based lesson for the exact learner-selected topic.',
+    'Return JSON only — no markdown wrapper, no explanation, just a single valid JSON object.',
+    '',
+    'The JSON object must contain exactly these top-level keys:',
+    '  start, loops, synthesis, independentAttempt, exitCheck',
+    '',
+    '"start", "synthesis", "independentAttempt", and "exitCheck" must each be objects with:',
+    '  title (string), body (string)',
+    '',
+    '"loops" must be an array with 2 to 4 items, targeting 3 by default.',
+    'Each loop object must contain:',
+    '  id (string), title (string),',
+    '  teaching (section object),',
+    '  example (section object),',
+    '  learnerTask (section object),',
+    '  retrievalCheck (section object),',
+    '  mustHitConcepts (array of 1-3 strings),',
+    '  criticalMisconceptionTags (array of 1-3 strings)',
+    '',
+    'Loop design rules:',
+    '  - Each loop should teach one tightly bounded concept.',
+    '  - The example must be specific and worked enough that the learner can imitate the move.',
+    '  - The learnerTask must be self-contained and answerable from the prompt.',
+    '  - The retrievalCheck must test the same concept, not a different skill.',
+    '  - mustHitConcepts must name the exact ideas required for advancement.',
+    '  - criticalMisconceptionTags must name concrete blocking misunderstandings.',
+    '',
+    'Overall structure rules:',
+    '  - start frames the lesson and mental model briefly.',
+    '  - synthesis ties the loops together before the learner works alone.',
+    '  - independentAttempt is a self-contained task that combines the loops.',
+    '  - exitCheck is the final evidence check for lesson mastery.',
+    '',
+    'Quality rules:',
+    '  - Keep the lesson grade-appropriate in language and examples.',
+    '  - Do not use generic learner check lines like "What feels clear so far?" or "Tell me where you want to slow down."',
+    '  - Do not ask the learner to invent their own example as the main task.',
+    '  - Prefer concrete verbs: identify, solve, calculate, quote, label, rewrite, compare, classify, correct, complete, justify.',
+    '  - All strings must be non-empty and specific to the chosen topic.'
+  ].join('\n');
+}
+
+export function createLessonPlanSystemPrompt(options?: LessonPlanOptions): string {
+  return resolveLessonFlowVersion(options) === 'v2'
+    ? createV2LessonPlanSystemPrompt()
+    : createLegacyLessonPlanSystemPrompt();
+}
+
 // ── User Prompt ──────────────────────────────────────────────────────────────
 
 export function createLessonPlanUserPrompt(request: LessonPlanRequest): string {
@@ -78,13 +168,14 @@ export function createLessonPlanUserPrompt(request: LessonPlanRequest): string {
 
 export function createLessonPlanBody(
   request: LessonPlanRequest,
-  model: string
+  model: string,
+  options?: LessonPlanOptions
 ): GithubModelsRequestBody {
   return {
     model,
     temperature: 0.35,
     messages: [
-      { role: 'system', content: createLessonPlanSystemPrompt() },
+      { role: 'system', content: createLessonPlanSystemPrompt(options) },
       { role: 'user', content: createLessonPlanUserPrompt(request) }
     ]
   };
@@ -92,25 +183,14 @@ export function createLessonPlanBody(
 
 // ── Response Parsing ─────────────────────────────────────────────────────────
 
-const REQUIRED_SECTIONS = [
-  'orientation', 'mentalModel', 'concepts', 'guidedConstruction',
-  'workedExample', 'practicePrompt', 'commonMistakes', 'transferChallenge', 'summary'
-] as const;
-
-type SectionKey = typeof REQUIRED_SECTIONS[number];
-
-const GENERIC_LEARNER_CHECK_PATTERN = /what feels clear so far|tell me where you want to slow down/i;
-const GENERIC_PRACTICE_PATTERN = /apply (?:what you have learned about )?.+?to a similar problem/i;
-const GENERIC_TRANSFER_PATTERN = /can you apply .+?to a problem you have not seen before\?/i;
-
 function isValidSection(value: unknown): value is LessonSection {
   if (!value || typeof value !== 'object') return false;
-  const s = value as Record<string, unknown>;
-  return typeof s.title === 'string' && s.title.length > 0
-    && typeof s.body === 'string' && s.body.length > 0;
+  const section = value as Record<string, unknown>;
+  return typeof section.title === 'string' && section.title.length > 0 &&
+    typeof section.body === 'string' && section.body.length > 0;
 }
 
-function usesLegacyGenericPrompt(section: LessonSection, key: SectionKey): boolean {
+function usesLegacyGenericPrompt(section: LessonSection, key: LegacySectionKey): boolean {
   const body = section.body.trim();
 
   if (GENERIC_LEARNER_CHECK_PATTERN.test(body)) {
@@ -130,55 +210,58 @@ function usesLegacyGenericPrompt(section: LessonSection, key: SectionKey): boole
 
 function isValidConceptItem(value: unknown): value is ConceptItem {
   if (!value || typeof value !== 'object') return false;
-  const c = value as Record<string, unknown>;
-  return typeof c.name === 'string' && c.name.length > 0
-    && typeof c.summary === 'string' && c.summary.length > 0
-    && typeof c.detail === 'string' && c.detail.length > 0
-    && typeof c.example === 'string' && c.example.length > 0;
+  const concept = value as Record<string, unknown>;
+  return typeof concept.name === 'string' && concept.name.length > 0 &&
+    typeof concept.summary === 'string' && concept.summary.length > 0 &&
+    typeof concept.detail === 'string' && concept.detail.length > 0 &&
+    typeof concept.example === 'string' && concept.example.length > 0;
 }
 
-export function parseLessonPlanResponse(
-  payload: GithubModelsSuccessResponse,
-  request: LessonPlanRequest
-): LessonPlanResponse | null {
-  const content = payload.choices[0]?.message?.content;
-  if (!content) return null;
+function isValidStringArray(value: unknown, minLength = 1): value is string[] {
+  return Array.isArray(value) &&
+    value.length >= minLength &&
+    value.every((entry) => typeof entry === 'string' && entry.trim().length > 0);
+}
 
-  let parsed: Record<string, unknown>;
-  try {
-    // Strip optional markdown code fences the model may add
-    const clean = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-    parsed = JSON.parse(clean) as Record<string, unknown>;
-  } catch {
+function isValidLoop(value: unknown): value is LessonFlowV2Loop {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const loop = value as Record<string, unknown>;
+  return typeof loop.id === 'string' &&
+    loop.id.length > 0 &&
+    typeof loop.title === 'string' &&
+    loop.title.length > 0 &&
+    isValidSection(loop.teaching) &&
+    isValidSection(loop.example) &&
+    isValidSection(loop.learnerTask) &&
+    isValidSection(loop.retrievalCheck) &&
+    isValidStringArray(loop.mustHitConcepts) &&
+    isValidStringArray(loop.criticalMisconceptionTags);
+}
+
+function parseJsonContent(payload: GithubModelsSuccessResponse): Record<string, unknown> | null {
+  const content = payload.choices[0]?.message?.content;
+
+  if (!content) {
     return null;
   }
 
-  // Validate all 9 required sections
-  for (const key of REQUIRED_SECTIONS) {
-    if (!isValidSection(parsed[key])) return null;
-    if (usesLegacyGenericPrompt(parsed[key] as LessonSection, key)) return null;
+  try {
+    const clean = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    return JSON.parse(clean) as Record<string, unknown>;
+  } catch {
+    return null;
   }
+}
 
-  // Build a base dynamic lesson for IDs, grade, subjectId, keyConcepts fallback
-  const base = buildDynamicLessonFromTopic({
-    subjectId: request.subjectId,
-    subjectName: request.subject,
-    grade: request.student.grade,
-    topicTitle: request.topicTitle,
-    topicDescription: request.topicDescription,
-    curriculumReference: request.curriculumReference
-  });
-
-  // Parse keyConcepts — fall back to dynamic if AI omits or produces invalid items
-  let keyConcepts: ConceptItem[] = base.keyConcepts ?? [];
-  const rawConcepts = parsed.keyConcepts;
-  if (Array.isArray(rawConcepts) && rawConcepts.every(isValidConceptItem) && rawConcepts.length >= 2) {
-    keyConcepts = rawConcepts as ConceptItem[];
-  }
-
-  const sections = parsed as Record<SectionKey, LessonSection>;
-
-  const lesson: Lesson = {
+function buildLegacyLessonFromSections(
+  base: Lesson,
+  sections: Record<LegacySectionKey, LessonSection>,
+  keyConcepts: ConceptItem[]
+): Lesson {
+  return {
     ...base,
     orientation: sections.orientation,
     mentalModel: sections.mentalModel,
@@ -189,7 +272,127 @@ export function parseLessonPlanResponse(
     commonMistakes: sections.commonMistakes,
     transferChallenge: sections.transferChallenge,
     summary: sections.summary,
-    keyConcepts
+    keyConcepts,
+    lessonFlowVersion: 'v1',
+    flowV2: null
+  };
+}
+
+function buildLegacySectionsFromV2(flowV2: LessonFlowV2Artifact): Pick<
+  Lesson,
+  | 'orientation'
+  | 'mentalModel'
+  | 'concepts'
+  | 'guidedConstruction'
+  | 'workedExample'
+  | 'practicePrompt'
+  | 'commonMistakes'
+  | 'transferChallenge'
+  | 'summary'
+> {
+  return {
+    orientation: flowV2.start,
+    mentalModel: flowV2.loops[0]?.teaching ?? flowV2.start,
+    concepts: {
+      title: 'Core Concepts',
+      body: flowV2.loops.map((loop) => `- **${loop.title}:** ${loop.mustHitConcepts.join(', ')}`).join('\n')
+    },
+    guidedConstruction: flowV2.loops[0]?.learnerTask ?? flowV2.start,
+    workedExample: flowV2.loops[0]?.example ?? flowV2.synthesis,
+    practicePrompt: flowV2.independentAttempt,
+    commonMistakes: {
+      title: 'Critical Misconceptions',
+      body: flowV2.loops
+        .map((loop) => `- **${loop.title}:** ${loop.criticalMisconceptionTags.join(', ')}`)
+        .join('\n')
+    },
+    transferChallenge: flowV2.exitCheck,
+    summary: flowV2.synthesis
+  };
+}
+
+function buildConceptItemsFromLoops(loops: LessonFlowV2Loop[]): ConceptItem[] {
+  return loops.map((loop) => ({
+    name: loop.title,
+    summary: loop.mustHitConcepts.join(', '),
+    detail: loop.teaching.body,
+    example: loop.example.body
+  }));
+}
+
+function parseLegacyLessonPlan(
+  parsed: Record<string, unknown>,
+  request: LessonPlanRequest
+): LessonPlanResponse | null {
+  for (const key of REQUIRED_LEGACY_SECTIONS) {
+    if (!isValidSection(parsed[key])) return null;
+    if (usesLegacyGenericPrompt(parsed[key] as LessonSection, key)) return null;
+  }
+
+  const base = buildDynamicLessonFromTopic({
+    subjectId: request.subjectId,
+    subjectName: request.subject,
+    grade: request.student.grade,
+    topicTitle: request.topicTitle,
+    topicDescription: request.topicDescription,
+    curriculumReference: request.curriculumReference
+  });
+
+  let keyConcepts: ConceptItem[] = base.keyConcepts ?? [];
+  const rawConcepts = parsed.keyConcepts;
+  if (Array.isArray(rawConcepts) && rawConcepts.every(isValidConceptItem) && rawConcepts.length >= 2) {
+    keyConcepts = rawConcepts as ConceptItem[];
+  }
+
+  const sections = parsed as Record<LegacySectionKey, LessonSection>;
+  const lesson = buildLegacyLessonFromSections(base, sections, keyConcepts);
+
+  return {
+    lesson,
+    questions: buildDynamicQuestionsForLesson(lesson, request.subject, request.topicTitle),
+    provider: 'github-models'
+  };
+}
+
+function parseV2LessonPlan(
+  parsed: Record<string, unknown>,
+  request: LessonPlanRequest
+): LessonPlanResponse | null {
+  if (
+    !isValidSection(parsed.start) ||
+    !Array.isArray(parsed.loops) ||
+    parsed.loops.length < 2 ||
+    parsed.loops.length > 4 ||
+    !parsed.loops.every(isValidLoop) ||
+    !isValidSection(parsed.synthesis) ||
+    !isValidSection(parsed.independentAttempt) ||
+    !isValidSection(parsed.exitCheck)
+  ) {
+    return null;
+  }
+
+  const flowV2: LessonFlowV2Artifact = {
+    groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+    start: parsed.start,
+    loops: parsed.loops as LessonFlowV2Loop[],
+    synthesis: parsed.synthesis,
+    independentAttempt: parsed.independentAttempt,
+    exitCheck: parsed.exitCheck
+  };
+  const base = buildDynamicLessonFlowV2FromTopic({
+    subjectId: request.subjectId,
+    subjectName: request.subject,
+    grade: request.student.grade,
+    topicTitle: request.topicTitle,
+    topicDescription: request.topicDescription,
+    curriculumReference: request.curriculumReference
+  });
+  const lesson = {
+    ...base,
+    ...buildLegacySectionsFromV2(flowV2),
+    lessonFlowVersion: 'v2' as const,
+    flowV2,
+    keyConcepts: buildConceptItemsFromLoops(flowV2.loops)
   };
 
   return {
@@ -199,17 +402,46 @@ export function parseLessonPlanResponse(
   };
 }
 
+export function parseLessonPlanResponse(
+  payload: GithubModelsSuccessResponse,
+  request: LessonPlanRequest,
+  options?: LessonPlanOptions
+): LessonPlanResponse | null {
+  const parsed = parseJsonContent(payload);
+
+  if (!parsed) {
+    return null;
+  }
+
+  return resolveLessonFlowVersion(options) === 'v2'
+    ? parseV2LessonPlan(parsed, request)
+    : parseLegacyLessonPlan(parsed, request);
+}
+
 // ── Fallback ─────────────────────────────────────────────────────────────────
 
-export function buildFallbackLessonPlan(request: LessonPlanRequest): LessonPlanResponse {
-  const lesson = buildDynamicLessonFromTopic({
-    subjectId: request.subjectId,
-    subjectName: request.subject,
-    grade: request.student.grade,
-    topicTitle: request.topicTitle,
-    topicDescription: request.topicDescription,
-    curriculumReference: request.curriculumReference
-  });
+export function buildFallbackLessonPlan(
+  request: LessonPlanRequest,
+  options?: LessonPlanOptions
+): LessonPlanResponse {
+  const lesson =
+    resolveLessonFlowVersion(options) === 'v2'
+      ? buildDynamicLessonFlowV2FromTopic({
+          subjectId: request.subjectId,
+          subjectName: request.subject,
+          grade: request.student.grade,
+          topicTitle: request.topicTitle,
+          topicDescription: request.topicDescription,
+          curriculumReference: request.curriculumReference
+        })
+      : buildDynamicLessonFromTopic({
+          subjectId: request.subjectId,
+          subjectName: request.subject,
+          grade: request.student.grade,
+          topicTitle: request.topicTitle,
+          topicDescription: request.topicDescription,
+          curriculumReference: request.curriculumReference
+        });
 
   return {
     lesson,

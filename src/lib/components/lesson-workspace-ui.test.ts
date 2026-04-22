@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveNextStepCtaState,
+  deriveNextStepCtaStateForSession,
   LESSON_WORKSPACE_VISIBLE_STAGES,
   getNextStepPrompt,
+  getNextStepPromptForSession,
   getStageContextCopy,
-  getVisibleQuickActionDefinitions
+  getVisibleQuickActionDefinitions,
+  getVisibleQuickActionDefinitionsForSession
 } from './lesson-workspace-ui';
 
 describe('lesson workspace UI helpers', () => {
@@ -82,6 +85,104 @@ describe('lesson workspace UI helpers', () => {
         prompt: 'Help me start this practice question with the first move only.'
       }
     ]);
+  });
+
+  it('maps v2 sessions onto the active checkpoint prompt copy without changing the simple rail stage', () => {
+    expect(
+      getNextStepPromptForSession({
+        currentStage: 'concepts',
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 3,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_example',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      })
+    ).toBe('Show me the next part of the example so I can see how it works.');
+
+    expect(
+      getVisibleQuickActionDefinitionsForSession({
+        currentStage: 'concepts',
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 3,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_check',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      })
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'help-me-start',
+          prompt: 'Help me start explaining this in my own words.'
+        })
+      ])
+    );
+  });
+
+  it('derives checkpoint-aware Next step gating for v2 sessions', () => {
+    expect(
+      deriveNextStepCtaStateForSession({
+        currentStage: 'concepts',
+        status: 'active',
+        softStuckCount: 0,
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_check',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        },
+        messages: [
+          createAssistantStageMessage(
+            'concepts',
+            'Explain the first idea in your own words.\n\nWhat would you say is the main idea here?'
+          )
+        ]
+      })
+    ).toEqual({
+      disabled: true,
+      cue: 'Your turn first: explain or apply the idea before moving on.'
+    });
+
+    expect(
+      deriveNextStepCtaStateForSession({
+        currentStage: 'concepts',
+        status: 'active',
+        softStuckCount: 0,
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_example',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        },
+        messages: [
+          createAssistantStageMessage('concepts', 'Here is the first worked example.')
+        ]
+      })
+    ).toEqual({
+      disabled: false,
+      cue: null
+    });
   });
 
   it('disables Next step in concepts before the soft-stuck unlock and explains why', () => {

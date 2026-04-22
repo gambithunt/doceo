@@ -19,6 +19,10 @@ import {
   buildRevisionTopicFromLesson,
   createDefaultLearnerProfile
 } from '$lib/lesson-system';
+import {
+  normalizeLessonRecord,
+  normalizeLessonSessionRecord
+} from '$lib/lesson-flow-v2';
 import type {
   AnalyticsEvent,
   AppState,
@@ -650,6 +654,28 @@ function migrateStage(stage: string): import('$lib/types').LessonStage {
   return (STAGE_MIGRATIONS[stage] ?? stage) as import('$lib/types').LessonStage;
 }
 
+function normalizeLessonSessionMessages<T extends AppState['lessonSessions'][number]>(session: T): T {
+  return {
+    ...session,
+    messages: Array.isArray(session.messages)
+      ? session.messages.map((message) => ({
+          ...message,
+          stage: migrateStage(message.stage),
+          metadata:
+            message.metadata
+              ? {
+                  ...message.metadata,
+                  next_stage:
+                    message.metadata.next_stage == null
+                      ? null
+                      : migrateStage(message.metadata.next_stage)
+                }
+              : message.metadata
+        }))
+      : []
+  };
+}
+
 export function normalizeAppState(value: unknown): AppState {
   const base = createInitialState();
 
@@ -742,19 +768,21 @@ export function normalizeAppState(value: unknown): AppState {
       ...(input.learnerProfile ?? {})
     },
     curriculum,
-    lessons: Array.isArray(input.lessons) ? input.lessons : base.lessons,
+    lessons: Array.isArray(input.lessons) ? input.lessons.map(normalizeLessonRecord) : base.lessons,
     questions: Array.isArray(input.questions) ? input.questions : base.questions,
     progress:
       input.progress && typeof input.progress === 'object' ? { ...base.progress, ...input.progress } : base.progress,
     lessonSessions: Array.isArray(input.lessonSessions)
-      ? input.lessonSessions.map((session) => ({
-          ...session,
-          currentStage: migrateStage(session.currentStage),
-          stagesCompleted: Array.isArray(session.stagesCompleted)
-            ? session.stagesCompleted.map(migrateStage)
-            : [],
-          softStuckCount: typeof session.softStuckCount === 'number' ? session.softStuckCount : 0
-        }))
+      ? input.lessonSessions.map((session) =>
+          normalizeLessonSessionRecord({
+            ...normalizeLessonSessionMessages(session),
+            currentStage: migrateStage(session.currentStage),
+            stagesCompleted: Array.isArray(session.stagesCompleted)
+              ? session.stagesCompleted.map(migrateStage)
+              : [],
+            softStuckCount: typeof session.softStuckCount === 'number' ? session.softStuckCount : 0
+          })
+        )
       : base.lessonSessions,
     revisionTopics: Array.isArray(input.revisionTopics)
       ? input.revisionTopics.map((topic) => normalizeRevisionTopic(topic, curriculum.subjects, revisionPlans))
@@ -854,7 +882,7 @@ export function deriveLearningState(state: AppState): AppState {
         !generatedLessons.some((generated) => generated.id === lesson.id) &&
         !artifactBackedLessons.some((artifact) => artifact.id === lesson.id)
     )
-  ];
+  ].map(normalizeLessonRecord);
   const mergedQuestions = [
     ...generatedQuestions,
     ...artifactBackedQuestions.filter((question) => !generatedQuestions.some((generated) => generated.id === question.id)),
@@ -1116,5 +1144,21 @@ export function upsertRevisionTopicFromSession(
     return [...revisionTopics, nextTopic];
   }
 
-  return revisionTopics.map((topic) => (topic.lessonSessionId === lessonSession.id ? nextTopic : topic));
+  return revisionTopics.map((topic) =>
+    topic.lessonSessionId === lessonSession.id
+      ? {
+          ...nextTopic,
+          previousIntervalDays: topic.previousIntervalDays,
+          nextRevisionAt: topic.nextRevisionAt,
+          lastReviewedAt: topic.lastReviewedAt,
+          retentionStability: topic.retentionStability,
+          forgettingVelocity: topic.forgettingVelocity,
+          misconceptionSignals: topic.misconceptionSignals,
+          calibration: topic.calibration,
+          lessonResidue: nextTopic.lessonResidue ?? topic.lessonResidue ?? null,
+          isSynthetic: topic.isSynthetic,
+          hasLesson: topic.hasLesson
+        }
+      : topic
+  );
 }

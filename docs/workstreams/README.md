@@ -1,7 +1,13 @@
 # Workstreams
 
-This folder contains sprint notes, redesign checklists, and implementation history.
+`docs/workstreams/` contains archived implementation notes, redesign plans, experiments, and historical context.
 
-- These files are useful when a task explicitly relates to a named redesign or past implementation pass.
-- They are not the default source of truth for product or UI decisions.
-- Canonical guidance lives in the top-level docs described in [../README.md](/Users/delon/Documents/code/projects/doceo/docs/README.md).
+Use this folder only when:
+
+- a task explicitly asks for workstream history
+- you need to understand why a past implementation changed
+- you are comparing the current system to an older design pass
+
+Do not treat workstreams as canonical source of truth over the top-level docs in `docs/`.
+
+`workstreams/legacy/` specifically contains superseded top-level docs that were replaced during a docs refresh.

@@ -233,4 +233,61 @@ describe('lesson-chat', () => {
     expect(prompt).toContain('Do not add a new bottom-of-bubble question');
     expect(prompt).toContain('Give one concrete first move');
   });
+
+  it('buildSystemPrompt includes v2 checkpoint and rubric metadata fields for loop sessions', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalent fractions'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      currentStage: 'concepts',
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_check',
+        revisionAttemptCount: 1,
+        remediationStep: 'hint',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const prompt = buildSystemPrompt({
+      student: state.profile,
+      learnerProfile: state.learnerProfile,
+      lesson,
+      lessonSession: session,
+      message: 'My answer',
+      messageType: 'response'
+    });
+
+    expect(prompt).toContain('Lesson Flow Version: v2');
+    expect(prompt).toContain('Current V2 Checkpoint: loop_check');
+    expect(prompt).toContain('Current Remediation Step: hint');
+    expect(prompt).toContain('"lesson_score": null');
+    expect(prompt).toContain('"critical_misconceptions": []');
+    expect(prompt).toContain('Use the optional lesson_score');
+  });
 });

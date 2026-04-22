@@ -78,6 +78,9 @@
 	"/api/ai/lesson-chat": [
 		"src/routes/api/ai/lesson-chat/+server.ts"
 	],
+	"/api/ai/lesson-evaluate": [
+		"src/routes/api/ai/lesson-evaluate/+server.ts"
+	],
 	"/api/ai/lesson-plan": [
 		"src/routes/api/ai/lesson-plan/+server.ts"
 	],
@@ -116,6 +119,9 @@
 	],
 	"/api/curriculum/topic-discovery": [
 		"src/routes/api/curriculum/topic-discovery/+server.ts"
+	],
+	"/api/curriculum/topic-discovery/abandon": [
+		"src/routes/api/curriculum/topic-discovery/abandon/+server.ts"
 	],
 	"/api/curriculum/topic-discovery/click": [
 		"src/routes/api/curriculum/topic-discovery/click/+server.ts"

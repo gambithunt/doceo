@@ -5,9 +5,12 @@ import {
   buildDynamicLessonFromTopic,
   buildDynamicQuestionsForLesson,
   buildInitialLessonMessages,
+  buildInitialLessonMessagesForSession,
   buildStageStartMessage,
   buildLocalLessonChatResponse,
   buildLessonSessionFromTopic,
+  buildLessonEvaluationAssistantMessage,
+  buildLessonEvaluationRequest,
   calculateNextRevisionInterval,
   classifyLessonMessage,
   createDefaultLearnerProfile,
@@ -370,6 +373,70 @@ describe('lesson-system', () => {
     expect(getSoftStuckCount(normalized.lessonSessions[0])).toBe(0);
   });
 
+  it('normalizes nested legacy stage names inside saved lesson messages', () => {
+    const initial = createInitialState();
+    const legacySession = {
+      ...makeMockSession(initial.lessons[0]),
+      currentStage: 'overview',
+      stagesCompleted: ['detail'],
+      messages: [
+        {
+          id: 'legacy-stage-message',
+          role: 'assistant',
+          type: 'feedback',
+          content: 'Moving on.',
+          stage: 'detail',
+          timestamp: '2026-04-21T10:00:00.000Z',
+          metadata: {
+            action: 'advance',
+            next_stage: 'detail',
+            reteach_style: null,
+            reteach_count: 0,
+            confidence_assessment: 0.7,
+            profile_update: {}
+          }
+        }
+      ]
+    } as unknown as LessonSession;
+
+    const normalized = normalizeAppState({
+      ...initial,
+      lessonSessions: [legacySession]
+    });
+
+    expect(normalized.lessonSessions[0]?.currentStage).toBe('orientation');
+    expect(normalized.lessonSessions[0]?.stagesCompleted).toEqual(['construction']);
+    expect(normalized.lessonSessions[0]?.messages[0]?.stage).toBe('construction');
+    expect(normalized.lessonSessions[0]?.messages[0]?.metadata?.next_stage).toBe('construction');
+  });
+
+  it('preserves v2 session state during bootstrap normalization', () => {
+    const initial = createInitialState();
+    const v2Session = {
+      ...makeMockSession(initial.lessons[0]),
+      lessonFlowVersion: 'v2' as const,
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example' as const,
+        revisionAttemptCount: 0,
+        remediationStep: 'none' as const,
+        labelBucket: 'concepts' as const,
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      residue: null
+    };
+
+    const normalized = normalizeAppState({
+      ...initial,
+      lessonSessions: [v2Session]
+    });
+
+    expect(normalized.lessonSessions[0]?.lessonFlowVersion).toBe('v2');
+    expect(normalized.lessonSessions[0]?.v2State).toEqual(v2Session.v2State);
+  });
+
   // --- New lesson structure tests ---
 
   it('LESSON_STAGE_ORDER is the 7-stage pipeline', () => {
@@ -499,6 +566,501 @@ describe('lesson-system', () => {
     expect(session.currentStage).toBe('orientation');
     expect(session.stagesCompleted).toEqual([]);
     expect(getSoftStuckCount(session)).toBe(0);
+  });
+
+  it('buildLessonSessionFromTopic can initialize a v2 session scaffold without breaking legacy fields', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalence'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+
+    const session = buildLessonSessionFromTopic(
+      state.profile,
+      subject,
+      topic,
+      subtopic,
+      lesson
+    );
+
+    expect(session.lessonFlowVersion).toBe('v2');
+    expect(session.currentStage).toBe('orientation');
+    expect(session.v2State).toEqual(
+      expect.objectContaining({
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        labelBucket: 'orientation'
+      })
+    );
+    expect(session.residue).toBeNull();
+    expect(session.messages[1]?.content).toContain('Start block');
+  });
+
+  it('advances v2 loop checkpoints in order while keeping learner-facing labels simple', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalence'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          },
+          {
+            id: 'loop-2',
+            title: 'Loop 2',
+            teaching: { title: 'Teach', body: 'Teach body 2' },
+            example: { title: 'Example', body: 'Example body 2' },
+            learnerTask: { title: 'Task', body: 'Task body 2' },
+            retrievalCheck: { title: 'Check', body: 'Check body 2' },
+            mustHitConcepts: ['simplifying'],
+            criticalMisconceptionTags: ['lost-equivalence']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+    let session = buildLessonSessionFromTopic(state.profile, subject, topic, subtopic, lesson);
+
+    const advance = () => {
+      session = applyLessonAssistantResponse(session, {
+        id: `assistant-${session.messages.length + 1}`,
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Move ahead.',
+        stage: session.currentStage,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          action: 'advance',
+          next_stage: 'concepts',
+          reteach_style: null,
+          reteach_count: 0,
+          confidence_assessment: 0.74,
+          profile_update: {}
+        }
+      });
+      session = {
+        ...session,
+        messages: [...session.messages, ...buildInitialLessonMessagesForSession(lesson, session)]
+      };
+    };
+
+    advance();
+    expect(session.v2State?.activeCheckpoint).toBe('loop_teach');
+    expect(session.currentStage).toBe('concepts');
+
+    advance();
+    expect(session.v2State?.activeCheckpoint).toBe('loop_example');
+    expect(session.currentStage).toBe('concepts');
+
+    advance();
+    expect(session.v2State?.activeCheckpoint).toBe('loop_practice');
+    expect(session.currentStage).toBe('concepts');
+
+    advance();
+    expect(session.v2State?.activeCheckpoint).toBe('loop_check');
+    expect(session.currentStage).toBe('concepts');
+
+    advance();
+    expect(session.v2State?.activeLoopIndex).toBe(1);
+    expect(session.v2State?.activeCheckpoint).toBe('loop_teach');
+    expect(session.currentStage).toBe('concepts');
+
+    advance();
+    advance();
+    advance();
+    advance();
+    expect(session.v2State?.activeCheckpoint).toBe('synthesis');
+    expect(session.currentStage).toBe('concepts');
+
+    advance();
+    expect(session.v2State?.activeCheckpoint).toBe('independent_attempt');
+    expect(session.currentStage).toBe('practice');
+
+    advance();
+    expect(session.v2State?.activeCheckpoint).toBe('exit_check');
+    expect(session.currentStage).toBe('check');
+  });
+
+  it('builds lesson evaluation requests from the active v2 checkpoint', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalent fractions'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+    let session = buildLessonSessionFromTopic(state.profile, subject, topic, subtopic, lesson);
+    session = applyLessonAssistantResponse(session, {
+      id: 'assistant-advance',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Move ahead.',
+      stage: session.currentStage,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.74,
+        profile_update: {}
+      }
+    });
+
+    const request = buildLessonEvaluationRequest(session, lesson, 'Equivalent fractions have the same value.');
+
+    expect(request.lesson.loopTitle).toBe('Loop 1');
+    expect(request.lesson.mustHitConcepts).toEqual(['equivalent fractions']);
+    expect(request.lesson.criticalMisconceptionTags).toEqual(['wrong-denominator']);
+  });
+
+  it('uses a single targeted revision chance before remediation in v2 sessions', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalent fractions'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+    let session = buildLessonSessionFromTopic(state.profile, subject, topic, subtopic, lesson);
+
+    session = applyLessonAssistantResponse(session, {
+      id: 'assistant-enter-loop',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Move ahead.',
+      stage: session.currentStage,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.74,
+        profile_update: {}
+      }
+    });
+
+    const revisionMessage = buildLessonEvaluationAssistantMessage(session, {
+      score: 0.63,
+      mustHitConceptsMet: [],
+      missingMustHitConcepts: ['equivalent fractions'],
+      criticalMisconceptions: [],
+      feedback: 'Name the equal-value idea explicitly.',
+      mode: 'targeted_revision',
+      provider: 'local-heuristic',
+      model: 'local-heuristic'
+    });
+    session = applyLessonAssistantResponse(session, revisionMessage);
+
+    expect(session.currentStage).toBe('concepts');
+    expect(session.v2State?.revisionAttemptCount).toBe(1);
+
+    const remediationMessage = buildLessonEvaluationAssistantMessage(session, {
+      score: 0.49,
+      mustHitConceptsMet: [],
+      missingMustHitConcepts: ['equivalent fractions'],
+      criticalMisconceptions: [],
+      feedback: 'The equal-value idea is still missing.',
+      mode: 'remediation',
+      provider: 'local-heuristic',
+      model: 'local-heuristic'
+    });
+    session = applyLessonAssistantResponse(session, remediationMessage);
+
+    expect(session.reteachCount).toBe(1);
+    expect(session.v2State?.remediationStep).toBe('hint');
+  });
+
+  it('blocks advancement on critical misconceptions and escalates teacher review for repeated fundamental gaps', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalent fractions'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+    let session = buildLessonSessionFromTopic(state.profile, subject, topic, subtopic, lesson);
+    session = applyLessonAssistantResponse(session, {
+      id: 'assistant-enter-loop-critical',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Move ahead.',
+      stage: session.currentStage,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.74,
+        profile_update: {}
+      }
+    });
+    session = {
+      ...session,
+      v2State: {
+        ...session.v2State!,
+        revisionAttemptCount: 1,
+        remediationStep: 'mini_reteach'
+      }
+    };
+
+    const message = buildLessonEvaluationAssistantMessage(session, {
+      score: 0.2,
+      mustHitConceptsMet: [],
+      missingMustHitConcepts: ['equivalent fractions'],
+      criticalMisconceptions: ['wrong-denominator'],
+      feedback: 'You changed the denominator incorrectly.',
+      mode: 'remediation',
+      provider: 'local-heuristic',
+      model: 'local-heuristic'
+    });
+    session = applyLessonAssistantResponse(session, message);
+
+    expect(session.currentStage).toBe('concepts');
+    expect(session.needsTeacherReview).toBe(true);
+    expect(session.v2State?.remediationStep).toBe('worked_example');
+  });
+
+  it('escalates teacher review for repeated non-critical must-hit gaps after the remediation ladder is exhausted', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalent fractions'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+    let session = buildLessonSessionFromTopic(state.profile, subject, topic, subtopic, lesson);
+    session = applyLessonAssistantResponse(session, {
+      id: 'assistant-enter-loop-repeated-gap',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Move ahead.',
+      stage: session.currentStage,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.74,
+        profile_update: {}
+      }
+    });
+    session = {
+      ...session,
+      v2State: {
+        ...session.v2State!,
+        revisionAttemptCount: 1,
+        remediationStep: 'worked_example'
+      }
+    };
+
+    const message = buildLessonEvaluationAssistantMessage(session, {
+      score: 0.34,
+      mustHitConceptsMet: [],
+      missingMustHitConcepts: ['equivalent fractions'],
+      criticalMisconceptions: [],
+      feedback: 'The equal-value idea is still missing.',
+      mode: 'skip_with_accountability',
+      provider: 'local-heuristic',
+      model: 'local-heuristic'
+    });
+    session = applyLessonAssistantResponse(session, message);
+
+    expect(session.needsTeacherReview).toBe(true);
+    expect(session.v2State?.needsTeacherReview).toBe(true);
+    expect(session.v2State?.skippedGaps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          concept: 'equivalent fractions',
+          needsTeacherReview: true
+        })
+      ])
+    );
+  });
+
+  it('records skip-with-accountability gaps instead of silently advancing cleanly', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0],
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [
+          {
+            id: 'loop-1',
+            title: 'Loop 1',
+            teaching: { title: 'Teach', body: 'Teach body' },
+            example: { title: 'Example', body: 'Example body' },
+            learnerTask: { title: 'Task', body: 'Task body' },
+            retrievalCheck: { title: 'Check', body: 'Check body' },
+            mustHitConcepts: ['equivalent fractions'],
+            criticalMisconceptionTags: ['wrong-denominator']
+          }
+        ],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const subject = state.curriculum.subjects[0];
+    const topic = subject.topics[0];
+    const subtopic = topic.subtopics[0];
+    let session = buildLessonSessionFromTopic(state.profile, subject, topic, subtopic, lesson);
+    session = applyLessonAssistantResponse(session, {
+      id: 'assistant-enter-loop-skip',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Move ahead.',
+      stage: session.currentStage,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.74,
+        profile_update: {}
+      }
+    });
+
+    const message = buildLessonEvaluationAssistantMessage(session, {
+      score: 0.35,
+      mustHitConceptsMet: [],
+      missingMustHitConcepts: ['equivalent fractions'],
+      criticalMisconceptions: [],
+      feedback: 'This core idea still needs revisiting.',
+      mode: 'skip_with_accountability',
+      provider: 'local-heuristic',
+      model: 'local-heuristic'
+    });
+    session = applyLessonAssistantResponse(session, message);
+
+    expect(session.v2State?.skippedGaps).toEqual(
+      expect.arrayContaining([expect.objectContaining({ concept: 'equivalent fractions', status: 'skipped' })])
+    );
+    expect(session.v2State?.activeCheckpoint).toBe('loop_example');
   });
 
   it('buildInitialLessonMessages for orientation includes orientation body', () => {

@@ -1,6 +1,13 @@
 import { LESSON_STAGE_ORDER, SOFT_STUCK_STAY_THRESHOLD } from '$lib/lesson-system';
 import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
-import type { LessonMessage, LessonSession, LessonStage, LessonSupportIntent } from '$lib/types';
+import type {
+  Lesson,
+  LessonGroupedLabelBucket,
+  LessonMessage,
+  LessonSession,
+  LessonStage,
+  LessonSupportIntent
+} from '$lib/types';
 
 export type VisibleLessonStage = Exclude<LessonStage, 'complete'>;
 
@@ -79,6 +86,59 @@ export function getNextStepPrompt(stage: VisibleLessonStage): string {
   return NEXT_STEP_PROMPTS[stage];
 }
 
+export function getVisiblePromptStageForSession(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>
+): VisibleLessonStage {
+  if (lessonSession.lessonFlowVersion !== 'v2' || !lessonSession.v2State) {
+    return lessonSession.currentStage as VisibleLessonStage;
+  }
+
+  switch (lessonSession.v2State.activeCheckpoint) {
+    case 'start':
+      return 'orientation';
+    case 'loop_example':
+      return 'examples';
+    case 'loop_practice':
+    case 'independent_attempt':
+      return 'practice';
+    case 'loop_check':
+    case 'exit_check':
+      return 'check';
+    case 'synthesis':
+    case 'loop_teach':
+      return 'concepts';
+    case 'complete':
+      return 'check';
+  }
+}
+
+export function getNextStepPromptForSession(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>
+): string {
+  return getNextStepPrompt(getVisiblePromptStageForSession(lessonSession));
+}
+
+export function getStageContextCopyForSession(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>
+): string {
+  return getStageContextCopy(getVisiblePromptStageForSession(lessonSession));
+}
+
+export function getVisibleProgressStagesForSession(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion'>,
+  lesson: Pick<Lesson, 'flowV2'> | null = null
+): VisibleLessonStage[] {
+  if (lessonSession.lessonFlowVersion !== 'v2') {
+    return LESSON_WORKSPACE_VISIBLE_STAGES;
+  }
+
+  const groupedLabels = lesson?.flowV2?.groupedLabels?.filter(
+    (label): label is Exclude<LessonGroupedLabelBucket, 'complete'> => label !== 'complete'
+  );
+
+  return groupedLabels?.length ? groupedLabels : ['orientation', 'concepts', 'practice', 'check'];
+}
+
 export function detectLessonSupportIntent(
   stage: VisibleLessonStage,
   reply: string
@@ -91,6 +151,13 @@ export function detectLessonSupportIntent(
   }
 
   return null;
+}
+
+export function detectLessonSupportIntentForSession(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>,
+  reply: string
+): LessonSupportIntent | null {
+  return detectLessonSupportIntent(getVisiblePromptStageForSession(lessonSession), reply);
 }
 
 function getLatestCurrentStageAssistantMessage(
@@ -136,7 +203,14 @@ function messageRequestsLearnerAnswer(message: LessonMessage | null): boolean {
 export function deriveNextStepCtaState(
   lessonSession: Pick<LessonSession, 'currentStage' | 'messages' | 'softStuckCount' | 'status'>
 ): LessonWorkspaceNextStepCtaState {
-  if (lessonSession.status !== 'active' || lessonSession.currentStage === 'complete') {
+  return deriveNextStepCtaStateForVisibleStage(lessonSession.currentStage as VisibleLessonStage, lessonSession);
+}
+
+function deriveNextStepCtaStateForVisibleStage(
+  stage: VisibleLessonStage,
+  lessonSession: Pick<LessonSession, 'currentStage' | 'messages' | 'softStuckCount' | 'status'>
+): LessonWorkspaceNextStepCtaState {
+  if (lessonSession.status !== 'active') {
     return {
       disabled: false,
       cue: null
@@ -146,7 +220,7 @@ export function deriveNextStepCtaState(
   const latestStageAssistantMessage = getLatestCurrentStageAssistantMessage(lessonSession);
   const requiresLearnerAnswer = messageRequestsLearnerAnswer(latestStageAssistantMessage);
 
-  if (lessonSession.currentStage === 'concepts') {
+  if (stage === 'concepts') {
     if ((lessonSession.softStuckCount ?? 0) >= SOFT_STUCK_STAY_THRESHOLD) {
       return {
         disabled: false,
@@ -160,10 +234,10 @@ export function deriveNextStepCtaState(
     };
   }
 
-  if (lessonSession.currentStage === 'practice' || lessonSession.currentStage === 'check') {
+  if (stage === 'practice' || stage === 'check') {
     return {
       disabled: requiresLearnerAnswer,
-      cue: requiresLearnerAnswer ? (NEXT_STEP_DISABLED_CUES[lessonSession.currentStage] ?? null) : null
+      cue: requiresLearnerAnswer ? (NEXT_STEP_DISABLED_CUES[stage] ?? null) : null
     };
   }
 
@@ -171,6 +245,12 @@ export function deriveNextStepCtaState(
     disabled: false,
     cue: null
   };
+}
+
+export function deriveNextStepCtaStateForSession(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State' | 'messages' | 'softStuckCount' | 'status'>
+): LessonWorkspaceNextStepCtaState {
+  return deriveNextStepCtaStateForVisibleStage(getVisiblePromptStageForSession(lessonSession), lessonSession);
 }
 
 export function getVisibleQuickActionDefinitions(
@@ -193,4 +273,10 @@ export function getVisibleQuickActionDefinitions(
       prompt: HELP_ME_START_PROMPTS[stage]
     }
   ];
+}
+
+export function getVisibleQuickActionDefinitionsForSession(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>
+): LessonWorkspaceQuickActionDefinition[] {
+  return getVisibleQuickActionDefinitions(getVisiblePromptStageForSession(lessonSession));
 }

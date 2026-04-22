@@ -24,7 +24,7 @@ import LessonWorkspace from './LessonWorkspace.svelte';
 import { getNextStepPrompt } from '$lib/components/lesson-workspace-ui';
 import { createInitialState } from '$lib/data/platform';
 import { appState } from '$lib/stores/app-state';
-import type { AppState, LessonMessage, LessonSession } from '$lib/types';
+import type { AppState, Lesson, LessonMessage, LessonSession } from '$lib/types';
 
 function createSession(overrides: Partial<LessonSession> = {}): LessonSession {
   return {
@@ -56,6 +56,77 @@ function createSession(overrides: Partial<LessonSession> = {}): LessonSession {
   };
 }
 
+function createV2Lesson(baseLesson: Lesson): Lesson {
+  return {
+    ...baseLesson,
+    id: 'lesson-v2-workspace-1',
+    lessonFlowVersion: 'v2',
+    flowV2: {
+      groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+      start: {
+        title: 'Start',
+        body: 'Start with the big picture.'
+      },
+      loops: [
+        {
+          id: 'lesson-v2-workspace-1-loop-1',
+          title: 'Loop 1',
+          teaching: {
+            title: 'Teach Loop 1',
+            body: 'Teach the first core idea.'
+          },
+          example: {
+            title: 'Example Loop 1',
+            body: 'Here is the first worked example.'
+          },
+          learnerTask: {
+            title: 'Try Loop 1',
+            body: 'Try the first task on your own.'
+          },
+          retrievalCheck: {
+            title: 'Check Loop 1',
+            body: 'Explain the first idea in your own words.'
+          },
+          mustHitConcepts: ['core idea one'],
+          criticalMisconceptionTags: ['core-idea-one-gap']
+        }
+      ],
+      synthesis: {
+        title: 'Synthesis',
+        body: 'Bring the ideas together.'
+      },
+      independentAttempt: {
+        title: 'Independent Attempt',
+        body: 'Solve the new task on your own.'
+      },
+      exitCheck: {
+        title: 'Exit Check',
+        body: 'Summarize the main rule and apply it once.'
+      }
+    }
+  };
+}
+
+function createV2Session(overrides: Partial<LessonSession> = {}): LessonSession {
+  return createSession({
+    lessonFlowVersion: 'v2',
+    lessonId: 'lesson-v2-workspace-1',
+    currentStage: 'concepts',
+    stagesCompleted: ['orientation'],
+    v2State: {
+      totalLoops: 1,
+      activeLoopIndex: 0,
+      activeCheckpoint: 'loop_example',
+      revisionAttemptCount: 0,
+      remediationStep: 'none',
+      labelBucket: 'concepts',
+      skippedGaps: [],
+      needsTeacherReview: false
+    },
+    ...overrides
+  });
+}
+
 function createMessage(overrides: Partial<LessonMessage>): LessonMessage {
   return {
     id: crypto.randomUUID(),
@@ -75,6 +146,23 @@ function buildWorkspaceState(messages: LessonMessage[], sessionOverrides: Partia
 
   return {
     ...state,
+    lessonSessions: [session],
+    ui: {
+      ...state.ui,
+      currentScreen: 'lesson',
+      activeLessonSessionId: session.id
+    }
+  };
+}
+
+function buildV2WorkspaceState(messages: LessonMessage[], sessionOverrides: Partial<LessonSession> = {}): AppState {
+  const state = createInitialState();
+  const lesson = createV2Lesson(state.lessons[0]!);
+  const session = createV2Session({ messages, ...sessionOverrides, lessonId: lesson.id });
+
+  return {
+    ...state,
+    lessons: [lesson],
     lessonSessions: [session],
     ui: {
       ...state.ui,
@@ -775,6 +863,67 @@ describe('LessonWorkspace Phase 5 progress strip states', () => {
     expect(strip).toHaveClass('progress-rail', 'lesson-complete');
     expect(finalStage).toHaveClass('stage-node', 'completed', 'final-stage');
     expect(finalConnector).toHaveClass('stage-connector', 'filled', 'completion-trail');
+  });
+
+  it('renders grouped v2 progress labels instead of the legacy six-stage strip', () => {
+    const state = buildV2WorkspaceState([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        stage: 'concepts',
+        content: 'Here is the first worked example.'
+      })
+    ]);
+
+    render(LessonWorkspace, {
+      props: {
+        state
+      }
+    });
+
+    expect(document.querySelector('[data-stage="orientation"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-stage="concepts"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-stage="practice"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-stage="check"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-stage="construction"]')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-stage="examples"]')).not.toBeInTheDocument();
+  });
+
+  it('uses checkpoint-specific support copy for v2 sessions while keeping TTS off wrap bubbles', () => {
+    const state = buildV2WorkspaceState([
+      createMessage({
+        id: 'assistant-wrap',
+        role: 'assistant',
+        type: 'wrap',
+        stage: 'concepts',
+        content: "Good. Let's move into Worked Example.",
+        metadata: {
+          action: 'advance',
+          next_stage: 'concepts',
+          reteach_style: null,
+          reteach_count: 0,
+          confidence_assessment: 0.74,
+          profile_update: {}
+        }
+      }),
+      createMessage({
+        id: 'assistant-example',
+        role: 'assistant',
+        type: 'teaching',
+        stage: 'concepts',
+        content: 'Here is the first worked example.'
+      })
+    ]);
+
+    render(LessonWorkspace, {
+      props: {
+        state
+      }
+    });
+
+    expect(screen.getByText('See the idea working in real situations.')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Play tutor audio')).toHaveLength(1);
+    expect(screen.getByText("Good. Let's move into Worked Example.").closest('article')).not.toHaveClass('bubble-with-tts');
   });
 });
 
