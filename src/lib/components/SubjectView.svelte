@@ -19,6 +19,18 @@
       (subjectOption) => !viewState.onboarding.selectedSubjectNames.includes(subjectOption.name)
     )
   );
+  const lessonLaunchError = $derived.by(() => {
+    const message = viewState.backend.lastSyncError;
+    if (
+      viewState.ui.lessonLaunchQuotaExceeded ||
+      viewState.backend.lastSyncStatus !== 'error' ||
+      !message
+    ) {
+      return null;
+    }
+
+    return /lesson|generation|open the lesson|create lesson plan/i.test(message) ? message : null;
+  });
   let showAddPanel = $state(false);
   let selectedAdditionalSubject = $state('');
   let customSubject = $state('');
@@ -133,6 +145,10 @@
   </header>
 
   <div class="grid">
+    {#if lessonLaunchError}
+      <p class="error-note">{lessonLaunchError}</p>
+    {/if}
+
     <article class="card">
       <h3 class="column-heading">Topics</h3>
       <div class="stack">

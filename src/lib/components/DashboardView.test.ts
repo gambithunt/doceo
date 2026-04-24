@@ -583,6 +583,30 @@ describe('DashboardView', () => {
     expect(screen.getByRole('button', { name: /upgrade to continue/i })).toBeInTheDocument();
   });
 
+  it('renders a normal lesson unavailable message without an upgrade action', () => {
+    const state = createInitialState();
+
+    render(DashboardView, {
+      props: {
+        state: {
+          ...state,
+          ui: {
+            ...state.ui,
+            lessonLaunchQuotaExceeded: false
+          },
+          backend: {
+            ...state.backend,
+            lastSyncStatus: 'error',
+            lastSyncError: 'Lesson generation is not available right now. Please try again.'
+          }
+        }
+      }
+    });
+
+    expect(screen.getByText(/lesson generation is not available right now/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /upgrade to continue/i })).not.toBeInTheDocument();
+  });
+
   it('opens the shared plan picker from the quota exceeded prompt', async () => {
     const state = createInitialState();
 

@@ -160,38 +160,62 @@ export async function POST({ request, fetch }) {
     const aiConfig = await getAiConfig();
     const { model } = resolveAiRoute(aiConfig, 'lesson-plan');
 
-    const edge = await invokeAuthenticatedAiEdge<LessonPlanResponse>(
-      request,
-      fetch,
-      'lesson-plan',
-      launchRequest,
-      undefined,
-      model
-    );
+    const invokeLessonPlanEdge = () =>
+      invokeAuthenticatedAiEdge<LessonPlanResponse>(
+        request,
+        fetch,
+        'lesson-plan',
+        launchRequest,
+        undefined,
+        model
+      );
+
+    let edge = await invokeLessonPlanEdge();
 
     if (!edge.ok && (edge.status === 401 || edge.status === 403)) {
       throw Object.assign(new Error(edge.error ?? 'Unauthorized'), { status: edge.status });
     }
 
     if (!edge.ok || !edge.payload) {
-      if (dev || version.lessonFlowVersion === 'v2') {
+      if (version.lessonFlowVersion === 'v2') {
+        edge = await invokeLessonPlanEdge();
+      }
+    }
+
+    if (!edge.ok && (edge.status === 401 || edge.status === 403)) {
+      throw Object.assign(new Error(edge.error ?? 'Unauthorized'), { status: edge.status });
+    }
+
+    if (!edge.ok || !edge.payload) {
+      if (dev && version.lessonFlowVersion === 'v1') {
         return buildFallbackLessonPlan(launchRequest, { lessonFlowVersion: version.lessonFlowVersion });
       }
 
-      throw Object.assign(new Error(edge.error ?? 'Lesson generation unavailable.'), {
+      throw Object.assign(new Error(edge.error ?? 'Lesson generation is not available right now. Please try again.'), {
         status: edge.status && edge.status >= 400 ? edge.status : 502
       });
     }
 
-    const functionPayload = edge.payload;
+    let functionPayload = edge.payload;
 
-    const lessonMatchesRequestedFlow =
+    let lessonMatchesRequestedFlow =
       version.lessonFlowVersion === 'v1'
         ? (functionPayload.lesson?.lessonFlowVersion ?? 'v1') === 'v1'
         : functionPayload.lesson?.lessonFlowVersion === 'v2' && Array.isArray(functionPayload.lesson?.flowV2?.loops);
 
     if (functionPayload.provider !== 'github-models' || !functionPayload.lesson?.orientation?.body || !lessonMatchesRequestedFlow) {
-      if (dev || version.lessonFlowVersion === 'v2') {
+      if (version.lessonFlowVersion === 'v2') {
+        const retry = await invokeLessonPlanEdge();
+        if (retry.ok && retry.payload) {
+          functionPayload = retry.payload;
+          lessonMatchesRequestedFlow =
+            functionPayload.lesson?.lessonFlowVersion === 'v2' && Array.isArray(functionPayload.lesson?.flowV2?.loops);
+        }
+      }
+    }
+
+    if (functionPayload.provider !== 'github-models' || !functionPayload.lesson?.orientation?.body || !lessonMatchesRequestedFlow) {
+      if (dev && version.lessonFlowVersion === 'v1') {
         return buildFallbackLessonPlan(launchRequest, { lessonFlowVersion: version.lessonFlowVersion });
       }
 

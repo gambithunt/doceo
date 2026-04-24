@@ -146,6 +146,62 @@ interface ConceptItem {
   summary: string;
   detail: string;
   example: string;
+  simpleDefinition?: string;
+  explanation?: string;
+  oneLineDefinition?: string;
+  quickCheck?: string;
+  diagnostic?: ConceptDiagnostic;
+  conceptType?: string;
+  curriculumAlignment?: ConceptCurriculumAlignment;
+  whyItMatters?: string;
+  prerequisites?: string[];
+  commonMisconception?: string;
+  extendedExample?: string;
+  difficultyLevel?: string;
+  synonyms?: string[];
+  tags?: string[];
+  visualHint?: string;
+  followUpQuestions?: string[];
+}
+
+interface ConceptCurriculumAlignment {
+  topicMatch: string;
+  gradeMatch: string;
+  alignmentNote: string;
+}
+
+interface ConceptDiagnosticOption {
+  id: string;
+  label: string;
+  text: string;
+}
+
+interface ConceptDiagnostic {
+  prompt: string;
+  options: ConceptDiagnosticOption[];
+  correctOptionId: string;
+  rationale?: string;
+}
+
+interface LessonFlowV2Loop {
+  id: string;
+  title: string;
+  teaching: LessonSection;
+  example: LessonSection;
+  learnerTask: LessonSection;
+  retrievalCheck: LessonSection;
+  mustHitConcepts: string[];
+  criticalMisconceptionTags: string[];
+}
+
+interface LessonFlowV2Artifact {
+  groupedLabels: Array<'orientation' | 'concepts' | 'practice' | 'check' | 'complete'>;
+  start: LessonSection;
+  concepts?: ConceptItem[];
+  loops: LessonFlowV2Loop[];
+  synthesis: LessonSection;
+  independentAttempt: LessonSection;
+  exitCheck: LessonSection;
 }
 
 interface Lesson {
@@ -155,6 +211,7 @@ interface Lesson {
   title: string;
   subjectId: string;
   grade: string;
+  lessonFlowVersion?: 'v1' | 'v2';
   orientation: LessonSection;
   mentalModel: LessonSection;
   concepts: LessonSection;
@@ -165,6 +222,7 @@ interface Lesson {
   transferChallenge: LessonSection;
   summary: LessonSection;
   keyConcepts?: ConceptItem[];
+  flowV2?: LessonFlowV2Artifact | null;
   practiceQuestionIds: string[];
   masteryQuestionIds: string[];
 }
@@ -192,6 +250,7 @@ interface LessonPlanRequest {
   topicTitle: string;
   topicDescription: string;
   curriculumReference: string;
+  lessonFlowVersion?: 'v1' | 'v2';
 }
 
 interface LearnerProfileUpdate {
@@ -596,7 +655,7 @@ function parseLessonSelectorResponse(content: string): Record<string, unknown> |
   return parsed;
 }
 
-function createLessonPlanSystemPrompt(): string {
+function createLegacyLessonPlanSystemPrompt(): string {
   return `You are Doceo, a lesson-generation assistant for school students.
 
 Your job is to generate lesson content that feels like it comes from the smartest, warmest friend the student has ever had — someone who knows this subject inside out and genuinely wants the student to have that "oh, NOW I get it" moment. Not a textbook. Not a robot. A person who explains things the way they actually make sense.
@@ -624,7 +683,129 @@ Rules for keyConcepts:
 The lesson must be grounded in the exact topic chosen, not a nearby generic one.`;
 }
 
-function createLessonPlanUserPrompt(request: LessonPlanRequest): string {
+function createV2LessonPlanSystemPrompt(): string {
+  return [
+    'You are Doceo, a lesson-generation assistant for South African school students.',
+    'Generate a loop-based lesson for the exact learner-selected topic.',
+    'Your job is teaching, not describing how a lesson works.',
+    'The learner should feel that the lesson is about this exact topic within the first 30 seconds.',
+    'Return JSON only — no markdown wrapper, no explanation, just a single valid JSON object.',
+    '',
+    'The user message includes a lesson_blueprint created by a separate planning pass.',
+    'Use that lesson_blueprint as the source of truth for topic_kind, teaching_goal, opening_concept, core_concepts, real_examples, common_misconceptions, learner_actions, diagnostic_targets, and must_not_include.',
+    'Do not return the lesson_blueprint as a top-level key; use it to make the returned lesson concrete and topic-shaped.',
+    '',
+    'The JSON object must contain exactly these top-level keys:',
+    '  start, concepts, loops, synthesis, independentAttempt, exitCheck',
+    '',
+    '"start", "synthesis", "independentAttempt", and "exitCheck" must each be objects with:',
+    '  title (string), body (string)',
+    '',
+    '"concepts" must be an array with 2 to 4 items, matching the teaching order of the loops.',
+    'Each concept object must contain these required keys:',
+    '  name (string),',
+    '  simple_definition (string),',
+    '  example (string),',
+    '  explanation (string),',
+    '  quick_check (string),',
+    '  diagnostic (object with: prompt (string), options (array of exactly 4 objects with id, label, text), correct_option_id (string), optional rationale (string))',
+    '',
+    'Opening concept contract:',
+    '  - name one real learner-facing idea from the topic.',
+    '  - explain it in plain language.',
+    '  - show it in a concrete real or realistic example.',
+    '  - explain what the example does, changes, reveals, causes, or helps the learner see.',
+    '  - end with one small learner action using the same example.',
+    '',
+    'Concept rules:',
+    '  - name the actual sub-idea of the topic, not a wrapper like "Core Rule", "Worked Pattern", "Overview", "Introduction", "Real-world case", or "Reflection check".',
+    '  - use topic-shaped concepts: techniques for technique topics, causes for cause topics, categories for category topics, contrasts for comparison topics, mechanisms for science process topics, and relationships for system topics.',
+    '  - example must be concrete and topic-specific.',
+    '  - explanation must say what the example shows, means, causes, proves, or changes in this topic.',
+    '  - quick_check must test the same concept and be answerable from the concept and example.',
+    '  - diagnostic.prompt must match quick_check exactly.',
+    '  - diagnostic.options must contain 4 plausible multiple-choice answers with one correct answer and three credible distractors.',
+    '  - diagnostic.correct_option_id must point to the option that answers the prompt directly, not to a definition unless the prompt explicitly asks for a definition.',
+    '  - do not use meta-instruction scaffolding such as "identify the rule", "show the first step", "use the evidence", "name the clue", or "apply the rule".',
+    '',
+    'Each concept object may also include:',
+    '  concept_type, curriculum_alignment, why_it_matters, prerequisites, common_misconception, extended_example, difficulty_level, synonyms, tags, visual_hint, follow_up_questions',
+    '',
+    '"loops" must be an array with 2 to 4 items, targeting 3 by default.',
+    'Each loop object must contain:',
+    '  id (string), title (string),',
+    '  teaching (section object),',
+    '  example (section object),',
+    '  learnerTask (section object),',
+    '  retrievalCheck (section object),',
+    '  mustHitConcepts (array of 1-3 strings),',
+    '  criticalMisconceptionTags (array of 1-3 strings)',
+    '',
+    'Loop design rules:',
+    '  - Each loop should teach one tightly bounded concept.',
+    '  - Each loop title must match the corresponding concept name in the concepts array.',
+    '  - The example must be specific and worked enough that the learner can imitate the move.',
+    '  - The learnerTask must be self-contained and answerable from the prompt.',
+    '  - The retrievalCheck must test the same concept, not a different skill.',
+    '  - mustHitConcepts must name the exact ideas required for advancement.',
+    '  - criticalMisconceptionTags must name concrete blocking misunderstandings.',
+    '',
+    'Overall structure rules:',
+    '  - start must begin teaching immediately, using the first concept as the learner’s entry point.',
+    '  - start should define one real sub-idea, show one concrete example, explain why it matters, and end with one small learner move.',
+    '  - Do not use generic lesson framing such as "In this lesson you\'re exploring", "By the end you should be able to", or "This topic matters because" inside start.',
+    '  - synthesis ties the loops together before the learner works alone.',
+    '  - independentAttempt is a self-contained task that combines the loops.',
+    '  - exitCheck is the final evidence check for lesson mastery.',
+    '',
+    'Quality rules:',
+    '  - Keep the lesson grade-appropriate in language and examples.',
+    '  - Write directly to the student using "you" and "your".',
+    '  - Do not use generic learner check lines like "What feels clear so far?" or "Tell me where you want to slow down."',
+    '  - Do not ask the learner to invent their own example as the main task.',
+    '  - Prefer concrete verbs: identify, solve, calculate, quote, label, rewrite, compare, classify, correct, complete, justify.',
+    '  - Do not use generic academic filler such as "this topic", "this lesson", "helps you understand", "main idea that stays true", "applied correctly", "worked example", or "important idea" inside concept content.',
+    '  - Do not use instruction text as the concept example. An example must be a real line, scenario, worked case, or concrete instance, not directions to the learner.',
+    '  - All strings must be non-empty and specific to the chosen topic.'
+  ].join('\n');
+}
+
+function createLessonPlanSystemPrompt(request?: LessonPlanRequest): string {
+  return request?.lessonFlowVersion === 'v2'
+    ? createV2LessonPlanSystemPrompt()
+    : createLegacyLessonPlanSystemPrompt();
+}
+
+function createLessonBlueprintSystemPrompt(): string {
+  return [
+    'You are Doceo, a curriculum-aware lesson planner.',
+    'Create a compact teaching blueprint for the exact topic. Do not write the lesson yet.',
+    'Return JSON only — no markdown wrapper, no explanation, just a single valid JSON object.',
+    '',
+    'The JSON object must contain exactly these keys:',
+    '  topic_kind (string),',
+    '  teaching_goal (string),',
+    '  opening_concept (object with name, plain_explanation, concrete_example, effect_or_meaning, learner_action),',
+    '  core_concepts (array of 2 to 4 objects with name, plain_explanation, concrete_example, effect_or_meaning, learner_action),',
+    '  real_examples (array of 2 to 4 concrete examples),',
+    '  common_misconceptions (array of 2 to 4 specific misconceptions),',
+    '  learner_actions (array of 2 to 4 concrete action verbs or short actions),',
+    '  diagnostic_targets (array of 2 to 4 things the quick checks must test),',
+    '  must_not_include (array of banned generic/meta phrases)',
+    '',
+    'Rules:',
+    '- Pick real sub-ideas from the topic, not wrapper labels.',
+    '- Examples must be real or realistic subject examples, not instructions to the learner.',
+    '- For broad system topics, use system parts and relationships as concepts.',
+    '- Ban meta filler such as "main idea that stays true", "worked example", "applied correctly", "Real-world case", and "Reflection check".',
+    '- Keep the blueprint short enough to fit comfortably into a second lesson-generation call.'
+  ].join('\n');
+}
+
+function createLessonPlanUserPrompt(
+  request: LessonPlanRequest,
+  lessonBlueprint?: Record<string, unknown>
+): string {
   return JSON.stringify({
     student: {
       grade: request.student.grade,
@@ -636,7 +817,8 @@ function createLessonPlanUserPrompt(request: LessonPlanRequest): string {
     subject: request.subject,
     topic_title: request.topicTitle,
     topic_description: request.topicDescription,
-    curriculum_reference: request.curriculumReference
+    curriculum_reference: request.curriculumReference,
+    ...(lessonBlueprint ? { lesson_blueprint: lessonBlueprint } : {})
   });
 }
 
@@ -831,7 +1013,307 @@ function parseAiConceptItems(raw: unknown): ConceptItem[] | undefined {
   return valid.length >= 2 ? valid : undefined;
 }
 
+const GENERIC_V2_START_PATTERN =
+  /in this lesson you're exploring|by the end you should be able to|this topic matters because|get the big picture before you dive into the details/i;
+const GENERIC_V2_CONTENT_PATTERN =
+  /main idea that stays true|worked example from|a worked example shows|a final check compares|applied correctly|real-world case|reflection check|exploration candidate|ai[- ]suggested topic/i;
+const GENERIC_V2_NAME_PATTERN =
+  /^(core rule|worked pattern|check and apply|overview|introduction|understanding|real-world case|reflection check|exploration candidate|ai[- ]suggested topic)$/i;
+
+function isValidSection(value: unknown): value is LessonSection {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const section = value as Record<string, unknown>;
+  return typeof section.title === 'string' &&
+    section.title.trim().length > 0 &&
+    typeof section.body === 'string' &&
+    section.body.trim().length > 0;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const values = value.map(readString).filter((item): item is string => Boolean(item));
+  return values.length > 0 ? values : undefined;
+}
+
+function normalizeConceptDiagnostic(value: unknown): ConceptDiagnostic | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const prompt = readString(record.prompt);
+  const correctOptionId = readString(record.correct_option_id) ?? readString(record.correctOptionId);
+  const rawOptions = Array.isArray(record.options) ? record.options : [];
+  const options = rawOptions
+    .map((option) => {
+      if (!option || typeof option !== 'object') {
+        return null;
+      }
+
+      const optionRecord = option as Record<string, unknown>;
+      const id = readString(optionRecord.id);
+      const label = readString(optionRecord.label);
+      const text = readString(optionRecord.text);
+
+      return id && label && text ? { id, label, text } : null;
+    })
+    .filter((option): option is ConceptDiagnosticOption => Boolean(option));
+
+  if (!prompt || !correctOptionId || options.length !== 4) {
+    return null;
+  }
+
+  return {
+    prompt,
+    options,
+    correctOptionId,
+    ...(readString(record.rationale) ? { rationale: readString(record.rationale)! } : {})
+  };
+}
+
+function normalizeCurriculumAlignment(value: unknown): ConceptCurriculumAlignment | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const topicMatch = readString(record.topic_match) ?? readString(record.topicMatch);
+  const gradeMatch = readString(record.grade_match) ?? readString(record.gradeMatch);
+  const alignmentNote = readString(record.alignment_note) ?? readString(record.alignmentNote);
+
+  return topicMatch && gradeMatch && alignmentNote
+    ? { topicMatch, gradeMatch, alignmentNote }
+    : undefined;
+}
+
+function hasConcreteV2Example(value: string): boolean {
+  if (GENERIC_V2_CONTENT_PATTERN.test(value)) {
+    return false;
+  }
+
+  const normalized = value.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^[a-z\s-]{3,40}$/.test(normalized) && normalized.split(/\s+/).length <= 3) {
+    return false;
+  }
+
+  return /["“”'‘’0-9:=()\-]/.test(value) || value.split(/\s+/).length >= 6;
+}
+
+function normalizeV2Concept(value: unknown, request: LessonPlanRequest): ConceptItem | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const name = readString(record.name);
+  const simpleDefinition = readString(record.simple_definition) ?? readString(record.simpleDefinition);
+  const example = readString(record.extended_example) ?? readString(record.extendedExample) ?? readString(record.example);
+  const explanation = readString(record.explanation);
+  const quickCheck = readString(record.quick_check) ?? readString(record.quickCheck);
+  const diagnostic = normalizeConceptDiagnostic(record.diagnostic);
+
+  if (!name || !simpleDefinition || !example || !explanation || !quickCheck || !diagnostic) {
+    return null;
+  }
+
+  if (
+    GENERIC_V2_NAME_PATTERN.test(name) ||
+    name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === request.topicTitle.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ||
+    GENERIC_V2_CONTENT_PATTERN.test(`${simpleDefinition} ${example} ${explanation} ${quickCheck}`) ||
+    !hasConcreteV2Example(example) ||
+    diagnostic.prompt !== quickCheck
+  ) {
+    return null;
+  }
+
+  const whyItMatters = readString(record.why_it_matters) ?? readString(record.whyItMatters) ?? undefined;
+  const commonMisconception =
+    readString(record.common_misconception) ?? readString(record.commonMisconception) ?? undefined;
+  const extendedExample = readString(record.extended_example) ?? readString(record.extendedExample) ?? undefined;
+
+  const detailParts = [explanation];
+  if (whyItMatters) detailParts.push(`**Why it matters:** ${whyItMatters}`);
+  if (commonMisconception) detailParts.push(`**Common misconception:** ${commonMisconception}`);
+
+  return {
+    name,
+    summary: simpleDefinition,
+    detail: detailParts.join('\n\n'),
+    example,
+    simpleDefinition,
+    explanation,
+    oneLineDefinition: simpleDefinition,
+    quickCheck,
+    diagnostic,
+    conceptType: readString(record.concept_type) ?? readString(record.conceptType) ?? undefined,
+    curriculumAlignment: normalizeCurriculumAlignment(record.curriculum_alignment ?? record.curriculumAlignment),
+    whyItMatters,
+    prerequisites: readStringArray(record.prerequisites),
+    commonMisconception,
+    extendedExample,
+    difficultyLevel: readString(record.difficulty_level) ?? readString(record.difficultyLevel) ?? undefined,
+    synonyms: readStringArray(record.synonyms),
+    tags: readStringArray(record.tags),
+    visualHint: readString(record.visual_hint) ?? readString(record.visualHint) ?? undefined,
+    followUpQuestions: readStringArray(record.follow_up_questions ?? record.followUpQuestions)
+  };
+}
+
+function isValidV2Loop(value: unknown): value is LessonFlowV2Loop {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const loop = value as Record<string, unknown>;
+  return typeof loop.id === 'string' &&
+    loop.id.trim().length > 0 &&
+    typeof loop.title === 'string' &&
+    loop.title.trim().length > 0 &&
+    isValidSection(loop.teaching) &&
+    isValidSection(loop.example) &&
+    isValidSection(loop.learnerTask) &&
+    isValidSection(loop.retrievalCheck) &&
+    Array.isArray(loop.mustHitConcepts) &&
+    loop.mustHitConcepts.length > 0 &&
+    loop.mustHitConcepts.every((item) => typeof item === 'string' && item.trim().length > 0) &&
+    Array.isArray(loop.criticalMisconceptionTags) &&
+    loop.criticalMisconceptionTags.length > 0 &&
+    loop.criticalMisconceptionTags.every((item) => typeof item === 'string' && item.trim().length > 0);
+}
+
+function buildOpeningStartSectionFromConcept(concept: ConceptItem): LessonSection {
+  return {
+    title: concept.name,
+    body: [
+      `**What it is:** ${concept.simpleDefinition ?? concept.summary}`,
+      '',
+      `**Example:** ${concept.example}`,
+      '',
+      `**Why it matters:** ${concept.explanation ?? concept.detail}`,
+      '',
+      `**Your turn:** ${concept.quickCheck ?? `What do you notice about ${concept.name}?`}`
+    ].join('\n')
+  };
+}
+
+function buildLegacySectionsFromV2(flowV2: LessonFlowV2Artifact): Pick<
+  Lesson,
+  | 'orientation'
+  | 'mentalModel'
+  | 'concepts'
+  | 'guidedConstruction'
+  | 'workedExample'
+  | 'practicePrompt'
+  | 'commonMistakes'
+  | 'transferChallenge'
+  | 'summary'
+> {
+  const concepts = flowV2.concepts ?? [];
+
+  return {
+    orientation: flowV2.start,
+    mentalModel: flowV2.loops[0]?.teaching ?? flowV2.start,
+    concepts: {
+      title: 'Core Concepts',
+      body: concepts
+        .map((concept) => `- **${concept.name}:** ${concept.oneLineDefinition ?? concept.summary}`)
+        .join('\n')
+    },
+    guidedConstruction: flowV2.loops[0]?.learnerTask ?? flowV2.start,
+    workedExample: flowV2.loops[0]?.example ?? flowV2.synthesis,
+    practicePrompt: flowV2.independentAttempt,
+    commonMistakes: {
+      title: 'Critical Misconceptions',
+      body: concepts.some((concept) => concept.commonMisconception)
+        ? concepts
+          .map((concept) => `- **${concept.name}:** ${concept.commonMisconception ?? 'Review the key misconception for this idea.'}`)
+          .join('\n')
+        : flowV2.loops
+          .map((loop) => `- **${loop.title}:** ${loop.criticalMisconceptionTags.join(', ')}`)
+          .join('\n')
+    },
+    transferChallenge: flowV2.exitCheck,
+    summary: flowV2.synthesis
+  };
+}
+
+function parseV2LessonPlanResponse(content: string, request: LessonPlanRequest): { lesson: Lesson; questions: Question[] } | null {
+  const parsed = parseJson<Record<string, unknown>>(content);
+
+  if (
+    !parsed ||
+    !isValidSection(parsed.start) ||
+    !isValidSection(parsed.synthesis) ||
+    !isValidSection(parsed.independentAttempt) ||
+    !isValidSection(parsed.exitCheck) ||
+    !Array.isArray(parsed.concepts) ||
+    !Array.isArray(parsed.loops)
+  ) {
+    return null;
+  }
+
+  const concepts = parsed.concepts
+    .map((concept) => normalizeV2Concept(concept, request))
+    .filter((concept): concept is ConceptItem => Boolean(concept));
+  const loops = parsed.loops.filter(isValidV2Loop);
+
+  if (
+    concepts.length !== parsed.concepts.length ||
+    concepts.length < 2 ||
+    concepts.length > 4 ||
+    loops.length !== parsed.loops.length ||
+    loops.length !== concepts.length ||
+    GENERIC_V2_CONTENT_PATTERN.test(parsed.start.body) ||
+    GENERIC_V2_START_PATTERN.test(parsed.start.body)
+  ) {
+    return null;
+  }
+
+  const normalizedStart = buildOpeningStartSectionFromConcept(concepts[0]!);
+  const flowV2: LessonFlowV2Artifact = {
+    groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+    start: normalizedStart,
+    concepts,
+    loops,
+    synthesis: parsed.synthesis,
+    independentAttempt: parsed.independentAttempt,
+    exitCheck: parsed.exitCheck
+  };
+  const base = buildDynamicLessonFromTopic({
+    subjectId: request.subjectId,
+    subjectName: request.subject,
+    grade: request.student.grade,
+    topicTitle: request.topicTitle
+  });
+  const lesson: Lesson = {
+    ...base,
+    ...buildLegacySectionsFromV2(flowV2),
+    lessonFlowVersion: 'v2',
+    flowV2,
+    keyConcepts: concepts
+  };
+
+  return {
+    lesson,
+    questions: buildDynamicQuestionsForLesson(lesson, request.subject, request.topicTitle)
+  };
+}
+
 function parseLessonPlanResponse(content: string, request: LessonPlanRequest): { lesson: Lesson; questions: Question[] } | null {
+  if (request.lessonFlowVersion === 'v2') {
+    return parseV2LessonPlanResponse(content, request);
+  }
+
   const parsed = parseJson<{
     orientation?: { title?: string; body?: string };
     concepts?: { title?: string; body?: string };
@@ -1228,6 +1710,99 @@ async function callGithubModels(
   };
 }
 
+function mergeUsage(
+  first: Record<string, unknown> | null,
+  second: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (!first && !second) {
+    return null;
+  }
+
+  const merged: Record<string, unknown> = {};
+  for (const source of [first, second]) {
+    if (!source) continue;
+
+    for (const [key, value] of Object.entries(source)) {
+      if (typeof value === 'number') {
+        merged[key] = Number(merged[key] ?? 0) + value;
+      } else if (!(key in merged)) {
+        merged[key] = value;
+      }
+    }
+  }
+
+  return merged;
+}
+
+function parseLessonBlueprint(content: string): Record<string, unknown> | null {
+  const blueprint = parseJson<Record<string, unknown>>(content);
+
+  if (
+    !blueprint ||
+    typeof blueprint.topic_kind !== 'string' ||
+    typeof blueprint.teaching_goal !== 'string' ||
+    !blueprint.opening_concept ||
+    typeof blueprint.opening_concept !== 'object' ||
+    !Array.isArray(blueprint.core_concepts) ||
+    blueprint.core_concepts.length < 2 ||
+    blueprint.core_concepts.length > 4 ||
+    !Array.isArray(blueprint.real_examples) ||
+    blueprint.real_examples.length < 2 ||
+    !Array.isArray(blueprint.common_misconceptions) ||
+    !Array.isArray(blueprint.learner_actions) ||
+    !Array.isArray(blueprint.diagnostic_targets) ||
+    !Array.isArray(blueprint.must_not_include)
+  ) {
+    return null;
+  }
+
+  return blueprint;
+}
+
+async function callV2LessonPlanWithBlueprint(
+  endpoint: string,
+  token: string,
+  model: string,
+  request: LessonPlanRequest
+): Promise<{ content: string | null; usage: Record<string, unknown> | null; latencyMs: number }> {
+  const blueprintResult = await callGithubModels(
+    endpoint,
+    token,
+    buildGithubRequest(model, 0.2, [
+      { role: 'system', content: createLessonBlueprintSystemPrompt() },
+      { role: 'user', content: createLessonPlanUserPrompt(request) }
+    ])
+  );
+
+  if (!blueprintResult.content) {
+    return blueprintResult;
+  }
+
+  const blueprint = parseLessonBlueprint(blueprintResult.content);
+  if (!blueprint) {
+    return {
+      content: null,
+      usage: blueprintResult.usage,
+      latencyMs: blueprintResult.latencyMs
+    };
+  }
+
+  const lessonResult = await callGithubModels(
+    endpoint,
+    token,
+    buildGithubRequest(model, 0.35, [
+      { role: 'system', content: createV2LessonPlanSystemPrompt() },
+      { role: 'user', content: createLessonPlanUserPrompt(request, blueprint) }
+    ])
+  );
+
+  return {
+    content: lessonResult.content,
+    usage: mergeUsage(blueprintResult.usage, lessonResult.usage),
+    latencyMs: blueprintResult.latencyMs + lessonResult.latencyMs
+  };
+}
+
 function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: string): GithubModelsRequestBody {
   switch (mode) {
     case 'tutor':
@@ -1252,7 +1827,7 @@ function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: 
       ]);
     case 'lesson-plan':
       return buildGithubRequest(model, 0.35, [
-        { role: 'system', content: createLessonPlanSystemPrompt() },
+        { role: 'system', content: createLessonPlanSystemPrompt(request as LessonPlanRequest) },
         { role: 'user', content: createLessonPlanUserPrompt(request as LessonPlanRequest) }
       ]);
     case 'lesson-chat':
@@ -1408,8 +1983,19 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const githubRequest = buildModeRequest(mode, payload.request, resolvedModel);
-    const result = await callGithubModels(githubEndpoint, githubToken, githubRequest);
+    const result =
+      mode === 'lesson-plan' && (payload.request as LessonPlanRequest).lessonFlowVersion === 'v2'
+        ? await callV2LessonPlanWithBlueprint(
+            githubEndpoint,
+            githubToken,
+            resolvedModel,
+            payload.request as LessonPlanRequest
+          )
+        : await callGithubModels(
+            githubEndpoint,
+            githubToken,
+            buildModeRequest(mode, payload.request, resolvedModel)
+          );
     const content = result.content;
 
     if (!content) {

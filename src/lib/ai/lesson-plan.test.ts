@@ -96,6 +96,9 @@ describe('lesson-plan system prompt', () => {
     expect(prompt).toContain('correct_option_id');
     expect(prompt).toContain('mustHitConcepts');
     expect(prompt).toContain('criticalMisconceptionTags');
+    expect(prompt).toContain('lesson_blueprint');
+    expect(prompt).toContain('core_concepts');
+    expect(prompt).toContain('common_misconceptions');
     expect(prompt).toContain('identify the rule');
     expect(prompt).toContain('show the first step');
     expect(prompt).toContain('use the evidence');

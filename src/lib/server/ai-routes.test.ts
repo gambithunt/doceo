@@ -361,7 +361,7 @@ describe('ai routes', () => {
     );
   });
 
-  it('lesson plan route falls back to the local v2 builder when v2 generation is unavailable', async () => {
+  it('lesson plan route fails closed instead of returning a local v2 fallback when v2 generation is unavailable', async () => {
     invokeAuthenticatedAiEdge.mockResolvedValue({
       ok: false,
       status: 502,
@@ -405,12 +405,86 @@ describe('ai routes', () => {
       fetch: vi.fn()
     } as never);
 
-    const payload = await response.json();
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.stringMatching(/lesson generation unavailable|edge function failed/i)
+      })
+    );
+  });
 
-    expect(response.status).toBe(200);
-    expect(payload.provider).toBe('local-fallback');
-    expect(payload.lesson.lessonFlowVersion).toBe('v2');
-    expect(Array.isArray(payload.lesson.flowV2?.loops)).toBe(true);
+  it('lesson plan route fails closed instead of returning a local v2 fallback when edge returns a non-v2 lesson', async () => {
+    invokeAuthenticatedAiEdge.mockResolvedValue({
+      ok: true,
+      status: 200,
+      payload: {
+        provider: 'github-models',
+        modelTier: 'thinking',
+        model: 'openai/gpt-4.1-mini',
+        lesson: {
+          id: 'lesson-legacy-1',
+          title: 'Biology: Photosynthesis',
+          topicId: 'topic-1',
+          subtopicId: 'subtopic-1',
+          subjectId: 'subject-1',
+          grade: 'Grade 6',
+          orientation: { title: 'Orientation', body: 'Body' },
+          mentalModel: { title: 'Model', body: 'Body' },
+          concepts: { title: 'Concepts', body: 'Body' },
+          guidedConstruction: { title: 'Construction', body: 'Body' },
+          workedExample: { title: 'Example', body: 'Body' },
+          practicePrompt: { title: 'Practice', body: 'Body' },
+          commonMistakes: { title: 'Mistakes', body: 'Body' },
+          transferChallenge: { title: 'Transfer', body: 'Body' },
+          summary: { title: 'Summary', body: 'Body' },
+          practiceQuestionIds: [],
+          masteryQuestionIds: []
+        },
+        questions: []
+      }
+    });
+
+    const { POST } = await import('../../routes/api/ai/lesson-plan/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/ai/lesson-plan', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          request: {
+            student: {
+              id: 'student-1',
+              fullName: 'Student',
+              email: 'student@example.com',
+              role: 'student',
+              schoolYear: '2026',
+              term: 'Term 1',
+              grade: 'Grade 6',
+              gradeId: 'grade-6',
+              country: 'South Africa',
+              countryId: 'za',
+              curriculum: 'IEB',
+              curriculumId: 'ieb',
+              recommendedStartSubjectId: null,
+              recommendedStartSubjectName: null
+            },
+            subjectId: 'subject-1',
+            subject: 'Biology',
+            topicTitle: 'Photosynthesis',
+            topicDescription: 'How plants make food',
+            curriculumReference: 'IEB · Grade 6 · Biology',
+            lessonFlowVersion: 'v2'
+          }
+        })
+      }),
+      fetch: vi.fn()
+    } as never);
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Lesson generation returned an invalid payload.'
+    });
   });
 
   it('lesson plan route selects the new concept-contract prompt version by default for v2', async () => {

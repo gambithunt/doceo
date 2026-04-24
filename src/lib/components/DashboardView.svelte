@@ -112,6 +112,18 @@
   const currentSessionProgress = $derived(
     currentSession ? Math.min(100, Math.max(6, Math.round((currentSession.stagesCompleted.length / 6) * 100))) : 0
   );
+  const lessonLaunchError = $derived.by(() => {
+    const message = viewState.backend.lastSyncError;
+    if (
+      viewState.ui.lessonLaunchQuotaExceeded ||
+      viewState.backend.lastSyncStatus !== 'error' ||
+      !message
+    ) {
+      return null;
+    }
+
+    return /lesson|generation|open the lesson|create lesson plan/i.test(message) ? message : null;
+  });
   const currentSessionStageLabel = $derived(
     currentSession
       ? `Stage ${Math.min(currentSession.stagesCompleted.length + 1, 6)} of 6 · ${getStageLabel(currentSession.currentStage)}`
@@ -671,6 +683,10 @@
           <span>{checkoutError}</span>
         {/if}
       </div>
+    {/if}
+
+    {#if lessonLaunchError}
+      <p class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{lessonLaunchError}</p>
     {/if}
 
     {#if viewState.topicDiscovery.shortlist.shortlist}
