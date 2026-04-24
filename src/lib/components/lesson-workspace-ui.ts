@@ -1,4 +1,5 @@
 import { LESSON_STAGE_ORDER, SOFT_STUCK_STAY_THRESHOLD } from '$lib/lesson-system';
+import { buildConceptDiagnostic } from '$lib/concept-diagnostics';
 import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
 import type {
   ConceptItem,
@@ -240,12 +241,40 @@ function getLegacyExchangeKey(entry: LessonWorkspaceMessageEntry): string {
   return `legacy-message:${entry.index}`;
 }
 
+function isRedundantStartMirrorMessage(
+  message: LessonMessage,
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State' | 'status'>,
+  lesson: Pick<Lesson, 'flowV2'> | null
+): boolean {
+  if (
+    lessonSession.lessonFlowVersion !== 'v2' ||
+    !lessonSession.v2State ||
+    lessonSession.status === 'complete' ||
+    lessonSession.v2State.activeCheckpoint !== 'start' ||
+    !lesson?.flowV2
+  ) {
+    return false;
+  }
+
+  if (message.role !== 'assistant' || message.type === 'stage_start' || message.type === 'concept_cards') {
+    return false;
+  }
+
+  if (message.v2Context?.checkpoint !== 'start') {
+    return false;
+  }
+
+  return message.content.trim() === lesson.flowV2.start.body.trim();
+}
+
 export function deriveConversationViewForSession(
   lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State' | 'messages' | 'status'>,
   lesson: Pick<Lesson, 'flowV2'> | null = null,
   recentExchangeCount = 3
 ): LessonWorkspaceConversationView {
-  const allMessageEntries = lessonSession.messages.map((message, index) => ({ index, message }));
+  const allMessageEntries = lessonSession.messages
+    .map((message, index) => ({ index, message }))
+    .filter((entry) => !isRedundantStartMirrorMessage(entry.message, lessonSession, lesson));
 
   if (
     lessonSession.lessonFlowVersion !== 'v2' ||
@@ -355,35 +384,6 @@ export function isConcept1EarlyDiagnosticActive(
   );
 }
 
-function buildFallbackDiagnosticOptions(concept: ConceptItem): QuestionOption[] {
-  return [
-    {
-      id: 'a',
-      label: 'A',
-      text: concept.oneLineDefinition ?? concept.summary
-    },
-    {
-      id: 'b',
-      label: 'B',
-      text:
-        concept.commonMisconception ??
-        `Skip the rule and jump straight to the final answer for ${concept.name}.`
-    },
-    {
-      id: 'c',
-      label: 'C',
-      text:
-        concept.whyItMatters ??
-        `Use only the example for ${concept.name} without naming the core idea.`
-    },
-    {
-      id: 'd',
-      label: 'D',
-      text: `Pick the example instead of the idea: ${concept.example}`
-    }
-  ];
-}
-
 export function deriveConcept1EarlyDiagnostic(
   lesson: Pick<Lesson, 'flowV2'> | null
 ): LessonWorkspaceEarlyDiagnostic | null {
@@ -394,9 +394,19 @@ export function deriveConcept1EarlyDiagnostic(
   }
 
   return {
-    prompt: concept.quickCheck ?? `Which statement best matches ${concept.name}?`,
-    options: buildFallbackDiagnosticOptions(concept),
-    correctOptionId: 'a'
+    prompt: concept.diagnostic?.prompt ?? concept.quickCheck ?? `Which statement best matches ${concept.name}?`,
+    options:
+      concept.diagnostic?.options ??
+      buildConceptDiagnostic({
+        name: concept.name,
+        simpleDefinition: concept.simpleDefinition ?? concept.oneLineDefinition ?? concept.summary,
+        example: concept.example,
+        explanation: concept.explanation ?? concept.detail,
+        quickCheck: concept.quickCheck ?? `Which statement best matches ${concept.name}?`,
+        commonMisconception: concept.commonMisconception,
+        whyItMatters: concept.whyItMatters
+      }).options,
+    correctOptionId: concept.diagnostic?.correctOptionId ?? 'a'
   };
 }
 

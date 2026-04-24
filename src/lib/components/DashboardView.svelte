@@ -9,7 +9,7 @@
   import QuotaBadge from '$lib/components/quota/QuotaBadge.svelte';
   import { deriveDashboardHeroState } from '$lib/components/dashboard-hero';
   import { deriveDashboardLessonLists } from '$lib/components/dashboard-lessons';
-  import { extractHintChipLabels } from '$lib/components/dashboard-hints';
+  import { extractHintChipLabels, groupHintChips } from '$lib/components/dashboard-hints';
   import TopicLaunchBriefingCard from '$lib/components/topic-discovery/TopicLaunchBriefingCard.svelte';
   import TopicSuggestionRail from '$lib/components/topic-discovery/TopicSuggestionRail.svelte';
   import { selectTopicLoadingCopy } from '$lib/components/topic-discovery/topic-loading-copy';
@@ -55,6 +55,7 @@
   let launchBriefingVisible = $state(false);
   let hasRequestedInitialDiscovery = $state(false);
   let launchBriefingTimer: ReturnType<typeof setTimeout> | null = null;
+  let topicInputEl = $state<HTMLTextAreaElement | null>(null);
   let latestHintRequest = 0;
   let hintAbortController: AbortController | undefined;
   let lastHintSeed = $state('');
@@ -77,6 +78,18 @@
   );
   const discoveryState = $derived(viewState.topicDiscovery.discovery);
   const discoveryTopics = $derived(discoveryState.topics);
+  const composerHintGroups = $derived.by(() => {
+    const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+    const existingDiscoveryLabels = new Set(discoveryTopics.map((topic) => normalize(topic.topicLabel)));
+    const chips = (viewState.topicDiscovery.hintSuggestions ?? [])
+      .filter((label) => label.trim().length > 0 && !existingDiscoveryLabels.has(normalize(label)))
+      .map((label) => ({
+        id: normalize(label),
+        label: label.trim()
+      }));
+
+    return groupHintChips(chips, selectedSubject);
+  });
 
   const greeting = $derived.by(() => {
     const hour = new Date().getHours();
@@ -319,6 +332,12 @@
   function onTopicFocus(): void { topicInputFocused = true; }
   function onTopicBlur(): void { topicInputFocused = false; }
 
+  function applyHintSuggestion(label: string): void {
+    if (hasPendingDashboardLaunch) return;
+    appState.setTopicDiscoveryInput(label);
+    topicInputEl?.focus();
+  }
+
   function selectSubject(subjectId: string): void {
     if (hasPendingDashboardLaunch) return;
     lastHintSeed = '';
@@ -475,7 +494,7 @@
           <div class="mission-card-inner">
             <p class="mission-kicker">{heroState.kicker}</p>
             <h3 class="mission-title">{toSentenceCase(heroState.title)}</h3>
-            <p class="mission-meta">{currentSession.subject} · {currentSessionStageLabel}</p>
+            <p class="mission-meta">{heroState.session.subject} · {currentSessionStageLabel}</p>
             <div class="mission-progress-bar">
               <div class="mission-progress-fill" style="--progress: {currentSessionProgress / 100};"></div>
             </div>
@@ -589,6 +608,7 @@
 
     <div class="search-launcher" class:focused={topicInputFocused}>
       <textarea
+        bind:this={topicInputEl}
         rows="2"
         class="search-input"
         placeholder="Or describe exactly what you want to learn..."
@@ -613,6 +633,29 @@
         {/if}
       </div>
     </div>
+
+    {#if composerHintGroups.length > 0}
+      <div class="composer-hints">
+        <p class="composer-hints-label">Need a prompt? Try one.</p>
+        {#each composerHintGroups as group}
+          {#if group.groupLabel}
+            <p class="chip-group-label">{group.groupLabel}</p>
+          {/if}
+          <div class="composer-hint-row">
+            {#each group.chips as chip}
+              <button
+                type="button"
+                class="composer-hint-chip"
+                disabled={hasPendingDashboardLaunch}
+                onclick={() => applyHintSuggestion(chip.label)}
+              >
+                {chip.label}
+              </button>
+            {/each}
+          </div>
+        {/each}
+      </div>
+    {/if}
 
     {#if viewState.topicDiscovery.shortlist.error}
       <p class="error-note" transition:fly={{ y: 6, duration: 160, easing: cubicOut }}>{viewState.topicDiscovery.shortlist.error}</p>
@@ -1275,6 +1318,59 @@
     display: flex;
     gap: 0.6rem;
     flex-wrap: wrap;
+  }
+
+  .composer-hints {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.2rem;
+  }
+
+  .composer-hints-label {
+    font-size: 0.82rem;
+    color: var(--text-soft);
+    margin: 0;
+  }
+
+  .composer-hint-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .composer-hint-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-strong));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--accent-dim) 78%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 94%, transparent)
+      );
+    color: var(--text);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      transform var(--motion-fast) var(--ease-spring),
+      border-color var(--motion-fast) var(--ease-soft),
+      background var(--motion-fast) var(--ease-soft);
+  }
+
+  .composer-hint-chip:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: var(--accent);
+  }
+
+  .composer-hint-chip:disabled {
+    cursor: wait;
+    opacity: 0.62;
   }
 
   /* ── Shortlist ── */

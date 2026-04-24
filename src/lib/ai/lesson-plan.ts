@@ -1,8 +1,10 @@
 import {
+  buildOpeningStartSectionFromConcept,
   buildDynamicLessonFlowV2FromTopic,
   buildDynamicLessonFromTopic,
   buildDynamicQuestionsForLesson
 } from '$lib/lesson-system';
+import { buildConceptDiagnostic } from '$lib/concept-diagnostics';
 import { validateConceptRecords } from '$lib/lesson-concept-contract';
 import type {
   ConceptItem,
@@ -55,6 +57,8 @@ type LegacySectionKey = typeof REQUIRED_LEGACY_SECTIONS[number];
 const GENERIC_LEARNER_CHECK_PATTERN = /what feels clear so far|tell me where you want to slow down/i;
 const GENERIC_PRACTICE_PATTERN = /apply (?:what you have learned about )?.+?to a similar problem/i;
 const GENERIC_TRANSFER_PATTERN = /can you apply .+?to a problem you have not seen before\?/i;
+const GENERIC_V2_START_PATTERN =
+  /in this lesson you're exploring|by the end you should be able to|this topic matters because|get the big picture before you dive into the details/i;
 
 function resolveLessonFlowVersion(options?: LessonPlanOptions): LessonFlowVersion {
   return options?.lessonFlowVersion === 'v2' ? 'v2' : 'v1';
@@ -102,6 +106,7 @@ function createV2LessonPlanSystemPrompt(): string {
   return [
     'You are Doceo, a lesson-generation assistant for South African school students.',
     'Generate a loop-based lesson for the exact learner-selected topic.',
+    'The learner should feel that the lesson is about this exact topic within the first 30 seconds.',
     'Return JSON only — no markdown wrapper, no explanation, just a single valid JSON object.',
     '',
     'The JSON object must contain exactly these top-level keys:',
@@ -113,14 +118,25 @@ function createV2LessonPlanSystemPrompt(): string {
     '"concepts" must be an array with 2 to 4 items, matching the teaching order of the loops.',
     'Each concept object must contain these required keys:',
     '  name (string),',
-    '  one_line_definition (string),',
+    '  simple_definition (string),',
     '  example (string),',
+    '  explanation (string),',
     '  quick_check (string),',
-    '  concept_type (string),',
-    '  curriculum_alignment (object with topic_match, grade_match, alignment_note)',
+    '  diagnostic (object with: prompt (string), options (array of exactly 4 objects with id, label, text), correct_option_id (string), optional rationale (string))',
+    '',
+    'Concept rules:',
+    '  - name the actual sub-idea of the topic, not a wrapper like "Core Rule", "Worked Pattern", "Overview", or "Introduction".',
+    '  - use topic-shaped concepts: techniques for technique topics, causes for cause topics, categories for category topics, contrasts for comparison topics.',
+    '  - example must be concrete and topic-specific.',
+    '  - explanation must say what the example shows, means, causes, proves, or changes in this topic.',
+    '  - quick_check must test the same concept and be answerable from the concept and example.',
+    '  - diagnostic.prompt must match quick_check exactly.',
+    '  - diagnostic.options must contain 4 plausible multiple-choice answers with one correct answer and three credible distractors.',
+    '  - diagnostic.correct_option_id must point to the option that answers the prompt directly, not to a definition unless the prompt explicitly asks for a definition.',
+    '  - do not use meta-instruction scaffolding such as "identify the rule", "show the first step", "use the evidence", "name the clue", or "apply the rule".',
     '',
     'Each concept object may also include:',
-    '  why_it_matters, prerequisites, common_misconception, extended_example, difficulty_level, synonyms, tags, visual_hint, follow_up_questions',
+    '  concept_type, curriculum_alignment, why_it_matters, prerequisites, common_misconception, extended_example, difficulty_level, synonyms, tags, visual_hint, follow_up_questions',
     '',
     '"loops" must be an array with 2 to 4 items, targeting 3 by default.',
     'Each loop object must contain:',
@@ -142,7 +158,9 @@ function createV2LessonPlanSystemPrompt(): string {
     '  - criticalMisconceptionTags must name concrete blocking misunderstandings.',
     '',
     'Overall structure rules:',
-    '  - start frames the lesson and mental model briefly.',
+    '  - start must begin teaching immediately, using the first concept as the learner’s entry point.',
+    '  - start should define one real sub-idea, show one concrete example, explain why it matters, and end with one small learner move.',
+    '  - Do not use generic lesson framing such as "In this lesson you\'re exploring", "By the end you should be able to", or "This topic matters because" inside start.',
     '  - synthesis ties the loops together before the learner works alone.',
     '  - independentAttempt is a self-contained task that combines the loops.',
     '  - exitCheck is the final evidence check for lesson mastery.',
@@ -152,6 +170,8 @@ function createV2LessonPlanSystemPrompt(): string {
     '  - Do not use generic learner check lines like "What feels clear so far?" or "Tell me where you want to slow down."',
     '  - Do not ask the learner to invent their own example as the main task.',
     '  - Prefer concrete verbs: identify, solve, calculate, quote, label, rewrite, compare, classify, correct, complete, justify.',
+    '  - Do not use generic academic filler such as "this topic", "this lesson", "helps you understand", or "important idea" inside concept content.',
+    '  - Do not use instruction text as the concept example. An example must be a real line, scenario, worked case, or concrete instance, not directions to the learner.',
     '  - All strings must be non-empty and specific to the chosen topic.'
   ].join('\n');
 }
@@ -341,8 +361,17 @@ function buildConceptItemsFromLoops(loops: LessonFlowV2Loop[]): ConceptItem[] {
     summary: loop.mustHitConcepts.join(', '),
     detail: loop.teaching.body,
     example: loop.example.body,
+    simpleDefinition: loop.mustHitConcepts[0] ?? loop.title,
+    explanation: loop.teaching.body,
     oneLineDefinition: loop.mustHitConcepts[0] ?? loop.title,
     quickCheck: loop.retrievalCheck.body,
+    diagnostic: buildConceptDiagnostic({
+      name: loop.title,
+      simpleDefinition: loop.mustHitConcepts[0] ?? loop.title,
+      example: loop.example.body,
+      explanation: loop.teaching.body,
+      quickCheck: loop.retrievalCheck.body
+    }),
     conceptType: 'loop_concept'
   }));
 }
@@ -407,9 +436,14 @@ function parseV2LessonPlan(
     return null;
   }
 
+  const normalizedStart =
+    GENERIC_V2_START_PATTERN.test((parsed.start as LessonSection).body) && conceptValidation.concepts[0]
+      ? buildOpeningStartSectionFromConcept(conceptValidation.concepts[0]!)
+      : (parsed.start as LessonSection);
+
   const flowV2: LessonFlowV2Artifact = {
     groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
-    start: parsed.start,
+    start: normalizedStart,
     concepts: conceptValidation.concepts,
     loops: parsed.loops as LessonFlowV2Loop[],
     synthesis: parsed.synthesis,

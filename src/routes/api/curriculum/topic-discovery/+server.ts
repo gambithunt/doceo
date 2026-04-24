@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getAuthenticatedEdgeContext } from '$lib/server/ai-edge';
 import { getAiConfig } from '$lib/server/ai-config';
+import { getProviderAdapter } from '$lib/server/ai-providers';
 import { buildTopicSignature } from '$lib/server/topic-discovery-ranking';
 import { createServerGraphRepository } from '$lib/server/graph-repository';
 import { findSubjectKey } from '$lib/data/subject-catalog';
@@ -19,12 +20,16 @@ import {
   setCachedTopicDiscoveryPayload
 } from '$lib/server/topic-discovery-runtime';
 
-const MAX_TOPIC_DISCOVERY_RESULTS = 12;
+const MAX_TOPIC_DISCOVERY_RESULTS = 7;
 
 const TopicDiscoveryBodySchema = z.object({
   subjectId: z.string().min(1),
   curriculumId: z.string().min(1),
+  curriculumName: z.string().min(1).optional(),
   gradeId: z.string().min(1),
+  gradeLabel: z.string().min(1).optional(),
+  subjectDisplay: z.string().min(1).optional(),
+  term: z.string().min(1).optional(),
   forceRefresh: z.boolean().optional(),
   excludeTopicSignatures: z.array(z.string().min(1)).max(MAX_TOPIC_DISCOVERY_RESULTS).optional()
 });
@@ -52,6 +57,218 @@ const TopicDiscoveryResponseSchema = z.object({
 });
 
 type TopicDiscoveryResponse = z.infer<typeof TopicDiscoveryResponseSchema>;
+
+function cleanTopicLabel(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeTopicLabel(value: string): string {
+  return cleanTopicLabel(value).toLowerCase();
+}
+
+function titleCaseTopicLabel(value: string): string {
+  const cleaned = cleanTopicLabel(value);
+
+  if (cleaned.length === 0) {
+    return cleaned;
+  }
+
+  return cleaned.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
+function isGenericTopicLabel(value: string): boolean {
+  return new Set([
+    'key concepts',
+    'core ideas',
+    'introduction',
+    'summary',
+    'revision',
+    'study tips',
+    'practice questions',
+    'problem solving',
+    'examples'
+  ]).has(normalizeTopicLabel(value));
+}
+
+function parseServerGeneratedTopicLabels(content: string): string[] {
+  try {
+    const parsed = JSON.parse(content) as { topics?: unknown };
+
+    if (!Array.isArray(parsed.topics)) {
+      return [];
+    }
+
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const item of parsed.topics) {
+      const rawLabel =
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object' && typeof (item as { label?: unknown }).label === 'string'
+            ? ((item as { label: string }).label)
+            : '';
+      const label = titleCaseTopicLabel(rawLabel);
+      const key = normalizeTopicLabel(label);
+
+      if (label.length === 0 || key.length === 0 || isGenericTopicLabel(label) || seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      normalized.push(label);
+
+      if (normalized.length >= MAX_TOPIC_DISCOVERY_RESULTS) {
+        break;
+      }
+    }
+
+    return normalized;
+  } catch {
+    return [];
+  }
+}
+
+function resolveSchoolSubjectDisplay(subjectId: string, subjectDisplay?: string): string {
+  if (subjectDisplay && subjectDisplay.trim().length > 0) {
+    return subjectDisplay.trim();
+  }
+
+  const subjectKey = findSubjectKey(subjectId);
+
+  return (subjectKey ?? subjectId.replace(/^subject-stub-/, ''))
+    .split(/[^a-z0-9]+/i)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+async function buildServerModelFallback(input: {
+  subjectId: string;
+  curriculumId: string;
+  curriculumName?: string;
+  gradeId: string;
+  gradeLabel?: string;
+  subjectDisplay?: string;
+  term?: string;
+  provider: string;
+  model: string;
+  refreshed: boolean;
+  fallbackTopics: TopicDiscoveryResponse['topics'];
+}): Promise<TopicDiscoveryResponse | null> {
+  const adapter = getProviderAdapter(input.provider as Parameters<typeof getProviderAdapter>[0]);
+
+  if (!adapter) {
+    return null;
+  }
+
+  try {
+    const subject = resolveSchoolSubjectDisplay(input.subjectId, input.subjectDisplay);
+    const completion = await adapter.complete({
+      model: input.model,
+      temperature: input.refreshed ? 0.65 : 0.4,
+      systemPrompt: [
+        'You generate dashboard topic suggestions for a school learning platform.',
+        'Return JSON only with exactly one key: topics.',
+        'topics must be an array of exactly 7 short, concrete topic labels.',
+        'Prioritize topics that are fresh and relevant for the learner’s current curriculum, grade, and term.',
+        'Each label must be a curriculum topic name, not a sentence, instruction, or study tip.',
+        'Prefer the wording used by the curriculum or subject guide when possible.',
+        'Avoid duplicates, generic labels, and labels that only restate the subject name.'
+      ].join(' '),
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({
+            subject,
+            curriculum: input.curriculumName ?? input.curriculumId,
+            grade: input.gradeLabel ?? input.gradeId,
+            term: input.term ?? null,
+            existing_topics: input.fallbackTopics.map((topic) => topic.topicLabel).slice(0, 24),
+            required_output: {
+              topics: ['string']
+            }
+          })
+        }
+      ]
+    });
+
+    const modelLabels = parseServerGeneratedTopicLabels(completion.content);
+
+    if (modelLabels.length === 0) {
+      return null;
+    }
+
+    const graphByNormalized = new Map(
+      input.fallbackTopics.map((topic) => [normalizeTopicLabel(topic.topicLabel), topic] as const)
+    );
+    const usedSignatures = new Set<string>();
+    const topics: TopicDiscoveryResponse['topics'] = [];
+
+    for (const label of modelLabels) {
+      const graphMatch = graphByNormalized.get(normalizeTopicLabel(label));
+
+      if (graphMatch) {
+        if (!usedSignatures.has(graphMatch.topicSignature)) {
+          usedSignatures.add(graphMatch.topicSignature);
+          topics.push({
+            ...graphMatch,
+            rank: topics.length + 1,
+            reason: 'Fresh model suggestion'
+          });
+        }
+        continue;
+      }
+
+      const topicSignature = buildTopicSignature({
+        subjectId: input.subjectId,
+        curriculumId: input.curriculumId,
+        gradeId: input.gradeId,
+        topicLabel: label
+      });
+
+      if (usedSignatures.has(topicSignature)) {
+        continue;
+      }
+
+      usedSignatures.add(topicSignature);
+      topics.push({
+        topicSignature,
+        topicLabel: label,
+        nodeId: null,
+        source: 'model_candidate',
+        rank: topics.length + 1,
+        reason: 'Fresh model suggestion',
+        sampleSize: 0,
+        thumbsUpCount: 0,
+        thumbsDownCount: 0,
+        completionRate: null,
+        freshness: 'new'
+      });
+    }
+
+    for (const topic of input.fallbackTopics) {
+      if (topics.length >= MAX_TOPIC_DISCOVERY_RESULTS || usedSignatures.has(topic.topicSignature)) {
+        continue;
+      }
+
+      usedSignatures.add(topic.topicSignature);
+      topics.push({
+        ...topic,
+        rank: topics.length + 1
+      });
+    }
+
+    return {
+      topics: topics.slice(0, MAX_TOPIC_DISCOVERY_RESULTS),
+      provider: input.provider,
+      model: input.model,
+      refreshed: input.refreshed
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function fetchWithTimeout(
   fetcher: typeof fetch,
@@ -208,6 +425,7 @@ async function handleUniversityTopicDiscovery(input: UniversityHandlerInput): Pr
     subjectId: subjectKey,
     curriculumId: 'university',
     gradeId: input.gradeId,
+    term: '',
     provider: input.provider,
     model: input.model
   });
@@ -227,6 +445,9 @@ async function handleUniversityTopicDiscovery(input: UniversityHandlerInput): Pr
   });
 
   let aiTopics: TopicDiscoveryResponse['topics'] = [];
+  const excludedTopicLabels = activeRows
+    .filter((row) => input.excludeTopicSignatures.includes(row.topic_signature))
+    .map((row) => row.topic_label);
 
   if (input.refreshed && isDashboardTopicDiscoveryEnabled() && input.provider === 'github-models') {
     const edgeContext = await getAuthenticatedEdgeContext(input.request);
@@ -253,7 +474,8 @@ async function handleUniversityTopicDiscovery(input: UniversityHandlerInput): Pr
               model: input.model,
               subjectKey,
               subjectDisplay,
-              excludeTopicSignatures: input.excludeTopicSignatures
+              excludeTopicSignatures: input.excludeTopicSignatures,
+              excludeTopicLabels: excludedTopicLabels
             })
           },
           getTopicDiscoveryEdgeTimeoutMs()
@@ -378,6 +600,7 @@ export async function POST({ request, fetch }) {
     subjectId: parsed.data.subjectId,
     curriculumId: parsed.data.curriculumId,
     gradeId: parsed.data.gradeId,
+    term: parsed.data.term,
     provider: resolvedProvider,
     model: resolvedModel
   });
@@ -463,7 +686,11 @@ export async function POST({ request, fetch }) {
         body: JSON.stringify({
           subjectId: parsed.data.subjectId,
           curriculumId: parsed.data.curriculumId,
+          ...(parsed.data.curriculumName ? { curriculumName: parsed.data.curriculumName } : {}),
           gradeId: parsed.data.gradeId,
+          ...(parsed.data.gradeLabel ? { gradeLabel: parsed.data.gradeLabel } : {}),
+          ...(parsed.data.subjectDisplay ? { subjectDisplay: parsed.data.subjectDisplay } : {}),
+          ...(parsed.data.term ? { term: parsed.data.term } : {}),
           forceRefresh: refreshed,
           provider: resolvedProvider,
           model: resolvedModel,
@@ -514,8 +741,30 @@ export async function POST({ request, fetch }) {
       return json(fallback);
     }
 
-    if (!refreshed && validated.data.provider === 'github-models') {
-      setCachedTopicDiscoveryPayload(cacheKey, validated.data);
+    let responsePayload = validated.data;
+
+    if (responsePayload.provider !== resolvedProvider || responsePayload.topics.length === 0) {
+      const serverFallback = await buildServerModelFallback({
+        subjectId: parsed.data.subjectId,
+        curriculumId: parsed.data.curriculumId,
+        curriculumName: parsed.data.curriculumName,
+        gradeId: parsed.data.gradeId,
+        gradeLabel: parsed.data.gradeLabel,
+        subjectDisplay: parsed.data.subjectDisplay,
+        term: parsed.data.term,
+        provider: resolvedProvider,
+        model: resolvedModel,
+        refreshed,
+        fallbackTopics: responsePayload.topics.length > 0 ? responsePayload.topics : fallback.topics
+      });
+
+      if (serverFallback && serverFallback.topics.length > 0) {
+        responsePayload = serverFallback;
+      }
+    }
+
+    if (!refreshed && responsePayload.provider === 'github-models') {
+      setCachedTopicDiscoveryPayload(cacheKey, responsePayload);
     }
 
     logTopicDiscoveryRoute('info', successEvent, {
@@ -524,13 +773,13 @@ export async function POST({ request, fetch }) {
       curriculumId: parsed.data.curriculumId,
       gradeId: parsed.data.gradeId,
       refreshed,
-      provider: validated.data.provider,
-      model: validated.data.model,
-      topicCount: validated.data.topics.length,
+      provider: responsePayload.provider,
+      model: responsePayload.model,
+      topicCount: responsePayload.topics.length,
       cached: false,
       durationMs: Date.now() - startedAt
     });
-    return json(validated.data);
+    return json(responsePayload);
   } catch (error) {
     logTopicDiscoveryRoute('warn', fallbackEvent, {
       requestId,

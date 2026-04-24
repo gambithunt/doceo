@@ -32,6 +32,12 @@ Meaning of each field:
 - `explanation`: what the example shows, does, means, causes, or proves in this topic
 - `quick_check`: one focused comprehension check on the same concept
 
+Contract boundary:
+
+- external lesson artifact and prompt field names should use the snake_case form above
+- internal runtime mapping may continue using the current `ConceptItem` camelCase shape during rollout
+- this workstream changes the content contract, not the lesson workspace structure
+
 This is the universal structure because it generalizes cleanly:
 
 - English: explanation becomes effect/meaning in context
@@ -57,6 +63,18 @@ Also reject generic academic filler such as:
 - `helps you understand`
 - `in many questions`
 - `important idea`
+
+Interpretation rule:
+
+- these bans apply to concept content fields, not to every lesson string in the whole system
+- matching should be phrase-level and scaffolding-aware, not token-level
+- words like `rule`, `evidence`, or `step` are only invalid when they are used as generic teaching scaffolding rather than real topic content
+
+Quick-check rule:
+
+- `quick_check` must be answerable from the concept and its example
+- it must not be a generic study prompt like `explain this in your own words`
+- it should target a single concept, not reopen the whole topic
 
 ### Topic-shaped teaching, not fake-universal templates
 
@@ -107,6 +125,7 @@ Existing reusable seams:
 - Keep concept rendering compatible with the current workspace card UI
 - The fix must apply to every topic, not just English literature topics
 - The fallback path must meet the same quality bar as the AI path
+- Preserve the existing nine-section lesson shape and `v2` loop structure unless a later approved workstream changes them
 
 ## Phase Plan
 
@@ -141,22 +160,23 @@ Excluded:
 - fallback builder redesign
 - prompt rewrite
 - telemetry / rollout changes
+- broad renaming of learner-facing UI labels
 
 ### Tasks
 
-- [ ] Update concept types in `types.ts` to support the new required field names
-- [ ] Update `createConceptItem` to map `simple_definition`, `example`, `explanation`, `quick_check` into the existing workspace-facing shape
-- [ ] Make `whyItMatters`, `commonMisconception`, `extendedExample`, and similar fields optional enrichment only
-- [ ] Add hard-fail validation rules for banned meta-instruction phrases
-- [ ] Add hard-fail validation for generic wrapper names like `Core Rule`, `Worked Pattern`, `Check And Apply`, `Overview`, `Introduction`
-- [ ] Add hard-fail validation for generic filler in definition / example / explanation / quick check
-- [ ] Keep the workspace concept UI compatible without redesigning the component structure
+- [x] Update concept types in `types.ts` to support the new required field names
+- [x] Update `createConceptItem` to map `simple_definition`, `example`, `explanation`, `quick_check` into the existing workspace-facing shape
+- [x] Make `whyItMatters`, `commonMisconception`, `extendedExample`, and similar fields optional enrichment only
+- [x] Add hard-fail validation rules for banned meta-instruction phrases
+- [x] Add hard-fail validation for generic wrapper names like `Core Rule`, `Worked Pattern`, `Check And Apply`, `Overview`, `Introduction`
+- [x] Add hard-fail validation for generic filler in definition / example / explanation / quick check
+- [x] Keep the workspace concept UI compatible without redesigning the component structure
 
 ### TDD Plan
 
 RED
 
-- Add failing tests in [src/lib/lesson-concept-contract.ts](/Users/delon/Documents/code/projects/doceo/src/lib/lesson-concept-contract.ts:1) companion tests proving:
+- Add failing tests in a new [src/lib/lesson-concept-contract.test.ts](/Users/delon/Documents/code/projects/doceo/src/lib/lesson-concept-contract.test.ts:1) proving:
   - concepts missing `simple_definition`, `example`, `explanation`, or `quick_check` are rejected
   - concepts containing banned meta-instruction phrases are rejected
   - generic wrapper concept names are rejected
@@ -174,6 +194,7 @@ REFACTOR
 
 - [src/lib/types.ts](/Users/delon/Documents/code/projects/doceo/src/lib/types.ts:194)
 - [src/lib/lesson-concept-contract.ts](/Users/delon/Documents/code/projects/doceo/src/lib/lesson-concept-contract.ts:1)
+- [src/lib/lesson-concept-contract.test.ts](/Users/delon/Documents/code/projects/doceo/src/lib/lesson-concept-contract.test.ts:1)
 - [src/lib/components/lesson-workspace-ui.ts](/Users/delon/Documents/code/projects/doceo/src/lib/components/lesson-workspace-ui.ts:1) only if field mapping needs a naming cleanup
 
 ### Risks / Edge Cases
@@ -211,6 +232,7 @@ Excluded:
 - AI prompt changes
 - artifact version changes
 - analytics / telemetry
+- subject-specific bespoke fallback systems
 
 ### Topic Shapes
 
@@ -223,6 +245,16 @@ Initial topic-shape set:
 - `cause_and_effect`
 - `classification_or_categories`
 
+Classifier rules for the first implementation:
+
+- use deterministic subject + keyword heuristics only
+- do not introduce model-based topic classification in this workstream
+- if multiple shapes match, choose the more concrete and less procedural shape
+- safe default:
+  - technique/feature/device topics → `technique_or_feature`
+  - plural/category/types topics → `classification_or_categories`
+  - otherwise → `principle_or_rule`
+
 Examples:
 
 - `Poetry and Prose Techniques` → `technique_or_feature`
@@ -233,12 +265,12 @@ Examples:
 
 ### Tasks
 
-- [ ] Add a small topic-shape classifier helper
-- [ ] Route fallback concept generation through the topic-shape classifier
-- [ ] Delete the current generic fallback trio builder (`Core Rule`, `Worked Pattern`, `Check And Apply`)
-- [ ] Add one fallback builder per topic shape using the universal concept teaching pattern
-- [ ] Ensure fallback examples are concrete and topic-shaped
-- [ ] Ensure fallback quick checks are single-concept checks, not generic study prompts
+- [x] Add a small topic-shape classifier helper
+- [x] Route fallback concept generation through the topic-shape classifier
+- [x] Delete the current generic fallback trio builder (`Core Rule`, `Worked Pattern`, `Check And Apply`)
+- [x] Add one fallback builder per topic shape using the universal concept teaching pattern
+- [x] Ensure fallback examples are concrete and topic-shaped
+- [x] Ensure fallback quick checks are single-concept checks, not generic study prompts
 
 ### TDD Plan
 
@@ -249,6 +281,7 @@ RED
   - fallback concepts do not emit banned meta-language
   - `Poetry and Prose Techniques` no longer yields procedural generic concepts
   - each fallback concept in one topic is materially distinct from the others
+  - the classifier default path is deterministic and documented
 
 GREEN
 
@@ -292,7 +325,7 @@ Included:
 - explicitly ban meta-instruction language in the prompt
 - add topic-shape generation guidance
 - validate the parsed AI concepts against the strengthened contract
-- version-bump the lesson-plan contract if needed so old weak artifacts do not silently win reuse
+- version-bump the lesson-plan contract so old weak artifacts do not silently win reuse
 
 Excluded:
 
@@ -302,18 +335,18 @@ Excluded:
 
 ### Tasks
 
-- [ ] Rewrite the `v2` concept prompt section in `lesson-plan.ts` to request:
+- [x] Rewrite the `v2` concept prompt section in `lesson-plan.ts` to request:
   - `name`
   - `simple_definition`
   - `example`
   - `explanation`
   - `quick_check`
-- [ ] Add explicit prompt bans on meta-instruction language
-- [ ] Add explicit prompt guidance that concepts must name actual sub-ideas of the topic
-- [ ] Add explicit prompt guidance for topic-shape behavior
-- [ ] Update parsing logic to read the new field names
-- [ ] Use the strengthened validator as the acceptance gate
-- [ ] Version-bump prompt/pedagogy if the contract change should invalidate weak prior artifacts
+- [x] Add explicit prompt bans on meta-instruction language
+- [x] Add explicit prompt guidance that concepts must name actual sub-ideas of the topic
+- [x] Add explicit prompt guidance for topic-shape behavior
+- [x] Update parsing logic to read the new field names
+- [x] Use the strengthened validator as the acceptance gate
+- [x] Version-bump prompt/pedagogy for this contract change so weak prior artifacts do not silently win reuse
 
 ### TDD Plan
 
@@ -324,7 +357,12 @@ RED
   - the prompt explicitly bans generic meta-instruction language
   - parsed AI concepts using the new field names are accepted
   - parsed AI concepts using generic wrappers or banned phrases are rejected
-  - version selection changes if the contract bump is required
+  - version selection changes for the contract bump
+
+Test strategy note:
+
+- do not add tests that depend on live model responses
+- use fixed payload fixtures and parser/validator assertions only
 
 GREEN
 
@@ -374,6 +412,7 @@ Excluded:
 - full telemetry dashboard work
 - admin moderation surfaces
 - learner-facing UI changes
+- live provider quality evaluation in CI
 
 ### Golden Topic Set
 
@@ -387,12 +426,17 @@ Minimum first-pass set:
 
 ### Tasks
 
-- [ ] Add golden tests for concept quality across the minimum topic set
-- [ ] Assert that concept names are topic-shaped and materially distinct
-- [ ] Assert that banned meta-language does not appear
-- [ ] Assert that examples are concrete and not placeholder phrasing
-- [ ] Assert that fallback output and AI-parsed output are both held to the same baseline
-- [ ] Add lightweight rollout notes if version bump / rejection rate may affect lesson generation behavior
+- [x] Add golden tests for concept quality across the minimum topic set
+- [x] Assert that concept names are topic-shaped and materially distinct
+- [x] Assert that banned meta-language does not appear
+- [x] Assert that examples are concrete and not placeholder phrasing
+- [x] Assert that fallback output and AI-parsed output are both held to the same baseline
+- [x] Add lightweight rollout notes if version bump / rejection rate may affect lesson generation behavior
+- [x] Keep rollout guardrails to log-level counters or doc notes only, not dashboards
+
+Rollout note:
+
+- `v2` lesson generation now uses `lesson-plan-v6` and `phase4-v4`. Expect a short-term drop in artifact reuse while the stronger concept contract repopulates the cache. Validation failures should be treated as a signal to fall back cleanly rather than loosening the contract.
 
 ### TDD Plan
 
@@ -445,6 +489,8 @@ Do not include in this workstream:
 - broader pedagogy rewrite outside concept generation/validation
 - full analytics/admin tooling for content review
 - subject-specific bespoke lesson systems
+- live rubric scoring of concept quality
+- replacing the whole lesson authoring model
 
 ## Success Criteria
 

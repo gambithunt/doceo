@@ -38,8 +38,16 @@ export function buildTopicDiscoveryCacheKey(input: {
   gradeId: string;
   provider: string;
   model: string;
+  term?: string;
 }): string {
-  return [input.subjectId, input.curriculumId, input.gradeId, input.provider, input.model].join('::');
+  return [
+    input.subjectId,
+    input.curriculumId,
+    input.gradeId,
+    input.term ?? '',
+    input.provider,
+    input.model
+  ].join('::');
 }
 
 export function getCachedTopicDiscoveryPayload<T>(key: string, now = Date.now()): T | null {

@@ -599,6 +599,7 @@ export function createInitialState(recommendationSignals: CountryRecommendationS
     topicDiscovery: {
       selectedSubjectId: program.curriculum.subjects[0].id,
       input: '',
+      hintSuggestions: [],
       discovery: {
         status: 'idle',
         subjectId: program.curriculum.subjects[0].id,
@@ -803,6 +804,9 @@ export function normalizeAppState(value: unknown): AppState {
     topicDiscovery: {
       ...base.topicDiscovery,
       ...(input.topicDiscovery ?? {}),
+      hintSuggestions: Array.isArray(input.topicDiscovery?.hintSuggestions)
+        ? input.topicDiscovery.hintSuggestions
+        : base.topicDiscovery.hintSuggestions,
       discovery: {
         ...base.topicDiscovery.discovery,
         ...(input.topicDiscovery?.discovery ?? {})
@@ -1019,6 +1023,7 @@ export function deriveLearningState(state: AppState): AppState {
     upcomingExams: Array.isArray(state.upcomingExams) ? state.upcomingExams : [],
     topicDiscovery: {
       ...state.topicDiscovery,
+      hintSuggestions: Array.isArray(state.topicDiscovery.hintSuggestions) ? state.topicDiscovery.hintSuggestions : [],
       selectedSubjectId: state.topicDiscovery.selectedSubjectId || selectedSubject.id,
       discovery: {
         ...state.topicDiscovery.discovery,

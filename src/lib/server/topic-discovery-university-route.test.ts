@@ -157,6 +157,7 @@ describe('topic-discovery university route', () => {
     expect(sentBody.subjectKey).toBe('mathematics');
     expect(sentBody.forceRefresh).toBe(true);
     expect(sentBody.excludeTopicSignatures).toEqual(['sig-calc-1']);
+    expect(sentBody.excludeTopicLabels).toEqual(['Calculus I']);
 
     expect(insertCandidateTopic).toHaveBeenCalledTimes(1);
     expect(insertCandidateTopic).toHaveBeenCalledWith(

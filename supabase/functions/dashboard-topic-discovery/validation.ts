@@ -1,14 +1,18 @@
-export const MAX_TOPIC_DISCOVERY_RESULTS = 12;
-export const MAX_MODEL_CANDIDATES = 8;
+export const MAX_TOPIC_DISCOVERY_RESULTS = 7;
+export const MAX_MODEL_CANDIDATES = 7;
 
 export interface DashboardTopicDiscoveryRequest {
   subjectId: string;
   curriculumId: string;
+  curriculumName?: string;
   gradeId: string;
+  gradeLabel?: string;
+  term?: string;
   forceRefresh: boolean;
   provider?: string;
   model?: string;
   excludeTopicSignatures: string[];
+  excludeTopicLabels: string[];
   limit: number;
   subjectKey?: string;
   subjectDisplay?: string;
@@ -72,6 +76,18 @@ export function parseDashboardTopicDiscoveryRequest(
     return { success: false, error: 'subjectId, curriculumId, and gradeId are required.' };
   }
 
+  if (body.curriculumName !== undefined && typeof body.curriculumName !== 'string') {
+    return { success: false, error: 'curriculumName must be a string when provided.' };
+  }
+
+  if (body.gradeLabel !== undefined && typeof body.gradeLabel !== 'string') {
+    return { success: false, error: 'gradeLabel must be a string when provided.' };
+  }
+
+  if (body.term !== undefined && typeof body.term !== 'string') {
+    return { success: false, error: 'term must be a string when provided.' };
+  }
+
   if (body.forceRefresh !== undefined && typeof body.forceRefresh !== 'boolean') {
     return { success: false, error: 'forceRefresh must be a boolean when provided.' };
   }
@@ -92,6 +108,14 @@ export function parseDashboardTopicDiscoveryRequest(
     return { success: false, error: 'excludeTopicSignatures must be a string array when provided.' };
   }
 
+  if (
+    body.excludeTopicLabels !== undefined &&
+    (!Array.isArray(body.excludeTopicLabels) ||
+      body.excludeTopicLabels.some((item) => typeof item !== 'string' || item.trim().length === 0))
+  ) {
+    return { success: false, error: 'excludeTopicLabels must be a string array when provided.' };
+  }
+
   const rawLimit = typeof body.limit === 'number' && Number.isFinite(body.limit) ? Math.floor(body.limit) : MAX_TOPIC_DISCOVERY_RESULTS;
 
   return {
@@ -99,12 +123,21 @@ export function parseDashboardTopicDiscoveryRequest(
     data: {
       subjectId: cleanLabel(String(body.subjectId)),
       curriculumId: cleanLabel(String(body.curriculumId)),
+      curriculumName: isNonEmptyString(body.curriculumName) ? cleanLabel(body.curriculumName) : undefined,
       gradeId: cleanLabel(String(body.gradeId)),
+      gradeLabel: isNonEmptyString(body.gradeLabel) ? cleanLabel(body.gradeLabel) : undefined,
+      term: isNonEmptyString(body.term) ? cleanLabel(body.term) : undefined,
       forceRefresh: Boolean(body.forceRefresh),
       provider: typeof body.provider === 'string' ? body.provider : undefined,
       model: typeof body.model === 'string' ? body.model : undefined,
       excludeTopicSignatures: Array.isArray(body.excludeTopicSignatures)
         ? body.excludeTopicSignatures
+            .map((item) => cleanLabel(String(item)))
+            .filter((item) => item.length > 0)
+            .slice(0, MAX_TOPIC_DISCOVERY_RESULTS)
+        : [],
+      excludeTopicLabels: Array.isArray(body.excludeTopicLabels)
+        ? body.excludeTopicLabels
             .map((item) => cleanLabel(String(item)))
             .filter((item) => item.length > 0)
             .slice(0, MAX_TOPIC_DISCOVERY_RESULTS)

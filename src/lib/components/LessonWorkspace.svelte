@@ -26,6 +26,7 @@
   const lessonTts = createLessonTts();
   let composer = $state('');
   let chatElement = $state<HTMLDivElement | null>(null);
+  let inputAreaElement = $state<HTMLDivElement | null>(null);
   let expandedConcepts = $state(new Set<string>());
   let askedConceptKeys = $state(new Set<string>());
   let selectedDiagnosticOptionId = $state<string | null>(null);
@@ -48,6 +49,7 @@
   let ratingNote = $state('');
   let ratingPending = $state(false);
   let useDesktopActionRow = $state(false);
+  let composerClearance = $state(0);
   const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
 
   function toSentenceCase(str: string): string {
@@ -185,6 +187,20 @@
       visibleMessages: []
     }
   );
+  const hasTranscriptActivity = $derived.by(() => {
+    const messageEntries = [...conversationView.visibleMessages, ...conversationView.collapsedMessages];
+
+    return messageEntries.some(({ message }) => {
+      if (message.role === 'user') {
+        return true;
+      }
+
+      return ['question', 'feedback', 'wrap', 'side_thread'].includes(message.type);
+    });
+  });
+  const shouldCompactOpeningCard = $derived(
+    Boolean(activeLessonCard && activeLessonCard.stateLabel === 'Start' && hasTranscriptActivity)
+  );
   const activeLessonCardMotionKey = $derived(
     activeLessonCard
       ? [
@@ -236,6 +252,37 @@
 
     activeDiagnosticPrompt = diagnosticPrompt;
     selectedDiagnosticOptionId = null;
+  });
+
+  $effect(() => {
+    if (!inputAreaElement) {
+      composerClearance = 0;
+      return;
+    }
+
+    const readHeight = (): number => {
+      const rect = inputAreaElement?.getBoundingClientRect();
+      return rect ? Math.ceil(rect.height) : 0;
+    };
+
+    composerClearance = readHeight();
+
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const borderBoxEntry = Array.isArray(entry?.borderBoxSize)
+        ? entry.borderBoxSize[0]
+        : entry?.borderBoxSize;
+      const nextHeight = borderBoxEntry?.blockSize ?? readHeight();
+      composerClearance = Math.ceil(nextHeight);
+    });
+
+    observer.observe(inputAreaElement);
+
+    return () => observer.disconnect();
   });
 
   $effect(() => {
@@ -680,139 +727,6 @@
     </header>
 
     <section class="lesson-body">
-      {#if activeLessonCard}
-        <section
-          class="active-lesson-card"
-          aria-label="Active lesson"
-          data-card-state={toDataState(activeLessonCard.stateLabel)}
-        >
-          {#key activeLessonCardMotionKey}
-            <div class="active-lesson-card-transition-group">
-              <div class="active-lesson-card-header">
-                <p class="active-lesson-card-state">{activeLessonCard.stateLabel}</p>
-                <h3>{activeLessonCard.title}</h3>
-                <p class="active-lesson-card-context">{getStageContextCopyForSession(lessonSession)}</p>
-              </div>
-
-              <div
-                class="active-lesson-card-body-shell"
-                class:active-lesson-card-body-shell-with-tts={Boolean(activeLessonCardTtsMessage)}
-              >
-                {#if activeLessonCardTtsMessage}
-                  {@render tutorAudioControl(activeLessonCardTtsMessage, 'active-lesson-card-tts-control')}
-                {/if}
-                <div class="active-lesson-card-body">
-                  {@html renderSimpleMarkdown(activeLessonCard.body)}
-                </div>
-              </div>
-              {#if activeLessonCardTtsMessage}
-                {@render tutorAudioUpgradeNotice(activeLessonCardTtsMessage.id)}
-              {/if}
-
-              {#if activeLessonCard.conceptMiniCards.length > 0}
-                <div class="active-lesson-card-concepts">
-                  <p class="active-lesson-card-concepts-label">Core ideas in this lesson</p>
-                  <div class="active-lesson-card-concept-stack">
-                    {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
-                      {@const key = `active-card-concept-${conceptIndex}`}
-                      <div class="concept-card concept-card-mini" class:expanded={expandedConcepts.has(key)}>
-                        <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
-                          <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
-                          <div class="concept-card-title">
-                            <span class="concept-name">{concept.name}</span>
-                            <span class="concept-summary">{concept.oneLineDefinition ?? concept.summary}</span>
-                          </div>
-                          <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
-                        </button>
-                        {#if expandedConcepts.has(key)}
-                          <div class="concept-card-body">
-                            {#if concept.whyItMatters}
-                              <p class="active-lesson-card-concept-note">{concept.whyItMatters}</p>
-                            {/if}
-                            <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
-                            <div class="concept-example">
-                              <span class="concept-example-label">Example</span>
-                              <div>{@html renderSimpleMarkdown(concept.example)}</div>
-                            </div>
-                            <div class="concept-actions">
-                              <button
-                                type="button"
-                                class="concept-ask-link"
-                                onclick={() => askAboutConcept(concept, key)}
-                                disabled={askedConceptKeys.has(key)}
-                              >
-                                <span>{askedConceptKeys.has(key) ? 'Explanation requested' : 'Ask Doceo to explain this'}</span>
-                                <span aria-hidden="true">→</span>
-                              </button>
-                            </div>
-                          </div>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-
-              {#if activeLessonCard.diagnostic}
-                <section class="active-lesson-card-diagnostic" aria-label="Concept 1 quick check">
-                  <p class="active-lesson-card-diagnostic-label">Quick check</p>
-                  <h4>{activeLessonCard.diagnostic.prompt}</h4>
-                  <div class="active-lesson-card-diagnostic-options" role="radiogroup" aria-label={activeLessonCard.diagnostic.prompt}>
-                    {#each activeLessonCard.diagnostic.options as option}
-                      <label class="diagnostic-option" class:selected={selectedDiagnosticOptionId === option.id}>
-                        <input
-                          type="radio"
-                          name="concept-1-diagnostic"
-                          value={option.id}
-                          checked={selectedDiagnosticOptionId === option.id}
-                          onchange={() => (selectedDiagnosticOptionId = option.id)}
-                        />
-                        <span class="diagnostic-option-copy">
-                          <strong>{option.label}</strong>
-                          <span>{option.text}</span>
-                        </span>
-                      </label>
-                    {/each}
-                  </div>
-                </section>
-              {/if}
-
-              <div class="active-lesson-card-actions">
-                <div class="active-lesson-card-primary">
-                  <button
-                    type="button"
-                    class="btn btn-primary lesson-support-cta active-lesson-card-cta"
-                    onclick={submitActiveLessonCardAction}
-                    disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
-                    aria-describedby={
-                      activeLessonCard.primaryAction === 'submit_diagnostic'
-                        ? undefined
-                        : nextStepCtaState.cue
-                          ? nextStepCueId
-                          : undefined
-                    }
-                  >
-                    <span>{activeLessonCard.ctaLabel}</span>
-                    <span class="next-step-arrow" aria-hidden="true">→</span>
-                  </button>
-                  {#if activeLessonCard.primaryAction !== 'submit_diagnostic' && nextStepCtaState.cue}
-                    <p class="lesson-support-cue active-lesson-card-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
-                  {/if}
-                </div>
-
-                <div class="active-lesson-card-secondary">
-                  {#each visibleQuickActions as action}
-                    <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
-                      {action.label}
-                    </button>
-                  {/each}
-                </div>
-              </div>
-            </div>
-          {/key}
-        </section>
-      {/if}
-
       {#snippet tutorAudioControl(message, variantClass)}
         {@const ttsState = ttsStateForMessage(message)}
         <button
@@ -998,9 +912,153 @@
         {/if}
       {/snippet}
 
-      <!-- Chat area -->
-      <section class="chat-wrap" aria-label="Lesson conversation">
-        <div class="chat-area" bind:this={chatElement} onscroll={onChatScroll}>
+      <section
+        class="chat-wrap"
+        aria-label="Lesson conversation"
+        style={`--lesson-composer-clearance: ${composerClearance}px;`}
+      >
+        <div class="chat-scroll-area" bind:this={chatElement} onscroll={onChatScroll}>
+          {#if activeLessonCard}
+            <section
+              class="active-lesson-card"
+              class:active-lesson-card-with-transcript={hasTranscriptActivity}
+              class:active-lesson-card-compact={shouldCompactOpeningCard}
+              aria-label="Active lesson"
+              data-card-state={toDataState(activeLessonCard.stateLabel)}
+            >
+              {#key activeLessonCardMotionKey}
+                <div class="active-lesson-card-transition-group">
+                  <div class="active-lesson-card-header">
+                    <p class="active-lesson-card-state">{activeLessonCard.stateLabel}</p>
+                    <h3>{activeLessonCard.title}</h3>
+                    {#if !shouldCompactOpeningCard}
+                      <p class="active-lesson-card-context">{getStageContextCopyForSession(lessonSession)}</p>
+                    {/if}
+                  </div>
+
+                  <div
+                    class="active-lesson-card-body-shell"
+                    class:active-lesson-card-body-shell-with-tts={Boolean(activeLessonCardTtsMessage)}
+                  >
+                    {#if activeLessonCardTtsMessage}
+                      {@render tutorAudioControl(activeLessonCardTtsMessage, 'active-lesson-card-tts-control')}
+                    {/if}
+                    <div class="active-lesson-card-body">
+                      {@html renderSimpleMarkdown(activeLessonCard.body)}
+                    </div>
+                  </div>
+                  {#if activeLessonCardTtsMessage}
+                    {@render tutorAudioUpgradeNotice(activeLessonCardTtsMessage.id)}
+                  {/if}
+
+                  {#if activeLessonCard.conceptMiniCards.length > 0}
+                    <div
+                      class="active-lesson-card-concepts"
+                      class:active-lesson-card-concepts-quiet={hasTranscriptActivity}
+                    >
+                      <p class="active-lesson-card-concepts-label">Core ideas in this lesson</p>
+                      <div class="active-lesson-card-concept-stack">
+                        {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
+                          {@const key = `active-card-concept-${conceptIndex}`}
+                          <div class="concept-card concept-card-mini" class:expanded={expandedConcepts.has(key)}>
+                            <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
+                              <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
+                              <div class="concept-card-title">
+                                <span class="concept-name">{concept.name}</span>
+                                <span class="concept-summary">{concept.oneLineDefinition ?? concept.summary}</span>
+                              </div>
+                              <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
+                            </button>
+                            {#if expandedConcepts.has(key)}
+                              <div class="concept-card-body">
+                                {#if concept.whyItMatters}
+                                  <p class="active-lesson-card-concept-note">{concept.whyItMatters}</p>
+                                {/if}
+                                <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
+                                <div class="concept-example">
+                                  <span class="concept-example-label">Example</span>
+                                  <div>{@html renderSimpleMarkdown(concept.example)}</div>
+                                </div>
+                                <div class="concept-actions">
+                                  <button
+                                    type="button"
+                                    class="concept-ask-link"
+                                    onclick={() => askAboutConcept(concept, key)}
+                                    disabled={askedConceptKeys.has(key)}
+                                  >
+                                    <span>{askedConceptKeys.has(key) ? 'Explanation requested' : 'Ask Doceo to explain this'}</span>
+                                    <span aria-hidden="true">→</span>
+                                  </button>
+                                </div>
+                              </div>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+
+                  {#if activeLessonCard.diagnostic}
+                    <section class="active-lesson-card-diagnostic" aria-label="Concept 1 quick check">
+                      <p class="active-lesson-card-diagnostic-label">Quick check</p>
+                      <h4>{activeLessonCard.diagnostic.prompt}</h4>
+                      <div class="active-lesson-card-diagnostic-options" role="radiogroup" aria-label={activeLessonCard.diagnostic.prompt}>
+                        {#each activeLessonCard.diagnostic.options as option}
+                          <label class="diagnostic-option" class:selected={selectedDiagnosticOptionId === option.id}>
+                            <input
+                              type="radio"
+                              name="concept-1-diagnostic"
+                              value={option.id}
+                              checked={selectedDiagnosticOptionId === option.id}
+                              onchange={() => (selectedDiagnosticOptionId = option.id)}
+                            />
+                            <span class="diagnostic-option-copy">
+                              <strong>{option.label}</strong>
+                              <span>{option.text}</span>
+                            </span>
+                          </label>
+                        {/each}
+                      </div>
+                    </section>
+                  {/if}
+
+                  <div class="active-lesson-card-actions">
+                    <div class="active-lesson-card-primary">
+                      <button
+                        type="button"
+                        class="btn btn-primary lesson-support-cta active-lesson-card-cta"
+                        onclick={submitActiveLessonCardAction}
+                        disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
+                        aria-describedby={
+                          activeLessonCard.primaryAction === 'submit_diagnostic'
+                            ? undefined
+                            : nextStepCtaState.cue
+                              ? nextStepCueId
+                              : undefined
+                        }
+                      >
+                        <span>{activeLessonCard.ctaLabel}</span>
+                        <span class="next-step-arrow" aria-hidden="true">→</span>
+                      </button>
+                      {#if activeLessonCard.primaryAction !== 'submit_diagnostic' && nextStepCtaState.cue}
+                        <p class="lesson-support-cue active-lesson-card-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
+                      {/if}
+                    </div>
+
+                    <div class="active-lesson-card-secondary">
+                      {#each visibleQuickActions as action}
+                        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
+                          {action.label}
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+              {/key}
+            </section>
+          {/if}
+
+          <div class="chat-area">
           {#if conversationView.completedUnits.length > 0}
             <section class="completed-unit-summary-list" aria-label="Completed lesson units">
               {#each conversationView.completedUnits as unit}
@@ -1049,6 +1107,7 @@
               <LoadingDots label="Doceo is thinking" />
             </article>
           {/if}
+          </div>
         </div>
 
         {#if showScrollDown}
@@ -1059,7 +1118,7 @@
       </section>
 
       <!-- Composer -->
-      <div class="input-area">
+      <div class="input-area" bind:this={inputAreaElement}>
         {#if lessonSession.status === 'complete'}
           <section class="rating-panel">
             <div class="rating-copy">
@@ -1799,6 +1858,22 @@
       box-shadow 220ms var(--ease-soft);
   }
 
+  .active-lesson-card-with-transcript {
+    gap: 0.88rem;
+    padding: 1rem 1rem 0.88rem;
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--accent) 8%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 96%, transparent)
+      );
+  }
+
+  .active-lesson-card-compact {
+    gap: 0.72rem;
+    padding-block: 0.92rem 0.82rem;
+  }
+
   .active-lesson-card-transition-group {
     display: grid;
     gap: inherit;
@@ -1840,6 +1915,10 @@
     max-width: 42rem;
   }
 
+  .active-lesson-card-compact h3 {
+    font-size: clamp(1rem, 1.7vw, 1.2rem);
+  }
+
   .active-lesson-card-body-shell {
     position: relative;
   }
@@ -1856,6 +1935,13 @@
     border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-strong));
     background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
     box-shadow: var(--glass-inset-tile);
+  }
+
+  .active-lesson-card-compact .active-lesson-card-body {
+    gap: 0.55rem;
+    padding: 0.84rem 0.92rem;
+    border-color: color-mix(in srgb, var(--accent) 14%, var(--border-strong));
+    background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
   }
 
   .active-lesson-card-tts-control {
@@ -1882,6 +1968,10 @@
     gap: 0.7rem;
   }
 
+  .active-lesson-card-concepts-quiet {
+    gap: 0.5rem;
+  }
+
   .active-lesson-card-concepts-label,
   .active-lesson-card-diagnostic-label {
     margin: 0;
@@ -1894,6 +1984,31 @@
   .active-lesson-card-concept-stack {
     display: grid;
     gap: 0.65rem;
+  }
+
+  .active-lesson-card-concepts-quiet .active-lesson-card-concepts-label {
+    color: color-mix(in srgb, var(--muted) 88%, var(--text-soft) 12%);
+  }
+
+  .active-lesson-card-concepts-quiet .active-lesson-card-concept-stack {
+    gap: 0.45rem;
+  }
+
+  .active-lesson-card-concepts-quiet .concept-card-mini {
+    opacity: 0.94;
+  }
+
+  .active-lesson-card-concepts-quiet .concept-card-mini .concept-card-header {
+    background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+    border-color: color-mix(in srgb, var(--border-strong) 78%, transparent);
+    box-shadow: none;
+  }
+
+  .active-lesson-card-concepts-quiet .concept-card-mini.expanded .concept-card-header,
+  .active-lesson-card-concepts-quiet .concept-card-mini .concept-card-body {
+    background: color-mix(in srgb, var(--surface-strong) 97%, transparent);
+    border-color: color-mix(in srgb, var(--border-strong) 76%, transparent);
+    box-shadow: none;
   }
 
   .concept-card-mini {
@@ -2010,22 +2125,26 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background: color-mix(in srgb, var(--surface) 84%, transparent);
   }
 
-  .active-lesson-card + .chat-wrap {
-    background: color-mix(in srgb, var(--surface) 84%, transparent);
+  .chat-scroll-area {
+    display: grid;
+    gap: 1.1rem;
+    align-content: start;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 1.3rem 1.3rem calc(1rem + var(--lesson-composer-clearance, 0px));
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+    flex: 1;
   }
 
   .chat-area {
     display: grid;
     gap: 1.1rem;
     align-content: start;
-    min-height: 0;
-    overflow-y: auto;
-    padding: 1.3rem 1.3rem 1rem;
-    scroll-behavior: smooth;
-    overscroll-behavior: contain;
-    flex: 1;
+    min-height: min-content;
   }
 
   .completed-unit-summary-list {
@@ -2139,7 +2258,7 @@
 
   .scroll-down-pill {
     position: absolute;
-    bottom: 0.9rem;
+    bottom: calc(0.9rem + var(--lesson-composer-clearance, 0px));
     left: 50%;
     transform: translateX(-50%);
     display: inline-flex;

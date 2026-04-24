@@ -19,4 +19,17 @@
 - Read `/docs/design-langauge.md` before implementing or revising app UI so new work matches the established component language
 - Use `/docs/design-langauge.md` as the local source of truth for component hierarchy, tile states, spacing, and copy restraint
 
+## Workstream usage
+Only use workstreams from:
+docs/workstreams/active/
+Do not use workstreams from:
+docs/workstreams/archive/
+docs/workstreams/archived/
+docs/workstreams/legacy/
+docs/workstreams/completed/
+unless the prompt explicitly names one of those files.
+When implementing a task, treat the named workstream file as the source of truth.
+Do not infer requirements from similarly named older workstreams.
+When a workstream is completed move it to the completed dir
+
 ----

@@ -1392,6 +1392,110 @@ describe('topic discovery dashboard state', () => {
     expect(state.topicDiscovery.discovery.error).toMatch(/discovery temporarily unavailable/i);
   });
 
+  it('forwards term-aware discovery context to the topic discovery route', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculum: 'CAPS',
+        curriculumId: 'caps',
+        grade: 'Grade 6',
+        gradeId: 'grade-6',
+        term: 'Term 3'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+
+    fetchMock.mockImplementation(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url.endsWith('/api/curriculum/topic-discovery')) {
+        expect(JSON.parse(String(init?.body ?? '{}'))).toEqual(
+          expect.objectContaining({
+            subjectId: subject.id,
+            subjectDisplay: subject.name,
+            curriculumId: 'caps',
+            curriculumName: 'CAPS',
+            gradeId: 'grade-6',
+            gradeLabel: 'Grade 6',
+            term: 'Term 3'
+          })
+        );
+
+        return new Response(
+          JSON.stringify({
+            topics: [createDiscoverySuggestion()],
+            provider: 'github-models',
+            model: 'openai/gpt-4.1-nano',
+            refreshed: false
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      return new Response(JSON.stringify({ persisted: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(baseState);
+
+    await store.loadTopicDiscovery(subject.id);
+
+    expect(get(store).topicDiscovery.discovery.provider).toBe('github-models');
+  });
+
+  it('uses local curriculum topics as a last-resort backup when discovery still returns empty', async () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculum: 'IEB',
+        curriculumId: 'ieb',
+        grade: 'Grade 11',
+        gradeId: 'ieb-grade-11',
+        term: 'Term 2'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+    const expectedLabel = subject.topics[0]?.subtopics[0]?.name ?? subject.topics[0]?.name;
+
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          topics: [],
+          provider: 'graph-fallback',
+          model: 'openai/gpt-4.1-nano',
+          refreshed: false
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const store = createAppStore(baseState);
+
+    await store.loadTopicDiscovery(subject.id);
+
+    const state = get(store);
+
+    expect(state.topicDiscovery.discovery.status).toBe('ready');
+    expect(state.topicDiscovery.discovery.provider).toBe('local-backup');
+    expect(state.topicDiscovery.discovery.topics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          topicLabel: expectedLabel
+        })
+      ])
+    );
+  });
+
   it('keeps the previous topics visible as stale when a refresh fails', async () => {
     const baseState = {
       ...createInitialState(),
@@ -1440,6 +1544,47 @@ describe('topic discovery dashboard state', () => {
     expect(state.topicDiscovery.discovery.status).toBe('stale');
     expect(state.topicDiscovery.discovery.topics).toEqual([existingTopic]);
     expect(state.topicDiscovery.discovery.error).toMatch(/refresh timed out/i);
+  });
+
+  it('stores subject hints separately from ranked discovery topics', () => {
+    const baseState = {
+      ...createInitialState(),
+      profile: {
+        ...createInitialState().profile,
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      }
+    };
+    const subject = baseState.curriculum.subjects[0]!;
+    const existingTopic = createDiscoverySuggestion({
+      topicLabel: 'Fractions',
+      topicSignature: `${subject.id}::caps::grade-6::fractions`
+    });
+    const store = createAppStore({
+      ...baseState,
+      topicDiscovery: {
+        ...baseState.topicDiscovery,
+        selectedSubjectId: subject.id,
+        discovery: {
+          status: 'ready',
+          subjectId: subject.id,
+          topics: [existingTopic],
+          provider: 'github-models',
+          model: 'openai/gpt-4.1-nano',
+          requestId: 'request-existing-1',
+          error: null,
+          lastLoadedAt: '2026-04-02T12:00:00.000Z',
+          refreshed: false
+        }
+      }
+    });
+
+    store.injectHintSuggestions(subject.id, ['Fractions', 'Equivalent Fractions', 'Ratio Tables']);
+
+    const state = get(store);
+
+    expect(state.topicDiscovery.discovery.topics).toEqual([existingTopic]);
+    expect(state.topicDiscovery.hintSuggestions).toEqual(['Equivalent Fractions', 'Ratio Tables']);
   });
 });
 

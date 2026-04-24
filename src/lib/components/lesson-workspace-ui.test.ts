@@ -545,10 +545,10 @@ describe('lesson workspace UI helpers', () => {
       options: expect.arrayContaining([
         expect.objectContaining({
           id: 'a',
-          text: 'Core idea one names the first rule before you do anything else.'
+          text: 'This is the first core idea in detail.'
         }),
         expect.objectContaining({
-          id: 'b',
+          id: 'c',
           text: 'Jump straight to an answer without naming the rule.'
         })
       ])
@@ -847,5 +847,160 @@ describe('lesson workspace UI helpers', () => {
       'loop-2-user',
       'loop-2-feedback'
     ]);
+  });
+
+  it('suppresses the redundant start mirror when the focused opening card is already showing it', () => {
+    const conversation = deriveConversationViewForSession(
+      {
+        lessonFlowVersion: 'v2',
+        status: 'active',
+        messages: [
+          createV2Message('start-stage', '◉ Orientation', {
+            role: 'system',
+            type: 'stage_start',
+            checkpoint: 'start',
+            loopIndex: null
+          }),
+          createV2Message('start-teach', 'Start with the big picture.', {
+            checkpoint: 'start',
+            loopIndex: null
+          }),
+          createV2Message('start-question', 'Can you explain this differently?', {
+            role: 'user',
+            type: 'question',
+            checkpoint: 'start',
+            loopIndex: null
+          })
+        ],
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'start',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'orientation',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson,
+      3
+    );
+
+    expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual([
+      'start-stage',
+      'start-question'
+    ]);
+    expect(conversation.collapsedMessages).toEqual([]);
+  });
+
+  it('derives aligned interpretation options for metaphor quick checks', () => {
+    const lesson = {
+      flowV2: {
+        concepts: [
+          {
+            name: 'Metaphor',
+            summary: 'A metaphor describes one thing as another to sharpen meaning.',
+            detail: 'Calling the moon a “ghostly galleon” makes it feel strange, distant, and dramatic.',
+            example: '“The moon was a ghostly galleon.”',
+            oneLineDefinition: 'A metaphor describes one thing as another to sharpen meaning.',
+            quickCheck: 'What does calling the moon a “ghostly galleon” suggest?'
+          }
+        ]
+      }
+    };
+
+    expect(deriveConcept1EarlyDiagnostic(lesson)).toMatchObject({
+      prompt: 'What does calling the moon a “ghostly galleon” suggest?',
+      correctOptionId: 'a',
+      options: [
+        {
+          id: 'a',
+          label: 'A',
+          text: 'Calling the moon a “ghostly galleon” makes it feel strange, distant, and dramatic.'
+        },
+        {
+          id: 'b',
+          label: 'B',
+          text: 'It means the moon is literally a ship sailing at sea.'
+        },
+        {
+          id: 'c',
+          label: 'C',
+          text: 'A metaphor describes one thing as another to sharpen meaning.'
+        },
+        {
+          id: 'd',
+          label: 'D',
+          text: 'It makes the moon feel cheerful, ordinary, and safe.'
+        }
+      ]
+    });
+  });
+
+  it('derives sense-based options for imagery quick checks', () => {
+    const lesson = {
+      flowV2: {
+        concepts: [
+          {
+            name: 'Imagery',
+            summary: 'Imagery uses sensory language to help the reader see, hear, or feel a scene.',
+            detail: 'The detail helps the reader hear the scene and feel its harsh mood.',
+            example: '“Cold rain tapped against the tin roof.”',
+            oneLineDefinition: 'Imagery uses sensory language to help the reader see, hear, or feel a scene.',
+            quickCheck: 'Which sense stands out most in this line?'
+          }
+        ]
+      }
+    };
+
+    expect(deriveConcept1EarlyDiagnostic(lesson)).toMatchObject({
+      prompt: 'Which sense stands out most in this line?',
+      correctOptionId: 'a',
+      options: [
+        { id: 'a', label: 'A', text: 'Hearing' },
+        { id: 'b', label: 'B', text: 'Sight' },
+        { id: 'c', label: 'C', text: 'Taste' },
+        { id: 'd', label: 'D', text: 'Touch' }
+      ]
+    });
+  });
+
+  it('prefers artifact diagnostics over rebuilding quick-check options in the UI', () => {
+    const lesson = {
+      flowV2: {
+        concepts: [
+          {
+            name: 'Metaphor',
+            summary: 'A metaphor describes one thing as another to sharpen meaning.',
+            detail: 'Calling the moon a “ghostly galleon” makes it feel strange, distant, and dramatic.',
+            example: '“The moon was a ghostly galleon.”',
+            oneLineDefinition: 'A metaphor describes one thing as another to sharpen meaning.',
+            quickCheck: 'What does calling the moon a “ghostly galleon” suggest?',
+            diagnostic: {
+              prompt: 'What does calling the moon a “ghostly galleon” suggest?',
+              options: [
+                { id: 'a', label: 'A', text: 'It makes the moon feel strange, distant, and dramatic.' },
+                { id: 'b', label: 'B', text: 'It proves the moon is literally a ship.' },
+                { id: 'c', label: 'C', text: 'It creates a cheerful, ordinary mood.' },
+                { id: 'd', label: 'D', text: 'It only names the device without showing any effect.' }
+              ],
+              correctOptionId: 'a'
+            }
+          }
+        ]
+      }
+    };
+
+    expect(deriveConcept1EarlyDiagnostic(lesson)).toEqual({
+      prompt: 'What does calling the moon a “ghostly galleon” suggest?',
+      options: [
+        { id: 'a', label: 'A', text: 'It makes the moon feel strange, distant, and dramatic.' },
+        { id: 'b', label: 'B', text: 'It proves the moon is literally a ship.' },
+        { id: 'c', label: 'C', text: 'It creates a cheerful, ordinary mood.' },
+        { id: 'd', label: 'D', text: 'It only names the device without showing any effect.' }
+      ],
+      correctOptionId: 'a'
+    });
   });
 });

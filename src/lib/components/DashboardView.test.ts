@@ -131,6 +131,7 @@ function createDashboardState(): AppState {
     topicDiscovery: {
       ...state.topicDiscovery,
       selectedSubjectId: state.curriculum.subjects[0]?.id ?? state.topicDiscovery.selectedSubjectId,
+      hintSuggestions: ['Ratio Tables', 'Word Problems'],
       discovery: {
         ...state.topicDiscovery.discovery,
         status: 'ready' as const,
@@ -181,7 +182,7 @@ describe('DashboardView', () => {
 
     expect(heroCard).not.toBeNull();
 
-    await fireEvent.click(within(heroCard!).getByRole('button', { name: /resume/i }));
+    await fireEvent.click(within(heroCard as HTMLElement).getByRole('button', { name: /resume/i }));
 
     expect(mockAppState.resumeSession).toHaveBeenCalledWith('lesson-session-1');
   });
@@ -290,6 +291,23 @@ describe('DashboardView', () => {
     expect(screen.getByText('Suggested topics')).toBeInTheDocument();
   });
 
+  it('renders subject hint chips separately from the ranked discovery rail and uses them to fill the composer', async () => {
+    const state = createDashboardState();
+
+    render(DashboardView, {
+      props: { state }
+    });
+
+    expect(screen.getByText('Need a prompt? Try one.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ratio Tables' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Word Problems' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start lesson on equivalent fractions/i })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Ratio Tables' }));
+
+    expect(mockAppState.setTopicDiscoveryInput).toHaveBeenCalledWith('Ratio Tables');
+  });
+
   it('keeps lower dashboard sections unchanged when the hero switches to a recommended mission state', () => {
     const state = createDashboardState();
 
@@ -340,8 +358,8 @@ describe('DashboardView', () => {
     const recentCard = screen.getByText('Fractions').closest('.recent-card');
 
     expect(recentCard).not.toBeNull();
-    expect(within(recentCard!).getByText('Completed')).toBeInTheDocument();
-    expect(within(recentCard!).queryByText(/Stage .* of 6/i)).not.toBeInTheDocument();
+    expect(within(recentCard as HTMLElement).getByText('Completed')).toBeInTheDocument();
+    expect(within(recentCard as HTMLElement).queryByText(/Stage .* of 6/i)).not.toBeInTheDocument();
   });
 
   it('does not expose a primary resume action for completed recent sessions', async () => {
@@ -369,9 +387,9 @@ describe('DashboardView', () => {
     const recentCard = screen.getByText('Fractions').closest('.recent-card');
 
     expect(recentCard).not.toBeNull();
-    expect(within(recentCard!).queryByRole('button', { name: /resume/i })).not.toBeInTheDocument();
+    expect(within(recentCard as HTMLElement).queryByRole('button', { name: /resume/i })).not.toBeInTheDocument();
 
-    await fireEvent.click(within(recentCard!).getByRole('button', { name: /^restart$/i }));
+    await fireEvent.click(within(recentCard as HTMLElement).getByRole('button', { name: /^restart$/i }));
 
     expect(mockAppState.restartLessonSession).toHaveBeenCalledWith('lesson-session-complete');
   });
@@ -413,7 +431,9 @@ describe('DashboardView', () => {
     expect(screen.getByRole('button', { name: /refresh topics/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /let's go/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /start over/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /ratio tables/i })).toBeDisabled();
+    screen.getAllByRole('button', { name: /ratio tables/i }).forEach((button) => {
+      expect(button).toBeDisabled();
+    });
     expect(screen.getByRole('button', { name: /start lesson on area/i })).toBeDisabled();
 
     pendingLaunch.resolve();
@@ -431,7 +451,10 @@ describe('DashboardView', () => {
       props: { state }
     });
 
-    await fireEvent.click(screen.getByRole('button', { name: /ratio tables/i }));
+    const shortlistButton = screen.getByText('Ratio tables').closest('button');
+    expect(shortlistButton).not.toBeNull();
+
+    await fireEvent.click(shortlistButton!);
 
     expect(screen.getByRole('button', { name: new RegExp(state.curriculum.subjects[0]?.name ?? 'Mathematics', 'i') })).toBeDisabled();
     expect(screen.getByRole('button', { name: /refresh topics/i })).toBeDisabled();
@@ -460,7 +483,10 @@ describe('DashboardView', () => {
       props: { state }
     });
 
-    await fireEvent.click(screen.getByRole('button', { name: /ratio tables/i }));
+    const shortlistButton = screen.getByText('Ratio tables').closest('button');
+    expect(shortlistButton).not.toBeNull();
+
+    await fireEvent.click(shortlistButton!);
 
     expect(screen.getByText(loadingCopy.headline)).toBeInTheDocument();
 

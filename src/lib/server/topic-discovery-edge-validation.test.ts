@@ -11,23 +11,34 @@ describe('topic discovery edge validation', () => {
       parseDashboardTopicDiscoveryRequest({
         subjectId: 'caps-grade-6-mathematics',
         curriculumId: 'caps',
+        curriculumName: 'CAPS',
         gradeId: 'grade-6',
+        gradeLabel: 'Grade 6',
+        subjectDisplay: 'Mathematics',
+        term: 'Term 2',
         forceRefresh: true,
         provider: 'github-models',
         model: 'openai/gpt-4.1-nano',
-        excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions']
+        excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions'],
+        excludeTopicLabels: ['Fractions']
       })
     ).toEqual({
       success: true,
       data: {
         subjectId: 'caps-grade-6-mathematics',
         curriculumId: 'caps',
+        curriculumName: 'CAPS',
         gradeId: 'grade-6',
+        gradeLabel: 'Grade 6',
         forceRefresh: true,
         provider: 'github-models',
         model: 'openai/gpt-4.1-nano',
         excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions'],
-        limit: 12
+        excludeTopicLabels: ['Fractions'],
+        limit: 7,
+        subjectKey: undefined,
+        subjectDisplay: 'Mathematics',
+        term: 'Term 2'
       }
     });
 
@@ -68,8 +79,7 @@ describe('topic discovery edge validation', () => {
       'Decimals',
       'Percentages',
       'Algebra',
-      'Geometry',
-      'Patterns'
+      'Geometry'
     ]);
   });
 

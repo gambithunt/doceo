@@ -328,8 +328,12 @@ interface GithubModelsRequestBody {
   messages: GithubModelsMessage[];
 }
 
+interface PassthroughMessagesRequest {
+  messages: GithubModelsMessage[];
+}
+
 type EdgePayload = {
-  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest | SubjectVerifyRequest | InstitutionVerifyRequest | ProgrammeVerifyRequest | RevisionPackEdgeRequest;
+  request: AskQuestionRequest | SubjectHintsRequest | TopicShortlistRequest | LessonSelectorRequest | LessonPlanRequest | LessonChatRequest | SubjectVerifyRequest | InstitutionVerifyRequest | ProgrammeVerifyRequest | RevisionPackEdgeRequest | PassthroughMessagesRequest;
   mode?: AiMode;
   modelTier?: ModelTier;
 };
@@ -370,6 +374,7 @@ function isAiMode(value: unknown): value is AiMode {
     value === 'lesson-selector' ||
     value === 'lesson-plan' ||
     value === 'lesson-chat' ||
+    value === 'lesson-evaluate' ||
     value === 'subject-verify' ||
     value === 'institution-verify' ||
     value === 'programme-verify' ||
@@ -1272,8 +1277,10 @@ function buildModeRequest(mode: AiMode, request: EdgePayload['request'], model: 
         { role: 'system', content: buildRevisionPackSystemPrompt() },
         { role: 'user', content: buildRevisionPackUserPrompt(request as RevisionPackEdgeRequest) }
       ]);
+    case 'lesson-evaluate':
+      return buildGithubRequest(model, 0.1, (request as PassthroughMessagesRequest).messages);
     case 'revision-evaluate':
-      return buildGithubRequest(model, 0.1, (request as { messages: GithubModelsMessage[] }).messages);
+      return buildGithubRequest(model, 0.1, (request as PassthroughMessagesRequest).messages);
   }
 }
 
@@ -1352,6 +1359,7 @@ function buildModeResponse(
         ? { ...response, provider: PROVIDER, modelTier, model, ...telemetry }
         : null;
     }
+    case 'lesson-evaluate':
     case 'revision-evaluate': {
       return { content, provider: PROVIDER, modelTier, model, ...telemetry };
     }

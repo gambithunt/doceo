@@ -174,6 +174,13 @@ export interface QuestionOption {
   text: string;
 }
 
+export interface ConceptDiagnostic {
+  prompt: string;
+  options: QuestionOption[];
+  correctOptionId: string;
+  rationale?: string;
+}
+
 export interface Question {
   id: string;
   lessonId: string;
@@ -207,8 +214,11 @@ export interface ConceptItem {
   summary: string;
   detail: string;
   example: string;
+  simpleDefinition?: string;
+  explanation?: string;
   oneLineDefinition?: string;
   quickCheck?: string;
+  diagnostic?: ConceptDiagnostic;
   conceptType?: string;
   curriculumAlignment?: ConceptCurriculumAlignment;
   whyItMatters?: string;
@@ -902,6 +912,7 @@ export interface RevisionPackResponse {
 export interface TopicDiscoveryState {
   selectedSubjectId: string;
   input: string;
+  hintSuggestions: string[];
   discovery: TopicDiscoveryResultState;
   shortlist: TopicShortlistState;
 }

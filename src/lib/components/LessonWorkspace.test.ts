@@ -273,6 +273,47 @@ beforeAll(() => {
     writable: true
   });
 
+  class ResizeObserverMock {
+    callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+
+    observe(): void {
+      this.callback(
+        [
+          {
+            borderBoxSize: [
+              {
+                blockSize: 128,
+                inlineSize: 0
+              }
+            ],
+            contentRect: {
+              width: 0,
+              height: 96,
+              x: 0,
+              y: 0,
+              top: 0,
+              right: 0,
+              bottom: 96,
+              left: 0,
+              toJSON: () => ({})
+            }
+          } as ResizeObserverEntry
+        ],
+        this as unknown as ResizeObserver
+      );
+    }
+
+    unobserve(): void {}
+
+    disconnect(): void {}
+  }
+
+  vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -706,9 +747,98 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
     const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
 
     expect(conversation).toBeInTheDocument();
-    expect(within(conversation).getByText('Here is the first worked example.')).toBeInTheDocument();
+    expect(within(conversation).getByRole('region', { name: 'Active lesson' })).toBe(activeCard);
+    expect(within(activeCard).getByText('Here is the first worked example.')).toBeInTheDocument();
+    expect(within(conversation).getAllByText('Here is the first worked example.')).toHaveLength(2);
     expect(within(conversation).getByText('Now notice how the same pattern repeats.')).toBeInTheDocument();
-    expect(activeCard.compareDocumentPosition(conversation)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(activeCard.compareDocumentPosition(within(conversation).getByText('Now notice how the same pattern repeats.').closest('article')!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it('keeps expanded concept mini cards inside the lesson conversation scroll region', async () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: false
+      }
+    });
+
+    const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
+
+    await fireEvent.click(screen.getByRole('button', { name: /Core idea one/i }));
+
+    expect(within(conversation).getByText('This is the first core idea in detail.')).toBeInTheDocument();
+    expect(within(conversation).getByText('Use the first example to see the rule in action.')).toBeInTheDocument();
+    expect(conversation).toHaveStyle('--lesson-composer-clearance: 128px');
+  });
+
+  it('compacts the opening card, quiets the concept stack, and suppresses the duplicate opening mirror once the learner is interacting', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'opening-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Start with the big picture.',
+        stage: 'orientation',
+        v2Context: {
+          checkpoint: 'start',
+          loopIndex: null
+        }
+      }),
+      createMessage({
+        id: 'opening-question',
+        role: 'user',
+        type: 'question',
+        content: 'Can you explain this differently?',
+        stage: 'orientation',
+        v2Context: {
+          checkpoint: 'start',
+          loopIndex: null
+        }
+      })
+    ], {
+      currentStage: 'orientation',
+      stagesCompleted: [],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'orientation',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+    const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
+    const conceptSection = within(activeCard).getByText('Core ideas in this lesson').closest('div');
+
+    expect(activeCard).toHaveClass('active-lesson-card-compact');
+    expect(activeCard).toHaveClass('active-lesson-card-with-transcript');
+    expect(within(activeCard).queryByText('Get the big picture before you dive into the details.')).not.toBeInTheDocument();
+    expect(conceptSection).toHaveClass('active-lesson-card-concepts-quiet');
+    expect(within(conversation).getAllByText('Start with the big picture.')).toHaveLength(1);
+    expect(within(conversation).getByText('Can you explain this differently?')).toBeInTheDocument();
   });
 
   it('renders the tutor audio control inside the focused lesson card for the active teaching message', () => {
@@ -1574,10 +1704,10 @@ describe('LessonWorkspace Phase 5 progress strip states', () => {
 
     expect(screen.getByText('See the idea working in real situations.')).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Active lesson' })).getByLabelText('Play tutor audio')).toBeInTheDocument();
-    expect(
-      within(screen.getByRole('region', { name: 'Lesson conversation' })).getAllByLabelText('Play tutor audio')
-    ).toHaveLength(1);
-    expect(screen.getByText("Good. Let's move into Worked Example.").closest('article')).not.toHaveClass('bubble-with-tts');
+    expect(within(screen.getByRole('region', { name: 'Lesson conversation' })).getAllByLabelText('Play tutor audio')).toHaveLength(2);
+    const wrapBubble = screen.getByText("Good. Let's move into Worked Example.").closest('article');
+    expect(wrapBubble).not.toHaveClass('bubble-with-tts');
+    expect(within(wrapBubble!).queryByLabelText('Play tutor audio')).not.toBeInTheDocument();
   });
 });
 

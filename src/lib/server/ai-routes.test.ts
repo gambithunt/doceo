@@ -524,8 +524,8 @@ describe('ai routes', () => {
       expect.objectContaining({
         route: 'lesson-plan',
         status: 'success',
-        promptVersion: 'lesson-plan-v5',
-        pedagogyVersion: 'phase4-v3',
+        promptVersion: 'lesson-plan-v8',
+        pedagogyVersion: 'phase4-v6',
         model: 'openai/gpt-4.1-mini'
       })
     );

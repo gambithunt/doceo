@@ -95,27 +95,67 @@ function parseJson<T>(value: string): T | null {
   }
 }
 
-function buildGithubRequest(model: string, subjectLabel: string, graphTopics: GraphTopicRow[], aliases: GraphAliasRow[], forceRefresh: boolean) {
+function titleCaseLabel(value: string): string {
+  return value
+    .trim()
+    .split(/[\s-]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function resolveSchoolSubjectDisplay(body: {
+  subjectDisplay?: string;
+  subjectId: string;
+}, graphSubject?: SubjectRow | null): string {
+  if (body.subjectDisplay && body.subjectDisplay.trim().length > 0) {
+    return body.subjectDisplay.trim();
+  }
+
+  if (graphSubject?.label && graphSubject.label.trim().length > 0) {
+    return graphSubject.label.trim();
+  }
+
+  return titleCaseLabel(body.subjectId.replace(/^subject-stub-/, '').replace(/[^a-z0-9]+/gi, ' '));
+}
+
+function buildGithubRequest(input: {
+  model: string;
+  subjectLabel: string;
+  curriculumName?: string;
+  curriculumId: string;
+  gradeLabel?: string;
+  gradeId: string;
+  term?: string;
+  graphTopics: GraphTopicRow[];
+  aliases: GraphAliasRow[];
+  forceRefresh: boolean;
+}) {
   return {
-    model,
-    temperature: forceRefresh ? 0.65 : 0.4,
+    model: input.model,
+    temperature: input.forceRefresh ? 0.65 : 0.4,
     messages: [
       {
         role: 'system',
         content: [
           'You generate dashboard topic suggestions for a school learning platform.',
           'Return JSON only with exactly one key: topics.',
-          'topics must be an array of 6 to 8 short, concrete topic labels.',
+          'topics must be an array of exactly 7 short, concrete topic labels.',
+          'Prioritize topics that are fresh and relevant for the learner’s current curriculum, grade, and term.',
           'Each label must be a curriculum topic name, not a sentence, instruction, or study tip.',
+          'Prefer the wording used by the curriculum or subject guide when possible.',
           'Avoid duplicates, generic labels, and labels that only restate the subject name.'
         ].join(' ')
       },
       {
         role: 'user',
         content: JSON.stringify({
-          subject: subjectLabel,
-          existing_topics: graphTopics.map((topic) => topic.label).slice(0, 24),
-          existing_aliases: aliases.map((alias) => alias.alias_label).slice(0, 24),
+          subject: input.subjectLabel,
+          curriculum: input.curriculumName ?? input.curriculumId,
+          grade: input.gradeLabel ?? input.gradeId,
+          term: input.term ?? null,
+          existing_topics: input.graphTopics.map((topic) => topic.label).slice(0, 24),
+          existing_aliases: input.aliases.map((alias) => alias.alias_label).slice(0, 24),
           required_output: {
             topics: ['string']
           }
@@ -130,7 +170,7 @@ function buildUniversityGithubRequest(input: {
   subjectDisplay: string;
   level: string;
   year: string;
-  excludeLabels: string[];
+  excludeTopicLabels: string[];
 }) {
   return {
     model: input.model,
@@ -141,7 +181,7 @@ function buildUniversityGithubRequest(input: {
         content: [
           'You generate textbook-aligned topic suggestions for a university dashboard.',
           'Return JSON only with exactly one key: topics.',
-          'topics must be an array of 6 to 8 objects with shape { "label": string, "textbookContext": string }.',
+          'topics must be an array of exactly 7 objects with shape { "label": string, "textbookContext": string }.',
           'Each label must be a specific topic taught in a standard textbook or syllabus for the requested subject and year.',
           'Each textbookContext must cite the textbook chapter, section, or course module the topic is drawn from (one short sentence).',
           'Forbidden: generic labels such as "Foundations", "Key Concepts", "Advanced Topics", "Introduction", "Summary", "Practice".',
@@ -155,7 +195,7 @@ function buildUniversityGithubRequest(input: {
           subject: input.subjectDisplay,
           level: input.level,
           year: input.year,
-          exclude_labels: input.excludeLabels.slice(0, MAX_TOPIC_DISCOVERY_RESULTS),
+          exclude_labels: input.excludeTopicLabels.slice(0, MAX_TOPIC_DISCOVERY_RESULTS),
           required_output: {
             topics: [{ label: 'string', textbookContext: 'string' }]
           }
@@ -299,6 +339,22 @@ function sortSuggestions(suggestions: RankedSuggestion[]): RankedSuggestion[] {
   });
 }
 
+function mapSuggestionForResponse(suggestion: RankedSuggestion, rank: number) {
+  return {
+    topicSignature: suggestion.topicSignature,
+    topicLabel: suggestion.topicLabel,
+    nodeId: suggestion.nodeId,
+    source: suggestion.source,
+    rank,
+    reason: suggestion.reason,
+    sampleSize: suggestion.sampleSize,
+    thumbsUpCount: suggestion.thumbsUpCount,
+    thumbsDownCount: suggestion.thumbsDownCount,
+    completionRate: suggestion.completionRate,
+    freshness: suggestion.freshness
+  };
+}
+
 function applyRefreshExclusions(
   suggestions: RankedSuggestion[],
   excludedSignatures: string[],
@@ -325,6 +381,7 @@ async function handleUniversityRequest(body: {
   provider?: string;
   model?: string;
   excludeTopicSignatures: string[];
+  excludeTopicLabels: string[];
   limit: number;
 }): Promise<Response> {
   const subjectKey = body.subjectKey ?? '';
@@ -360,7 +417,7 @@ async function handleUniversityRequest(body: {
         subjectDisplay,
         level,
         year,
-        excludeLabels: body.excludeTopicSignatures
+        excludeTopicLabels: body.excludeTopicLabels
       })
     );
     const parsedModel = content ? parseDashboardTopicDiscoveryModelResponse(content) : null;
@@ -550,7 +607,18 @@ Deno.serve(async (request) => {
         const content = await callGithubModels(
           githubEndpoint,
           githubToken,
-          buildGithubRequest(body.model, subject?.label ?? body.subjectId, graphTopics, (aliases ?? []) as GraphAliasRow[], body.forceRefresh)
+          buildGithubRequest({
+            model: body.model,
+            subjectLabel: resolveSchoolSubjectDisplay(body, subject),
+            curriculumName: body.curriculumName,
+            curriculumId: body.curriculumId,
+            gradeLabel: body.gradeLabel,
+            gradeId: body.gradeId,
+            term: body.term,
+            graphTopics,
+            aliases: (aliases ?? []) as GraphAliasRow[],
+            forceRefresh: body.forceRefresh
+          })
         );
         const parsedModel = content ? parseDashboardTopicDiscoveryModelResponse(content) : null;
         modelCandidates = normalizeDiscoveryCandidateLabels(
@@ -648,18 +716,48 @@ Deno.serve(async (request) => {
       const graphMatch = graphByNormalized.get(normalized);
 
       if (graphMatch) {
-        return {
-          topicSignature: buildTopicSignature({
+        const signature = buildTopicSignature({
+          subjectId: body.subjectId,
+          curriculumId: body.curriculumId,
+          gradeId: body.gradeId,
+          topicLabel: graphMatch.label
+        });
+        const aggregate =
+          scoreBySignature.get(signature) ??
+          bestScoreByNode.get(graphMatch.id) ??
+          emptyAggregate({
             subjectId: body.subjectId,
             curriculumId: body.curriculumId,
             gradeId: body.gradeId,
-            topicLabel: graphMatch.label
-          }),
+            topicSignature: signature,
+            topicLabel: graphMatch.label,
+            nodeId: graphMatch.id,
+            source: 'graph_existing'
+          });
+        const score = scoreTopicDiscoveryAggregate(
+          {
+            ...aggregate,
+            nodeId: graphMatch.id,
+            topicSignature: signature,
+            topicLabel: graphMatch.label,
+            source: 'graph_existing'
+          },
+          { explorationWeight: body.forceRefresh ? 1.25 : 1.1 }
+        );
+
+        return {
+          topicSignature: signature,
           topicLabel: graphMatch.label,
           nodeId: graphMatch.id,
           source: 'graph_existing' as const,
-          sampleSize: 0,
-          finalScore: 0
+          sampleSize: score.sampleSize,
+          finalScore: score.finalScore,
+          reason: 'Fresh model suggestion',
+          thumbsUpCount: score.thumbsUpCount,
+          thumbsDownCount: score.thumbsDownCount,
+          completionRate: score.completionRate,
+          freshness: score.freshness,
+          rankScore: score.finalScore + 0.15
         };
       }
 
@@ -725,27 +823,18 @@ Deno.serve(async (request) => {
     freshness: ('freshness' in candidate ? candidate.freshness : 'stable') as 'new' | 'rising' | 'stable'
   }));
 
-  const sortedSuggestions = sortSuggestions(
-    dedupeTopicDiscoveryCandidates<RankedSuggestion>([...graphSuggestions, ...modelSuggestions])
+  const prioritizedModelSuggestions = modelSuggestions.slice(0, Math.min(body.limit, MAX_TOPIC_DISCOVERY_RESULTS));
+  const modelSignatures = new Set(prioritizedModelSuggestions.map((suggestion) => suggestion.topicSignature));
+  const graphBackfillSuggestions = sortSuggestions(
+    graphSuggestions.filter((suggestion) => !modelSignatures.has(suggestion.topicSignature))
   );
+  const orderedSuggestions = [...prioritizedModelSuggestions, ...graphBackfillSuggestions];
   const suggestions = applyRefreshExclusions(
-    sortedSuggestions,
+    orderedSuggestions,
     body.forceRefresh ? body.excludeTopicSignatures : [],
     Math.min(body.limit, MAX_TOPIC_DISCOVERY_RESULTS)
   )
-    .map((suggestion, index) => ({
-      topicSignature: suggestion.topicSignature,
-      topicLabel: suggestion.topicLabel,
-      nodeId: suggestion.nodeId,
-      source: suggestion.source,
-      rank: index + 1,
-      reason: suggestion.reason,
-      sampleSize: suggestion.sampleSize,
-      thumbsUpCount: suggestion.thumbsUpCount,
-      thumbsDownCount: suggestion.thumbsDownCount,
-      completionRate: suggestion.completionRate,
-      freshness: suggestion.freshness
-    }));
+    .map((suggestion, index) => mapSuggestionForResponse(suggestion, index + 1));
 
   console.info(
     JSON.stringify({

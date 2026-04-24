@@ -31,6 +31,19 @@ const baseRequest: LessonPlanRequest = {
   curriculumReference: 'CAPS · Grade 10 · Mathematics'
 };
 
+function makeDiagnostic(prompt: string, correctText: string) {
+  return {
+    prompt,
+    options: [
+      { id: 'a', label: 'A', text: correctText },
+      { id: 'b', label: 'B', text: 'It gives a literal answer that does not fit the example.' },
+      { id: 'c', label: 'C', text: 'It points to a different idea than the one being checked.' },
+      { id: 'd', label: 'D', text: 'It does not match the details given in the task.' }
+    ],
+    correct_option_id: 'a'
+  };
+}
+
 // ─── Phase 4.1: buildLessonPlanPrompt / system prompt ──────────────────────
 
 describe('lesson-plan system prompt', () => {
@@ -76,11 +89,25 @@ describe('lesson-plan system prompt', () => {
 
     expect(prompt).toContain('start, concepts, loops, synthesis, independentAttempt, exitCheck');
     expect(prompt).toContain('loops');
-    expect(prompt).toContain('one_line_definition');
+    expect(prompt).toContain('simple_definition');
+    expect(prompt).toContain('explanation');
     expect(prompt).toContain('quick_check');
-    expect(prompt).toContain('curriculum_alignment');
+    expect(prompt).toContain('diagnostic');
+    expect(prompt).toContain('correct_option_id');
     expect(prompt).toContain('mustHitConcepts');
     expect(prompt).toContain('criticalMisconceptionTags');
+    expect(prompt).toContain('identify the rule');
+    expect(prompt).toContain('show the first step');
+    expect(prompt).toContain('use the evidence');
+  });
+
+  it('requires the v2 start block to teach immediately instead of using generic lesson framing', () => {
+    const prompt = createLessonPlanSystemPrompt({ lessonFlowVersion: 'v2' });
+
+    expect(prompt).toContain('The learner should feel that the lesson is about this exact topic within the first 30 seconds.');
+    expect(prompt).toContain('start must begin teaching immediately');
+    expect(prompt).toContain('Do not use generic lesson framing such as "In this lesson you\'re exploring"');
+    expect(prompt).toContain('Do not use instruction text as the concept example');
   });
 });
 
@@ -118,9 +145,14 @@ function makeValidV2AiPayload(overrides: Record<string, unknown> = {}) {
           concepts: [
             {
               name: 'Standard Form',
-              one_line_definition: 'A quadratic must be rewritten as ax^2 + bx + c = 0 before you choose a solving method.',
+              simple_definition: 'A quadratic must be rewritten as ax^2 + bx + c = 0 before you choose a solving method.',
               example: '2x^2 + 4 = 6x becomes 2x^2 - 6x + 4 = 0.',
+              explanation: 'Writing every term on one side makes the structure of the quadratic visible.',
               quick_check: 'Rewrite x^2 + 9 = 4x into standard form.',
+              diagnostic: makeDiagnostic(
+                'Rewrite x^2 + 9 = 4x into standard form.',
+                'x^2 - 4x + 9 = 0'
+              ),
               concept_type: 'procedure',
               curriculum_alignment: {
                 topic_match: 'Quadratic Equations',
@@ -133,9 +165,11 @@ function makeValidV2AiPayload(overrides: Record<string, unknown> = {}) {
             },
             {
               name: 'Factoring',
-              one_line_definition: 'Factoring solves a quadratic by splitting it into brackets whose product is zero.',
+              simple_definition: 'Factoring solves a quadratic by splitting it into brackets whose product is zero.',
               example: 'x^2 - 5x + 6 factors to (x - 2)(x - 3) = 0.',
+              explanation: 'Each bracket gives a value of x that makes the original product equal zero.',
               quick_check: 'Factor x^2 + x - 6.',
+              diagnostic: makeDiagnostic('Factor x^2 + x - 6.', '(x + 3)(x - 2)'),
               concept_type: 'strategy',
               curriculum_alignment: {
                 topic_match: 'Quadratic Equations',
@@ -148,9 +182,14 @@ function makeValidV2AiPayload(overrides: Record<string, unknown> = {}) {
             },
             {
               name: 'Checking Solutions',
-              one_line_definition: 'Substitute each solution back into the original equation to confirm it works.',
+              simple_definition: 'Substitute each solution back into the original equation to confirm it works.',
               example: 'If x = 2, then 2^2 - 5(2) + 6 = 4 - 10 + 6 = 0.',
+              explanation: 'Substitution shows whether the answer actually satisfies the original equation.',
               quick_check: 'Check whether x = -3 solves x^2 + x - 6 = 0.',
+              diagnostic: makeDiagnostic(
+                'Check whether x = -3 solves x^2 + x - 6 = 0.',
+                'Yes, substituting -3 gives 9 - 3 - 6 = 0, so it does solve the equation.'
+              ),
               concept_type: 'verification',
               curriculum_alignment: {
                 topic_match: 'Quadratic Equations',
@@ -296,9 +335,14 @@ describe('parseLessonPlanResponse', () => {
       concepts: [
         {
           name: 'Understanding Quadratics',
-          one_line_definition: 'This topic helps you understand quadratic equations better.',
+          simple_definition: 'This topic helps you understand quadratic equations better.',
           example: 'You will use this in many questions about quadratics.',
+          explanation: 'This lesson helps you understand how to use the evidence.',
           quick_check: 'Explain the topic again in your own words.',
+          diagnostic: makeDiagnostic(
+            'Explain the topic again in your own words.',
+            'It helps you understand quadratic equations better.'
+          ),
           concept_type: 'topic',
           curriculum_alignment: {
             topic_match: 'Quadratic Equations',
@@ -308,9 +352,11 @@ describe('parseLessonPlanResponse', () => {
         },
         {
           name: 'Factoring',
-          one_line_definition: 'Factoring splits a quadratic into brackets.',
+          simple_definition: 'Factoring splits a quadratic into brackets.',
           example: 'x^2 - 5x + 6 = (x - 2)(x - 3).',
+          explanation: 'The factors show which x-values make the expression equal zero.',
           quick_check: 'Factor x^2 + x - 6.',
+          diagnostic: makeDiagnostic('Factor x^2 + x - 6.', '(x + 3)(x - 2)'),
           concept_type: 'strategy',
           curriculum_alignment: {
             topic_match: 'Quadratic Equations',
@@ -329,9 +375,11 @@ describe('parseLessonPlanResponse', () => {
       concepts: [
         {
           name: 'Standard Form',
-          one_line_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
+          simple_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
           example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+          explanation: 'The equation is ready for solving once every term is on one side.',
           quick_check: 'Rewrite 2x^2 + 4 = 6x into standard form.',
+          diagnostic: makeDiagnostic('Rewrite 2x^2 + 4 = 6x into standard form.', '2x^2 - 6x + 4 = 0'),
           concept_type: 'procedure',
           curriculum_alignment: {
             topic_match: 'Quadratic Equations',
@@ -341,9 +389,11 @@ describe('parseLessonPlanResponse', () => {
         },
         {
           name: 'Writing in Standard Form',
-          one_line_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0 before solving.',
+          simple_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0 before solving.',
           example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+          explanation: 'Moving every term to one side prepares the quadratic for solving.',
           quick_check: 'Move all terms in 2x^2 + 4 = 6x to one side.',
+          diagnostic: makeDiagnostic('Move all terms in 2x^2 + 4 = 6x to one side.', '2x^2 - 6x + 4 = 0'),
           concept_type: 'procedure',
           curriculum_alignment: {
             topic_match: 'Quadratic Equations',
@@ -353,9 +403,14 @@ describe('parseLessonPlanResponse', () => {
         },
         {
           name: 'Checking Solutions',
-          one_line_definition: 'Substitute each solution back into the original equation.',
+          simple_definition: 'Substitute each solution back into the original equation.',
           example: 'If x = 2, then 2^2 - 5(2) + 6 = 0.',
+          explanation: 'Substitution confirms that the proposed answer really works.',
           quick_check: 'Check whether x = -3 solves x^2 + x - 6 = 0.',
+          diagnostic: makeDiagnostic(
+            'Check whether x = -3 solves x^2 + x - 6 = 0.',
+            'Yes, substituting -3 gives 9 - 3 - 6 = 0, so it does solve the equation.'
+          ),
           concept_type: 'verification',
           curriculum_alignment: {
             topic_match: 'Quadratic Equations',
@@ -374,9 +429,10 @@ describe('parseLessonPlanResponse', () => {
       concepts: [
         {
           name: 'Standard Form',
-          one_line_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
+          simple_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
           example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
           concept_type: 'procedure',
+          diagnostic: makeDiagnostic('Rewrite x^2 + 9 = 4x into standard form.', 'x^2 - 4x + 9 = 0'),
           curriculum_alignment: {
             topic_match: 'Quadratic Equations',
             grade_match: 'Grade 10',
@@ -385,15 +441,96 @@ describe('parseLessonPlanResponse', () => {
         },
         {
           name: 'Factoring',
-          one_line_definition: 'Factoring splits a quadratic into brackets.',
+          simple_definition: 'Factoring splits a quadratic into brackets.',
           example: 'x^2 - 5x + 6 = (x - 2)(x - 3).',
+          explanation: 'The factor pairs reveal which values of x make the product zero.',
           quick_check: 'Factor x^2 + x - 6.',
+          diagnostic: makeDiagnostic('Factor x^2 + x - 6.', '(x + 3)(x - 2)'),
           concept_type: 'strategy',
           curriculum_alignment: {
             topic_match: 'Quadratic Equations',
             grade_match: 'Grade 10',
             alignment_note: 'Factoring is used in this topic.'
           }
+        }
+      ]
+    });
+
+    expect(parseLessonPlanResponse(malformed, baseRequest, { lessonFlowVersion: 'v2' })).toBeNull();
+  });
+
+  it('rejects v2 payloads with malformed diagnostics', () => {
+    const malformed = makeValidV2AiPayload({
+      concepts: [
+        {
+          name: 'Standard Form',
+          simple_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
+          example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+          explanation: 'Writing every term on one side makes the structure of the quadratic visible.',
+          quick_check: 'Rewrite x^2 + 9 = 4x into standard form.',
+          diagnostic: {
+            prompt: 'Rewrite x^2 + 9 = 4x into standard form.',
+            options: [
+              { id: 'a', label: 'A', text: 'x^2 - 4x + 9 = 0' },
+              { id: 'b', label: 'B', text: 'x^2 - 4x + 9 = 0' }
+            ],
+            correct_option_id: 'z'
+          }
+        },
+        {
+          name: 'Factoring',
+          simple_definition: 'Factoring splits a quadratic into brackets.',
+          example: 'x^2 - 5x + 6 = (x - 2)(x - 3).',
+          explanation: 'The factor pairs reveal which values of x make the product zero.',
+          quick_check: 'Factor x^2 + x - 6.',
+          diagnostic: makeDiagnostic('Factor x^2 + x - 6.', '(x + 3)(x - 2)')
+        }
+      ]
+    });
+
+    expect(parseLessonPlanResponse(malformed, baseRequest, { lessonFlowVersion: 'v2' })).toBeNull();
+  });
+
+  it('rejects v2 payloads that still use legacy one_line_definition fields', () => {
+    const malformed = makeValidV2AiPayload({
+      concepts: [
+        {
+          name: 'Standard Form',
+          one_line_definition: 'Rewrite the quadratic as ax^2 + bx + c = 0.',
+          example: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.',
+          explanation: 'Writing every term on one side makes the structure of the quadratic visible.',
+          quick_check: 'Rewrite x^2 + 9 = 4x into standard form.',
+          diagnostic: makeDiagnostic('Rewrite x^2 + 9 = 4x into standard form.', 'x^2 - 4x + 9 = 0')
+        },
+        {
+          name: 'Factoring',
+          simple_definition: 'Factoring splits a quadratic into brackets.',
+          example: 'x^2 - 5x + 6 = (x - 2)(x - 3).',
+          explanation: 'The factor pairs reveal which values of x make the product zero.',
+          quick_check: 'Factor x^2 + x - 6.',
+          diagnostic: makeDiagnostic('Factor x^2 + x - 6.', '(x + 3)(x - 2)')
+        }
+      ],
+      loops: [
+        {
+          id: 'loop-1',
+          title: 'Standard Form',
+          teaching: { title: 'Teach', body: 'A quadratic must first be written in standard form.' },
+          example: { title: 'Example', body: 'x^2 + 9 = 4x becomes x^2 - 4x + 9 = 0.' },
+          learnerTask: { title: 'Task', body: 'Rewrite 2x^2 + 4 = 6x into standard form.' },
+          retrievalCheck: { title: 'Check', body: 'Why does standard form matter before solving?' },
+          mustHitConcepts: ['standard form'],
+          criticalMisconceptionTags: ['solving-before-rearranging']
+        },
+        {
+          id: 'loop-2',
+          title: 'Factoring',
+          teaching: { title: 'Teach', body: 'Factor the quadratic into brackets whose product is zero.' },
+          example: { title: 'Example', body: 'x^2 - 5x + 6 = (x - 2)(x - 3).' },
+          learnerTask: { title: 'Task', body: 'Factor x^2 + x - 6.' },
+          retrievalCheck: { title: 'Check', body: 'Which factor pair works, and why?' },
+          mustHitConcepts: ['factoring'],
+          criticalMisconceptionTags: ['incorrect-factor-pair']
         }
       ]
     });
@@ -414,11 +551,108 @@ describe('parseLessonPlanResponse', () => {
     const result = parseLessonPlanResponse(makeValidV2AiPayload(), baseRequest, { lessonFlowVersion: 'v2' });
     const firstConcept = result?.lesson.keyConcepts?.[0];
 
+    expect(firstConcept?.simpleDefinition).toContain('ax^2 + bx + c = 0');
     expect(firstConcept?.oneLineDefinition).toContain('ax^2 + bx + c = 0');
+    expect(firstConcept?.explanation).toContain('structure of the quadratic');
     expect(firstConcept?.quickCheck).toContain('standard form');
+    expect(firstConcept?.diagnostic).toEqual(
+      expect.objectContaining({
+        prompt: 'Rewrite x^2 + 9 = 4x into standard form.',
+        correctOptionId: 'a',
+        options: expect.arrayContaining([
+          expect.objectContaining({ id: 'a', text: 'x^2 - 4x + 9 = 0' })
+        ])
+      })
+    );
     expect(firstConcept?.conceptType).toBe('procedure');
     expect(firstConcept?.curriculumAlignment?.alignmentNote).toContain('solving quadratics');
     expect(result?.lesson.flowV2?.concepts?.[0]?.quickCheck).toContain('standard form');
+  });
+
+  it('accepts topic-shaped v2 concepts for poetry and prose techniques', () => {
+    const request = {
+      ...baseRequest,
+      subjectId: 'subject-english',
+      subject: 'English Home Language',
+      topicTitle: 'Poetry and Prose Techniques',
+      topicDescription: 'Analysing literary techniques and their effects.',
+      curriculumReference: 'CAPS · Grade 10 · English Home Language'
+    };
+    const payload = makeValidV2AiPayload({
+      start: { title: 'Start', body: 'Writers choose techniques to shape meaning and effect in a text.' },
+      concepts: [
+        {
+          name: 'Metaphor',
+          simple_definition: 'A comparison where one thing is described as another.',
+          example: '“The classroom was a zoo.”',
+          explanation: 'The line suggests noise, chaos, and lack of control.',
+          quick_check: 'What does calling the classroom a “zoo” suggest?',
+          diagnostic: makeDiagnostic(
+            'What does calling the classroom a “zoo” suggest?',
+            'It suggests noise, chaos, and lack of control.'
+          )
+        },
+        {
+          name: 'Imagery',
+          simple_definition: 'Language that creates a sensory picture for the reader.',
+          example: '“Cold rain tapped against the tin roof.”',
+          explanation: 'The detail helps the reader hear the scene and feel its harsh mood.',
+          quick_check: 'Which sense is strongest in this line?',
+          diagnostic: makeDiagnostic('Which sense is strongest in this line?', 'Hearing')
+        },
+        {
+          name: 'Tone',
+          simple_definition: 'The writer’s attitude or emotional colouring in a line or passage.',
+          example: '“He drifted home in the grey evening, too tired to speak.”',
+          explanation: 'The wording creates a subdued, weary tone.',
+          quick_check: 'What tone is created by “grey evening” and “too tired to speak”?',
+          diagnostic: makeDiagnostic(
+            'What tone is created by “grey evening” and “too tired to speak”?',
+            'Subdued and weary'
+          )
+        }
+      ],
+      loops: [
+        {
+          id: 'loop-1',
+          title: 'Metaphor',
+          teaching: { title: 'Teach', body: 'A metaphor describes one thing as another to sharpen meaning.' },
+          example: { title: 'Example', body: '“The classroom was a zoo.”' },
+          learnerTask: { title: 'Task', body: 'Explain what the metaphor suggests about the classroom.' },
+          retrievalCheck: { title: 'Check', body: 'What does the metaphor suggest?' },
+          mustHitConcepts: ['metaphor'],
+          criticalMisconceptionTags: ['literal-reading']
+        },
+        {
+          id: 'loop-2',
+          title: 'Imagery',
+          teaching: { title: 'Teach', body: 'Imagery appeals to the senses to make a scene vivid.' },
+          example: { title: 'Example', body: '“Cold rain tapped against the tin roof.”' },
+          learnerTask: { title: 'Task', body: 'Name the sense that stands out and explain the mood it creates.' },
+          retrievalCheck: { title: 'Check', body: 'Which sense stands out most?' },
+          mustHitConcepts: ['imagery'],
+          criticalMisconceptionTags: ['feature-without-effect']
+        },
+        {
+          id: 'loop-3',
+          title: 'Tone',
+          teaching: { title: 'Teach', body: 'Tone is created by the writer’s word choices and mood cues.' },
+          example: { title: 'Example', body: '“He drifted home in the grey evening, too tired to speak.”' },
+          learnerTask: { title: 'Task', body: 'Explain the tone created by the description.' },
+          retrievalCheck: { title: 'Check', body: 'What tone is created here?' },
+          mustHitConcepts: ['tone'],
+          criticalMisconceptionTags: ['feature-label-only']
+        }
+      ],
+      synthesis: { title: 'Synthesis', body: 'Metaphor, imagery, and tone all help a reader explain how a text creates meaning.' },
+      independentAttempt: { title: 'Independent Attempt', body: 'Read a short extract and explain one technique and its effect.' },
+      exitCheck: { title: 'Exit Check', body: 'Name one technique, quote it, and explain its effect in context.' }
+    });
+
+    const result = parseLessonPlanResponse(payload, request, { lessonFlowVersion: 'v2' });
+
+    expect(result?.lesson.keyConcepts?.map((concept) => concept.name)).toEqual(['Metaphor', 'Imagery', 'Tone']);
+    expect(result?.lesson.keyConcepts?.[0]?.quickCheck).toBe('What does calling the classroom a “zoo” suggest?');
   });
 });
 

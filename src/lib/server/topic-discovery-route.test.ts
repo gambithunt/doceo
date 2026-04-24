@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearTopicDiscoveryRouteCache } from './topic-discovery-runtime';
 
-const { getAiConfig, getAuthenticatedEdgeContext, createServerGraphRepository } = vi.hoisted(() => ({
+const { getAiConfig, getAuthenticatedEdgeContext, createServerGraphRepository, getProviderAdapter } = vi.hoisted(() => ({
   getAiConfig: vi.fn(),
   getAuthenticatedEdgeContext: vi.fn(),
-  createServerGraphRepository: vi.fn()
+  createServerGraphRepository: vi.fn(),
+  getProviderAdapter: vi.fn()
 }));
 
 vi.mock('$lib/server/ai-config', () => ({
@@ -17,6 +18,10 @@ vi.mock('$lib/server/ai-edge', () => ({
 
 vi.mock('$lib/server/graph-repository', () => ({
   createServerGraphRepository
+}));
+
+vi.mock('$lib/server/ai-providers', () => ({
+  getProviderAdapter
 }));
 
 describe('curriculum topic discovery route', () => {
@@ -62,6 +67,7 @@ describe('curriculum topic discovery route', () => {
         }
       ])
     });
+    getProviderAdapter.mockReturnValue(null);
   });
 
   it('returns 400 for an invalid request body', async () => {
@@ -118,7 +124,11 @@ describe('curriculum topic discovery route', () => {
         body: JSON.stringify({
           subjectId: 'caps-grade-6-mathematics',
           curriculumId: 'caps',
+          curriculumName: 'CAPS',
           gradeId: 'grade-6',
+          gradeLabel: 'Grade 6',
+          subjectDisplay: 'Mathematics',
+          term: 'Term 2',
           forceRefresh: true
         })
       }),
@@ -134,14 +144,18 @@ describe('curriculum topic discovery route', () => {
         body: JSON.stringify({
           subjectId: 'caps-grade-6-mathematics',
           curriculumId: 'caps',
+          curriculumName: 'CAPS',
           gradeId: 'grade-6',
+          gradeLabel: 'Grade 6',
+          subjectDisplay: 'Mathematics',
+          term: 'Term 2',
           forceRefresh: true,
           provider: 'github-models',
           model: 'openai/gpt-4.1-nano'
         })
       })
     );
-    expect(payload.topics).toHaveLength(12);
+    expect(payload.topics).toHaveLength(7);
     expect(payload.provider).toBe('github-models');
     expect(payload.model).toBe('openai/gpt-4.1-nano');
     expect(payload.refreshed).toBe(true);
@@ -184,7 +198,11 @@ describe('curriculum topic discovery route', () => {
         body: JSON.stringify({
           subjectId: 'caps-grade-6-mathematics',
           curriculumId: 'caps',
+          curriculumName: 'CAPS',
           gradeId: 'grade-6',
+          gradeLabel: 'Grade 6',
+          subjectDisplay: 'Mathematics',
+          term: 'Term 2',
           forceRefresh: true,
           excludeTopicSignatures: ['caps-grade-6-mathematics::caps::grade-6::fractions']
         })
@@ -199,7 +217,11 @@ describe('curriculum topic discovery route', () => {
         body: JSON.stringify({
           subjectId: 'caps-grade-6-mathematics',
           curriculumId: 'caps',
+          curriculumName: 'CAPS',
           gradeId: 'grade-6',
+          gradeLabel: 'Grade 6',
+          subjectDisplay: 'Mathematics',
+          term: 'Term 2',
           forceRefresh: true,
           provider: 'github-models',
           model: 'openai/gpt-4.1-nano',
@@ -580,5 +602,76 @@ describe('curriculum topic discovery route', () => {
     expect(response.status).toBe(200);
     expect(payload.provider).toBe('graph-fallback');
     expect(payload.topics[0]?.topicLabel).toBe('Fractions');
+  });
+
+  it('retries topic generation on the app server when the edge returns an empty graph fallback payload', async () => {
+    createServerGraphRepository.mockReturnValue({
+      listNodes: vi.fn().mockResolvedValue([])
+    });
+    getProviderAdapter.mockReturnValue({
+      complete: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          topics: [
+            'Climate Systems',
+            'Geomorphology',
+            'River Processes',
+            'Urban Settlements',
+            'Economic Geography',
+            'Resource Management',
+            'Mapwork Skills'
+          ]
+        }),
+        tokensUsed: null,
+        latencyMs: 12,
+        rawResponse: {}
+      })
+    });
+
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          topics: [],
+          provider: 'graph-fallback',
+          model: 'openai/gpt-4.1-nano',
+          refreshed: false
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+
+    const { POST } = await import('../../routes/api/curriculum/topic-discovery/+server');
+    const response = await POST({
+      request: new Request('http://localhost/api/curriculum/topic-discovery', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subjectId: 'subject-stub-geography',
+          curriculumId: 'ieb',
+          curriculumName: 'IEB',
+          gradeId: 'ieb-grade-11',
+          gradeLabel: 'Grade 11',
+          subjectDisplay: 'Geography',
+          term: 'Term 2'
+        })
+      }),
+      fetch: fetcher
+    } as never);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.provider).toBe('github-models');
+    expect(payload.topics).toHaveLength(7);
+    expect(payload.topics.map((topic: { topicLabel: string }) => topic.topicLabel)).toEqual([
+      'Climate Systems',
+      'Geomorphology',
+      'River Processes',
+      'Urban Settlements',
+      'Economic Geography',
+      'Resource Management',
+      'Mapwork Skills'
+    ]);
   });
 });

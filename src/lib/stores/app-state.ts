@@ -188,6 +188,59 @@ function toDashboardTopicSuggestion(
   };
 }
 
+function buildLocalTopicDiscoverySuggestions(
+  subject: AppState['curriculum']['subjects'][number],
+  profile: Pick<AppState['profile'], 'curriculumId' | 'gradeId'>
+): DashboardTopicDiscoverySuggestion[] {
+  const curriculumId = profile.curriculumId || 'local';
+  const gradeId = profile.gradeId || 'local';
+
+  return subject.topics.flatMap((topic, tIndex) =>
+    topic.subtopics.map((subtopic, sIndex) => ({
+      topicSignature: [subject.id.trim(), curriculumId.trim(), gradeId.trim(), subtopic.name.trim().replace(/\s+/g, ' ').toLowerCase()].join('::'),
+      topicLabel: subtopic.name,
+      nodeId: null,
+      source: 'graph_existing' as const,
+      rank: tIndex * 100 + sIndex + 1,
+      reason: `Topic from ${subject.name}`,
+      sampleSize: 0,
+      thumbsUpCount: 0,
+      thumbsDownCount: 0,
+      completionRate: null,
+      freshness: 'stable' as const,
+      feedback: null,
+      feedbackPending: false
+    }))
+  );
+}
+
+function buildTopicDiscoveryRequestContext(
+  state: AppState,
+  subject: AppState['curriculum']['subjects'][number]
+): {
+  curriculumName?: string;
+  gradeLabel?: string;
+  subjectDisplay: string;
+  term?: string;
+} {
+  const curriculumName =
+    state.onboarding.options.curriculums.find((item) => item.id === state.profile.curriculumId)?.name ||
+    state.profile.curriculum ||
+    undefined;
+  const gradeLabel =
+    state.onboarding.options.grades.find((item) => item.id === state.profile.gradeId)?.label ||
+    state.profile.grade ||
+    undefined;
+  const term = state.profile.term || state.onboarding.term || undefined;
+
+  return {
+    ...(curriculumName ? { curriculumName } : {}),
+    ...(gradeLabel ? { gradeLabel } : {}),
+    subjectDisplay: subject.name,
+    ...(term ? { term } : {})
+  };
+}
+
 function detectBrowserCountrySignals(): CountryRecommendationSignals {
   if (!browser) {
     return {};
@@ -1464,23 +1517,7 @@ export function createAppStore(initialState: AppState = readState()) {
     // University / stub subjects have no structured curriculumId/gradeId.
     // Build topic suggestions directly from the local curriculum data.
     if (!snapshot.profile.curriculumId || !snapshot.profile.gradeId) {
-      const localTopics: DashboardTopicDiscoverySuggestion[] = subject.topics.flatMap((topic, tIndex) =>
-        topic.subtopics.map((subtopic, sIndex) => ({
-          topicSignature: `${subject.id}:${topic.id}:${subtopic.id}`,
-          topicLabel: subtopic.name,
-          nodeId: topic.id,
-          source: 'graph_existing' as const,
-          rank: tIndex * 100 + sIndex + 1,
-          reason: `Topic from ${subject.name}`,
-          sampleSize: 0,
-          thumbsUpCount: 0,
-          thumbsDownCount: 0,
-          completionRate: null,
-          freshness: 'stable' as const,
-          feedback: null,
-          feedbackPending: false
-        }))
-      );
+      const localTopics = buildLocalTopicDiscoverySuggestions(subject, snapshot.profile);
 
       update((state) =>
         persistAndSync({
@@ -1540,6 +1577,7 @@ export function createAppStore(initialState: AppState = readState()) {
     );
 
     try {
+      const discoveryContext = buildTopicDiscoveryRequestContext(snapshot, subject);
       const response = await fetch('/api/curriculum/topic-discovery', {
         method: 'POST',
         headers: await getAuthenticatedHeaders({
@@ -1549,6 +1587,7 @@ export function createAppStore(initialState: AppState = readState()) {
           subjectId: subject.id,
           curriculumId: snapshot.profile.curriculumId,
           gradeId: snapshot.profile.gradeId,
+          ...discoveryContext,
           forceRefresh: options.forceRefresh ?? false,
           ...(options.forceRefresh && previousTopics.length > 0
             ? {
@@ -1576,7 +1615,10 @@ export function createAppStore(initialState: AppState = readState()) {
         return;
       }
 
-      const topics = payload.topics.map(toDashboardTopicSuggestion);
+      const remoteTopics = payload.topics.map(toDashboardTopicSuggestion);
+      const localBackupTopics =
+        remoteTopics.length === 0 ? buildLocalTopicDiscoverySuggestions(subject, snapshot.profile) : [];
+      const topics = remoteTopics.length > 0 ? remoteTopics : localBackupTopics;
 
       update((state) =>
         persistAndSync({
@@ -1589,7 +1631,7 @@ export function createAppStore(initialState: AppState = readState()) {
               status: topics.length > 0 ? 'ready' : 'empty',
               subjectId: subject.id,
               topics,
-              provider: payload.provider,
+              provider: remoteTopics.length > 0 ? payload.provider : localBackupTopics.length > 0 ? 'local-backup' : payload.provider,
               model: payload.model,
               requestId,
               error: null,
@@ -1905,6 +1947,7 @@ export function createAppStore(initialState: AppState = readState()) {
           topicDiscovery: {
             ...state.topicDiscovery,
             selectedSubjectId: subject.id,
+            hintSuggestions: [],
             discovery: {
               ...state.topicDiscovery.discovery,
               status:
@@ -2232,44 +2275,31 @@ export function createAppStore(initialState: AppState = readState()) {
     recordTopicFeedback,
     injectHintSuggestions: (subjectId: string, hints: string[]) => {
       update((state) => {
+        if (state.topicDiscovery.selectedSubjectId !== subjectId) {
+          return state;
+        }
+
         const normalize = (v: string) => v.trim().replace(/\s+/g, ' ').toLowerCase();
-        const existingLabels = new Set(
+        const discoveryLabels = new Set(
           state.topicDiscovery.discovery.topics.map((t) => normalize(t.topicLabel))
         );
-        const newTopics: DashboardTopicDiscoverySuggestion[] = hints
-          .filter((label) => label.trim().length > 0 && !existingLabels.has(normalize(label)))
-          .map((label, index) => ({
-            topicSignature: [
-              subjectId.trim(),
-              (state.profile.curriculumId || 'university').trim(),
-              (state.profile.gradeId || 'none').trim(),
-              normalize(label)
-            ].join('::'),
-            topicLabel: label.trim(),
-            nodeId: null,
-            source: 'model_candidate' as const,
-            rank: state.topicDiscovery.discovery.topics.length + index + 1,
-            reason: 'AI-suggested topic',
-            sampleSize: 0,
-            thumbsUpCount: 0,
-            thumbsDownCount: 0,
-            completionRate: null,
-            freshness: 'new' as const,
-            feedback: null,
-            feedbackPending: false
-          }));
+        const existingHintLabels = new Set(
+          (state.topicDiscovery.hintSuggestions ?? []).map((label) => normalize(label))
+        );
+        const nextHintSuggestions = hints
+          .map((label) => label.trim())
+          .filter((label) => {
+            const normalized = normalize(label);
+            return label.length > 0 && !discoveryLabels.has(normalized) && !existingHintLabels.has(normalized);
+          });
 
-        if (newTopics.length === 0) return state;
+        if (nextHintSuggestions.length === 0) return state;
 
         return persistAndSync({
           ...state,
           topicDiscovery: {
             ...state.topicDiscovery,
-            discovery: {
-              ...state.topicDiscovery.discovery,
-              topics: [...state.topicDiscovery.discovery.topics, ...newTopics],
-              status: state.topicDiscovery.discovery.status === 'empty' ? 'ready' : state.topicDiscovery.discovery.status
-            }
+            hintSuggestions: [...(state.topicDiscovery.hintSuggestions ?? []), ...nextHintSuggestions]
           }
         });
       });
