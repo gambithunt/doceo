@@ -76,7 +76,13 @@ function createV2Lesson(baseLesson: Lesson): Lesson {
           quickCheck: 'Which statement best matches core idea one?',
           conceptType: 'core_rule',
           whyItMatters: 'It keeps the learner from guessing the method.',
-          commonMisconception: 'Jump straight to an answer without naming the rule.'
+          commonMisconception: 'Jump straight to an answer without naming the rule.',
+          resource: {
+            type: 'text_diagram',
+            title: 'First rule diagram',
+            content: 'Clue -> Rule -> Answer',
+            altText: 'A simple flow diagram showing a clue leading to a rule and then an answer.'
+          }
         },
         {
           name: 'Core idea two',
@@ -104,7 +110,13 @@ function createV2Lesson(baseLesson: Lesson): Lesson {
           },
           learnerTask: {
             title: 'Try Loop 1',
-            body: 'Try the first task on your own.'
+            body: 'Use the diagram to try the first task on your own.',
+            resource: {
+              type: 'text_diagram',
+              title: 'First task diagram',
+              content: 'Start -> Try one step -> Check',
+              altText: 'A simple flow diagram showing the first task sequence.'
+            }
           },
           retrievalCheck: {
             title: 'Check Loop 1',
@@ -985,6 +997,65 @@ describe('LessonWorkspace Phase 4 early diagnostic and concept cards', () => {
 
     expect(within(activeCard).getByText('Core idea one')).toBeInTheDocument();
     expect(within(activeCard).getByText('Core idea two')).toBeInTheDocument();
+  });
+
+  it('renders embedded resources inside expanded concept cards', async () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+    await fireEvent.click(within(activeCard).getByRole('button', { name: /Core idea one/i }));
+
+    expect(within(activeCard).getByText('First rule diagram')).toBeInTheDocument();
+    expect(within(activeCard).getByText('Clue -> Rule -> Answer')).toBeInTheDocument();
+  });
+
+  it('renders embedded resources on the focused practice card', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Try the first task.',
+        stage: 'concepts'
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_practice',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: 'Active lesson' });
+
+    expect(within(activeCard).getByText('First task diagram')).toBeInTheDocument();
+    expect(within(activeCard).getByText('Start -> Try one step -> Check')).toBeInTheDocument();
   });
 
   it('renders the early diagnostic question and options inside the focused card in the concept-1 diagnostic state', () => {

@@ -201,6 +201,16 @@ export interface Question {
 export interface LessonSection {
   title: string;
   body: string;
+  resource?: LessonResource;
+}
+
+export interface LessonResource {
+  type: 'inline_diagram' | 'text_diagram' | 'inline_text' | 'trusted_link';
+  title: string;
+  description?: string;
+  content?: string;
+  url?: string;
+  altText: string;
 }
 
 export interface ConceptCurriculumAlignment {
@@ -229,6 +239,7 @@ export interface ConceptItem {
   synonyms?: string[];
   tags?: string[];
   visualHint?: string;
+  resource?: LessonResource;
   followUpQuestions?: string[];
 }
 

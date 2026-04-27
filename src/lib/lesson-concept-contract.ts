@@ -3,6 +3,7 @@ import type {
   ConceptCurriculumAlignment,
   ConceptDiagnostic,
   ConceptItem,
+  LessonResource,
   QuestionOption
 } from '$lib/types';
 
@@ -29,6 +30,7 @@ interface RawConceptRecord {
   synonyms?: string[];
   tags?: string[];
   visualHint?: string;
+  resource?: LessonResource;
   followUpQuestions?: string[];
 }
 
@@ -48,6 +50,8 @@ const GENERIC_EXAMPLE_PATTERN =
   /\b(real life example|quick test|read the problem again|you will use this|exploration candidate)\b/i;
 const INSTRUCTIONAL_EXAMPLE_PATTERN =
   /^(quote|identify|define|state|explain|compare|choose|use|look at)\b|^(a worked example shows|a final check compares|the example shows how)\b/i;
+const EXTERNAL_RESOURCE_REFERENCE_PATTERN =
+  /\b(look at|use|refer to|study|read|watch|listen to|examine)\s+(?:the|this|a|an)?\s*(?:[a-z-]+\s+){0,3}(diagram|image|picture|graph|table|map|chart|passage|extract|text|article|video|audio|source)\b|\b(diagram|image|picture|graph|table|map|chart|passage|extract|article|video|audio|source)\s+(?:above|below|shown|provided|given)\b/i;
 const GENERIC_QUICK_CHECK_PATTERN =
   /\b(in your own words|what do you think|how do you feel|explain the topic again)\b/i;
 const ASSESSABLE_QUICK_CHECK_PATTERN =
@@ -176,6 +180,45 @@ function readQuestionOptions(value: unknown): QuestionOption[] | null {
   return options.length === value.length ? options : null;
 }
 
+function readLessonResource(value: unknown): LessonResource | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const type = readString(record.type);
+  const title = readString(record.title);
+  const description = readString(record.description) ?? undefined;
+  const content = readString(record.content) ?? undefined;
+  const url = readString(record.url) ?? undefined;
+  const altText = readString(record.altText) ?? readString(record.alt_text);
+
+  if (
+    (type !== 'inline_diagram' && type !== 'text_diagram' && type !== 'inline_text' && type !== 'trusted_link') ||
+    !title ||
+    !altText
+  ) {
+    return null;
+  }
+
+  if ((type === 'inline_diagram' || type === 'text_diagram' || type === 'inline_text') && !content) {
+    return null;
+  }
+
+  if (type === 'trusted_link' && !url) {
+    return null;
+  }
+
+  return {
+    type,
+    title,
+    ...(description ? { description } : {}),
+    ...(content ? { content } : {}),
+    ...(url ? { url } : {}),
+    altText
+  };
+}
+
 function readConceptDiagnostic(value: unknown): ConceptDiagnostic | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -236,6 +279,10 @@ function tokenOverlap(a: string, b: string): number {
 
 function includesBannedPhrase(value: string): boolean {
   return META_INSTRUCTION_PATTERN.test(value) || GENERIC_FILLER_PATTERN.test(value);
+}
+
+function requiresExternalResource(value: string): boolean {
+  return EXTERNAL_RESOURCE_REFERENCE_PATTERN.test(value);
 }
 
 function containsAnchor(text: string, anchors: string[]): boolean {
@@ -383,6 +430,7 @@ export function createConceptItem(record: RawConceptRecord): ConceptItem {
     synonyms: record.synonyms,
     tags: record.tags,
     visualHint: record.visualHint,
+    resource: record.resource,
     followUpQuestions: record.followUpQuestions
   };
 }
@@ -405,6 +453,7 @@ export function parseConceptRecord(value: unknown): ConceptItem | null {
   const curriculumAlignment = readAlignment(
     record.curriculumAlignment ?? record.curriculum_alignment
   ) ?? undefined;
+  const resource = readLessonResource(record.resource) ?? undefined;
 
   if (!name || !simpleDefinition || !example || !explanation || !quickCheck || !diagnostic) {
     return null;
@@ -427,6 +476,7 @@ export function parseConceptRecord(value: unknown): ConceptItem | null {
     synonyms: readStringArray(record.synonyms),
     tags: readStringArray(record.tags),
     visualHint: readOptionalString(record, 'visualHint', 'visual_hint'),
+    resource,
     followUpQuestions: readStringArray(record.followUpQuestions ?? record.follow_up_questions)
   });
 }
@@ -464,6 +514,13 @@ function validateSingleConcept(
 
   if (includesBannedPhrase(explanation)) {
     hardFailures.push(`${label} has a generic or meta-instruction explanation.`);
+  }
+
+  if (
+    (requiresExternalResource(concept.example) || requiresExternalResource(concept.quickCheck)) &&
+    !concept.resource
+  ) {
+    hardFailures.push(`${label} asks for an external resource without embedding that resource.`);
   }
 
   if (GENERIC_QUICK_CHECK_PATTERN.test(concept.quickCheck) || includesBannedPhrase(concept.quickCheck)) {

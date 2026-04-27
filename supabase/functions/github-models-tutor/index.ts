@@ -139,6 +139,16 @@ interface UserProfile {
 interface LessonSection {
   title: string;
   body: string;
+  resource?: LessonResource;
+}
+
+interface LessonResource {
+  type: 'inline_diagram' | 'text_diagram' | 'inline_text' | 'trusted_link';
+  title: string;
+  description?: string;
+  content?: string;
+  url?: string;
+  altText: string;
 }
 
 interface ConceptItem {
@@ -161,6 +171,7 @@ interface ConceptItem {
   synonyms?: string[];
   tags?: string[];
   visualHint?: string;
+  resource?: LessonResource;
   followUpQuestions?: string[];
 }
 
@@ -710,6 +721,12 @@ function createV2LessonPlanSystemPrompt(): string {
     '  quick_check (string),',
     '  diagnostic (object with: prompt (string), options (array of exactly 4 objects with id, label, text), correct_option_id (string), optional rationale (string))',
     '',
+    'Any concept, start section, loop section, synthesis, independentAttempt, or exitCheck may include an optional "resource" object:',
+    '  resource: { type: "inline_diagram" | "text_diagram" | "inline_text" | "trusted_link", title: string, description?: string, content?: string, url?: string, alt_text: string }',
+    'Use inline_diagram, text_diagram, or inline_text whenever the learner needs a diagram, graph, table, map, passage, extract, image, or source to answer.',
+    'Use trusted_link only as optional support; the learner must still be able to answer from the visible lesson content.',
+    'Do not ask the learner to use a diagram, passage, graph, table, map, image, video, article, or external source unless you include that resource directly in the returned JSON.',
+    '',
     'Opening concept contract:',
     '  - name one real learner-facing idea from the topic.',
     '  - explain it in plain language.',
@@ -796,6 +813,7 @@ function createLessonBlueprintSystemPrompt(): string {
     'Rules:',
     '- Pick real sub-ideas from the topic, not wrapper labels.',
     '- Examples must be real or realistic subject examples, not instructions to the learner.',
+    '- If a task needs a diagram, graph, table, map, passage, extract, image, or source, include the resource content in the blueprint so the final lesson can embed it.',
     '- For broad system topics, use system parts and relationships as concepts.',
     '- Ban meta filler such as "main idea that stays true", "worked example", "applied correctly", "Real-world case", and "Reflection check".',
     '- Keep the blueprint short enough to fit comfortably into a second lesson-generation call.'
@@ -1019,17 +1037,11 @@ const GENERIC_V2_CONTENT_PATTERN =
   /main idea that stays true|worked example from|a worked example shows|a final check compares|applied correctly|real-world case|reflection check|exploration candidate|ai[- ]suggested topic/i;
 const GENERIC_V2_NAME_PATTERN =
   /^(core rule|worked pattern|check and apply|overview|introduction|understanding|real-world case|reflection check|exploration candidate|ai[- ]suggested topic)$/i;
+const EXTERNAL_RESOURCE_REFERENCE_PATTERN =
+  /\b(look at|use|refer to|study|read|watch|listen to|examine)\s+(?:the|this|a|an)?\s*(?:[a-z-]+\s+){0,3}(diagram|image|picture|graph|table|map|chart|passage|extract|text|article|video|audio|source)\b|\b(diagram|image|picture|graph|table|map|chart|passage|extract|article|video|audio|source)\s+(?:above|below|shown|provided|given)\b/i;
 
 function isValidSection(value: unknown): value is LessonSection {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const section = value as Record<string, unknown>;
-  return typeof section.title === 'string' &&
-    section.title.trim().length > 0 &&
-    typeof section.body === 'string' &&
-    section.body.trim().length > 0;
+  return normalizeLessonSection(value) !== null;
 }
 
 function readString(value: unknown): string | null {
@@ -1043,6 +1055,78 @@ function readStringArray(value: unknown): string[] | undefined {
 
   const values = value.map(readString).filter((item): item is string => Boolean(item));
   return values.length > 0 ? values : undefined;
+}
+
+function normalizeLessonResource(value: unknown): LessonResource | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const type = readString(record.type);
+  const title = readString(record.title);
+  const description = readString(record.description) ?? undefined;
+  const content = readString(record.content) ?? undefined;
+  const url = readString(record.url) ?? undefined;
+  const altText = readString(record.altText) ?? readString(record.alt_text);
+
+  if (
+    (type !== 'inline_diagram' && type !== 'text_diagram' && type !== 'inline_text' && type !== 'trusted_link') ||
+    !title ||
+    !altText
+  ) {
+    return null;
+  }
+
+  if ((type === 'inline_diagram' || type === 'text_diagram' || type === 'inline_text') && !content) {
+    return null;
+  }
+
+  if (type === 'trusted_link' && !url) {
+    return null;
+  }
+
+  return {
+    type,
+    title,
+    ...(description ? { description } : {}),
+    ...(content ? { content } : {}),
+    ...(url ? { url } : {}),
+    altText
+  };
+}
+
+function requiresEmbeddedResource(value: string): boolean {
+  return EXTERNAL_RESOURCE_REFERENCE_PATTERN.test(value);
+}
+
+function normalizeLessonSection(value: unknown): LessonSection | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const section = value as Record<string, unknown>;
+  const title = readString(section.title);
+  const body = readString(section.body);
+  const resource = normalizeLessonResource(section.resource);
+
+  if (!title || !body) {
+    return null;
+  }
+
+  if (section.resource !== undefined && !resource) {
+    return null;
+  }
+
+  if (requiresEmbeddedResource(body) && !resource) {
+    return null;
+  }
+
+  return {
+    title,
+    body,
+    ...(resource ? { resource } : {})
+  };
 }
 
 function normalizeConceptDiagnostic(value: unknown): ConceptDiagnostic | null {
@@ -1131,7 +1215,8 @@ function normalizeV2Concept(value: unknown, request: LessonPlanRequest): Concept
     name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === request.topicTitle.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() ||
     GENERIC_V2_CONTENT_PATTERN.test(`${simpleDefinition} ${example} ${explanation} ${quickCheck}`) ||
     !hasConcreteV2Example(example) ||
-    diagnostic.prompt !== quickCheck
+    diagnostic.prompt !== quickCheck ||
+    ((requiresEmbeddedResource(example) || requiresEmbeddedResource(quickCheck)) && !normalizeLessonResource(record.resource))
   ) {
     return null;
   }
@@ -1165,30 +1250,40 @@ function normalizeV2Concept(value: unknown, request: LessonPlanRequest): Concept
     synonyms: readStringArray(record.synonyms),
     tags: readStringArray(record.tags),
     visualHint: readString(record.visual_hint) ?? readString(record.visualHint) ?? undefined,
+    resource: normalizeLessonResource(record.resource) ?? undefined,
     followUpQuestions: readStringArray(record.follow_up_questions ?? record.followUpQuestions)
   };
 }
 
-function isValidV2Loop(value: unknown): value is LessonFlowV2Loop {
+function normalizeV2Loop(value: unknown): LessonFlowV2Loop | null {
   if (!value || typeof value !== 'object') {
-    return false;
+    return null;
   }
 
   const loop = value as Record<string, unknown>;
-  return typeof loop.id === 'string' &&
-    loop.id.trim().length > 0 &&
-    typeof loop.title === 'string' &&
-    loop.title.trim().length > 0 &&
-    isValidSection(loop.teaching) &&
-    isValidSection(loop.example) &&
-    isValidSection(loop.learnerTask) &&
-    isValidSection(loop.retrievalCheck) &&
-    Array.isArray(loop.mustHitConcepts) &&
-    loop.mustHitConcepts.length > 0 &&
-    loop.mustHitConcepts.every((item) => typeof item === 'string' && item.trim().length > 0) &&
-    Array.isArray(loop.criticalMisconceptionTags) &&
-    loop.criticalMisconceptionTags.length > 0 &&
-    loop.criticalMisconceptionTags.every((item) => typeof item === 'string' && item.trim().length > 0);
+  const id = readString(loop.id);
+  const title = readString(loop.title);
+  const teaching = normalizeLessonSection(loop.teaching);
+  const example = normalizeLessonSection(loop.example);
+  const learnerTask = normalizeLessonSection(loop.learnerTask);
+  const retrievalCheck = normalizeLessonSection(loop.retrievalCheck);
+  const mustHitConcepts = readStringArray(loop.mustHitConcepts);
+  const criticalMisconceptionTags = readStringArray(loop.criticalMisconceptionTags);
+
+  if (!id || !title || !teaching || !example || !learnerTask || !retrievalCheck || !mustHitConcepts || !criticalMisconceptionTags) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    teaching,
+    example,
+    learnerTask,
+    retrievalCheck,
+    mustHitConcepts,
+    criticalMisconceptionTags
+  };
 }
 
 function buildOpeningStartSectionFromConcept(concept: ConceptItem): LessonSection {
@@ -1252,10 +1347,10 @@ function parseV2LessonPlanResponse(content: string, request: LessonPlanRequest):
 
   if (
     !parsed ||
-    !isValidSection(parsed.start) ||
-    !isValidSection(parsed.synthesis) ||
-    !isValidSection(parsed.independentAttempt) ||
-    !isValidSection(parsed.exitCheck) ||
+    !normalizeLessonSection(parsed.start) ||
+    !normalizeLessonSection(parsed.synthesis) ||
+    !normalizeLessonSection(parsed.independentAttempt) ||
+    !normalizeLessonSection(parsed.exitCheck) ||
     !Array.isArray(parsed.concepts) ||
     !Array.isArray(parsed.loops)
   ) {
@@ -1265,7 +1360,13 @@ function parseV2LessonPlanResponse(content: string, request: LessonPlanRequest):
   const concepts = parsed.concepts
     .map((concept) => normalizeV2Concept(concept, request))
     .filter((concept): concept is ConceptItem => Boolean(concept));
-  const loops = parsed.loops.filter(isValidV2Loop);
+  const loops = parsed.loops
+    .map(normalizeV2Loop)
+    .filter((loop): loop is LessonFlowV2Loop => Boolean(loop));
+  const start = normalizeLessonSection(parsed.start)!;
+  const synthesis = normalizeLessonSection(parsed.synthesis)!;
+  const independentAttempt = normalizeLessonSection(parsed.independentAttempt)!;
+  const exitCheck = normalizeLessonSection(parsed.exitCheck)!;
 
   if (
     concepts.length !== parsed.concepts.length ||
@@ -1273,8 +1374,8 @@ function parseV2LessonPlanResponse(content: string, request: LessonPlanRequest):
     concepts.length > 4 ||
     loops.length !== parsed.loops.length ||
     loops.length !== concepts.length ||
-    GENERIC_V2_CONTENT_PATTERN.test(parsed.start.body) ||
-    GENERIC_V2_START_PATTERN.test(parsed.start.body)
+    GENERIC_V2_CONTENT_PATTERN.test(start.body) ||
+    GENERIC_V2_START_PATTERN.test(start.body)
   ) {
     return null;
   }
@@ -1285,9 +1386,9 @@ function parseV2LessonPlanResponse(content: string, request: LessonPlanRequest):
     start: normalizedStart,
     concepts,
     loops,
-    synthesis: parsed.synthesis,
-    independentAttempt: parsed.independentAttempt,
-    exitCheck: parsed.exitCheck
+    synthesis,
+    independentAttempt,
+    exitCheck
   };
   const base = buildDynamicLessonFromTopic({
     subjectId: request.subjectId,

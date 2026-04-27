@@ -7,6 +7,7 @@ import type {
   LessonFlowV2Checkpoint,
   LessonGroupedLabelBucket,
   LessonMessage,
+  LessonResource,
   LessonSession,
   LessonStage,
   QuestionOption,
@@ -34,6 +35,7 @@ export interface LessonWorkspaceActiveCard {
   primaryAction: 'next_step' | 'submit_diagnostic';
   conceptMiniCards: ConceptItem[];
   diagnostic: LessonWorkspaceEarlyDiagnostic | null;
+  resource: LessonResource | null;
 }
 
 export interface LessonWorkspaceEarlyDiagnostic {
@@ -478,10 +480,11 @@ export function deriveActiveLessonCardForSession(
     case 'start':
       return {
         stateLabel: 'Start',
-        title: lesson.flowV2.start.title,
-        body: lesson.flowV2.start.body,
-        ...baseCard
-      };
+            title: lesson.flowV2.start.title,
+            body: lesson.flowV2.start.body,
+            ...baseCard,
+            resource: lesson.flowV2.start.resource ?? null
+          };
     case 'loop_teach':
       return loop
         ? {
@@ -490,7 +493,8 @@ export function deriveActiveLessonCardForSession(
               : getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Teach'),
             title: loop.teaching.title,
             body: loop.teaching.body,
-            ...baseCard
+            ...baseCard,
+            resource: loop.teaching.resource ?? null
           }
         : null;
     case 'loop_example':
@@ -499,7 +503,8 @@ export function deriveActiveLessonCardForSession(
             stateLabel: getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Example'),
             title: loop.example.title,
             body: loop.example.body,
-            ...baseCard
+            ...baseCard,
+            resource: loop.example.resource ?? null
           }
         : null;
     case 'loop_practice':
@@ -508,7 +513,8 @@ export function deriveActiveLessonCardForSession(
             stateLabel: getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Practice'),
             title: loop.learnerTask.title,
             body: loop.learnerTask.body,
-            ...baseCard
+            ...baseCard,
+            resource: loop.learnerTask.resource ?? null
           }
         : null;
     case 'loop_check':
@@ -517,7 +523,8 @@ export function deriveActiveLessonCardForSession(
             stateLabel: getLoopStateLabel(lessonSession.v2State.activeLoopIndex, 'Check'),
             title: loop.retrievalCheck.title,
             body: loop.retrievalCheck.body,
-            ...baseCard
+            ...baseCard,
+            resource: loop.retrievalCheck.resource ?? null
           }
         : null;
     case 'synthesis':
@@ -525,21 +532,24 @@ export function deriveActiveLessonCardForSession(
         stateLabel: 'Synthesis',
         title: lesson.flowV2.synthesis.title,
         body: lesson.flowV2.synthesis.body,
-        ...baseCard
+        ...baseCard,
+        resource: lesson.flowV2.synthesis.resource ?? null
       };
     case 'independent_attempt':
       return {
         stateLabel: 'Independent attempt',
         title: lesson.flowV2.independentAttempt.title,
         body: lesson.flowV2.independentAttempt.body,
-        ...baseCard
+        ...baseCard,
+        resource: lesson.flowV2.independentAttempt.resource ?? null
       };
     case 'exit_check':
       return {
         stateLabel: 'Exit check',
         title: lesson.flowV2.exitCheck.title,
         body: lesson.flowV2.exitCheck.body,
-        ...baseCard
+        ...baseCard,
+        resource: lesson.flowV2.exitCheck.resource ?? null
       };
     case 'complete':
       return null;

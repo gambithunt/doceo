@@ -16,7 +16,7 @@
   } from '$lib/components/lesson-workspace-ui';
   import { launchCheckout } from '$lib/payments/checkout';
   import { appState } from '$lib/stores/app-state';
-  import type { AppState, ConceptItem, LessonMessage, LessonStage } from '$lib/types';
+  import type { AppState, ConceptItem, LessonMessage, LessonResource, LessonStage } from '$lib/types';
 
   const { state: viewState }: { state: AppState } = $props();
   const lessonSession = $derived(getActiveLessonSession(viewState));
@@ -802,6 +802,24 @@
         </section>
       {/snippet}
 
+      {#snippet lessonResource(resource: LessonResource)}
+        <div class="lesson-resource-card">
+          <div class="lesson-resource-card-header">
+            <span class="lesson-resource-card-label">Resource</span>
+            <strong>{resource.title}</strong>
+          </div>
+          {#if resource.description}
+            <p>{resource.description}</p>
+          {/if}
+          {#if resource.content}
+            <pre aria-label={resource.altText}>{resource.content}</pre>
+          {/if}
+          {#if resource.type === 'trusted_link' && resource.url}
+            <a href={resource.url} target="_blank" rel="noreferrer">Open supporting resource</a>
+          {/if}
+        </div>
+      {/snippet}
+
       {#snippet transcriptEntry(entry, history)}
         {@const message = entry.message}
         {@const messageIndex = entry.index}
@@ -833,6 +851,9 @@
                       <span class="concept-example-label">Example</span>
                       <div>{@html renderSimpleMarkdown(concept.example)}</div>
                     </div>
+                    {#if concept.resource}
+                      {@render lessonResource(concept.resource)}
+                    {/if}
                     <div class="concept-actions">
                       <button
                         type="button"
@@ -947,6 +968,9 @@
                       {@html renderSimpleMarkdown(activeLessonCard.body)}
                     </div>
                   </div>
+                  {#if activeLessonCard.resource}
+                    {@render lessonResource(activeLessonCard.resource)}
+                  {/if}
                   {#if activeLessonCardTtsMessage}
                     {@render tutorAudioUpgradeNotice(activeLessonCardTtsMessage.id)}
                   {/if}
@@ -979,6 +1003,9 @@
                                   <span class="concept-example-label">Example</span>
                                   <div>{@html renderSimpleMarkdown(concept.example)}</div>
                                 </div>
+                                {#if concept.resource}
+                                  {@render lessonResource(concept.resource)}
+                                {/if}
                                 <div class="concept-actions">
                                   <button
                                     type="button"
@@ -3275,6 +3302,60 @@
     font-weight: 700;
     letter-spacing: 0.04em;
     color: color-mix(in srgb, var(--accent) 72%, var(--text-soft) 28%);
+  }
+
+  .lesson-resource-card {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+    background: color-mix(in srgb, var(--accent) 7%, var(--surface-soft));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 42%, transparent);
+  }
+
+  .lesson-resource-card-header {
+    display: grid;
+    gap: 0.15rem;
+  }
+
+  .lesson-resource-card-label {
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--accent) 76%, var(--text-soft) 24%);
+  }
+
+  .lesson-resource-card strong {
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+
+  .lesson-resource-card p {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  .lesson-resource-card pre {
+    margin: 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    font: inherit;
+    line-height: 1.55;
+    color: var(--text);
+    padding: 0.75rem 0.8rem;
+    border-radius: 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+    background: color-mix(in srgb, var(--surface-strong) 86%, var(--accent) 14%);
+  }
+
+  .lesson-resource-card a {
+    color: var(--accent);
+    font-weight: 750;
+    text-decoration: none;
   }
 
   .concept-actions {

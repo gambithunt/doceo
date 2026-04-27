@@ -102,6 +102,10 @@ describe('lesson-plan system prompt', () => {
     expect(prompt).toContain('identify the rule');
     expect(prompt).toContain('show the first step');
     expect(prompt).toContain('use the evidence');
+    expect(prompt).toContain('resource');
+    expect(prompt).toContain('inline_diagram');
+    expect(prompt).toContain('inline_text');
+    expect(prompt).toContain('trusted_link');
   });
 
   it('requires the v2 start block to teach immediately instead of using generic lesson framing', () => {
@@ -111,6 +115,7 @@ describe('lesson-plan system prompt', () => {
     expect(prompt).toContain('start must begin teaching immediately');
     expect(prompt).toContain('Do not use generic lesson framing such as "In this lesson you\'re exploring"');
     expect(prompt).toContain('Do not use instruction text as the concept example');
+    expect(prompt).toContain('Do not ask the learner to use a diagram, passage, graph, table, map, image, video, article, or external source unless you include that resource directly');
   });
 });
 
@@ -572,6 +577,81 @@ describe('parseLessonPlanResponse', () => {
     expect(result?.lesson.flowV2?.concepts?.[0]?.quickCheck).toContain('standard form');
   });
 
+  it('preserves embedded concept and task resources on valid v2 payloads', () => {
+    const payload = makeValidV2AiPayload();
+    const content = JSON.parse(payload.choices[0]!.message.content);
+    const resource = {
+      type: 'text_diagram',
+      title: 'Parabola crossing diagram',
+      content: 'y\n|\n|     U\n|____2___3____ x',
+      alt_text: 'A simple coordinate diagram showing a parabola crossing the x-axis at 2 and 3.'
+    };
+    content.concepts[0].resource = resource;
+    content.loops[0].learnerTask = {
+      title: 'Task',
+      body: 'Look at the diagram and label the two roots.',
+      resource
+    };
+    payload.choices[0]!.message.content = JSON.stringify(content);
+
+    const result = parseLessonPlanResponse(payload, baseRequest, { lessonFlowVersion: 'v2' });
+
+    expect(result).not.toBeNull();
+    expect(result?.lesson.keyConcepts?.[0]?.resource).toEqual(
+      expect.objectContaining({
+        type: 'text_diagram',
+        title: 'Parabola crossing diagram',
+        content: expect.stringContaining('2'),
+        altText: expect.stringContaining('parabola')
+      })
+    );
+    expect(result?.lesson.flowV2?.loops[0]?.learnerTask.resource).toEqual(
+      expect.objectContaining({
+        type: 'text_diagram',
+        title: 'Parabola crossing diagram'
+      })
+    );
+  });
+
+  it('rejects v2 tasks that require a missing external resource', () => {
+    const payload = makeValidV2AiPayload({
+      loops: [
+        {
+          id: 'loop-1',
+          title: 'Standard Form',
+          teaching: { title: 'Teach', body: 'A quadratic must first be written in standard form.' },
+          example: { title: 'Example', body: 'x² - 5x + 6 = 0 is already in standard form.' },
+          learnerTask: { title: 'Task', body: 'Look at the diagram and label the skull and femur.' },
+          retrievalCheck: { title: 'Check', body: 'Explain why standard form matters before solving.' },
+          mustHitConcepts: ['standard form'],
+          criticalMisconceptionTags: ['solving-before-rearranging']
+        },
+        {
+          id: 'loop-2',
+          title: 'Factoring',
+          teaching: { title: 'Teach', body: 'Look for factors that multiply to c and add to b.' },
+          example: { title: 'Example', body: 'x² - 5x + 6 factors to (x-2)(x-3).' },
+          learnerTask: { title: 'Task', body: 'Factor x² + x - 6.' },
+          retrievalCheck: { title: 'Check', body: 'State the pair of numbers and why they work.' },
+          mustHitConcepts: ['factor pair'],
+          criticalMisconceptionTags: ['incorrect-factor-pair']
+        },
+        {
+          id: 'loop-3',
+          title: 'Checking Solutions',
+          teaching: { title: 'Teach', body: 'Substitute solutions back into the original equation.' },
+          example: { title: 'Example', body: 'Substitute x = 2 into x² - 5x + 6 = 0.' },
+          learnerTask: { title: 'Task', body: 'Check whether x = -3 solves x² + x - 6 = 0.' },
+          retrievalCheck: { title: 'Check', body: 'Explain what a failed substitution tells you.' },
+          mustHitConcepts: ['substitution check'],
+          criticalMisconceptionTags: ['unchecked-answer']
+        }
+      ]
+    });
+
+    expect(parseLessonPlanResponse(payload, baseRequest, { lessonFlowVersion: 'v2' })).toBeNull();
+  });
+
   it('accepts topic-shaped v2 concepts for poetry and prose techniques', () => {
     const request = {
       ...baseRequest,
@@ -648,7 +728,16 @@ describe('parseLessonPlanResponse', () => {
         }
       ],
       synthesis: { title: 'Synthesis', body: 'Metaphor, imagery, and tone all help a reader explain how a text creates meaning.' },
-      independentAttempt: { title: 'Independent Attempt', body: 'Read a short extract and explain one technique and its effect.' },
+      independentAttempt: {
+        title: 'Independent Attempt',
+        body: 'Read the short extract and explain one technique and its effect.',
+        resource: {
+          type: 'inline_text',
+          title: 'Short extract',
+          content: 'The cold rain tapped against the tin roof while the room sat silent.',
+          alt_text: 'A short prose extract containing imagery and tone cues.'
+        }
+      },
       exitCheck: { title: 'Exit Check', body: 'Name one technique, quote it, and explain its effect in context.' }
     });
 

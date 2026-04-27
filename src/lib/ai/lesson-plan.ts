@@ -14,6 +14,7 @@ import type {
   LessonFlowVersion,
   LessonPlanRequest,
   LessonPlanResponse,
+  LessonResource,
   LessonSection
 } from '$lib/types';
 
@@ -59,6 +60,8 @@ const GENERIC_PRACTICE_PATTERN = /apply (?:what you have learned about )?.+?to a
 const GENERIC_TRANSFER_PATTERN = /can you apply .+?to a problem you have not seen before\?/i;
 const GENERIC_V2_START_PATTERN =
   /in this lesson you're exploring|by the end you should be able to|this topic matters because|get the big picture before you dive into the details/i;
+const EXTERNAL_RESOURCE_REFERENCE_PATTERN =
+  /\b(look at|use|refer to|study|read|watch|listen to|examine)\s+(?:the|this|a|an)?\s*(?:[a-z-]+\s+){0,3}(diagram|image|picture|graph|table|map|chart|passage|extract|text|article|video|audio|source)\b|\b(diagram|image|picture|graph|table|map|chart|passage|extract|article|video|audio|source)\s+(?:above|below|shown|provided|given)\b/i;
 
 function resolveLessonFlowVersion(options?: LessonPlanOptions): LessonFlowVersion {
   return options?.lessonFlowVersion === 'v2' ? 'v2' : 'v1';
@@ -128,6 +131,12 @@ function createV2LessonPlanSystemPrompt(): string {
     '  explanation (string),',
     '  quick_check (string),',
     '  diagnostic (object with: prompt (string), options (array of exactly 4 objects with id, label, text), correct_option_id (string), optional rationale (string))',
+    '',
+    'Any concept, start section, loop section, synthesis, independentAttempt, or exitCheck may include an optional "resource" object:',
+    '  resource: { type: "inline_diagram" | "text_diagram" | "inline_text" | "trusted_link", title: string, description?: string, content?: string, url?: string, alt_text: string }',
+    'Use inline_diagram, text_diagram, or inline_text whenever the learner needs a diagram, graph, table, map, passage, extract, image, or source to answer.',
+    'Use trusted_link only as optional support; the learner must still be able to answer from the visible lesson content.',
+    'Do not ask the learner to use a diagram, passage, graph, table, map, image, video, article, or external source unless you include that resource directly in the returned JSON.',
     '',
     'Concept rules:',
     '  - name the actual sub-idea of the topic, not a wrapper like "Core Rule", "Worked Pattern", "Overview", or "Introduction".',
@@ -224,9 +233,83 @@ export function createLessonPlanBody(
 
 function isValidSection(value: unknown): value is LessonSection {
   if (!value || typeof value !== 'object') return false;
+  return normalizeLessonSection(value) !== null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function normalizeLessonResource(value: unknown): LessonResource | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const type = readString(record.type);
+  const title = readString(record.title);
+  const description = readString(record.description) ?? undefined;
+  const content = readString(record.content) ?? undefined;
+  const url = readString(record.url) ?? undefined;
+  const altText = readString(record.altText) ?? readString(record.alt_text);
+
+  if (
+    (type !== 'inline_diagram' && type !== 'text_diagram' && type !== 'inline_text' && type !== 'trusted_link') ||
+    !title ||
+    !altText
+  ) {
+    return null;
+  }
+
+  if ((type === 'inline_diagram' || type === 'text_diagram' || type === 'inline_text') && !content) {
+    return null;
+  }
+
+  if (type === 'trusted_link' && !url) {
+    return null;
+  }
+
+  return {
+    type,
+    title,
+    ...(description ? { description } : {}),
+    ...(content ? { content } : {}),
+    ...(url ? { url } : {}),
+    altText
+  };
+}
+
+function requiresEmbeddedResource(value: string): boolean {
+  return EXTERNAL_RESOURCE_REFERENCE_PATTERN.test(value);
+}
+
+function normalizeLessonSection(value: unknown): LessonSection | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
   const section = value as Record<string, unknown>;
-  return typeof section.title === 'string' && section.title.length > 0 &&
-    typeof section.body === 'string' && section.body.length > 0;
+  const title = readString(section.title);
+  const body = readString(section.body);
+  const resource = normalizeLessonResource(section.resource);
+
+  if (!title || !body) {
+    return null;
+  }
+
+  if (section.resource !== undefined && !resource) {
+    return null;
+  }
+
+  if (requiresEmbeddedResource(body) && !resource) {
+    return null;
+  }
+
+  return {
+    title,
+    body,
+    ...(resource ? { resource } : {})
+  };
 }
 
 function usesLegacyGenericPrompt(section: LessonSection, key: LegacySectionKey): boolean {
@@ -262,22 +345,42 @@ function isValidStringArray(value: unknown, minLength = 1): value is string[] {
     value.every((entry) => typeof entry === 'string' && entry.trim().length > 0);
 }
 
-function isValidLoop(value: unknown): value is LessonFlowV2Loop {
+function normalizeV2Loop(value: unknown): LessonFlowV2Loop | null {
   if (!value || typeof value !== 'object') {
-    return false;
+    return null;
   }
 
   const loop = value as Record<string, unknown>;
-  return typeof loop.id === 'string' &&
-    loop.id.length > 0 &&
-    typeof loop.title === 'string' &&
-    loop.title.length > 0 &&
-    isValidSection(loop.teaching) &&
-    isValidSection(loop.example) &&
-    isValidSection(loop.learnerTask) &&
-    isValidSection(loop.retrievalCheck) &&
-    isValidStringArray(loop.mustHitConcepts) &&
-    isValidStringArray(loop.criticalMisconceptionTags);
+  const id = readString(loop.id);
+  const title = readString(loop.title);
+  const teaching = normalizeLessonSection(loop.teaching);
+  const example = normalizeLessonSection(loop.example);
+  const learnerTask = normalizeLessonSection(loop.learnerTask);
+  const retrievalCheck = normalizeLessonSection(loop.retrievalCheck);
+
+  if (
+    !id ||
+    !title ||
+    !teaching ||
+    !example ||
+    !learnerTask ||
+    !retrievalCheck ||
+    !isValidStringArray(loop.mustHitConcepts) ||
+    !isValidStringArray(loop.criticalMisconceptionTags)
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    teaching,
+    example,
+    learnerTask,
+    retrievalCheck,
+    mustHitConcepts: loop.mustHitConcepts,
+    criticalMisconceptionTags: loop.criticalMisconceptionTags
+  };
 }
 
 function parseJsonContent(payload: GithubModelsSuccessResponse): Record<string, unknown> | null {
@@ -426,34 +529,43 @@ function parseV2LessonPlan(
   });
 
   if (
-    !isValidSection(parsed.start) ||
+    !normalizeLessonSection(parsed.start) ||
     conceptValidation.hardFailures.length > 0 ||
     conceptValidation.softFailures.length > 0 ||
     !Array.isArray(parsed.loops) ||
     parsed.loops.length < 2 ||
     parsed.loops.length > 4 ||
-    !parsed.loops.every(isValidLoop) ||
     conceptValidation.concepts.length !== parsed.loops.length ||
-    !isValidSection(parsed.synthesis) ||
-    !isValidSection(parsed.independentAttempt) ||
-    !isValidSection(parsed.exitCheck)
+    !normalizeLessonSection(parsed.synthesis) ||
+    !normalizeLessonSection(parsed.independentAttempt) ||
+    !normalizeLessonSection(parsed.exitCheck)
   ) {
     return null;
   }
 
+  const loops = parsed.loops.map(normalizeV2Loop);
+  if (loops.some((loop) => !loop)) {
+    return null;
+  }
+
+  const start = normalizeLessonSection(parsed.start)!;
+  const synthesis = normalizeLessonSection(parsed.synthesis)!;
+  const independentAttempt = normalizeLessonSection(parsed.independentAttempt)!;
+  const exitCheck = normalizeLessonSection(parsed.exitCheck)!;
+
   const normalizedStart =
-    GENERIC_V2_START_PATTERN.test((parsed.start as LessonSection).body) && conceptValidation.concepts[0]
+    GENERIC_V2_START_PATTERN.test(start.body) && conceptValidation.concepts[0]
       ? buildOpeningStartSectionFromConcept(conceptValidation.concepts[0]!)
-      : (parsed.start as LessonSection);
+      : start;
 
   const flowV2: LessonFlowV2Artifact = {
     groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
     start: normalizedStart,
     concepts: conceptValidation.concepts,
-    loops: parsed.loops as LessonFlowV2Loop[],
-    synthesis: parsed.synthesis,
-    independentAttempt: parsed.independentAttempt,
-    exitCheck: parsed.exitCheck
+    loops: loops as LessonFlowV2Loop[],
+    synthesis,
+    independentAttempt,
+    exitCheck
   };
   const base = buildDynamicLessonFlowV2FromTopic({
     subjectId: request.subjectId,
