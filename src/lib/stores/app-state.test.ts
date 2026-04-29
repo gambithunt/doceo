@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { createInitialState } from '$lib/data/platform';
+import { createInitialState, normalizeAppState } from '$lib/data/platform';
 import { buildRevisionSession } from '$lib/revision/engine';
 import type {
   DashboardTopicDiscoverySuggestion,
@@ -3864,5 +3864,88 @@ describe('degraded runtime handling', () => {
     const state = get(store);
     expect(state.backend.lastSyncStatus).toBe('error');
     expect(state.backend.lastSyncError).toMatch(/bootstrap/i);
+  });
+});
+
+describe('app-state lesson notes', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('creates a lesson note linked to the active lesson session context', () => {
+    const baseState = createInitialState();
+    const session = createLessonSession({
+      id: 'note-session-1',
+      lessonId: 'lesson-1',
+      subject: 'Economics',
+      topicTitle: 'Market structures'
+    });
+    const store = createAppStore({
+      ...baseState,
+      lessonSessions: [session],
+      ui: {
+        ...baseState.ui,
+        activeLessonSessionId: session.id
+      }
+    });
+
+    store.createLessonNote({
+      lessonSessionId: session.id,
+      text: 'Remember: monopoly firms face weak competition.',
+      sourceText: 'weak competition'
+    });
+
+    const [note] = get(store).lessonNotes;
+
+    expect(note).toMatchObject({
+      lessonSessionId: session.id,
+      lessonId: session.lessonId,
+      topicTitle: session.topicTitle,
+      subject: session.subject,
+      text: 'Remember: monopoly firms face weak competition.',
+      sourceText: 'weak competition'
+    });
+    expect(note?.id).toMatch(/^lesson-note-/);
+    expect(note?.createdAt).toEqual(expect.any(String));
+  });
+
+  it('keeps lesson notes in the normalized app-state snapshot shape', () => {
+    const baseState = createInitialState();
+    const normalized = normalizeAppState({
+      ...baseState,
+      lessonNotes: [
+        {
+          id: 'lesson-note-1',
+          lessonSessionId: 'note-session-1',
+          lessonId: 'lesson-1',
+          topicTitle: 'Market structures',
+          subject: 'Economics',
+          text: 'Remember: stored notes survive snapshot sync.',
+          sourceText: 'stored notes',
+          conceptTitle: 'Competition',
+          createdAt: '2026-04-28T08:00:00.000Z'
+        }
+      ]
+    });
+
+    expect(normalized.lessonNotes).toEqual([
+      {
+        id: 'lesson-note-1',
+        lessonSessionId: 'note-session-1',
+        lessonId: 'lesson-1',
+        topicTitle: 'Market structures',
+        subject: 'Economics',
+        text: 'Remember: stored notes survive snapshot sync.',
+        sourceText: 'stored notes',
+        conceptTitle: 'Competition',
+        createdAt: '2026-04-28T08:00:00.000Z'
+      }
+    ]);
+  });
+
+  it('backfills lessonNotes for older snapshots without notes', () => {
+    const normalized = normalizeAppState(createInitialState());
+
+    expect(normalized.lessonNotes).toEqual([]);
   });
 });

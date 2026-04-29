@@ -161,7 +161,8 @@ export async function fetchSubjects(
 }
 
 function resolveStoredEducationType(onboarding: StudentOnboardingRow): EducationType {
-  return isValidEducationType(onboarding.education_type ?? '') ? onboarding.education_type : 'School';
+  const educationType = onboarding.education_type ?? '';
+  return isValidEducationType(educationType) ? educationType : 'School';
 }
 
 function resolveStoredProvider(

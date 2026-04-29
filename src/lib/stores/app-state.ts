@@ -88,6 +88,7 @@ import type {
   LessonChatResponse,
   LessonEvaluationResult,
   LessonMessage,
+  LessonNote,
   LessonPlanResponse,
   LessonRating,
   LessonSession,
@@ -101,9 +102,16 @@ import type {
   SubjectVerificationState,
   ThemeMode,
   TopicDiscoverySuggestion,
-  TopicShortlistResponse
+  TopicShortlistResponse,
+  UniversityVerificationState
 } from '$lib/types';
-import type { UniversityVerificationState } from '$lib/types';
+
+interface CreateLessonNoteInput {
+  lessonSessionId?: string | null;
+  text: string;
+  sourceText?: string | null;
+  conceptTitle?: string | null;
+}
 
 interface BootstrapResponse {
   state: AppState;
@@ -1936,6 +1944,38 @@ export function createAppStore(initialState: AppState = readState()) {
     },
     updateComposerDraft: (composerDraft: string) =>
       update((state) => persistAndSync({ ...state, ui: { ...state.ui, composerDraft } })),
+    createLessonNote: (input: CreateLessonNoteInput) =>
+      update((state) => {
+        const text = input.text.trim();
+        if (!text) {
+          return state;
+        }
+
+        const session =
+          state.lessonSessions.find((item) => item.id === input.lessonSessionId) ??
+          getActiveLessonSession(state);
+
+        if (!session) {
+          return state;
+        }
+
+        const note: LessonNote = {
+          id: `lesson-note-${crypto.randomUUID()}`,
+          lessonSessionId: session.id,
+          lessonId: session.lessonId,
+          topicTitle: session.topicTitle,
+          subject: session.subject,
+          text,
+          sourceText: input.sourceText?.trim() || null,
+          conceptTitle: input.conceptTitle?.trim() || null,
+          createdAt: new Date().toISOString()
+        };
+
+        return persistAndSync({
+          ...state,
+          lessonNotes: [note, ...state.lessonNotes]
+        });
+      }),
     selectSubject: (subjectId: string) =>
       update((state) => {
         const subject = state.curriculum.subjects.find((item) => item.id === subjectId) ?? state.curriculum.subjects[0];

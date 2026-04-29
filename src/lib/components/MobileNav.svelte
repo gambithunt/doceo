@@ -4,6 +4,7 @@
   import { appState } from '$lib/stores/app-state';
   import {
     dashboardPath,
+    notesPath,
     progressPath,
     revisionPath,
     settingsPath,
@@ -18,6 +19,7 @@
     { id: 'subject',   label: 'Learn',      icon: '◎', path: subjectPath(state.ui.selectedSubjectId) },
     { id: 'revision',  label: 'Revision',   icon: '↺', path: revisionPath() },
     { id: 'progress',  label: 'Progress',   icon: '↗', path: progressPath() },
+    { id: 'notes',     label: 'Notes',      icon: '✎', path: notesPath() },
     { id: 'settings',  label: 'Settings',   icon: '◐', path: settingsPath() }
   ]);
 

@@ -29,6 +29,7 @@ import type {
   AskQuestionRequest,
   AskQuestionResponse,
   Lesson,
+  LessonNote,
   LessonProgress,
   ProblemType,
   Question,
@@ -55,6 +56,38 @@ function normalizeAnswer(value: string): string {
 
 function normalizeTopicTitle(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function normalizeLessonNoteRecord(value: unknown): LessonNote | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const input = value as Partial<LessonNote>;
+
+  if (
+    typeof input.id !== 'string' ||
+    typeof input.lessonSessionId !== 'string' ||
+    typeof input.lessonId !== 'string' ||
+    typeof input.topicTitle !== 'string' ||
+    typeof input.subject !== 'string' ||
+    typeof input.text !== 'string' ||
+    typeof input.createdAt !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: input.id,
+    lessonSessionId: input.lessonSessionId,
+    lessonId: input.lessonId,
+    topicTitle: input.topicTitle,
+    subject: input.subject,
+    text: input.text,
+    sourceText: typeof input.sourceText === 'string' ? input.sourceText : null,
+    conceptTitle: typeof input.conceptTitle === 'string' ? input.conceptTitle : null,
+    createdAt: input.createdAt
+  };
 }
 
 function slugify(value: string): string {
@@ -579,6 +612,7 @@ export function createInitialState(recommendationSignals: CountryRecommendationS
     questions: program.questions,
     progress: {},
     lessonSessions: [],
+    lessonNotes: [],
     revisionTopics: [],
     revisionAttempts: [],
     revisionSession: null,
@@ -785,6 +819,9 @@ export function normalizeAppState(value: unknown): AppState {
           })
         )
       : base.lessonSessions,
+    lessonNotes: Array.isArray(input.lessonNotes)
+      ? input.lessonNotes.map(normalizeLessonNoteRecord).filter((note): note is LessonNote => Boolean(note))
+      : base.lessonNotes,
     revisionTopics: Array.isArray(input.revisionTopics)
       ? input.revisionTopics.map((topic) => normalizeRevisionTopic(topic, curriculum.subjects, revisionPlans))
       : base.revisionTopics,
@@ -1009,6 +1046,7 @@ export function deriveLearningState(state: AppState): AppState {
       lessonSessions
     }),
     lessonSessions,
+    lessonNotes: Array.isArray(state.lessonNotes) ? state.lessonNotes.map(normalizeLessonNoteRecord).filter((note): note is LessonNote => Boolean(note)) : [],
     revisionTopics,
     revisionAttempts: Array.isArray(state.revisionAttempts)
       ? state.revisionAttempts.filter((attempt) => revisionTopics.some((topic) => topic.lessonSessionId === attempt.revisionTopicId))

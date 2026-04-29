@@ -72,8 +72,7 @@ describe('createAdminSessionTokenSync', () => {
   });
 
   it('continues syncing on auth state changes and triggers the signed-in callback only for real sign-in events', async () => {
-    let handler: ((event: string, session: { access_token?: string | null; user?: { id: string } | null } | null) => void) | null =
-      null;
+    let handler: ((event: string, session: { access_token?: string | null; user?: { id: string } | null } | null) => void) | undefined;
     const onSignedIn = vi.fn();
     const auth = {
       getSession: vi.fn().mockResolvedValue({
@@ -94,8 +93,9 @@ describe('createAdminSessionTokenSync', () => {
     const { initialize } = createAdminSessionTokenSync({ cookie: '' }, 'https:');
     await initialize(auth, onSignedIn);
 
-    handler?.('TOKEN_REFRESHED', { access_token: 'token-456', user: { id: 'user-1' } });
-    handler?.('SIGNED_IN', { access_token: 'token-789', user: { id: 'user-1' } });
+    expect(handler).toBeDefined();
+    handler!('TOKEN_REFRESHED', { access_token: 'token-456', user: { id: 'user-1' } });
+    handler!('SIGNED_IN', { access_token: 'token-789', user: { id: 'user-1' } });
 
     expect(syncAdminSessionCookie).toHaveBeenNthCalledWith(2, { cookie: '' }, expect.objectContaining({
       access_token: 'token-456'

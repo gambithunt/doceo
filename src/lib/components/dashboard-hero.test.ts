@@ -83,6 +83,9 @@ describe('deriveDashboardHeroState', () => {
     });
 
     expect(hero.mode).toBe('resume');
+    if (hero.mode !== 'resume') {
+      throw new Error(`Expected resume hero, received ${hero.mode}`);
+    }
     expect(hero.session).toBe(currentSession);
     expect(hero.kicker).toBe('Current Mission');
     expect(hero.title).toBe('Number patterns');
@@ -108,6 +111,9 @@ describe('deriveDashboardHeroState', () => {
     });
 
     expect(hero.mode).toBe('recommended');
+    if (hero.mode !== 'recommended') {
+      throw new Error(`Expected recommended hero, received ${hero.mode}`);
+    }
     expect(hero.suggestion).toBe(firstSuggestion);
     expect(hero.kicker).toBe('Recommended Next Mission');
     expect(hero.title).toBe('Forces and Motion');

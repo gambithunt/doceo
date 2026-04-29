@@ -3,6 +3,9 @@ import {
   deriveActiveLessonCardForSession,
   deriveConcept1EarlyDiagnostic,
   deriveConversationViewForSession,
+  deriveLessonHarnessMomentForSession,
+  deriveLessonComposerCopy,
+  deriveLessonVisualIntent,
   deriveNextStepCtaState,
   deriveNextStepCtaStateForSession,
   LESSON_WORKSPACE_VISIBLE_STAGES,
@@ -12,6 +15,7 @@ import {
   getVisibleQuickActionDefinitions,
   getVisibleQuickActionDefinitionsForSession
 } from './lesson-workspace-ui';
+import type { Lesson, LessonMessage } from '$lib/types';
 
 describe('lesson workspace UI helpers', () => {
   function createAssistantStageMessage(
@@ -26,7 +30,7 @@ describe('lesson workspace UI helpers', () => {
       stage,
       timestamp: new Date().toISOString(),
       metadata: null
-    };
+    } satisfies LessonMessage;
   }
 
   function createV2Message(
@@ -70,12 +74,12 @@ describe('lesson workspace UI helpers', () => {
         loopIndex: overrides.loopIndex ?? 0
       },
       ...overrides
-    };
+    } satisfies LessonMessage;
   }
 
   const conversationLesson = {
     flowV2: {
-      groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+      groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
       start: {
         title: 'Start',
         body: 'Start with the big picture.'
@@ -308,7 +312,7 @@ describe('lesson workspace UI helpers', () => {
           body: 'Summarize the main rule and apply it once.'
         }
       }
-    };
+    } as Pick<Lesson, 'flowV2'>;
 
     expect(
       deriveActiveLessonCardForSession(
@@ -479,6 +483,291 @@ describe('lesson workspace UI helpers', () => {
     });
   });
 
+  it('derives a harness orientation/start moment from the v2 start checkpoint', () => {
+    const moment = deriveLessonHarnessMomentForSession(
+      {
+        subject: 'English',
+        topicId: 'topic-1',
+        topicTitle: 'Metaphor',
+        currentStage: 'orientation',
+        status: 'active',
+        softStuckCount: 0,
+        messages: [],
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'start',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'orientation',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(moment).toMatchObject({
+      kind: 'orientation_start',
+      checkpoint: 'start',
+      subject: 'English',
+      topicId: 'topic-1',
+      topicTitle: 'Metaphor',
+      activeStageBucket: 'orientation',
+      learnerActionRequirement: 'can_continue',
+      expectsLearnerAnswer: false,
+      primaryActionLabel: 'Start lesson',
+      activeCard: expect.objectContaining({
+        title: 'Start',
+        body: 'Start with the big picture.'
+      })
+    });
+  });
+
+  it('derives a harness tutor concept moment from the v2 loop_teach checkpoint', () => {
+    const moment = deriveLessonHarnessMomentForSession(
+      {
+        subject: 'English',
+        topicId: 'topic-1',
+        topicTitle: 'Metaphor',
+        currentStage: 'concepts',
+        status: 'active',
+        softStuckCount: 0,
+        messages: [],
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(moment).toMatchObject({
+      kind: 'tutor_concept',
+      checkpoint: 'loop_teach',
+      activeStageBucket: 'concepts',
+      learnerActionRequirement: 'can_continue',
+      expectsLearnerAnswer: false,
+      primaryActionLabel: 'Check concept 1',
+      activeCard: expect.objectContaining({
+        title: 'Teach Loop 1'
+      })
+    });
+  });
+
+  it('derives a harness learner practice moment and marks learner input required when gated', () => {
+    const moment = deriveLessonHarnessMomentForSession(
+      {
+        subject: 'English',
+        topicId: 'topic-1',
+        topicTitle: 'Metaphor',
+        currentStage: 'concepts',
+        status: 'active',
+        softStuckCount: 0,
+        messages: [
+          createAssistantStageMessage(
+            'concepts',
+            'Try the task above.\n\nWhat rule, clue, or first step will you use?'
+          )
+        ],
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_practice',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(moment).toMatchObject({
+      kind: 'learner_practice',
+      checkpoint: 'loop_practice',
+      activeStageBucket: 'practice',
+      learnerActionRequirement: 'answer_required',
+      expectsLearnerAnswer: true,
+      learnerActionCue: 'Your turn first: try the question or tap Help me start.',
+      primaryActionLabel: 'Check what stuck',
+      activeCard: expect.objectContaining({
+        title: 'Try Loop 1'
+      })
+    });
+  });
+
+  it('derives a harness retrieval check moment from the v2 loop_check checkpoint', () => {
+    const moment = deriveLessonHarnessMomentForSession(
+      {
+        subject: 'English',
+        topicId: 'topic-1',
+        topicTitle: 'Metaphor',
+        currentStage: 'concepts',
+        status: 'active',
+        softStuckCount: 0,
+        messages: [],
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_check',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(moment).toMatchObject({
+      kind: 'retrieval_check',
+      checkpoint: 'loop_check',
+      activeStageBucket: 'check',
+      learnerActionRequirement: 'can_continue',
+      expectsLearnerAnswer: false,
+      primaryActionLabel: 'Next concept',
+      activeCard: expect.objectContaining({
+        title: 'Check Loop 1'
+      })
+    });
+  });
+
+  it('derives moment-aware composer copy for practice, check, and orientation states', () => {
+    function createComposerSession(
+      activeCheckpoint: 'start' | 'loop_practice' | 'loop_check',
+      messageContent = ''
+    ) {
+      return {
+        subject: 'English',
+        topicId: 'topic-1',
+        topicTitle: 'Metaphor',
+        currentStage: activeCheckpoint === 'start' ? ('orientation' as const) : ('concepts' as const),
+        status: 'active' as const,
+        softStuckCount: 0,
+        messages: messageContent
+          ? [
+              createAssistantStageMessage(
+                activeCheckpoint === 'start' ? 'orientation' : 'concepts',
+                messageContent
+              )
+            ]
+          : [],
+        lessonFlowVersion: 'v2' as const,
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint,
+          revisionAttemptCount: 0,
+          remediationStep: 'none' as const,
+          labelBucket: activeCheckpoint === 'start' ? ('orientation' as const) : ('concepts' as const),
+          skippedGaps: [],
+          needsTeacherReview: false,
+          cardSubstate: 'default' as const,
+          concept1EarlyDiagnosticCompleted: true
+        }
+      };
+    }
+
+    const practiceSession = createComposerSession(
+      'loop_practice',
+      'Try the task above.\n\nWhat rule, clue, or first step will you use?'
+    );
+    const practiceMoment = deriveLessonHarnessMomentForSession(practiceSession, conversationLesson);
+    const checkSession = createComposerSession(
+      'loop_check',
+      'What would you say to explain the first idea in your own words?'
+    );
+    const checkMoment = deriveLessonHarnessMomentForSession(checkSession, conversationLesson);
+    const startSession = createComposerSession('start');
+    const startMoment = deriveLessonHarnessMomentForSession(startSession, conversationLesson);
+
+    expect(deriveLessonComposerCopy(practiceSession, practiceMoment)).toMatchObject({
+      placeholder: 'Try the task here, or ask for bounded help.',
+      emptySubmitNudge: 'Your turn first: try the question or tap Help me start.',
+      helperChips: [
+        { id: 'first-step', label: 'First step', action: 'insert', text: 'The first step is ' },
+        { id: 'because', label: 'Because...', action: 'insert', text: 'I think this works because ' },
+        {
+          id: 'shape-this',
+          label: 'Help me shape this',
+          action: 'send',
+          text: 'Help me shape my answer for this practice task without giving away the answer.'
+        }
+      ]
+    });
+
+    expect(deriveLessonComposerCopy(checkSession, checkMoment)).toMatchObject({
+      placeholder: 'Explain or apply the idea here.',
+      emptySubmitNudge: 'Your turn first: explain or apply the idea before moving on.'
+    });
+
+    expect(deriveLessonComposerCopy(startSession, startMoment)).toMatchObject({
+      placeholder: 'Share what you already know about this lesson topic.',
+      emptySubmitNudge: 'Type a lesson response first, or use a lesson helper.',
+      helperChips: []
+    });
+  });
+
+  it('does not produce an active harness moment for completed v2 lessons', () => {
+    expect(
+      deriveLessonHarnessMomentForSession(
+        {
+          subject: 'English',
+          topicId: 'topic-1',
+          topicTitle: 'Metaphor',
+          currentStage: 'check',
+          status: 'complete',
+          softStuckCount: 0,
+          messages: [],
+          lessonFlowVersion: 'v2',
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 1,
+            activeCheckpoint: 'complete',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'complete',
+            skippedGaps: [],
+            needsTeacherReview: false
+          }
+        },
+        conversationLesson
+      )
+    ).toBeNull();
+  });
+
+  it('returns a safe null harness moment for sessions without v2 state', () => {
+    expect(
+      deriveLessonHarnessMomentForSession(
+        {
+          subject: 'English',
+          topicId: 'topic-1',
+          topicTitle: 'Metaphor',
+          currentStage: 'concepts',
+          status: 'active',
+          softStuckCount: 0,
+          messages: [],
+          lessonFlowVersion: 'v1',
+          v2State: null
+        },
+        conversationLesson
+      )
+    ).toBeNull();
+  });
+
   it('derives the concept-1 early diagnostic from the first concept record and switches the card action', () => {
     const lesson = {
       flowV2: {
@@ -537,7 +826,7 @@ describe('lesson workspace UI helpers', () => {
           body: 'Summarize the main rule and apply it once.'
         }
       }
-    };
+    } as Pick<Lesson, 'flowV2'>;
 
     expect(deriveConcept1EarlyDiagnostic(lesson)).toMatchObject({
       prompt: 'Which statement best matches core idea one?',
@@ -908,7 +1197,7 @@ describe('lesson workspace UI helpers', () => {
           }
         ]
       }
-    };
+    } as Pick<Lesson, 'flowV2'>;
 
     expect(deriveConcept1EarlyDiagnostic(lesson)).toMatchObject({
       prompt: 'What does calling the moon a “ghostly galleon” suggest?',
@@ -938,6 +1227,134 @@ describe('lesson workspace UI helpers', () => {
     });
   });
 
+  it('derives stage-aware visual intent across concept, example, practice, check, and summary states', () => {
+    function createVisualSession(activeCheckpoint: 'loop_teach' | 'loop_example' | 'loop_practice' | 'loop_check' | 'synthesis') {
+      return {
+        subject: 'Geography',
+        topicId: 'topic-visual',
+        topicTitle: 'Biomes and ecosystems',
+        currentStage: 'concepts' as const,
+        status: 'active' as const,
+        softStuckCount: 0,
+        messages: [],
+        lessonFlowVersion: 'v2' as const,
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint,
+          revisionAttemptCount: 0,
+          remediationStep: 'none' as const,
+          labelBucket: 'concepts' as const,
+          skippedGaps: [],
+          needsTeacherReview: false,
+          concept1EarlyDiagnosticCompleted: true
+        }
+      };
+    }
+
+    const visualLesson = {
+      flowV2: {
+        ...conversationLesson.flowV2,
+        concepts: [
+          {
+            ...conversationLesson.flowV2.concepts[0],
+            resource: {
+              type: 'trusted_link' as const,
+              title: 'Forest canopy photo',
+              description: 'A real forest canopy showing layers in an ecosystem.',
+              url: 'https://example.com/forest-canopy.webp',
+              altText: 'A real forest canopy with visible ecosystem layers.'
+            }
+          }
+        ]
+      }
+    } as Pick<Lesson, 'flowV2'>;
+
+    const checkpoints = [
+      ['loop_teach', 'Concept', 'A real forest canopy showing layers in an ecosystem.'],
+      ['loop_example', 'Example', 'See the example in a real-world context.'],
+      ['loop_practice', 'Your Turn', 'Use the image as context while you try the task.'],
+      ['loop_check', 'Feedback', 'Use the image to check what stuck.'],
+      ['synthesis', 'Summary', 'Connect the lesson ideas back to the real world.']
+    ] as const;
+
+    for (const [checkpoint, eyebrow, caption] of checkpoints) {
+      const session = createVisualSession(checkpoint);
+      const moment = deriveLessonHarnessMomentForSession(session, visualLesson);
+
+      expect(deriveLessonVisualIntent({ lessonSession: session, lesson: visualLesson, lessonHarnessMoment: moment })).toMatchObject({
+        src: 'https://example.com/forest-canopy.webp',
+        alt: 'A real forest canopy with visible ecosystem layers.',
+        eyebrow,
+        caption
+      });
+    }
+  });
+
+  it('prefers active card image resources before concept resources and fallback imagery', () => {
+    const session = {
+      subject: 'Economics',
+      topicId: 'topic-resource',
+      topicTitle: 'Market structures',
+      currentStage: 'concepts' as const,
+      status: 'active' as const,
+      softStuckCount: 0,
+      messages: [],
+      lessonFlowVersion: 'v2' as const,
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example' as const,
+        revisionAttemptCount: 0,
+        remediationStep: 'none' as const,
+        labelBucket: 'concepts' as const,
+        skippedGaps: [],
+        needsTeacherReview: false,
+        concept1EarlyDiagnosticCompleted: true
+      }
+    };
+    const lesson = {
+      flowV2: {
+        ...conversationLesson.flowV2,
+        concepts: [
+          {
+            ...conversationLesson.flowV2.concepts[0],
+            resource: {
+              type: 'trusted_link' as const,
+              title: 'Concept image',
+              description: 'Concept image description.',
+              url: 'https://example.com/concept.png',
+              altText: 'Concept image alt text.'
+            }
+          }
+        ],
+        loops: [
+          {
+            ...conversationLesson.flowV2.loops[0],
+            example: {
+              ...conversationLesson.flowV2.loops[0].example,
+              resource: {
+                type: 'trusted_link' as const,
+                title: 'Example market photo',
+                description: 'A real market stall showing sellers competing.',
+                url: 'https://example.com/market-stall.jpg',
+                altText: 'A real market stall with several sellers.'
+              }
+            }
+          }
+        ]
+      }
+    } as Pick<Lesson, 'flowV2'>;
+    const moment = deriveLessonHarnessMomentForSession(session, lesson);
+
+    expect(deriveLessonVisualIntent({ lessonSession: session, lesson, lessonHarnessMoment: moment })).toMatchObject({
+      src: 'https://example.com/market-stall.jpg',
+      alt: 'A real market stall with several sellers.',
+      eyebrow: 'Example',
+      caption: 'A real market stall showing sellers competing.'
+    });
+  });
+
   it('derives sense-based options for imagery quick checks', () => {
     const lesson = {
       flowV2: {
@@ -952,7 +1369,7 @@ describe('lesson workspace UI helpers', () => {
           }
         ]
       }
-    };
+    } as Pick<Lesson, 'flowV2'>;
 
     expect(deriveConcept1EarlyDiagnostic(lesson)).toMatchObject({
       prompt: 'Which sense stands out most in this line?',
@@ -990,7 +1407,7 @@ describe('lesson workspace UI helpers', () => {
           }
         ]
       }
-    };
+    } as Pick<Lesson, 'flowV2'>;
 
     expect(deriveConcept1EarlyDiagnostic(lesson)).toEqual({
       prompt: 'What does calling the moon a “ghostly galleon” suggest?',

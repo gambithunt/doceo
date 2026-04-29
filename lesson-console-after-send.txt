@@ -1,0 +1,5 @@
+Total messages: 4 (Errors: 1, Warnings: 0)
+Returning 2 messages for level "info"
+
+[ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:5187/api/state/bootstrap:0
+[VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:5187/:0

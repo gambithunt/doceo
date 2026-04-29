@@ -73,7 +73,7 @@ export async function POST({ request }) {
     const event = getStripe().webhooks.constructEvent(rawBody, signature, serverEnv.stripeWebhookSecret);
 
     if (SUPPORTED_EVENTS.has(event.type)) {
-      const links = getEventLinks(event as { type: string; data: { object: Record<string, unknown> } });
+      const links = getEventLinks(event as unknown as { type: string; data: { object: Record<string, unknown> } });
       const recorded = await recordStripeWebhookEvent({
         eventId: event.id,
         eventType: event.type,

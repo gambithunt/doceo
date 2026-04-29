@@ -30,7 +30,7 @@ export async function POST({ request }: { request: Request }) {
       configOverride
     });
 
-    return new Response(result.audio, {
+    return new Response(result.audio as BodyInit, {
       status: 200,
       headers: {
         'content-type': result.mimeType,

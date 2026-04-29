@@ -11,6 +11,7 @@ export type AppScreen =
   | 'lesson'
   | 'revision'
   | 'progress'
+  | 'notes'
   | 'settings';
 export type OnboardingStep = 'country' | 'academic' | 'subjects' | 'review';
 export type SchoolTerm = 'Term 1' | 'Term 2' | 'Term 3' | 'Term 4';
@@ -876,6 +877,7 @@ export interface LessonPlanResponse {
   lesson: Lesson;
   questions: Question[];
   provider: string;
+  estimatedCostUsd?: number | null;
   pedagogyVersion?: string;
   promptVersion?: string;
   nodeId?: string;
@@ -948,6 +950,18 @@ export interface RevisionTopic {
   hasLesson?: boolean;
 }
 
+export interface LessonNote {
+  id: string;
+  lessonSessionId: string;
+  lessonId: string;
+  topicTitle: string;
+  subject: string;
+  text: string;
+  sourceText: string | null;
+  conceptTitle: string | null;
+  createdAt: string;
+}
+
 export interface AppState {
   auth: {
     status: 'signed_out' | 'loading' | 'signed_in';
@@ -996,6 +1010,7 @@ export interface AppState {
   questions: Question[];
   progress: Record<string, LessonProgress>;
   lessonSessions: LessonSession[];
+  lessonNotes: LessonNote[];
   revisionTopics: RevisionTopic[];
   revisionAttempts: RevisionAttemptRecord[];
   revisionSession: ActiveRevisionSession | null;

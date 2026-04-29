@@ -115,7 +115,7 @@ describe('tts-observability', () => {
     const fallbackLimit = vi.fn(() => ({ maybeSingle }));
     const fallbackOrder = vi.fn(() => ({ limit: fallbackLimit }));
     const fallbackNot = vi.fn(() => ({ order: fallbackOrder }));
-    const fallbackSelect = vi.fn(() => ({ not: fallbackNot }));
+    const fallbackSelect = vi.fn((_columns: string) => ({ not: fallbackNot }));
     const recentEvents = [
       {
         provider_used: 'openai',
@@ -151,7 +151,7 @@ describe('tts-observability', () => {
         created_at: '2026-04-21T08:30:00.000Z'
       }
     ];
-    const selectRecent = vi.fn(() => ({
+    const selectRecent = vi.fn((_columns: string) => ({
       gte: vi.fn(() => ({
         order: vi.fn().mockResolvedValue({
           data: recentEvents,

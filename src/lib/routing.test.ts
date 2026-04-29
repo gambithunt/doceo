@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { screenForPath } from './routing';
+import { notesPath, screenForPath } from './routing';
 
 describe('screenForPath', () => {
   it('prefers dashboard for the dashboard URL', () => {
@@ -10,6 +10,11 @@ describe('screenForPath', () => {
     expect(screenForPath('/settings')).toBe('settings');
     expect(screenForPath('/progress')).toBe('progress');
     expect(screenForPath('/revision')).toBe('revision');
+    expect(screenForPath('/notes')).toBe('notes');
+  });
+
+  it('builds the notes route path', () => {
+    expect(notesPath()).toBe('/notes');
   });
 
   it('maps nested routes correctly', () => {

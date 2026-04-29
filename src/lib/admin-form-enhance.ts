@@ -1,5 +1,5 @@
-import { applyAction, deserialize, type SubmitFunction } from '$app/forms';
-import type { ActionResult } from '@sveltejs/kit';
+import { applyAction, deserialize } from '$app/forms';
+import type { ActionResult, SubmitFunction } from '@sveltejs/kit';
 import { invalidateAll } from '$app/navigation';
 import { buildAdminAuthHeaders } from '$lib/admin-auth';
 import { supabase } from '$lib/supabase';
@@ -70,8 +70,12 @@ export function createAdminFormEnhance<
       const body =
         enctype === 'multipart/form-data'
           ? formData
-          : // @ts-expect-error URLSearchParams accepts FormData at runtime.
-            new URLSearchParams(formData);
+          : new URLSearchParams(
+              Array.from(formData.entries()).map(([key, value]) => [
+                key,
+                typeof value === 'string' ? value : value.name
+              ])
+            );
 
       const response = await fetch(action, {
         method: 'POST',

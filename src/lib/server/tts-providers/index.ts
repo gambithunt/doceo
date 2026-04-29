@@ -4,6 +4,7 @@ export {
   TtsProviderError,
   classifyTtsProviderError,
   mimeTypeForFormat,
+  type TtsErrorCategory,
   type NormalizedTtsProviderError,
   type TtsProviderId,
   type TtsSynthesisResult

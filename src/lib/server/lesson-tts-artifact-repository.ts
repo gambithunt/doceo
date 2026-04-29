@@ -160,10 +160,11 @@ export function createLessonTtsArtifactRepository(options?: { supabase?: Supabas
       }
 
       const query = supabase.from('lesson_tts_artifacts');
-      const { data } = await query
+      const result = await query
         .select?.('*')
         .eq('cache_key', cacheKey)
         .maybeSingle();
+      const data = result?.data ?? null;
 
       return data ? mapRow(data) : null;
     },

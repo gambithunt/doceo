@@ -1,0 +1,13 @@
+[GET] http://localhost:5187/api/state/bootstrap => [401] Unauthorized
+[GET] http://localhost:5187/api/auth/mode => [200] OK
+[POST] http://hyperion.local:55121/auth/v1/token?grant_type=password => [200] OK
+[GET] http://localhost:5187/api/state/bootstrap => [200] OK
+[POST] http://localhost:5187/api/ai/subject-hints => [200] OK
+[POST] http://localhost:5187/api/curriculum/topic-discovery => [200] OK
+[GET] http://localhost:5187/api/payments/quota-status => [200] OK
+[POST] http://localhost:5187/api/state/sync => [200] OK
+[POST] http://localhost:5187/api/state/sync => [200] OK
+[POST] http://localhost:5187/api/state/sync => [200] OK
+[POST] http://localhost:5187/api/ai/lesson-chat => [200] OK
+[POST] http://localhost:5187/api/state/sync => [200] OK
+[POST] http://localhost:5187/api/state/sync => [200] OK

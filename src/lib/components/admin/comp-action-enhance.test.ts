@@ -20,7 +20,7 @@ describe('createAdminCompFormEnhance', () => {
     const invalidateUsers = vi.fn().mockResolvedValue(undefined);
     const update = vi.fn().mockResolvedValue(undefined);
 
-    const enhanceOptions = createAdminCompFormEnhance(invalidateUsers) as {
+    const enhanceOptions = createAdminCompFormEnhance(invalidateUsers) as unknown as {
       onResult: (input: {
         result: { type: string };
         update: typeof update;
@@ -40,7 +40,7 @@ describe('createAdminCompFormEnhance', () => {
     const invalidateUsers = vi.fn().mockResolvedValue(undefined);
     const update = vi.fn().mockResolvedValue(undefined);
 
-    const enhanceOptions = createAdminCompFormEnhance(invalidateUsers) as {
+    const enhanceOptions = createAdminCompFormEnhance(invalidateUsers) as unknown as {
       onResult: (input: {
         result: { type: string };
         update: typeof update;

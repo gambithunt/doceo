@@ -93,10 +93,11 @@ export function createLessonTtsService(dependencies?: {
   const artifactRepository = dependencies?.artifactRepository ?? createLessonTtsArtifactRepository();
   const observability = dependencies?.observability ?? createTtsObservability();
   const providers: Record<TtsProviderId, LessonTtsProvider> =
-    dependencies?.providers ?? {
+    dependencies?.providers ??
+    ({
       openai: createOpenAITtsAdapter({ apiKey: serverEnv.openaiApiKey }),
       elevenlabs: createElevenLabsTtsAdapter({ apiKey: serverEnv.elevenlabsApiKey })
-    };
+    } as unknown as Record<TtsProviderId, LessonTtsProvider>);
 
   function resolveProviderRuntime(config: AppTtsSettings, providerId: TtsProviderId): LessonTtsProviderRuntime | null {
     if (providerId === 'openai') {

@@ -119,7 +119,9 @@ describe('lesson-tts-service', () => {
         createSignedUrl
       },
       observability: {
-        recordGenerationEvent
+        recordGenerationEvent,
+        getFallbackSummary: vi.fn(),
+        getAnalyticsCard: vi.fn()
       },
       providers: {
         openai: {

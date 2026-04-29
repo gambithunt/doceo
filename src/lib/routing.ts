@@ -4,6 +4,7 @@ export function screenForPath(pathname: string): AppScreen {
   if (pathname === '/dashboard') return 'dashboard';
   if (pathname === '/onboarding') return 'onboarding';
   if (pathname === '/progress') return 'progress';
+  if (pathname === '/notes') return 'notes';
   if (pathname === '/settings') return 'settings';
   if (pathname === '/revision') return 'revision';
   if (pathname === '/lesson' || pathname.startsWith('/lesson/')) return 'lesson';
@@ -21,6 +22,10 @@ export function onboardingPath(): string {
 
 export function progressPath(): string {
   return '/progress';
+}
+
+export function notesPath(): string {
+  return '/notes';
 }
 
 export function settingsPath(): string {
@@ -47,6 +52,8 @@ export function pathForScreen(screen: AppScreen, state: AppState): string {
       return onboardingPath();
     case 'progress':
       return progressPath();
+    case 'notes':
+      return notesPath();
     case 'settings':
       return settingsPath();
     case 'revision':

@@ -27,6 +27,19 @@ export interface LessonWorkspaceNextStepCtaState {
   cue: string | null;
 }
 
+export interface LessonComposerHelperChip {
+  id: string;
+  label: string;
+  action: 'insert' | 'send';
+  text: string;
+}
+
+export interface LessonComposerCopy {
+  placeholder: string;
+  emptySubmitNudge: string;
+  helperChips: LessonComposerHelperChip[];
+}
+
 export interface LessonWorkspaceActiveCard {
   stateLabel: string;
   title: string;
@@ -36,6 +49,42 @@ export interface LessonWorkspaceActiveCard {
   conceptMiniCards: ConceptItem[];
   diagnostic: LessonWorkspaceEarlyDiagnostic | null;
   resource: LessonResource | null;
+}
+
+export type LessonHarnessMomentKind =
+  | 'orientation_start'
+  | 'tutor_concept'
+  | 'tutor_example'
+  | 'learner_practice'
+  | 'retrieval_check'
+  | 'synthesis'
+  | 'independent_attempt'
+  | 'exit_check';
+
+export type LessonHarnessLearnerActionRequirement = 'answer_required' | 'can_continue';
+
+export interface LessonHarnessMoment {
+  readonly kind: LessonHarnessMomentKind;
+  readonly checkpoint: Exclude<LessonFlowV2Checkpoint, 'complete'>;
+  readonly subject: string;
+  readonly topicId: string;
+  readonly topicTitle: string;
+  readonly activeStageBucket: VisibleLessonStage;
+  readonly learnerActionRequirement: LessonHarnessLearnerActionRequirement;
+  readonly expectsLearnerAnswer: boolean;
+  readonly learnerActionCue: string | null;
+  readonly primaryActionLabel: string;
+  readonly activeCard: LessonWorkspaceActiveCard;
+}
+
+export type LessonVisualIntentContext = 'concept' | 'example' | 'your-turn' | 'feedback' | 'summary';
+
+export interface LessonVisualIntent {
+  src: string;
+  alt: string;
+  caption: string;
+  eyebrow: string;
+  source: 'active_resource' | 'concept_resource' | 'fallback';
 }
 
 export interface LessonWorkspaceEarlyDiagnostic {
@@ -101,6 +150,50 @@ const NEXT_STEP_DISABLED_CUES: Partial<Record<VisibleLessonStage, string>> = {
   check: 'Your turn first: explain or apply the idea before moving on.'
 };
 
+const DEFAULT_COMPOSER_EMPTY_NUDGE = 'Type a lesson response first, or use a lesson helper.';
+
+const COMPOSER_PLACEHOLDERS: Record<VisibleLessonStage, string> = {
+  orientation: 'Share what you already know about this lesson topic.',
+  concepts: 'Explain the key idea in your own words.',
+  construction: 'Write the next step here.',
+  examples: 'Tell me what you notice in the example.',
+  practice: 'Try the task here, or ask for bounded help.',
+  check: 'Explain or apply the idea here.'
+};
+
+const COMPOSER_STARTER_COPY: Record<VisibleLessonStage, { firstStep: string; because: string; shape: string }> = {
+  orientation: {
+    firstStep: 'I already know that ',
+    because: 'This matters because ',
+    shape: 'Help me shape my first thought about this topic without giving away the answer.'
+  },
+  concepts: {
+    firstStep: 'The key idea is ',
+    because: 'This makes sense because ',
+    shape: 'Help me shape my explanation of this concept without giving away the answer.'
+  },
+  construction: {
+    firstStep: 'The next step is ',
+    because: 'That step works because ',
+    shape: 'Help me shape my answer for this build step without giving away the answer.'
+  },
+  examples: {
+    firstStep: 'In this example, I notice ',
+    because: 'The pattern works because ',
+    shape: 'Help me shape my reading of this example without giving away the answer.'
+  },
+  practice: {
+    firstStep: 'The first step is ',
+    because: 'I think this works because ',
+    shape: 'Help me shape my answer for this practice task without giving away the answer.'
+  },
+  check: {
+    firstStep: 'My explanation is ',
+    because: 'I can justify it because ',
+    shape: 'Help me shape my explanation for this check without giving away the answer.'
+  }
+};
+
 const GIVE_ME_AN_EXAMPLE_PROMPTS: Record<VisibleLessonStage, string> = {
   orientation: 'Give me a real-world example for this topic.',
   concepts: 'Give me an example that makes this concept concrete.',
@@ -117,6 +210,61 @@ const EXPLAIN_IT_DIFFERENTLY_PROMPTS: Record<VisibleLessonStage, string> = {
   examples: 'Show me a simpler example first.',
   practice: 'Give me a hint instead of the answer.',
   check: 'Quiz me on this before we move on.'
+};
+
+const VISUAL_CONTEXT_COPY: Record<LessonVisualIntentContext, { eyebrow: string; fallbackCaption: string }> = {
+  concept: {
+    eyebrow: 'Concept',
+    fallbackCaption: 'Use the image to ground the key idea in the real world.'
+  },
+  example: {
+    eyebrow: 'Example',
+    fallbackCaption: 'See the example in a real-world context.'
+  },
+  'your-turn': {
+    eyebrow: 'Your Turn',
+    fallbackCaption: 'Use the image as context while you try the task.'
+  },
+  feedback: {
+    eyebrow: 'Feedback',
+    fallbackCaption: 'Use the image to check what stuck.'
+  },
+  summary: {
+    eyebrow: 'Summary',
+    fallbackCaption: 'Connect the lesson ideas back to the real world.'
+  }
+};
+
+const CURATED_LESSON_VISUAL_FALLBACKS: Array<{
+  matches: string[];
+  src: string;
+  altTopic: string;
+  exampleCaption: string;
+}> = [
+  {
+    matches: ['biome', 'ecosystem', 'geography'],
+    src: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80',
+    altTopic: 'ecosystems',
+    exampleCaption: 'See the example in a real ecosystem context.'
+  },
+  {
+    matches: ['market', 'economics', 'supply', 'demand'],
+    src: 'https://images.unsplash.com/photo-1556741533-411cf82e4e2d?auto=format&fit=crop&w=900&q=80',
+    altTopic: 'markets',
+    exampleCaption: 'See the example in a real market context.'
+  },
+  {
+    matches: ['community', 'service', 'leadership'],
+    src: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
+    altTopic: 'community action',
+    exampleCaption: 'See the example in a real community context.'
+  }
+];
+
+const DEFAULT_LESSON_VISUAL_FALLBACK = {
+  src: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80',
+  altTopic: 'the lesson topic',
+  exampleCaption: VISUAL_CONTEXT_COPY.example.fallbackCaption
 };
 
 export function getStageContextCopy(stage: LessonStage): string {
@@ -163,6 +311,47 @@ export function getStageContextCopyForSession(
   lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>
 ): string {
   return getStageContextCopy(getVisiblePromptStageForSession(lessonSession));
+}
+
+export function deriveLessonComposerCopy(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State' | 'messages' | 'softStuckCount' | 'status'>,
+  lessonHarnessMoment: Pick<LessonHarnessMoment, 'activeStageBucket' | 'expectsLearnerAnswer' | 'learnerActionCue'> | null = null
+): LessonComposerCopy {
+  const activeStage = lessonHarnessMoment?.activeStageBucket ?? getVisiblePromptStageForSession(lessonSession);
+  const ctaState = lessonHarnessMoment
+    ? {
+        disabled: lessonHarnessMoment.expectsLearnerAnswer,
+        cue: lessonHarnessMoment.learnerActionCue
+      }
+    : deriveNextStepCtaStateForSession(lessonSession);
+  const starterCopy = COMPOSER_STARTER_COPY[activeStage];
+
+  return {
+    placeholder: COMPOSER_PLACEHOLDERS[activeStage],
+    emptySubmitNudge: ctaState.disabled ? (ctaState.cue ?? DEFAULT_COMPOSER_EMPTY_NUDGE) : DEFAULT_COMPOSER_EMPTY_NUDGE,
+    helperChips: ctaState.disabled
+      ? [
+          {
+            id: 'first-step',
+            label: 'First step',
+            action: 'insert',
+            text: starterCopy.firstStep
+          },
+          {
+            id: 'because',
+            label: 'Because...',
+            action: 'insert',
+            text: starterCopy.because
+          },
+          {
+            id: 'shape-this',
+            label: 'Help me shape this',
+            action: 'send',
+            text: starterCopy.shape
+          }
+        ]
+      : []
+  };
 }
 
 export function getVisibleProgressStagesForSession(
@@ -216,6 +405,29 @@ const LOOP_CHECKPOINTS = new Set<LessonFlowV2Checkpoint>([
 
 function isLoopCheckpoint(checkpoint: LessonFlowV2Checkpoint): boolean {
   return LOOP_CHECKPOINTS.has(checkpoint);
+}
+
+function getHarnessMomentKindForCheckpoint(
+  checkpoint: Exclude<LessonFlowV2Checkpoint, 'complete'>
+): LessonHarnessMomentKind {
+  switch (checkpoint) {
+    case 'start':
+      return 'orientation_start';
+    case 'loop_teach':
+      return 'tutor_concept';
+    case 'loop_example':
+      return 'tutor_example';
+    case 'loop_practice':
+      return 'learner_practice';
+    case 'loop_check':
+      return 'retrieval_check';
+    case 'synthesis':
+      return 'synthesis';
+    case 'independent_attempt':
+      return 'independent_attempt';
+    case 'exit_check':
+      return 'exit_check';
+  }
 }
 
 function getStructuredExchangeKey(message: LessonMessage): string | null {
@@ -554,6 +766,185 @@ export function deriveActiveLessonCardForSession(
     case 'complete':
       return null;
   }
+}
+
+export function deriveLessonHarnessMomentForSession(
+  lessonSession: Pick<
+    LessonSession,
+    | 'subject'
+    | 'topicId'
+    | 'topicTitle'
+    | 'currentStage'
+    | 'lessonFlowVersion'
+    | 'v2State'
+    | 'messages'
+    | 'softStuckCount'
+    | 'status'
+  >,
+  lesson: Pick<Lesson, 'flowV2'> | null = null
+): LessonHarnessMoment | null {
+  const activeCard = deriveActiveLessonCardForSession(lessonSession, lesson);
+
+  if (!activeCard || lessonSession.lessonFlowVersion !== 'v2' || !lessonSession.v2State) {
+    return null;
+  }
+
+  const checkpoint = lessonSession.v2State.activeCheckpoint;
+
+  if (checkpoint === 'complete') {
+    return null;
+  }
+
+  const nextStepCtaState = deriveNextStepCtaStateForSession(lessonSession);
+
+  return {
+    kind: getHarnessMomentKindForCheckpoint(checkpoint),
+    checkpoint,
+    subject: lessonSession.subject,
+    topicId: lessonSession.topicId,
+    topicTitle: lessonSession.topicTitle,
+    activeStageBucket: getVisiblePromptStageForSession(lessonSession),
+    learnerActionRequirement: nextStepCtaState.disabled ? 'answer_required' : 'can_continue',
+    expectsLearnerAnswer: nextStepCtaState.disabled,
+    learnerActionCue: nextStepCtaState.cue,
+    primaryActionLabel: activeCard.ctaLabel,
+    activeCard
+  };
+}
+
+export function isTrustedImageResource(resource: LessonResource): boolean {
+  if (resource.type !== 'trusted_link' || !resource.url || !resource.altText.trim()) {
+    return false;
+  }
+
+  try {
+    const parsedUrl = new URL(resource.url, 'https://doceo.local');
+    return /\.(png|jpe?g|webp|gif|avif)$/i.test(parsedUrl.pathname);
+  } catch {
+    return /\.(png|jpe?g|webp|gif|avif)([?#].*)?$/i.test(resource.url);
+  }
+}
+
+function toSentenceCase(str: string): string {
+  if (!str) return str;
+  const lower = str.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function getVisualIntentContext(
+  lessonSession: Pick<LessonSession, 'currentStage' | 'status'>,
+  lessonHarnessMoment: LessonHarnessMoment | null
+): LessonVisualIntentContext {
+  if (lessonSession.status === 'complete' || lessonSession.currentStage === 'complete') {
+    return 'summary';
+  }
+
+  switch (lessonHarnessMoment?.kind) {
+    case 'tutor_example':
+      return 'example';
+    case 'learner_practice':
+    case 'independent_attempt':
+      return 'your-turn';
+    case 'retrieval_check':
+    case 'exit_check':
+      return 'feedback';
+    case 'synthesis':
+      return 'summary';
+    case 'orientation_start':
+    case 'tutor_concept':
+    default:
+      return 'concept';
+  }
+}
+
+function getActiveConceptResource(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>,
+  lesson: Pick<Lesson, 'flowV2'> | null,
+  activeCard: LessonWorkspaceActiveCard | null
+): LessonResource | null {
+  const activeConcept =
+    lessonSession.lessonFlowVersion === 'v2' && lessonSession.v2State
+      ? lesson?.flowV2?.concepts?.[lessonSession.v2State.activeLoopIndex]
+      : null;
+
+  if (activeConcept?.resource && isTrustedImageResource(activeConcept.resource)) {
+    return activeConcept.resource;
+  }
+
+  return (
+    activeCard?.conceptMiniCards.find((concept) => concept.resource && isTrustedImageResource(concept.resource))
+      ?.resource ?? null
+  );
+}
+
+function getCuratedFallbackVisual(
+  lessonSession: Pick<LessonSession, 'subject' | 'topicTitle'>,
+  context: LessonVisualIntentContext
+): LessonVisualIntent {
+  const topic = `${lessonSession.subject} ${lessonSession.topicTitle}`.toLowerCase();
+  const fallback =
+    CURATED_LESSON_VISUAL_FALLBACKS.find((item) => item.matches.some((match) => topic.includes(match))) ??
+    DEFAULT_LESSON_VISUAL_FALLBACK;
+  const contextCopy = VISUAL_CONTEXT_COPY[context];
+
+  return {
+    src: fallback.src,
+    alt: `Real-world visual for ${toSentenceCase(lessonSession.topicTitle)}`,
+    eyebrow: contextCopy.eyebrow,
+    caption: context === 'example' ? fallback.exampleCaption : contextCopy.fallbackCaption,
+    source: 'fallback'
+  };
+}
+
+function buildResourceVisualIntent(
+  resource: LessonResource,
+  context: LessonVisualIntentContext,
+  source: LessonVisualIntent['source']
+): LessonVisualIntent | null {
+  if (!resource.url) {
+    return null;
+  }
+
+  const contextCopy = VISUAL_CONTEXT_COPY[context];
+
+  return {
+    src: resource.url,
+    alt: resource.altText,
+    eyebrow: contextCopy.eyebrow,
+    caption:
+      source === 'active_resource' || context === 'concept'
+        ? resource.description ?? resource.title
+        : contextCopy.fallbackCaption,
+    source
+  };
+}
+
+export function deriveLessonVisualIntent({
+  lessonSession,
+  lesson,
+  lessonHarnessMoment
+}: {
+  lessonSession: Pick<
+    LessonSession,
+    'subject' | 'topicTitle' | 'currentStage' | 'status' | 'lessonFlowVersion' | 'v2State'
+  >;
+  lesson: Pick<Lesson, 'flowV2'> | null;
+  lessonHarnessMoment: LessonHarnessMoment | null;
+}): LessonVisualIntent | null {
+  const context = getVisualIntentContext(lessonSession, lessonHarnessMoment);
+  const activeCard = lessonHarnessMoment?.activeCard ?? deriveActiveLessonCardForSession(lessonSession, lesson);
+
+  if (activeCard?.resource && isTrustedImageResource(activeCard.resource)) {
+    return buildResourceVisualIntent(activeCard.resource, context, 'active_resource');
+  }
+
+  const conceptResource = getActiveConceptResource(lessonSession, lesson, activeCard);
+
+  if (conceptResource) {
+    return buildResourceVisualIntent(conceptResource, context, 'concept_resource');
+  }
+
+  return getCuratedFallbackVisual(lessonSession, context);
 }
 
 export function detectLessonSupportIntent(
