@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { completeOnboarding } from '$lib/server/onboarding-repository';
+import type { CompleteOnboardingInput } from '$lib/server/onboarding-repository';
 
 const CompleteOnboardingSchema = z.object({
   profileId: z.string().min(1),
@@ -26,7 +27,7 @@ export async function POST({ request }) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
   try {
-    const result = await completeOnboarding(parsed.data);
+    const result = await completeOnboarding(parsed.data as CompleteOnboardingInput);
     return json(result);
   } catch (err) {
     // Supabase may not be reachable (e.g. dev with edge-only runtime).

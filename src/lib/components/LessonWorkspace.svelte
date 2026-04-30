@@ -867,6 +867,14 @@
     return 'concept';
   }
 
+  function stageNodeIcon(identity: LessonStageIdentity): string {
+    if (identity === 'example') return '★';
+    if (identity === 'your-turn') return '✎';
+    if (identity === 'feedback') return '◎';
+    if (identity === 'summary') return '⚑';
+    return '◉';
+  }
+
   function conceptEmoji(concept: ConceptItem, index: number): string {
     const name = concept.name.toLowerCase();
     if (name.includes('competition')) return '🍎';
@@ -1117,6 +1125,7 @@
             data-stage={stage}
             data-stage-identity={stageIdentityForStage(stage)}
             data-stage-status={statusForStage(stage)}
+            data-stage-icon={stageNodeIcon(stageIdentityForStage(stage))}
             class:completed={statusForStage(stage) === 'completed'}
             class:active={statusForStage(stage) === 'active'}
             class:celebrating={celebratingStage === stage}
@@ -1127,10 +1136,8 @@
             <div class="node-dot">
               {#if statusForStage(stage) === 'completed'}
                 <span aria-hidden="true">✓</span>
-              {:else if statusForStage(stage) === 'active'}
-                <span aria-hidden="true">{i + 1}</span>
               {:else}
-                <span aria-hidden="true">{i + 1}</span>
+                <span aria-hidden="true">{stageNodeIcon(stageIdentityForStage(stage))}</span>
               {/if}
             </div>
             <span class="node-label">
@@ -1226,6 +1233,29 @@
           </div>
         </div>
       </aside>
+
+      {#if activeLessonCard && activeLessonCard.conceptMiniCards.length > 0}
+        <aside
+          class="lesson-concepts-sidebar"
+          class:lesson-concepts-sidebar-quiet={hasTranscriptActivity}
+          aria-label="Completed concepts"
+        >
+          <p class="lesson-concepts-sidebar-label">Completed concepts</p>
+          <ol class="lesson-concepts-sidebar-list">
+            {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
+              <li class="lesson-concepts-sidebar-item">
+                <span class="lesson-concepts-sidebar-index" aria-hidden="true">{conceptIndex + 1}</span>
+                <span class="lesson-concepts-sidebar-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
+                <span class="lesson-concepts-sidebar-text">
+                  <strong>{concept.name}</strong>
+                  <span>{concept.oneLineDefinition ?? concept.summary}</span>
+                </span>
+                <span class="lesson-concepts-sidebar-check" aria-hidden="true">✓</span>
+              </li>
+            {/each}
+          </ol>
+        </aside>
+      {/if}
 
       {#snippet tutorAudioControl(message: LessonMessage, variantClass: string)}
         {@const ttsState = ttsStateForMessage(message)}
@@ -1788,57 +1818,6 @@
                     {@render tutorAudioUpgradeNotice(activeLessonCardTtsMessage.id)}
                   {/if}
 
-                  {#if activeLessonCard.conceptMiniCards.length > 0}
-                    <div
-                      class="active-lesson-card-concepts"
-                      class:active-lesson-card-concepts-quiet={hasTranscriptActivity}
-                    >
-                      <p class="active-lesson-card-concepts-label">Core ideas in this lesson</p>
-                      <div class="active-lesson-card-concept-stack">
-                        {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
-                          {@const key = `active-card-concept-${conceptIndex}`}
-                          <div class="concept-card concept-card-mini" class:expanded={expandedConcepts.has(key)}>
-                            <button type="button" class="concept-card-header" onclick={() => toggleConcept(key)}>
-                              <span class="concept-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
-                              <div class="concept-card-title">
-                                <span class="concept-mini-index">{conceptIndex + 1}</span>
-                                <span class="concept-name">{concept.name}</span>
-                                <span class="concept-summary">{concept.oneLineDefinition ?? concept.summary}</span>
-                              </div>
-                              <span class="concept-complete-mark" aria-hidden="true">✓</span>
-                              <span class="concept-chevron" aria-hidden="true">{expandedConcepts.has(key) ? '▲' : '▼'}</span>
-                            </button>
-                            {#if expandedConcepts.has(key)}
-                              <div class="concept-card-body">
-                                {#if concept.whyItMatters}
-                                  <p class="active-lesson-card-concept-note">{concept.whyItMatters}</p>
-                                {/if}
-                                <div class="concept-detail">{@html renderSimpleMarkdown(concept.detail)}</div>
-                                <div class="concept-example">
-                                  <span class="concept-example-label">Example</span>
-                                  <div>{@html renderSimpleMarkdown(concept.example)}</div>
-                                </div>
-                                {#if concept.resource}
-                                  {@render lessonResource(concept.resource)}
-                                {/if}
-                                <div class="concept-actions">
-                                  <button
-                                    type="button"
-                                    class="concept-ask-link"
-                                    onclick={() => askAboutConcept(concept, key)}
-                                    disabled={askedConceptKeys.has(key)}
-                                  >
-                                    <span>{askedConceptKeys.has(key) ? 'Explanation requested' : 'Ask Doceo to explain this'}</span>
-                                    <span aria-hidden="true">→</span>
-                                  </button>
-                                </div>
-                              </div>
-                            {/if}
-                          </div>
-                        {/each}
-                      </div>
-                    </div>
-                  {/if}
 
                   {#if activeLessonCard.diagnostic}
                     <section class="active-lesson-card-diagnostic" aria-label="Concept 1 quick check">
@@ -1864,53 +1843,6 @@
                     </section>
                   {/if}
 
-                  <div
-                    class="active-lesson-card-actions"
-                    class:active-lesson-card-actions-your-turn={isYourTurnMode}
-                    data-action-required={isYourTurnMode ? 'true' : undefined}
-                  >
-                    <div
-                      class="active-lesson-card-primary"
-                      data-action-required={isYourTurnMode ? 'true' : undefined}
-                    >
-                      {#if isYourTurnMode}
-                        <div class="your-turn-callout active-lesson-card-your-turn-callout" aria-live="polite">
-                          <p class="your-turn-label">Your turn</p>
-                          {#if nextStepCtaState.cue}
-                            <p class="your-turn-copy" id={nextStepCueId}>{nextStepCtaState.cue}</p>
-                          {/if}
-                        </div>
-                      {/if}
-                      <button
-                        type="button"
-                        class="btn btn-primary lesson-support-cta active-lesson-card-cta"
-                        class:lesson-support-cta-your-turn={isYourTurnMode}
-                        onclick={submitActiveLessonCardAction}
-                        disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
-                        aria-describedby={
-                          activeLessonCard.primaryAction === 'submit_diagnostic'
-                            ? undefined
-                            : nextStepCtaState.cue
-                              ? nextStepCueId
-                              : undefined
-                        }
-                      >
-                        <span>{activeLessonCard.ctaLabel}</span>
-                        <span class="next-step-arrow" aria-hidden="true">→</span>
-                      </button>
-                      {#if !isYourTurnMode && activeLessonCard.primaryAction !== 'submit_diagnostic' && nextStepCtaState.cue}
-                        <p class="lesson-support-cue active-lesson-card-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
-                      {/if}
-                    </div>
-
-                    <div class="active-lesson-card-secondary">
-                      {#each visibleQuickActions as action}
-                        <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
-                          {action.label}
-                        </button>
-                      {/each}
-                    </div>
-                  </div>
 	                </div>
 	              {/key}
 	            </section>
@@ -1949,7 +1881,7 @@
 
           {#if hasHistoryRegion}
             <section class="transcript-history-region" aria-label="Lesson history" data-secondary-surface="history">
-              <p class="transcript-history-heading">Lesson history</p>
+              <p class="transcript-history-heading">{activeLessonCard && hasTranscriptActivity ? 'Answer feedback' : 'Lesson history'}</p>
 
               {#if conversationView.collapsedMessages.length > 0}
                 <section class="collapsed-transcript-shell">
@@ -2006,6 +1938,58 @@
           </button>
         {/if}
       </section>
+
+      {#if activeLessonCard && lessonSession.status !== 'complete'}
+        <div class="lesson-action-bar" data-action-required={isYourTurnMode ? 'true' : undefined}>
+          <div
+            class="active-lesson-card-actions"
+            class:active-lesson-card-actions-your-turn={isYourTurnMode}
+            data-action-required={isYourTurnMode ? 'true' : undefined}
+          >
+            <div
+              class="active-lesson-card-primary"
+              data-action-required={isYourTurnMode ? 'true' : undefined}
+            >
+              {#if isYourTurnMode}
+                <div class="your-turn-callout active-lesson-card-your-turn-callout" aria-live="polite">
+                  <p class="your-turn-label">Your turn first</p>
+                  {#if nextStepCtaState.cue}
+                    <p class="your-turn-copy" id={nextStepCueId}>{nextStepCtaState.cue}</p>
+                  {/if}
+                </div>
+              {/if}
+              <button
+                type="button"
+                class="btn btn-primary lesson-support-cta active-lesson-card-cta"
+                class:lesson-support-cta-your-turn={isYourTurnMode}
+                onclick={submitActiveLessonCardAction}
+                disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
+                aria-describedby={
+                  activeLessonCard.primaryAction === 'submit_diagnostic'
+                    ? undefined
+                    : nextStepCtaState.cue
+                      ? nextStepCueId
+                      : undefined
+                }
+              >
+                <span>{activeLessonCard.ctaLabel}</span>
+                <span class="next-step-arrow" aria-hidden="true">→</span>
+              </button>
+              {#if !isYourTurnMode && activeLessonCard.primaryAction !== 'submit_diagnostic' && nextStepCtaState.cue}
+                <p class="lesson-support-cue active-lesson-card-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
+              {/if}
+            </div>
+
+            <div class="active-lesson-card-secondary">
+              {#each visibleQuickActions as action}
+                <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
+                  {action.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
 
 	      {#if lessonSession.status !== 'complete'}
 	        <!-- Composer -->
@@ -3067,7 +3051,7 @@
   }
 
   .stage-connector.filled {
-    background: color-mix(in srgb, var(--accent) 72%, transparent);
+    background: var(--lesson-active-stage-color);
   }
 
   .stage-connector.resolving {
@@ -3099,8 +3083,9 @@
 	    --stage-accent: var(--stage-concept-color);
 	    --stage-accent-dim: var(--stage-concept-dim);
 	    display: flex;
+	    flex-direction: column;
 	    align-items: center;
-	    gap: 0.45rem;
+	    gap: 0.32rem;
 	    flex-shrink: 0;
 	    position: relative;
 	    overflow: visible;
@@ -3108,8 +3093,8 @@
 	  }
 
   .node-dot {
-    width: 1.55rem;
-    height: 1.55rem;
+    width: 2.2rem;
+    height: 2.2rem;
     border-radius: 999px;
     display: grid;
     place-items: center;
@@ -3117,7 +3102,7 @@
     border: 2px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
     background: var(--lesson-stage-surface);
     color: var(--text-soft);
-    font-size: 0.7rem;
+    font-size: 0.88rem;
     font-weight: 700;
     position: relative;
     overflow: visible;
@@ -3140,14 +3125,10 @@
   }
 
   .stage-node.active .node-dot {
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--stage-accent) 24%, var(--surface-strong)),
-      color-mix(in srgb, var(--stage-accent-dim) 68%, var(--surface))
-    );
-    border-color: color-mix(in srgb, var(--stage-accent) 48%, transparent);
-    color: color-mix(in srgb, var(--stage-accent) 82%, var(--text) 18%);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage-accent) 12%, transparent);
+    background: var(--lesson-active-stage-color);
+    border-color: color-mix(in srgb, var(--lesson-active-stage-color) 60%, transparent);
+    color: var(--accent-contrast);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--lesson-active-stage-color) 20%, transparent);
   }
 
   .stage-node.completed .node-dot {
@@ -3171,18 +3152,13 @@
   .node-label {
     display: grid;
     gap: 0.02rem;
-    font-size: 0.82rem;
+    font-size: 0.7rem;
     font-weight: 600;
-    color: var(--text);
+    text-align: center;
     white-space: nowrap;
-    padding: 0.28rem 0.72rem 0.28rem 0.5rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--stage-accent) 10%, var(--surface-strong));
-    border: 1px solid color-mix(in srgb, var(--stage-accent) 26%, transparent);
     color: color-mix(in srgb, var(--stage-accent) 72%, var(--text) 28%);
     animation: label-arrive 250ms cubic-bezier(0.22, 1, 0.36, 1);
     position: relative;
-    overflow: hidden;
   }
 
   .node-label strong {
@@ -3224,33 +3200,8 @@
     --stage-accent-dim: var(--stage-summary-dim);
   }
 
-  .node-label::after {
-    content: '';
-    position: absolute;
-    left: 0.7rem;
-    right: 0.7rem;
-    bottom: 0.28rem;
-    height: 2px;
-    border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--accent) 24%, transparent),
-      color-mix(in srgb, var(--accent) 84%, transparent)
-    );
-    opacity: 0;
-    transform: scaleX(0.18);
-    transform-origin: left center;
-  }
-
   .stage-node.activating .node-label {
-    animation:
-      label-arrive 300ms cubic-bezier(0.22, 1, 0.36, 1) 170ms both,
-      next-label-glow 460ms cubic-bezier(0.22, 1, 0.36, 1) 230ms both;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
-  }
-
-  .stage-node.settling .node-label::after {
-    animation: label-underline-settle 320ms cubic-bezier(0.22, 1, 0.36, 1) 310ms both;
+    animation: label-arrive 300ms cubic-bezier(0.22, 1, 0.36, 1) 170ms both;
   }
 
   .progress-rail.lesson-complete .stage-node.final-stage .node-dot {
@@ -3268,26 +3219,7 @@
   }
 
   .progress-rail.lesson-complete .stage-node.final-stage .node-label {
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-xp) 16%, var(--surface-strong)),
-      color-mix(in srgb, var(--accent) 14%, var(--surface-soft))
-    );
-    border-color: color-mix(in srgb, var(--color-xp) 30%, transparent);
     color: color-mix(in srgb, var(--color-xp) 54%, var(--text) 46%);
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--color-xp) 7%, transparent),
-      0 0 18px color-mix(in srgb, var(--accent) 8%, transparent);
-  }
-
-  .progress-rail.lesson-complete .stage-node.final-stage .node-label::after {
-    opacity: 1;
-    transform: scaleX(1);
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--color-xp) 46%, transparent),
-      color-mix(in srgb, var(--accent) 80%, var(--color-xp) 20%)
-    );
   }
 
   /* ── Body layout ── */
@@ -3308,25 +3240,105 @@
       );
   }
 
+  /* ── Concepts sidebar ── */
+  .lesson-concepts-sidebar {
+    display: none;
+  }
+
+  .lesson-concepts-sidebar-label {
+    margin: 0 0 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+
+  .lesson-concepts-sidebar-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .lesson-concepts-sidebar-item {
+    display: grid;
+    grid-template-columns: 1.2rem auto 1fr auto;
+    align-items: start;
+    gap: 0.4rem;
+    padding: 0.6rem 0.7rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
+    background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+  }
+
+  .lesson-concepts-sidebar-index {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    padding-top: 0.12rem;
+  }
+
+  .lesson-concepts-sidebar-marker {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .lesson-concepts-sidebar-text {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .lesson-concepts-sidebar-text strong {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lesson-concepts-sidebar-text span {
+    font-size: 0.72rem;
+    color: var(--text-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lesson-concepts-sidebar-check {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-success);
+    padding-top: 0.12rem;
+  }
+
+  .lesson-concepts-sidebar-quiet {
+    opacity: 0.72;
+  }
+
 	.active-lesson-card {
     --lesson-phase-color: var(--lesson-active-stage-color, var(--color-blue));
     --lesson-phase-dim: var(--lesson-active-stage-dim, var(--color-blue-dim));
     --lesson-phase-surface: color-mix(in srgb, var(--lesson-phase-color) 9%, var(--surface-strong));
     display: grid;
     gap: 1rem;
-    padding: 1.35rem;
-    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 24%, var(--border-strong));
+    padding: 1.55rem;
+    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 32%, var(--border-strong));
+    border-left: 5px solid var(--lesson-active-stage-color);
     border-radius: calc(var(--radius-lg) + 0.15rem);
     background:
       radial-gradient(
         circle at top left,
-        color-mix(in srgb, var(--lesson-phase-color) 12%, transparent),
-        transparent 36%
+        color-mix(in srgb, var(--lesson-phase-color) 26%, transparent),
+        transparent 42%
       ),
       linear-gradient(
         160deg,
-        color-mix(in srgb, var(--lesson-phase-color) 7%, var(--surface-strong)),
-        color-mix(in srgb, var(--surface-soft) 96%, transparent)
+        color-mix(in srgb, var(--lesson-phase-color) 16%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 92%, transparent)
       );
     box-shadow:
       0 20px 52px color-mix(in srgb, var(--lesson-phase-color) 11%, rgba(15, 23, 42, 0.12)),
@@ -3372,17 +3384,17 @@
 
 	.active-lesson-card-with-transcript {
     gap: 0.88rem;
-    padding: 1.16rem;
+    padding: 1.35rem;
     background:
       radial-gradient(
         circle at top left,
-        color-mix(in srgb, var(--lesson-phase-color) 10%, transparent),
-        transparent 34%
+        color-mix(in srgb, var(--lesson-phase-color) 22%, transparent),
+        transparent 38%
       ),
       linear-gradient(
         160deg,
-        color-mix(in srgb, var(--lesson-phase-color) 6%, var(--surface-strong)),
-        color-mix(in srgb, var(--surface-soft) 97%, transparent)
+        color-mix(in srgb, var(--lesson-phase-color) 13%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 94%, transparent)
       );
   }
 
@@ -3437,14 +3449,15 @@
   .active-lesson-card-state {
     justify-self: start;
     margin: 0;
-    padding: 0.34rem 0.64rem;
-    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 28%, transparent);
+    padding: 0.28rem 0.72rem;
+    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 48%, transparent);
     border-radius: 999px;
-    background: color-mix(in srgb, var(--lesson-phase-color) 12%, var(--surface-soft));
-    color: color-mix(in srgb, var(--lesson-phase-color) 68%, var(--text) 32%);
-    font-size: 0.74rem;
+    background: color-mix(in srgb, var(--lesson-phase-color) 22%, var(--surface-soft));
+    color: color-mix(in srgb, var(--lesson-phase-color) 88%, var(--text) 12%);
+    font-size: 0.76rem;
     font-weight: 800;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .active-lesson-card h3 {
@@ -3514,7 +3527,7 @@
   }
 
   .active-lesson-card-compact h3 {
-    font-size: clamp(1rem, 1.7vw, 1.2rem);
+    font-size: clamp(1.2rem, 2vw, 1.65rem);
   }
 
   .active-lesson-card-body-shell {
@@ -3527,28 +3540,18 @@
 
   .active-lesson-card-body {
     display: grid;
-    gap: 0.78rem;
-    padding: 1.18rem 1.25rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 20%, var(--border-strong));
-    border-left: 4px solid color-mix(in srgb, var(--lesson-phase-color) 68%, transparent);
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--surface-strong) 94%, transparent),
-        color-mix(in srgb, var(--lesson-phase-dim) 34%, var(--surface-soft))
-      );
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, white 12%, transparent),
-      0 12px 28px color-mix(in srgb, var(--lesson-phase-color) 7%, rgba(15, 23, 42, 0.08));
-    font-size: 1.02rem;
+    gap: 0.88rem;
+    font-size: 1.08rem;
     line-height: 1.72;
+    color: var(--text);
   }
 
   .active-lesson-card-compact .active-lesson-card-body {
     gap: 0.55rem;
     padding: 0.84rem 0.92rem;
-    border-color: color-mix(in srgb, var(--accent) 14%, var(--border-strong));
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 28%, var(--border-strong));
+    border-left: 5px solid color-mix(in srgb, var(--lesson-phase-color) 88%, transparent);
     background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
   }
 
@@ -3571,21 +3574,6 @@
     gap: 0.5rem;
   }
 
-  .active-lesson-card-concepts {
-    display: grid;
-    gap: 0.7rem;
-    padding: 0.88rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 66%, transparent);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
-  }
-
-  .active-lesson-card-concepts-quiet {
-    gap: 0.5rem;
-  }
-
-  .active-lesson-card-concepts-label,
   .active-lesson-card-diagnostic-label {
     margin: 0;
     color: color-mix(in srgb, var(--text-soft) 72%, var(--lesson-phase-color) 28%);
@@ -3594,60 +3582,8 @@
     letter-spacing: 0.01em;
   }
 
-  .active-lesson-card-concept-stack {
-    display: grid;
-    gap: 0.65rem;
-    grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
-  }
-
-  .active-lesson-card-concepts-quiet .active-lesson-card-concepts-label {
-    color: color-mix(in srgb, var(--muted) 88%, var(--text-soft) 12%);
-  }
-
-  .active-lesson-card-concepts-quiet .active-lesson-card-concept-stack {
-    gap: 0.45rem;
-  }
-
-  .active-lesson-card-concepts-quiet .concept-card-mini {
-    opacity: 0.94;
-  }
-
-  .active-lesson-card-concepts-quiet .concept-card-mini .concept-card-header {
-    background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
-    border-color: color-mix(in srgb, var(--border-strong) 78%, transparent);
-    box-shadow: none;
-  }
-
-  .active-lesson-card-concepts-quiet .concept-card-mini.expanded .concept-card-header,
-  .active-lesson-card-concepts-quiet .concept-card-mini .concept-card-body {
-    background: color-mix(in srgb, var(--surface-strong) 97%, transparent);
-    border-color: color-mix(in srgb, var(--border-strong) 76%, transparent);
-    box-shadow: none;
-  }
-
   .concept-card-mini {
     max-width: 100%;
-  }
-
-  .active-lesson-card-concepts .concept-card-mini {
-    border-radius: var(--radius-md);
-    border-color: color-mix(in srgb, var(--border-strong) 74%, transparent);
-    background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
-  }
-
-  .active-lesson-card-concepts .concept-card-mini.expanded {
-    grid-column: span 2;
-  }
-
-  .active-lesson-card-concepts .concept-card-mini .concept-card-header {
-    min-height: 4.3rem;
-  }
-
-  .active-lesson-card-concept-note {
-    margin: 0;
-    color: var(--text-soft);
-    font-size: 0.9rem;
-    line-height: 1.5;
   }
 
   .active-lesson-card-diagnostic {
@@ -3728,6 +3664,13 @@
     color: var(--text-soft);
     font-size: 0.92rem;
     line-height: 1.5;
+  }
+
+  .lesson-action-bar {
+    padding: 0.85rem 1.1rem;
+    border-top: 2px solid color-mix(in srgb, var(--lesson-active-stage-color) 28%, var(--border-strong));
+    background: color-mix(in srgb, var(--lesson-active-stage-color) 6%, var(--chat-wrap-bg, var(--surface-base)));
+    flex-shrink: 0;
   }
 
   .active-lesson-card-actions {
@@ -3866,25 +3809,57 @@
   }
 
   .active-card-feedback::before {
-    content: 'Latest exchange';
-    color: color-mix(in srgb, var(--lesson-active-stage-color) 58%, var(--text-soft) 42%);
-    font-size: 0.72rem;
-    font-weight: 780;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    content: none;
   }
 
   .active-card-feedback .bubble {
     max-width: min(100%, 42rem);
+    border-radius: 0.72rem;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
+      0 8px 20px color-mix(in srgb, var(--lesson-active-stage-color) 6%, rgba(15, 23, 42, 0.08));
   }
 
   .active-card-feedback .bubble.user {
-    justify-self: end;
+    justify-self: stretch;
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--lesson-active-stage-color) 8%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 96%, transparent)
+      );
+    border: 1px solid color-mix(in srgb, var(--lesson-active-stage-color) 18%, var(--border-strong));
+    border-left: 3px solid color-mix(in srgb, var(--lesson-active-stage-color) 58%, transparent);
+    color: var(--text);
+    transform-origin: left bottom;
   }
 
   .active-card-feedback .bubble.assistant,
   .active-card-feedback .message-support-cluster {
     justify-self: stretch;
+  }
+
+  .active-card-feedback .bubble.user::before,
+  .active-card-feedback .bubble.assistant::before {
+    color: color-mix(in srgb, var(--lesson-active-stage-color) 62%, var(--text-soft) 38%);
+    font-size: 0.72rem;
+    font-weight: 820;
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+
+  .active-card-feedback .bubble.user::before {
+    content: 'Your answer';
+  }
+
+  .active-card-feedback .bubble.assistant::before {
+    content: 'Tutor feedback';
+  }
+
+  .active-card-feedback .bubble.assistant {
+    border-color: color-mix(in srgb, var(--lesson-active-stage-color) 22%, var(--border-strong));
+    border-left-color: color-mix(in srgb, var(--lesson-active-stage-color) 66%, transparent);
   }
 
   .lesson-memory-shelf {
@@ -3991,6 +3966,11 @@
 
   .active-card-feedback .transcript-history-region {
     padding-top: 0.35rem;
+  }
+
+  .active-card-feedback .transcript-history-heading {
+    color: color-mix(in srgb, var(--lesson-active-stage-color) 64%, var(--text-soft) 36%);
+    letter-spacing: 0.06em;
   }
 
   .collapsed-transcript-shell {
@@ -4133,6 +4113,27 @@
     border-color: color-mix(in srgb, var(--accent) 20%, rgba(255, 255, 255, 0.1));
     background: color-mix(in srgb, var(--accent) 8%, var(--surface-soft));
     color: color-mix(in srgb, #f8fafc 76%, var(--accent) 24%);
+  }
+
+  :global(:root[data-theme='dark']) .active-card-feedback {
+    border-color: color-mix(in srgb, var(--lesson-active-stage-color) 18%, rgba(255, 255, 255, 0.1));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--lesson-active-stage-color) 6%, rgba(16, 24, 32, 0.96)),
+        color-mix(in srgb, var(--surface-strong) 94%, rgba(8, 13, 18, 0.98))
+      );
+  }
+
+  :global(:root[data-theme='dark']) .active-card-feedback .bubble.user {
+    border-color: color-mix(in srgb, var(--lesson-active-stage-color) 22%, rgba(255, 255, 255, 0.1));
+    background:
+      linear-gradient(
+        160deg,
+        color-mix(in srgb, var(--lesson-active-stage-color) 10%, rgba(18, 24, 28, 0.98)),
+        color-mix(in srgb, var(--surface-strong) 94%, rgba(8, 13, 18, 0.98))
+      );
+    color: #f8fafc;
   }
 
   :global(:root[data-theme='dark']) .lesson-notes-panel,
@@ -4599,15 +4600,17 @@
 
   .lesson-support-cta {
     justify-self: start;
-    min-height: 2.5rem;
-    padding-inline: 1rem;
+    min-height: 2.85rem;
+    padding-inline: 1.4rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.45rem;
-    box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent);
+    gap: 0.5rem;
+    background: var(--lesson-active-stage-color);
+    box-shadow: 0 10px 26px color-mix(in srgb, var(--lesson-active-stage-color) 38%, transparent);
     letter-spacing: -0.01em;
-    font-size: 0.9rem;
+    font-size: 1rem;
+    font-weight: 700;
     transition:
       transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
       box-shadow var(--motion-fast) var(--ease-soft),
@@ -4617,13 +4620,13 @@
   .lesson-support-cta:hover {
     transform: translateY(-1px);
     box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent),
-      0 12px 24px color-mix(in srgb, var(--accent) 22%, transparent);
+      0 0 0 3px color-mix(in srgb, var(--lesson-active-stage-color) 14%, transparent),
+      0 12px 24px color-mix(in srgb, var(--lesson-active-stage-color) 28%, transparent);
   }
 
   .lesson-support-cta:active {
     transform: translateY(0) scale(0.985);
-    box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--lesson-active-stage-color) 22%, transparent);
   }
 
   .lesson-support-cta:disabled {
@@ -5808,16 +5811,7 @@
     }
 
     .active-lesson-card-body {
-      padding: 0.85rem 0.9rem;
       font-size: 0.96rem;
-    }
-
-    .active-lesson-card-concepts {
-      padding: 0.7rem;
-    }
-
-    .active-lesson-card-concepts .concept-card-mini.expanded {
-      grid-column: auto;
     }
 
 	    .progress-rail {
@@ -6079,9 +6073,20 @@
     }
 
     .lesson-side-notes {
+      display: none;
+    }
+
+    .lesson-concepts-sidebar {
       grid-column: 2;
       grid-row: 1 / span 2;
       display: block;
+      overflow-y: auto;
+      padding: 1rem;
+      border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
+      border-radius: var(--radius-lg);
+      background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+      box-shadow: var(--glass-inset-tile);
+      transition: opacity 250ms var(--ease-soft);
     }
 
     .chat-wrap {
@@ -6124,13 +6129,7 @@
     }
 
     .node-label {
-      display: grid;
-      gap: 0.1rem;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      color: var(--text);
-      box-shadow: none;
+      font-size: 0.72rem;
     }
   }
 
@@ -6738,20 +6737,6 @@
   }
 
   .active-lesson-card-body {
-    padding: 1.08rem 1.14rem;
-    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 20%, var(--border-strong));
-    border-left: 4px solid color-mix(in srgb, var(--lesson-phase-color) 68%, transparent);
-    border-radius: var(--radius-lg);
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--surface-strong) 94%, transparent),
-        color-mix(in srgb, var(--lesson-phase-dim) 34%, var(--surface-soft))
-      );
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, white 12%, transparent),
-      0 12px 28px color-mix(in srgb, var(--lesson-phase-color) 7%, rgba(15, 23, 42, 0.08));
-    color: var(--text);
     font-size: 1.02rem;
     line-height: 1.68;
   }
@@ -6765,21 +6750,11 @@
     right: 0;
   }
 
-  .active-lesson-card-concepts {
-    gap: 0.55rem;
-    padding: 0.82rem;
-  }
-
-  .active-lesson-card-concepts-label,
   .active-lesson-card-diagnostic-label {
     color: var(--text-soft);
     font-size: 0.72rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-  }
-
-  .active-lesson-card-concept-stack {
-    gap: 0.45rem;
   }
 
   .concept-card {
@@ -6930,7 +6905,6 @@
     }
 
     .active-lesson-card-body {
-      padding: 0.85rem 0.9rem;
       font-size: 0.96rem;
     }
 
@@ -7041,7 +7015,7 @@
     }
 
     .stage-connector.filled {
-      background: color-mix(in srgb, var(--accent) 62%, transparent);
+      background: var(--lesson-active-stage-color);
     }
 
     .node-dot {
@@ -7224,9 +7198,50 @@
 
 	    .chat-scroll-area-has-active-card .active-card-feedback {
 	      margin-top: 0.72rem;
-	      padding: 0.82rem 0.88rem;
-	      gap: 0.62rem;
+	      padding: 0.9rem;
+	      gap: 0.68rem;
+        border-style: dashed;
+        background:
+          linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--lesson-active-stage-color) 4%, var(--surface-strong)),
+            color-mix(in srgb, var(--surface-soft) 96%, transparent)
+          );
 	    }
+
+      .active-card-feedback .transcript-history-region {
+        gap: 0.7rem;
+        padding-top: 0;
+      }
+
+      .active-card-feedback .bubble {
+        max-width: 100%;
+        padding: 0.86rem 0.98rem;
+        border-radius: 0.68rem;
+        font-size: 0.9rem;
+        line-height: 1.55;
+      }
+
+      .active-card-feedback .bubble.user::before,
+      .active-card-feedback .bubble.assistant::before {
+        font-size: 0.68rem;
+      }
+
+      .active-card-feedback .bubble.user {
+        justify-self: stretch;
+        background:
+          linear-gradient(
+            160deg,
+            color-mix(in srgb, var(--lesson-active-stage-color) 8%, var(--surface-strong)),
+            color-mix(in srgb, var(--surface-soft) 96%, transparent)
+          );
+        color: var(--text);
+        box-shadow: var(--glass-inset-tile);
+      }
+
+      .active-card-feedback .bubble.assistant::before {
+        color: color-mix(in srgb, var(--lesson-active-stage-color) 62%, var(--text-soft) 38%);
+      }
 
     .active-lesson-card {
       gap: 1.05rem;
@@ -7287,8 +7302,6 @@
     }
 
     .active-lesson-card-body {
-      padding: 1rem 1.1rem;
-      border-radius: 0.74rem;
       font-size: 1rem;
       line-height: 1.72;
     }
@@ -7312,103 +7325,10 @@
       right: 0.72rem;
     }
 
-    .active-lesson-card-concepts {
-      gap: 0.72rem;
-      padding: 0.84rem;
-      border-radius: 0.74rem;
-      background: color-mix(in srgb, var(--surface-strong) 58%, transparent);
-    }
-
-    .active-lesson-card-concepts-label,
     .active-lesson-card-diagnostic-label {
       color: color-mix(in srgb, var(--text-soft) 72%, var(--text) 28%);
       font-size: 0.72rem;
       letter-spacing: 0.07em;
-    }
-
-    .active-lesson-card-concept-stack {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.58rem;
-    }
-
-    .active-lesson-card-concepts .concept-card-mini.expanded {
-      grid-column: auto;
-    }
-
-    .active-lesson-card-concepts .concept-card-mini {
-      border-radius: 0.68rem;
-      background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
-    }
-
-    .active-lesson-card-concepts .concept-card-mini .concept-card-header {
-      min-height: 5.1rem;
-      padding: 0.8rem 0.82rem;
-      align-items: center;
-    }
-
-    .active-lesson-card-concepts .concept-card-mini .concept-card-title {
-      grid-template-columns: auto minmax(0, 1fr);
-      grid-template-areas:
-        'index name'
-        'index summary';
-      column-gap: 0.58rem;
-      row-gap: 0.15rem;
-      align-items: center;
-    }
-
-    .active-lesson-card-concepts .concept-card-mini .concept-marker {
-      width: 2.1rem;
-      height: 2.1rem;
-      border-radius: 0.58rem;
-    }
-
-    .active-lesson-card-concepts .concept-name {
-      grid-area: name;
-      font-size: 0.96rem;
-      line-height: 1.18;
-    }
-
-    .active-lesson-card-concepts .concept-summary {
-      grid-area: summary;
-      display: -webkit-box;
-      color: color-mix(in srgb, var(--text-soft) 86%, var(--text) 14%);
-      font-size: 0.83rem;
-      line-height: 1.38;
-      overflow: hidden;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 3;
-      line-clamp: 3;
-    }
-
-    .active-lesson-card-concepts .concept-mini-index {
-      grid-area: index;
-      display: inline-grid;
-      place-items: center;
-      width: 1.45rem;
-      height: 1.45rem;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--lesson-phase-color) 14%, var(--surface-tint));
-      border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 24%, var(--border-strong));
-      color: color-mix(in srgb, var(--lesson-phase-color) 56%, var(--text) 44%);
-      font-size: 0.72rem;
-      font-weight: 850;
-    }
-
-    .active-lesson-card-concepts .concept-complete-mark {
-      display: inline-grid;
-      place-items: center;
-      width: 1.35rem;
-      height: 1.35rem;
-      flex: 0 0 auto;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--color-success) 88%, transparent);
-      color: white;
-      font-size: 0.72rem;
-      font-weight: 900;
-    }
-
-    .active-lesson-card-concepts .concept-card-body {
-      padding: 0.1rem 0.86rem 0.85rem;
     }
 
     .active-lesson-card-actions {
@@ -7446,6 +7366,19 @@
           color-mix(in srgb, var(--surface) 96%, transparent)
         );
       box-shadow: var(--glass-inset-tile);
+    }
+
+    .input-area-your-turn {
+      border: 1px solid color-mix(in srgb, var(--lesson-active-stage-color) 22%, var(--border-strong));
+      background:
+        linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--lesson-active-stage-color) 5%, var(--surface-strong)),
+          color-mix(in srgb, var(--surface) 96%, transparent)
+        );
+      box-shadow:
+        inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
+        0 12px 28px color-mix(in srgb, var(--lesson-active-stage-color) 8%, rgba(15, 23, 42, 0.1));
     }
 
     .lesson-action-row {

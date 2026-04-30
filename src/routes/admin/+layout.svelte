@@ -26,7 +26,7 @@
     return pathname.startsWith(path);
   }
 
-  onMount(async () => {
+  onMount(() => {
     if (!supabase) {
       return;
     }
@@ -37,18 +37,23 @@
       });
     };
 
-    const { data: { session } } = await supabase.auth.getSession();
-    syncTokenCookie(session);
+    let subscription: { unsubscribe: () => void } | null = null;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, updated) => {
-      syncTokenCookie(updated);
-      if (!updated?.user) {
-        void goto('/');
-      }
-    });
+    void (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      syncTokenCookie(session);
+
+      const { data } = supabase.auth.onAuthStateChange((_event, updated) => {
+        syncTokenCookie(updated);
+        if (!updated?.user) {
+          void goto('/');
+        }
+      });
+      subscription = data.subscription;
+    })();
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   });
 </script>

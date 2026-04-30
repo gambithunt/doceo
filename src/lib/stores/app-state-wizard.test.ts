@@ -397,7 +397,7 @@ describe('Phase 2: Guided flow and track branching', () => {
           educationType: 'School',
           options: {
             ...baseState.onboarding.options,
-            curriculums: [{ id: 'caps', name: 'CAPS' }]
+            curriculums: [{ id: 'caps', countryId: 'za', name: 'CAPS', description: 'CAPS' }]
           }
         }
       });
@@ -447,7 +447,7 @@ describe('Phase 2: Guided flow and track branching', () => {
           educationType: 'School',
           options: {
             ...baseState.onboarding.options,
-            curriculums: [{ id: 'caps', name: 'CAPS' }]
+            curriculums: [{ id: 'caps', countryId: 'za', name: 'CAPS', description: 'CAPS' }]
           }
         }
       });
@@ -494,8 +494,8 @@ describe('Phase 2: Guided flow and track branching', () => {
           options: {
             ...baseState.onboarding.options,
             grades: [
-              { id: 'grade-8', label: 'Grade 8' },
-              { id: 'grade-9', label: 'Grade 9' }
+              { id: 'grade-8', curriculumId: 'caps', label: 'Grade 8', order: 8 },
+              { id: 'grade-9', curriculumId: 'caps', label: 'Grade 9', order: 9 }
             ]
           }
         }
@@ -548,10 +548,18 @@ describe('Phase 2: Guided flow and track branching', () => {
           options: {
             ...baseState.onboarding.options,
             grades: [
-              { id: 'grade-8', label: 'Grade 8' },
-              { id: 'grade-9', label: 'Grade 9' }
+              { id: 'grade-8', curriculumId: 'caps', label: 'Grade 8', order: 8 },
+              { id: 'grade-9', curriculumId: 'caps', label: 'Grade 9', order: 9 }
             ],
-            subjects: [{ id: 'mathematics', name: 'Mathematics', category: 'core' }]
+            subjects: [
+              {
+                id: 'mathematics',
+                curriculumId: 'caps',
+                gradeId: 'grade-8',
+                name: 'Mathematics',
+                category: 'core'
+              }
+            ]
           }
         }
       });

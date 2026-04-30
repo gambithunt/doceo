@@ -27,35 +27,37 @@ export const nodes = [
 	() => import('./nodes/23'),
 	() => import('./nodes/24'),
 	() => import('./nodes/25'),
-	() => import('./nodes/26')
+	() => import('./nodes/26'),
+	() => import('./nodes/27')
 ];
 
 export const server_loads = [3];
 
 export const dictionary = {
 		"/": [4],
-		"/admin": [~12,[3]],
-		"/admin/ai": [~13,[3]],
-		"/admin/content": [~14,[3]],
-		"/admin/graph": [~15,[3]],
-		"/admin/graph/legacy": [~17,[3]],
-		"/admin/graph/[nodeId]": [~16,[3]],
-		"/admin/learning": [~18,[3]],
-		"/admin/messages": [~19,[3]],
-		"/admin/messages/[session_id]": [~20,[3]],
-		"/admin/revenue": [~21,[3]],
-		"/admin/settings": [~22,[3]],
-		"/admin/system": [~23,[3]],
-		"/admin/users": [~24,[3]],
-		"/admin/users/[id]": [~25,[3]],
+		"/admin": [~13,[3]],
+		"/admin/ai": [~14,[3]],
+		"/admin/content": [~15,[3]],
+		"/admin/graph": [~16,[3]],
+		"/admin/graph/legacy": [~18,[3]],
+		"/admin/graph/[nodeId]": [~17,[3]],
+		"/admin/learning": [~19,[3]],
+		"/admin/messages": [~20,[3]],
+		"/admin/messages/[session_id]": [~21,[3]],
+		"/admin/revenue": [~22,[3]],
+		"/admin/settings": [~23,[3]],
+		"/admin/system": [~24,[3]],
+		"/admin/users": [~25,[3]],
+		"/admin/users/[id]": [~26,[3]],
 		"/(app)/dashboard": [5,[2]],
 		"/(app)/lesson": [6,[2]],
 		"/(app)/lesson/[id]": [7,[2]],
-		"/onboarding": [26],
-		"/(app)/progress": [8,[2]],
-		"/(app)/revision": [9,[2]],
-		"/(app)/settings": [10,[2]],
-		"/(app)/subjects/[id]": [11,[2]]
+		"/(app)/notes": [8,[2]],
+		"/onboarding": [27],
+		"/(app)/progress": [9,[2]],
+		"/(app)/revision": [10,[2]],
+		"/(app)/settings": [11,[2]],
+		"/(app)/subjects/[id]": [12,[2]]
 	};
 
 export const hooks = {

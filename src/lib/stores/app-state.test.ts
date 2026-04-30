@@ -9,7 +9,8 @@ import type {
   RevisionPackRequest,
   RevisionPackResponse,
   RevisionQuestion,
-  RevisionTopic
+  RevisionTopic,
+  SchoolTerm
 } from '$lib/types';
 import { appState, createAppStore, lessonSessionStore, profileStore, uiStore, revisionStore } from './app-state';
 
@@ -1401,7 +1402,7 @@ describe('topic discovery dashboard state', () => {
         curriculumId: 'caps',
         grade: 'Grade 6',
         gradeId: 'grade-6',
-        term: 'Term 3'
+        term: 'Term 3' as SchoolTerm
       }
     };
     const subject = baseState.curriculum.subjects[0]!;
@@ -1458,7 +1459,7 @@ describe('topic discovery dashboard state', () => {
         curriculumId: 'ieb',
         grade: 'Grade 11',
         gradeId: 'ieb-grade-11',
-        term: 'Term 2'
+        term: 'Term 2' as SchoolTerm
       }
     };
     const subject = baseState.curriculum.subjects[0]!;

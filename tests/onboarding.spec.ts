@@ -44,11 +44,10 @@ test('student can complete onboarding, shortlist a topic, start a lesson, and re
 
   await expect(
     page.getByRole('heading', {
-      name: 'Build a student profile that keeps the app relevant from the first screen.'
+      name: 'Where are you learning?'
     })
   ).toBeVisible();
 
-  await page.getByRole('button', { name: /South Africa/i }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: /CAPS/i }).click();
   await page.getByRole('button', { name: 'Term 2' }).click();
@@ -89,7 +88,7 @@ test('student can complete onboarding, shortlist a topic, start a lesson, and re
   await page.getByRole('button', { name: 'Edit onboarding' }).click();
   await expect(
     page.getByRole('heading', {
-      name: 'Build a student profile that keeps the app relevant from the first screen.'
+      name: 'Where are you learning?'
     })
   ).toBeVisible();
 });
@@ -108,10 +107,11 @@ test('student can choose a non-South-African country and continue through the un
 
   await expect(
     page.getByRole('heading', {
-      name: 'Build a student profile that keeps the app relevant from the first screen.'
+      name: 'Where are you learning?'
     })
   ).toBeVisible();
 
+  await page.getByRole('button', { name: 'Choose a different country' }).click();
   await page.getByRole('button', { name: /United States/i }).click();
   await page.getByRole('button', { name: 'University' }).click();
   await page.getByRole('button', { name: 'Continue' }).click();

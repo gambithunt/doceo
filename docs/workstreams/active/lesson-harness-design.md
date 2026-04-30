@@ -566,6 +566,112 @@ REFACTOR
 - Implementation materially matches the approved mockup direction: colorful, stage-driven, tactile, image-rich, and learner-centered.
 - No out-of-scope features are added during QA.
 
+## Phase 9: Layout and Visual Convergence
+
+### Objective
+Close the remaining structural and visual gap between the current implementation and the approved mockup. Phases 1–7 fixed individual behaviors; the shell layout, progress rail visual weight, action area placement, and color boldness still read as corporate SaaS rather than learner-first. This phase addresses those four items in four focused sub-tasks, each independently testable.
+
+### Constraints
+- Preserve all existing lesson behavior, message routes, TTS, harness moment contract, and Svelte 5 runes patterns.
+- Maintain both light and dark mode for every visual change.
+- No new AI routes, lesson stages, or persistence changes.
+- Strict RED → GREEN → REFACTOR per sub-task.
+- Each sub-task leaves the app stable and all tests passing before the next begins.
+
+---
+
+### Sub-task 1: Progress Rail Icon Nodes
+
+**Goal:** Replace small numbered dots with larger colorful icon circles — distinct icons per stage identity, vertical label below the dot.
+
+**Scope:**
+- Add a `stageNodeIcon()` helper mapping each `LessonStageIdentity` to a Unicode symbol.
+- Add `data-stage-icon` attribute to each `.stage-node`.
+- Update node-dot to show stage icon for active/upcoming stages; keep ✓ for completed.
+- Change `.stage-node` layout to column (dot on top, label below) — matching the mockup.
+- Enlarge node-dots and make active/completed fills more solid.
+- Show the `small` helper text below the label for the active stage only.
+- Cover both light and dark mode.
+
+**Tasks:**
+- [x] RED: add failing tests — each stage-node has `data-stage-icon`, active dot shows icon not number, CSS has column layout rule.
+- [x] GREEN: add `stageNodeIcon()`, update markup with `data-stage-icon` + icon rendering, update CSS to column layout + enlarged dots + bolder fills.
+- [x] REFACTOR: remove now-dead `else if active / else upcoming` branches in node-dot render; clean obsolete pill CSS from node-label.
+
+**Touch Points:**
+- `src/lib/components/LessonWorkspace.svelte`
+- `src/lib/components/LessonWorkspace.test.ts`
+
+---
+
+### Sub-task 2: Two-Column Lesson Body
+
+**Goal:** Split the lesson body into a lesson-card column (left, ~60%) and a completed-concepts sidebar (right, ~40%), matching the mockup's dual-column layout.
+
+**Scope:**
+- Convert `lesson-body` from single-column to a two-column CSS grid on desktop.
+- Move `activeLessonCard.conceptMiniCards` from inside the lesson card to the right sidebar as a persistent "Completed concepts" list.
+- Add a "X of Y completed" counter + progress bar in the sidebar.
+- Keep the notes panel accessible via the existing toggle; it should not be the default right column.
+- On mobile: single column, sidebar stacks below the lesson card.
+
+**Tasks:**
+- [ ] RED: add failing tests — sidebar exists with `aria-label="Completed concepts"`, each concept mini-card appears in the sidebar, counter renders.
+- [ ] GREEN: restructure `lesson-body` grid, add sidebar element, move concept tiles, add counter markup + CSS.
+- [ ] REFACTOR: remove concept mini-card markup from inside the active lesson card; clean up obsolete single-column CSS.
+
+**Touch Points:**
+- `src/lib/components/LessonWorkspace.svelte`
+- `src/lib/components/LessonWorkspace.test.ts`
+
+---
+
+### Sub-task 3: Detached Bottom Action Bar
+
+**Goal:** Extract the CTA, "Your turn first" callout, and quick-action chips from inside the lesson card into a dedicated sticky `.lesson-action-bar` at the bottom of the lesson body area.
+
+**Scope:**
+- Add a `.lesson-action-bar` section below the two-column body.
+- Show "Your turn first" label + description on the left when `isYourTurnMode`.
+- Show the primary CTA on the right (large, stage-colored).
+- Show quick-action chips (Show example, Explain differently, Help me start) as a row below the bar.
+- The lesson card becomes content-only — no CTA markup inside it.
+- Preserve all existing disabled-state and answer-required gating logic.
+- Keep mobile layout usable (stack vertically on small screens).
+
+**Tasks:**
+- [x] RED: add failing tests — `.lesson-action-bar` exists in DOM, CTA is outside `.active-lesson-card`, your-turn callout renders in the bar.
+- [x] GREEN: add `.lesson-action-bar` section, move CTA + callout + quick chips there, remove from inside the card, add CSS.
+- [x] REFACTOR: clean up now-empty CTA region inside card; remove obsolete `active-lesson-card-concepts` CSS dead from Sub-task 2; split combined label selectors to keep `.active-lesson-card-diagnostic-label` live.
+
+**Touch Points:**
+- `src/lib/components/LessonWorkspace.svelte`
+- `src/lib/components/LessonWorkspace.test.ts`
+
+---
+
+### Sub-task 4: Bold Color Application
+
+**Goal:** Make stage colors dominant and immediate — filled nodes, saturated card accents, vivid CTA — instead of tinted at 6–24% opacity.
+
+**Scope:**
+- Active progress node: solid stage-color fill (not gradient mix).
+- Active lesson card: visible stage-color left border or top gradient accent.
+- CTA button: uses `--lesson-active-stage-color` as background (not just global accent).
+- Stage connector (filled): use stage color at full opacity.
+- Cover light and dark mode; keep `prefers-reduced-motion` safe.
+
+**Tasks:**
+- [x] RED: add failing CSS-content assertions for bold fill rules on active node, card border, and CTA.
+- [x] GREEN: update node-dot active fill (`var(--lesson-active-stage-color)` solid), card left border (4px), CTA background, connector fill at full opacity.
+- [x] REFACTOR: updated CTA hover/active box-shadow to use `--lesson-active-stage-color`; removed the old `color-mix(...var(--accent) 62%...)` override in the desktop media query for `.stage-connector.filled`.
+
+**Touch Points:**
+- `src/lib/components/LessonWorkspace.svelte`
+- `src/lib/components/LessonWorkspace.test.ts`
+
+---
+
 ## Cross-Phase Rules
 - No early future-phase work.
 - No refactor beyond the active phase.

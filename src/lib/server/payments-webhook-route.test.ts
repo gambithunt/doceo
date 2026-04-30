@@ -706,7 +706,7 @@ describe('payments webhook route', () => {
         user_id: 'auth-user-1'
       }
     });
-    supabase.from.mockImplementation((table: string) => {
+    supabase.from.mockImplementation(((table: string) => {
       if (table === 'user_subscriptions') {
         return {
           upsert: supabase.upsert,
@@ -728,7 +728,7 @@ describe('payments webhook route', () => {
       }
 
       throw new Error(`Unexpected table: ${table}`);
-    });
+    }) as typeof supabase.from);
     createServerSupabaseAdmin.mockReturnValue({ from: supabase.from });
     getStripe.mockReturnValue({
       webhooks: {

@@ -138,13 +138,13 @@ describe('admin final auth regression sweep', () => {
     requireAdminSession.mockRejectedValue(denied);
 
     const cases: Array<{
-      load: (args: Record<string, unknown>) => Promise<unknown>;
-      args: Record<string, unknown>;
+      load: (args: never) => Promise<unknown>;
+      args: never;
       blockedSpy: ReturnType<typeof vi.fn>;
     }> = [
       {
         load: (await import('../../../routes/admin/+page.server')).load,
-        args: { request: new Request('http://localhost/admin') },
+        args: { request: new Request('http://localhost/admin') } as never,
         blockedSpy: getAdminKpis
       },
       {
@@ -152,7 +152,7 @@ describe('admin final auth regression sweep', () => {
         args: {
           request: new Request('http://localhost/admin/users'),
           url: new URL('http://localhost/admin/users')
-        },
+        } as never,
         blockedSpy: getAdminUsers
       },
       {
@@ -160,7 +160,7 @@ describe('admin final auth regression sweep', () => {
         args: {
           request: new Request('http://localhost/admin/users/profile-1'),
           params: { id: 'profile-1' }
-        },
+        } as never,
         blockedSpy: getAdminUserDetail
       }
     ];

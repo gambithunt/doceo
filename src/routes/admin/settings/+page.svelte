@@ -230,18 +230,22 @@
         voice: openaiVoice,
         speed: Number(openaiSpeed),
         styleInstruction: openaiStyleInstruction || null,
-        format: openaiFormat
+        format: openaiFormat,
+        timeoutMs: data.ttsConfig.openai.timeoutMs,
+        retries: data.ttsConfig.openai.retries
       },
       elevenlabs: {
         enabled: elevenlabsEnabled,
         model: elevenlabsModel,
         voiceId: elevenlabsVoiceId,
         format: elevenlabsFormat,
-        languageCode: elevenlabsLanguageCode || null,
+        languageCode: elevenlabsLanguageCode === 'en' ? 'en' : null,
         stability: Number(elevenlabsStability),
         similarityBoost: Number(elevenlabsSimilarityBoost),
         style: Number(elevenlabsStyle),
-        speakerBoost: elevenlabsSpeakerBoost
+        speakerBoost: elevenlabsSpeakerBoost,
+        timeoutMs: data.ttsConfig.elevenlabs.timeoutMs,
+        retries: data.ttsConfig.elevenlabs.retries
       }
     };
   }

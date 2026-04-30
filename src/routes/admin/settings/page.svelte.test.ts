@@ -43,7 +43,7 @@ function stubPreviewEnvironment(fetchMock = vi.fn().mockResolvedValue(
 function createPageData() {
   return {
     aiConfig: {
-      provider: 'openai',
+      provider: 'openai' as const,
       tiers: {
         fast: { model: 'gpt-4.1-mini' },
         default: { model: 'gpt-4.1-mini' },
@@ -53,20 +53,20 @@ function createPageData() {
     },
     ttsConfig: {
       enabled: true,
-      defaultProvider: 'openai',
-      fallbackProvider: 'elevenlabs',
+      defaultProvider: 'openai' as const,
+      fallbackProvider: 'elevenlabs' as const,
       previewEnabled: true,
       previewMaxChars: 280,
       cacheEnabled: true,
-      languageDefault: 'en',
-      rolloutScope: 'lessons',
+      languageDefault: 'en' as const,
+      rolloutScope: 'lessons' as const,
       openai: {
         enabled: true,
         model: 'gpt-4o-mini-tts',
         voice: 'alloy',
         speed: 1,
         styleInstruction: null,
-        format: 'mp3',
+        format: 'mp3' as const,
         timeoutMs: 15000,
         retries: 1
       },
@@ -74,8 +74,8 @@ function createPageData() {
         enabled: true,
         model: 'eleven_multilingual_v2',
         voiceId: 'JBFqnCBsd6RMkjVDRZzb',
-        format: 'mp3',
-        languageCode: 'en',
+        format: 'mp3' as const,
+        languageCode: 'en' as const,
         stability: 0.5,
         similarityBoost: 0.8,
         style: 0,
@@ -96,8 +96,8 @@ function createPageData() {
       previewRequestCount: 2,
       cacheHitRate: 62.5,
       providerShare: [
-        { provider: 'openai', count: 6, sharePct: 75 },
-        { provider: 'elevenlabs', count: 2, sharePct: 25 }
+        { provider: 'openai' as const, count: 6, sharePct: 75 },
+        { provider: 'elevenlabs' as const, count: 2, sharePct: 25 }
       ],
       fallbackCount: 1,
       lastFallbackAt: '2026-04-20T08:00:00.000Z',
@@ -105,16 +105,19 @@ function createPageData() {
     },
     providers: [
       {
-        id: 'openai',
+        id: 'openai' as const,
         label: 'OpenAI',
+        envKeyVar: 'OPENAI_API_KEY',
+        baseUrl: 'https://api.openai.com/v1',
+        authStyle: 'bearer' as const,
+        format: 'openai' as const,
         models: [
           {
             id: 'gpt-4.1-mini',
             label: 'GPT-4.1 Mini',
-            provider: 'openai',
             inputPer1M: 0.4,
             outputPer1M: 1.6,
-            tier: 'default'
+            tier: 'default' as const
           }
         ]
       }

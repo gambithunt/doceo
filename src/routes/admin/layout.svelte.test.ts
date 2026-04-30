@@ -134,9 +134,9 @@ describe('admin layout shell', () => {
 
     await flushMicrotasks();
 
-    expect(authStateHandler).not.toBeNull();
+    expect(authStateHandler).toBeDefined();
 
-    authStateHandler?.('SIGNED_OUT', null);
+    authStateHandler!('SIGNED_OUT', null);
 
     await flushMicrotasks();
 

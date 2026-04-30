@@ -180,6 +180,7 @@
 	"/(app)/dashboard": [],
 	"/(app)/lesson": [],
 	"/(app)/lesson/[id]": [],
+	"/(app)/notes": [],
 	"/onboarding": [],
 	"/(app)/progress": [],
 	"/(app)/revision": [],
