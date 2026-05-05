@@ -356,7 +356,7 @@ describe('lesson workspace UI helpers', () => {
         lesson
       )
     ).toMatchObject({
-      stateLabel: 'Loop 1 • Teach',
+      stateLabel: 'Key idea 1',
       title: 'Teach Loop 1',
       body: 'Teach the first core idea.',
       ctaLabel: 'Check concept 1'
@@ -380,7 +380,7 @@ describe('lesson workspace UI helpers', () => {
         lesson
       )
     ).toMatchObject({
-      stateLabel: 'Loop 1 • Example',
+      stateLabel: 'Example 1',
       title: 'Example Loop 1',
       body: 'Walk through the first worked example.',
       ctaLabel: 'Try it yourself'
@@ -404,7 +404,7 @@ describe('lesson workspace UI helpers', () => {
         lesson
       )
     ).toMatchObject({
-      stateLabel: 'Loop 1 • Check',
+      stateLabel: 'Check 1',
       title: 'Check Loop 1',
       body: 'Explain the first idea in your own words.',
       ctaLabel: 'Bring it together'

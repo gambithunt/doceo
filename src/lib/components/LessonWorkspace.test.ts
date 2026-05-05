@@ -763,9 +763,8 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
     ]);
 
     const activeCard = screen.getByRole('region', { name: 'Active lesson: Example Loop 1' });
-    const actionBar = document.querySelector('.lesson-action-bar') as HTMLElement;
 
-    await fireEvent.click(within(actionBar).getByRole('button', { name: 'Try it yourself' }));
+    await fireEvent.click(within(activeCard).getByRole('button', { name: 'Try it yourself' }));
 
     expect(appState.sendLessonControl).toHaveBeenCalledWith('next_step');
     expect(appState.sendLessonMessage).not.toHaveBeenCalled();
@@ -794,7 +793,7 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
 
-    expect(within(activeCard).getByText('Loop 1 • Example')).toBeInTheDocument();
+    expect(within(activeCard).getByText('Example 1')).toBeInTheDocument();
     expect(within(activeCard).getByRole('heading', { name: 'Example Loop 1' })).toBeInTheDocument();
     expect(within(activeCard).getByText('Here is the first worked example.')).toBeInTheDocument();
   });
@@ -810,13 +809,12 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
     ]);
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
-    const actionBar = document.querySelector('.lesson-action-bar') as HTMLElement;
 
-    expect(within(actionBar).getByRole('button', { name: 'Try it yourself' })).toBeInTheDocument();
+    expect(within(activeCard).getByRole('button', { name: 'Try it yourself' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Lesson support' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Try it yourself' })).toHaveLength(1);
 
-    await fireEvent.click(within(actionBar).getByRole('button', { name: 'Try it yourself' }));
+    await fireEvent.click(within(activeCard).getByRole('button', { name: 'Try it yourself' }));
 
     expect(appState.sendLessonControl).toHaveBeenCalledWith('next_step');
     expect(appState.sendLessonMessage).not.toHaveBeenCalled();
@@ -1072,7 +1070,7 @@ describe('LessonWorkspace Phase 1 stage workspace shell', () => {
     );
   });
 
-  it('renders completed concepts in a lesson memory shelf using existing completed-unit data', () => {
+  it('renders completed concepts in the completed-concepts sidebar using existing completed-unit data', () => {
     renderV2Workspace([
       createMessage({
         id: 'loop-1-teach',
@@ -1122,17 +1120,15 @@ describe('LessonWorkspace Phase 1 stage workspace shell', () => {
       }
     });
 
-    const memory = screen.getByRole('region', { name: 'Lesson memory' });
-    const memoryTile = within(memory).getByText('Completed concept 1').closest('article');
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    const memoryTile = within(sidebar).getByText('Core idea one').closest('li');
 
-    expect(memory).toHaveClass('lesson-memory-shelf');
-    expect(memoryTile).toHaveClass('lesson-memory-tile');
-    expect(within(memoryTile!).getByText('Completed concept 1')).toBeInTheDocument();
+    expect(sidebar).toBeInTheDocument();
+    expect(memoryTile).toHaveClass('concept-tile');
     expect(within(memoryTile!).getByText('Core idea one')).toBeInTheDocument();
     expect(
       within(memoryTile!).getByText('Core idea one names the first rule before you do anything else.')
     ).toBeInTheDocument();
-    expect(within(memoryTile!).getByText('It keeps the learner from guessing the method.')).toBeInTheDocument();
   });
 
   it('keeps older completed-loop transcript detail collapsed until the transcript is opened', async () => {
@@ -1191,7 +1187,7 @@ describe('LessonWorkspace Phase 1 stage workspace shell', () => {
     expect(within(conversation).queryByText('Older tutor feedback from loop 1.')).not.toBeInTheDocument();
     expect(within(conversation).getByText('Current tutor guidance from loop 2.')).toBeInTheDocument();
 
-    await fireEvent.click(within(conversation).getByRole('button', { name: 'Show earlier conversation (2 items)' }));
+    await fireEvent.click(within(conversation).getByRole('button', { name: 'Review earlier steps (2)' }));
 
     expect(within(conversation).getByText('Older learner reply from loop 1.')).toBeInTheDocument();
     expect(within(conversation).getByText('Older tutor feedback from loop 1.')).toBeInTheDocument();
@@ -1234,7 +1230,7 @@ describe('LessonWorkspace harness design Phase 1 stage identity', () => {
     const activeMoment = screen.getByRole('region', { name: 'Active lesson: Example Loop 1' });
 
     expect(progress.querySelector('[data-stage="orientation"]')).toHaveAttribute('data-stage-identity', 'concept');
-    expect(progress.querySelector('[data-stage="concepts"]')).toHaveAttribute('data-stage-identity', 'concept');
+    expect(progress.querySelector('[data-stage="examples"]')).toHaveAttribute('data-stage-identity', 'example');
     expect(progress.querySelector('[data-stage="practice"]')).toHaveAttribute('data-stage-identity', 'your-turn');
     expect(progress.querySelector('[data-stage="check"]')).toHaveAttribute('data-stage-identity', 'feedback');
     expect(progress.querySelector('[data-stage="complete"]')).toHaveAttribute('data-stage-identity', 'summary');
@@ -1334,10 +1330,9 @@ describe('LessonWorkspace harness design Phase 2 purposeful motion', () => {
     });
 
     const activeCard = screen.getByRole('region', { name: 'Active lesson: Try Loop 1' });
-    const actionBar = document.querySelector('.lesson-action-bar') as HTMLElement;
-    const actions = actionBar.querySelector('.active-lesson-card-actions');
-    const primary = actionBar.querySelector('.active-lesson-card-primary');
-    const cta = within(actionBar).getByRole('button', { name: 'Check what stuck' });
+    const actions = activeCard.querySelector('.lesson-next-step-panel');
+    const primary = activeCard.querySelector('.active-lesson-card-primary');
+    const cta = within(activeCard).getByRole('button', { name: 'Check what stuck' });
     const composer = document.querySelector('.composer');
 
     expect(activeCard).toHaveAttribute('data-action-required', 'true');
@@ -1553,19 +1548,18 @@ describe('LessonWorkspace Phase 2 Your Turn mode', () => {
   it('renders a visible Your turn mode label in a gated v2 practice state', () => {
     renderV2PracticeYourTurn();
 
-    const actionBar = document.querySelector('.lesson-action-bar') as HTMLElement;
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
 
-    expect(within(actionBar).getByText('Your turn first')).toBeInTheDocument();
-    expect(within(actionBar).getByText('Your turn first: try the question or tap Help me start.')).toBeInTheDocument();
+    expect(within(activeCard).getByText('Your turn first')).toBeInTheDocument();
+    expect(within(activeCard).getByText('Your turn first: try the question or tap Help me start.')).toBeInTheDocument();
   });
 
   it('keeps progression disabled and marks the active card action area as action-required', () => {
     renderV2PracticeYourTurn();
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
-    const actionBar = document.querySelector('.lesson-action-bar') as HTMLElement;
-    const actionArea = actionBar.querySelector('.active-lesson-card-actions');
-    const progressButton = within(actionBar).getByRole('button', { name: 'Check what stuck' });
+    const actionArea = activeCard.querySelector('.lesson-next-step-panel');
+    const progressButton = within(activeCard).getByRole('button', { name: 'Check what stuck' });
 
     expect(activeCard).toHaveAttribute('data-action-required', 'true');
     expect(actionArea).toHaveAttribute('data-action-required', 'true');
@@ -1812,6 +1806,17 @@ describe('LessonWorkspace Phase 5 session notes MVP', () => {
         role: 'assistant',
         type: 'teaching',
         content: 'Here is a useful idea worth saving.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_teach',
+          loopIndex: 0
+        }
+      }),
+      createMessage({
+        id: 'notes-learner-response',
+        role: 'user',
+        type: 'response',
+        content: 'I want to save that idea.',
         stage: 'concepts',
         v2Context: {
           checkpoint: 'loop_teach',
@@ -2185,6 +2190,13 @@ describe('LessonWorkspace harness design Phase 5 persisted lesson notes', () => 
         role: 'assistant',
         type: 'teaching',
         content: 'This source phrase should become note source text.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'phase-5-selected-note-learner-response',
+        role: 'user',
+        type: 'response',
+        content: 'I want to save this source phrase.',
         stage: 'concepts'
       })
     ]);
@@ -2578,7 +2590,7 @@ describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () 
     expect(within(history).getByText('I think the clue points to the first rule.')).toBeInTheDocument();
   });
 
-  it('labels visible transcript entries as secondary lesson history', () => {
+  it('does not render a history region when only AI messages exist and a lesson card is active', () => {
     renderV2Workspace([
       createMessage({
         id: 'recent-assistant',
@@ -2589,10 +2601,34 @@ describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () 
       })
     ]);
 
+    expect(screen.queryByRole('region', { name: 'Lesson history' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Answer feedback')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /^Active lesson/ })).toBeInTheDocument();
+  });
+
+  it('renders the history region once the learner has sent a response', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'recent-assistant',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Recent tutor explanation from loop 2.',
+        stage: 'concepts'
+      }),
+      createMessage({
+        id: 'recent-user',
+        role: 'user',
+        type: 'response',
+        content: 'I think it is about supply.',
+        stage: 'concepts'
+      })
+    ]);
+
     const history = screen.getByRole('region', { name: 'Lesson history' });
 
-    expect(within(history).getByText('Lesson history')).toBeInTheDocument();
+    expect(within(history).getByText('Answer feedback')).toBeInTheDocument();
     expect(within(history).getByText('Recent tutor explanation from loop 2.')).toBeInTheDocument();
+    expect(within(history).getByText('I think it is about supply.')).toBeInTheDocument();
   });
 
   it('keeps the current exchange and the last two transcript items visible while collapsing older detail', () => {
@@ -2652,7 +2688,7 @@ describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () 
 
     expect(within(history).queryByText('Older learner reply from loop 1.')).not.toBeInTheDocument();
     expect(within(history).queryByText('Older tutor explanation from loop 1.')).not.toBeInTheDocument();
-    expect(within(history).getByText('Recent tutor explanation from loop 2.')).toBeInTheDocument();
+    expect(within(history).queryByText('Recent tutor explanation from loop 2.')).not.toBeInTheDocument();
     expect(within(history).getByText('Recent learner reply from loop 2.')).toBeInTheDocument();
     expect(within(history).getByText('Current tutor guidance from loop 2.')).toBeInTheDocument();
   });
@@ -2711,9 +2747,7 @@ describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () 
 
     const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
     const history = within(conversation).getByRole('region', { name: 'Lesson history' });
-    const summaryToggle = within(history).getByRole('button', {
-      name: 'Show earlier conversation (2 items)'
-    });
+    const summaryToggle = within(history).getByRole('button', { name: 'Review earlier steps (3)' });
 
     expect(summaryToggle).toBeInTheDocument();
     expect(summaryToggle).toHaveAttribute('aria-expanded', 'false');
@@ -2774,7 +2808,7 @@ describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () 
     expect(within(history).getByLabelText('Doceo is thinking')).toBeInTheDocument();
   });
 
-  it('renders completed units as compact summaries from concept records instead of replaying their full transcript', () => {
+  it('keeps completed unit summaries in the sidebar instead of replaying their full transcript inline', () => {
     renderV2Workspace([
       createMessage({
         id: 'loop-1-teach',
@@ -2826,11 +2860,13 @@ describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () 
       }
     });
 
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
     const conversation = screen.getByRole('region', { name: 'Lesson conversation' });
-    const completedUnit = within(conversation).getByText('Completed concept 1').closest('article');
+    const completedUnit = within(sidebar).getByText('Core idea one').closest('li');
 
     expect(completedUnit).toBeInTheDocument();
     expect(within(completedUnit!).getByText('Core idea one')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Lesson memory' })).not.toBeInTheDocument();
     expect(
       within(completedUnit!).getByText(
         'Core idea one names the first rule before you do anything else.'
@@ -2898,7 +2934,7 @@ describe('LessonWorkspace Phase 5 conversation collapse and unit summaries', () 
     expect(within(conversation).queryByText('Older tutor feedback from loop 1.')).not.toBeInTheDocument();
     expect(within(conversation).getByText('Current tutor guidance from loop 2.')).toBeInTheDocument();
     expect(
-      within(conversation).getByRole('button', { name: 'Show earlier conversation (2 items)' })
+      within(conversation).getByRole('button', { name: 'Review earlier steps (2)' })
     ).toBeInTheDocument();
   });
 });
@@ -3322,9 +3358,9 @@ describe('LessonWorkspace Phase 7 motion state hooks', () => {
       }
     });
 
-    const memoryTile = screen.getByText('Completed concept 1').closest('article');
+    const memoryTile = screen.getByText('Core idea one').closest('li');
 
-    expect(memoryTile).toHaveClass('lesson-memory-tile');
+    expect(memoryTile).toHaveClass('concept-tile');
     expect(memoryTile).not.toHaveClass('lesson-memory-tile-landed');
     expect(memoryTile).not.toHaveAttribute('data-motion-state', 'memory-landed');
   });
@@ -3767,8 +3803,8 @@ describe('LessonWorkspace Phase 8 summary payoff refinement', () => {
     const desktopBlock = source.match(/@media \(min-width: 1180px\)\s*\{[\s\S]*?@media \(prefers-reduced-motion: reduce\)/)?.[0] ?? '';
 
     expect(source).not.toContain("content: 'Latest exchange'");
-    expect(source).toContain("content: 'Your answer'");
-    expect(source).toContain("content: 'Tutor feedback'");
+    expect(source).toContain('data-role-label={roleLabel ?? undefined}');
+    expect(source).toContain('content: attr(data-role-label)');
     expect(desktopBlock).toContain('.active-card-feedback .bubble.user::before');
     expect(desktopBlock).toContain('.active-card-feedback .bubble.assistant::before');
     expect(desktopBlock).toContain('.input-area-your-turn');
@@ -3945,11 +3981,11 @@ describe('LessonWorkspace Phase 5 progress strip states', () => {
     });
 
     expect(document.querySelector('[data-stage="orientation"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-stage="concepts"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-stage="examples"]')).toBeInTheDocument();
     expect(document.querySelector('[data-stage="practice"]')).toBeInTheDocument();
     expect(document.querySelector('[data-stage="check"]')).toBeInTheDocument();
     expect(document.querySelector('[data-stage="construction"]')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-stage="examples"]')).not.toBeInTheDocument();
+    expect(document.querySelector('.stage-node.active')).toHaveAttribute('data-stage', 'examples');
   });
 
   it('uses checkpoint-specific support copy for v2 sessions while keeping TTS off wrap bubbles', () => {
@@ -4422,6 +4458,230 @@ describe('LessonWorkspace Phase 4 lesson TTS playback', () => {
   });
 });
 
+describe('LessonWorkspace visual weight Phase 2 typography hierarchy', () => {
+  it('uses a dominant active lesson card heading scale and weight', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+
+    expect(source).toMatch(/\.active-lesson-card h3\s*\{[\s\S]{0,260}font-size:\s*clamp\(2rem,\s*3\.2vw,\s*2\.8rem\)/);
+    expect(source).toMatch(/\.active-lesson-card h3\s*\{[\s\S]{0,260}font-weight:\s*800/);
+    expect(source).toMatch(/\.active-lesson-card h3\s*\{[\s\S]{0,260}line-height:\s*1\.05/);
+  });
+
+  it('keeps compact active lesson headings smaller but still hierarchy-aware', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+
+    expect(source).toMatch(/\.active-lesson-card-compact h3\s*\{[\s\S]{0,120}font-size:\s*clamp\(1\.4rem,\s*2\.2vw,\s*1\.9rem\)/);
+  });
+
+  it('keeps context copy visually subordinate to the heading', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+
+    expect(source).toMatch(/\.active-lesson-card-context\s*\{[\s\S]{0,260}font-size:\s*0\.92rem/);
+    expect(source).toMatch(/\.active-lesson-card-context\s*\{[\s\S]{0,260}color:\s*var\(--text-soft\)/);
+    expect(source).toMatch(/\.active-lesson-card-context\s*\{[\s\S]{0,260}opacity:\s*0\.82/);
+  });
+
+  it('sets active lesson card body text as readable support copy', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+
+    expect(source).toMatch(/\.active-lesson-card-body\s*\{[\s\S]{0,260}font-size:\s*1\.05rem/);
+    expect(source).toMatch(/\.active-lesson-card-body\s*\{[\s\S]{0,260}line-height:\s*1\.78/);
+    expect(source).toMatch(/\.active-lesson-card-body\s*\{[\s\S]{0,260}color:\s*var\(--text\)/);
+  });
+
+  it('does not keep responsive active-card font-size overrides that undershoot the new baseline', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const responsiveBlocks = source.match(/@media[^{]+\{[\s\S]*?(?=\n\s*@media|\n\s*<\/style>)/g) ?? [];
+    const responsiveSource = responsiveBlocks.join('\n');
+
+    expect(responsiveSource).not.toMatch(/\.active-lesson-card h3\s*\{[\s\S]{0,160}font-size:\s*(?:1|clamp\(1)/);
+    expect(responsiveSource).not.toMatch(/\.active-lesson-card-body\s*\{[\s\S]{0,160}font-size:\s*0\./);
+  });
+});
+
+describe('LessonWorkspace visual weight Phase 1 sidebar cleanup', () => {
+  it('does not render a hardcoded learner identity pill in the lesson sidebar', () => {
+    renderV2Workspace([]);
+
+    expect(document.querySelector('.lesson-side-learner')).toBeNull();
+    expect(document.querySelector('.lesson-side-avatar')).toBeNull();
+    expect(screen.queryByText('Aiden')).not.toBeInTheDocument();
+    expect(screen.queryByText('Grade 9')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open notes from lesson map' })).toBeInTheDocument();
+  });
+});
+
+describe('LessonWorkspace visual weight Phase 3 stage badge chapter marker', () => {
+  function activeCardStateRule(source: string): string {
+    return source.match(/\.active-lesson-card-state\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+  }
+
+  it('uses a compact stage tag instead of a large filled pill for the active lesson badge', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const rule = activeCardStateRule(source);
+
+    expect(rule).toContain('display: inline-flex');
+    expect(rule).toContain('padding: 0.22rem 0.5rem');
+    expect(rule).toContain('border-radius: 0.42rem');
+    expect(rule).toContain('font-size: 0.66rem');
+    expect(rule).toMatch(/\bborder:/);
+    expect(rule).toContain('background: color-mix');
+    expect(rule).not.toContain('border-radius: 999px');
+  });
+
+  it('defines contrast tokens for stage identities with light fills', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+
+    for (const identity of ['example', 'your-turn', 'summary']) {
+      expect(source).toMatch(
+        new RegExp(`\\.active-lesson-card\\[data-stage-identity='${identity}'\\]\\s*\\{[\\s\\S]{0,180}--lesson-phase-contrast:\\s*#07111f`)
+      );
+    }
+  });
+
+  it('does not keep responsive badge overrides that return to a tinted outline', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const responsiveBlocks = source.match(/@media[^{]+\{[\s\S]*?(?=\n\s*@media|\n\s*<\/style>)/g) ?? [];
+    const responsiveSource = responsiveBlocks.join('\n');
+
+    expect(responsiveSource).not.toMatch(/\.active-lesson-card-state\s*\{[\s\S]{0,260}background:\s*color-mix/);
+    expect(responsiveSource).not.toMatch(/\.active-lesson-card-state\s*\{[\s\S]{0,260}color:\s*color-mix/);
+  });
+});
+
+describe('LessonWorkspace visual weight Phase 4 card elevation and depth', () => {
+  function activeCardRule(source: string): string {
+    return source.match(/\.active-lesson-card\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+  }
+
+  function activeCardWithTranscriptRule(source: string): string {
+    return source.match(/\.active-lesson-card-with-transcript\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+  }
+
+  it('uses a structural 7px stage-color left border on the active lesson card', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const rule = activeCardRule(source);
+
+    expect(rule).toContain('border-left: 7px solid var(--lesson-active-stage-color)');
+  });
+
+  it('uses the specified two-layer stage-color glow plus tight ambient layer', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const rule = activeCardRule(source);
+
+    expect(rule).toContain('0 2px 0 color-mix(in srgb, var(--lesson-phase-color) 40%, transparent)');
+    expect(rule).toContain('0 8px 36px color-mix(in srgb, var(--lesson-phase-color) 18%, rgba(15, 23, 42, 0.14))');
+    expect(rule).toContain('0 32px 72px color-mix(in srgb, var(--lesson-phase-color) 8%, rgba(15, 23, 42, 0.08))');
+  });
+
+  it('boosts base and with-transcript radial stage-color stops', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+
+    expect(activeCardRule(source)).toContain('color-mix(in srgb, var(--lesson-phase-color) 32%, transparent)');
+    expect(activeCardWithTranscriptRule(source)).toContain('color-mix(in srgb, var(--lesson-phase-color) 28%, transparent)');
+  });
+
+  it('keeps dark mode active-card shadow stage-colored without reverting to the old single glow', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const darkRule =
+      source.match(/:global\(:root\[data-theme='dark'\]\) \.active-lesson-card,[\s\S]*?\n\s*\}/)?.[0] ?? '';
+
+    expect(darkRule).toContain('0 2px 0 color-mix(in srgb, var(--lesson-phase-color) 34%, transparent)');
+    expect(darkRule).toContain('0 10px 38px color-mix(in srgb, var(--lesson-phase-color) 16%, rgba(0, 0, 0, 0.38))');
+    expect(darkRule).toContain('0 34px 74px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(0, 0, 0, 0.32))');
+  });
+
+  it('does not keep responsive active-card overrides that reduce the structural border or remove depth', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const responsiveBlocks = source.match(/@media[^{]+\{[\s\S]*?(?=\n\s*@media|\n\s*<\/style>)/g) ?? [];
+    const responsiveActiveCardRules = responsiveBlocks
+      .flatMap((block) => block.match(/\.active-lesson-card\s*\{[\s\S]*?\n\s*\}/g) ?? [])
+      .join('\n');
+
+    expect(responsiveActiveCardRules).not.toMatch(/border-left:\s*[1-6]px/);
+    expect(responsiveActiveCardRules).not.toMatch(/box-shadow:\s*none/);
+  });
+});
+
+describe('LessonWorkspace visual weight Phase 6 completed concept achievement tiles', () => {
+  it('renders completed concepts as visual tiles with stripe, emoji, bold name, and one-liner', () => {
+    renderV2Workspace([]);
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    const tiles = sidebar.querySelectorAll('.concept-tile');
+
+    expect(tiles).toHaveLength(2);
+    expect(tiles[0]?.querySelector('.concept-tile-stripe')).toBeInTheDocument();
+    expect(tiles[0]?.querySelector('.concept-tile-emoji')).toHaveAttribute('aria-hidden', 'true');
+    expect(within(tiles[0] as HTMLElement).getByText('Core idea one').tagName).toBe('STRONG');
+    expect(
+      within(tiles[0] as HTMLElement).getByText('Core idea one names the first rule before you do anything else.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows completed concept progress as X of Y concepts covered with a fill bar', () => {
+    renderV2Workspace([]);
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    expect(within(sidebar).getByText('Covered so far')).toBeInTheDocument();
+    expect(within(sidebar).getByText('0 of 2 concepts covered')).toBeInTheDocument();
+    expect(sidebar.querySelector('.concepts-progress-fill')).toHaveAttribute('style', 'width: 0%;');
+  });
+
+  it('falls back to concept summary when a one-line definition is unavailable', () => {
+    const state = buildV2WorkspaceState([]);
+    delete state.lessons[0]!.flowV2!.concepts![0]!.oneLineDefinition;
+
+    render(LessonWorkspace, {
+      props: {
+        state
+      }
+    });
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    expect(within(sidebar).getByText('The first rule to notice.')).toBeInTheDocument();
+  });
+
+  it('defines scoped tile, progress, dark mode, and mobile styles for the concept sidebar', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+
+    expect(source).toMatch(/\.concept-tile-stripe\s*\{[\s\S]{0,180}background:\s*var\(--stage-concept-color\)/);
+    expect(source).toMatch(/\.concepts-progress-fill\s*\{[\s\S]{0,220}background:/);
+    expect(source).toMatch(/:global\(:root\[data-theme='dark'\]\) \.concept-tile\s*\{/);
+    expect(source).toMatch(/@media \(max-width: 780px\)[\s\S]*?\.concept-tile\s*\{/);
+  });
+});
+
+describe('LessonWorkspace visual weight Phase 7 action bar elevation', () => {
+  it('anchors the lesson action bar with the specified upward stage-color shadow', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const rule = source.match(/\.lesson-action-bar\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+
+    expect(rule).toContain(
+      'box-shadow: 0 -4px 18px color-mix(in srgb, var(--lesson-active-stage-color) 8%, rgba(0, 0, 0, 0.08))'
+    );
+  });
+
+  it('makes the primary lesson CTA dimensional and clearly pressable', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const rule = source.match(/\.lesson-support-cta\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+    const activeRule = source.match(/\.lesson-support-cta:active\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+
+    expect(rule).toContain('background: linear-gradient(');
+    expect(rule).toContain('color-mix(in srgb, var(--lesson-active-stage-color) 82%, white 18%)');
+    expect(rule).toContain('var(--lesson-active-stage-color)');
+    expect(rule).toContain('border-radius:');
+    expect(activeRule).toContain('transform: scale(0.97)');
+  });
+
+  it('keeps reduced-motion coverage for the CTA pressed transform', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const reducedMotionBlock = source.match(/@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?<\/style>/)?.[0] ?? '';
+
+    expect(reducedMotionBlock).toMatch(/\.lesson-support-cta:active\s*\{[\s\S]{0,80}transform:\s*none/);
+  });
+});
+
 describe('LessonWorkspace Phase 9 Sub-task 4: Bold color application', () => {
   it('uses the active stage color as a solid fill for the active node dot', () => {
     const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
@@ -4435,7 +4695,7 @@ describe('LessonWorkspace Phase 9 Sub-task 4: Bold color application', () => {
 
   it('uses the active stage color as the CTA button background', () => {
     const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
-    expect(source).toMatch(/\.lesson-support-cta\b[^}]*background:\s*var\(--lesson-active-stage-color\)/s);
+    expect(source).toMatch(/\.lesson-support-cta\b[^}]*background:\s*linear-gradient\([^}]*var\(--lesson-active-stage-color\)/s);
   });
 
   it('fills the completed stage connector with the active stage color at full opacity', () => {
@@ -4444,24 +4704,22 @@ describe('LessonWorkspace Phase 9 Sub-task 4: Bold color application', () => {
   });
 });
 
-describe('LessonWorkspace Phase 9 Sub-task 3: Detached bottom action bar', () => {
-  it('renders a lesson-action-bar element when an active lesson card is present', () => {
+describe('LessonWorkspace Phase 9 Sub-task 3: Secondary support dock', () => {
+  it('renders a lesson-action-bar element for secondary support actions when an active lesson card is present', () => {
     renderV2Workspace([]);
     expect(document.querySelector('.lesson-action-bar')).toBeInTheDocument();
   });
 
-  it('places the primary CTA inside lesson-action-bar and not inside active-lesson-card', () => {
+  it('places the primary CTA inside active-lesson-card and keeps the bottom dock secondary', () => {
     renderV2Workspace([]);
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
     const actionBar = document.querySelector('.lesson-action-bar')!;
 
-    // CTA must be in the action bar
-    expect(within(actionBar as HTMLElement).getByRole('button', { name: 'Try it yourself' })).toBeInTheDocument();
-    // CTA must NOT be inside the card
-    expect(activeCard.querySelector('.active-lesson-card-cta')).toBeNull();
+    expect(within(activeCard).getByRole('button', { name: 'Try it yourself' })).toBeInTheDocument();
+    expect(within(actionBar as HTMLElement).queryByRole('button', { name: 'Try it yourself' })).not.toBeInTheDocument();
   });
 
-  it('renders the your-turn callout inside lesson-action-bar in gated states', () => {
+  it('renders the your-turn callout inside the active card in gated states', () => {
     renderV2Workspace([
       createMessage({
         id: 'practice-p',
@@ -4484,8 +4742,8 @@ describe('LessonWorkspace Phase 9 Sub-task 3: Detached bottom action bar', () =>
         needsTeacherReview: false
       }
     });
-    const actionBar = document.querySelector('.lesson-action-bar')!;
-    expect(within(actionBar as HTMLElement).getByText('Your turn first')).toBeInTheDocument();
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    expect(within(activeCard).getByText('Your turn first')).toBeInTheDocument();
   });
 
   it('does not render lesson-action-bar when lesson is complete', () => {
@@ -4606,6 +4864,391 @@ describe('LessonWorkspace Phase 9 Sub-task 1: Progress rail icon nodes', () => {
     // The node-dot width must be at least 2rem to match the mockup
     const match = source.match(/\.node-dot\s*\{[^}]*width:\s*([\d.]+)rem/s);
     expect(match).not.toBeNull();
-    expect(parseFloat(match![1]!)).toBeGreaterThanOrEqual(2);
+    expect(parseFloat(match![1]!)).toBeGreaterThanOrEqual(1.85);
+  });
+});
+
+describe('LessonWorkspace Phase 10: live-session polish', () => {
+  it('marks the active progress node with the checkpoint-level stage from the harness moment', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeNode = screen.getByRole('navigation', { name: 'Lesson stages' }).querySelector('.stage-node.active');
+    expect(activeNode).toHaveAttribute('data-stage', 'examples');
+    expect(activeNode).toHaveAttribute('data-stage-identity', 'example');
+  });
+
+  it('does not render an in-thread Lesson Memory shelf when the completed-concepts sidebar is present', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    expect(screen.getByRole('complementary', { name: 'Completed concepts' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Lesson memory' })).not.toBeInTheDocument();
+    expect(document.querySelector('.lesson-memory-shelf')).not.toBeInTheDocument();
+  });
+
+  it('does not render an empty active-card feedback shell before there is feedback or history', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: [],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    expect(screen.getByRole('region', { name: /Active lesson/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Lesson history' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Lesson feedback' })).not.toBeInTheDocument();
+    expect(document.querySelector('.active-card-feedback')).not.toBeInTheDocument();
+  });
+
+  it('renders the tutor feedback label only once for consecutive assistant feedback messages', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'learner-answer',
+        role: 'user',
+        type: 'response',
+        content: 'I notice the first rule.',
+        stage: 'examples',
+        v2Context: { checkpoint: 'loop_example', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'feedback-1',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Good. You named the key idea.',
+        stage: 'examples',
+        v2Context: { checkpoint: 'loop_example', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'feedback-2',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Now notice how the example uses that idea.',
+        stage: 'examples',
+        v2Context: { checkpoint: 'loop_example', loopIndex: 0 }
+      })
+    ], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const assistantBubbles = Array.from(document.querySelectorAll('.active-card-feedback .bubble.assistant'));
+    expect(assistantBubbles).toHaveLength(2);
+    expect(assistantBubbles.filter((bubble) => bubble.getAttribute('data-role-label') === 'Tutor feedback')).toHaveLength(1);
+    expect(assistantBubbles[1]).not.toHaveAttribute('data-role-label');
+  });
+});
+
+describe('LessonWorkspace lesson flow clarity improvements', () => {
+  it('uses learner-facing stage badges instead of internal loop labels', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    const stateBadge = activeCard.querySelector('.active-lesson-card-state');
+    expect(stateBadge).toHaveTextContent('Example 2');
+    expect(stateBadge).not.toHaveTextContent(/Loop 2/i);
+  });
+
+  it('keeps the stage badge compact instead of hero-sized', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const rule = source.match(/\.active-lesson-card-state\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+
+    expect(rule).toContain('padding: 0.22rem 0.5rem');
+    expect(rule).toContain('font-size: 0.66rem');
+    expect(rule).toContain('border-radius: 0.42rem');
+    expect(rule).toContain('max-width: max-content');
+  });
+
+  it('uses distinct top progress labels for overview and key idea instead of duplicating Concept', () => {
+    renderV2Workspace([], {
+      currentStage: 'orientation',
+      stagesCompleted: [],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'orientation',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const rail = screen.getByRole('navigation', { name: 'Lesson stages' });
+    expect(within(rail).getByText('Overview')).toBeInTheDocument();
+    expect(within(rail).getByText('Key idea')).toBeInTheDocument();
+    expect(within(rail).queryAllByText('Concept')).toHaveLength(0);
+  });
+
+  it('shows covered-so-far progress based on completed loops, not total listed concepts', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    expect(within(sidebar).getByText('Covered so far')).toBeInTheDocument();
+    expect(within(sidebar).getByText('1 of 2 concepts covered')).toBeInTheDocument();
+    expect(sidebar.querySelectorAll('.concept-tile-covered')).toHaveLength(1);
+    expect(sidebar.querySelectorAll('.concept-tile-upcoming')).toHaveLength(1);
+  });
+
+  it('renders an answer target checklist near the active lesson action area', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const target = screen.getByRole('list', { name: 'Your answer should include' });
+    expect(within(target).getByText('What happened')).toBeInTheDocument();
+    expect(within(target).getByText('Why it mattered')).toBeInTheDocument();
+    expect(within(target).getByText('Lesson link')).toBeInTheDocument();
+  });
+
+  it('uses a less chat-like label for collapsed lesson history', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'start-answer',
+        role: 'user',
+        type: 'response',
+        content: 'Start answer.',
+        stage: 'orientation',
+        v2Context: { checkpoint: 'start', loopIndex: null }
+      }),
+      createMessage({
+        id: 'earlier-user',
+        role: 'user',
+        type: 'response',
+        content: 'Earlier answer.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_teach', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'earlier-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Earlier feedback.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_teach', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'practice-answer',
+        role: 'user',
+        type: 'response',
+        content: 'Practice answer.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'current-user',
+        role: 'user',
+        type: 'response',
+        content: 'Current answer.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_example', loopIndex: 0 }
+      })
+    ], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    expect(screen.getByRole('button', { name: /Review earlier steps \(\d+\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show earlier conversation/ })).not.toBeInTheDocument();
+  });
+
+  it('places the primary lesson action inside the active lesson card instead of the bottom command dock', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeLesson = screen.getByRole('region', { name: /Active lesson/i });
+    expect(within(activeLesson).getByRole('button', { name: /Try it yourself/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-primary-action-dock')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the response target as a checklist tied to the current lesson prompt', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const target = screen.getByRole('list', { name: 'Your answer should include' });
+    expect(within(target).getByText('What happened')).toBeInTheDocument();
+    expect(within(target).getByText('Why it mattered')).toBeInTheDocument();
+    expect(within(target).getByText('Lesson link')).toBeInTheDocument();
+  });
+
+  it('keeps lesson history compact by showing only the latest feedback until review is opened', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'older-user',
+        role: 'user',
+        type: 'response',
+        content: 'Older learner answer.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_teach', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'older-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Older tutor feedback.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_teach', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'latest-user',
+        role: 'user',
+        type: 'response',
+        content: 'Latest learner answer.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_example', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'latest-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Latest actionable feedback.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_example', loopIndex: 0 }
+      })
+    ], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const history = screen.getByRole('region', { name: 'Lesson history' });
+    expect(within(history).getByText('Latest learner answer.')).toBeInTheDocument();
+    expect(within(history).getByText('Latest actionable feedback.')).toBeInTheDocument();
+    expect(within(history).queryByText('Older tutor feedback.')).not.toBeInTheDocument();
+  });
+
+  it('keeps upcoming concept cards readable instead of dimming them as disabled content', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    expect(source).not.toMatch(/\.concept-tile-upcoming\s*\{[^}]*opacity:\s*0\.[0-6]/);
+    expect(source).toMatch(/\.concept-tile-upcoming\s+\.concept-tile-tagline\s*\{[\s\S]*color:/);
+  });
+
+  it('tightens the top lesson progress rail height on desktop', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    expect(source).toMatch(/\.lesson-header\s*\{[\s\S]{0,180}padding:\s*0\.65rem 0\.95rem/);
+    expect(source).toMatch(/\.node-dot\s*\{[\s\S]{0,160}width:\s*1\.85rem;[\s\S]{0,80}height:\s*1\.85rem/);
   });
 });

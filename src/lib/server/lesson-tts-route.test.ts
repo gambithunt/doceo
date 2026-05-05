@@ -235,4 +235,69 @@ describe('lesson tts route', () => {
       error: 'Provider unavailable.'
     });
   });
+
+  it('logs service and unexpected failures so local 502s are diagnosable', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { LessonTtsServiceError } = await import('./lesson-tts-service');
+    const synthesizeLessonTts = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new LessonTtsServiceError({
+          code: 'synthesis_failed',
+          message: 'OpenAI TTS API key is missing.'
+        })
+      )
+      .mockRejectedValueOnce(new Error('Lesson TTS artifact storage is unavailable'));
+    createLessonTtsService.mockReturnValue({ synthesizeLessonTts });
+
+    const { POST } = await import('../../routes/api/tts/lesson/+server');
+    const requestBody = {
+      lessonSessionId: 'lesson-session-1',
+      lessonMessageId: 'lesson-message-6',
+      content: 'Explain equivalent fractions.'
+    };
+
+    await POST({
+      request: new Request('http://localhost/api/tts/lesson', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      })
+    } as never);
+
+    expect(consoleError).toHaveBeenCalledWith(
+      '[lesson-tts] request failed',
+      expect.objectContaining({
+        code: 'synthesis_failed',
+        lessonSessionId: 'lesson-session-1',
+        lessonMessageId: 'lesson-message-6',
+        message: 'OpenAI TTS API key is missing.'
+      })
+    );
+
+    await POST({
+      request: new Request('http://localhost/api/tts/lesson', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      })
+    } as never);
+
+    expect(consoleError).toHaveBeenCalledWith(
+      '[lesson-tts] unexpected request failure',
+      expect.objectContaining({
+        lessonSessionId: 'lesson-session-1',
+        lessonMessageId: 'lesson-message-6',
+        message: 'Lesson TTS artifact storage is unavailable'
+      })
+    );
+
+    consoleError.mockRestore();
+  });
 });

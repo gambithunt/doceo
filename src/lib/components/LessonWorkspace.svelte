@@ -197,6 +197,14 @@
           ? stageIdentityForStage(getVisiblePromptStageForSession(lessonSession))
           : null
   );
+  const activeProgressStage = $derived(
+    lessonSession?.status === 'complete'
+      ? 'complete'
+      : lessonHarnessMoment?.activeStageBucket ??
+        (lessonSession && lessonSession.currentStage !== 'complete'
+          ? getVisiblePromptStageForSession(lessonSession)
+          : null)
+  );
   const activeLessonVisual = $derived<LessonVisualIntent | null>(
     lessonSession
       ? deriveLessonVisualIntent({
@@ -216,6 +224,25 @@
   const composerHelperChips = $derived.by((): LessonComposerHelperChip[] =>
     isYourTurnMode ? lessonComposerCopy.helperChips : []
   );
+  const answerTargetItems = $derived.by(() => {
+    if (activeStageIdentity === 'example') {
+      return ['What happened', 'Why it mattered', 'Lesson link'];
+    }
+
+    if (activeStageIdentity === 'your-turn') {
+      return ['Claim', 'Evidence', 'First step'];
+    }
+
+    if (activeStageIdentity === 'feedback') {
+      return ['What worked', 'What to fix', 'Retry plan'];
+    }
+
+    if (activeStageIdentity === 'summary') {
+      return ['Main idea', 'Best example', 'Next review'];
+    }
+
+    return ['Key idea', 'Why it matters', 'Example'];
+  });
   const activeLessonCardTtsMessage = $derived.by(() => {
     if (!lessonSession || !activeLessonCard) {
       return null;
@@ -258,6 +285,11 @@
       collapsedMessages: [],
       visibleMessages: []
     }
+  );
+  const coveredConceptCount = $derived(conversationView.completedUnits.length);
+  const totalConceptCount = $derived(lesson?.flowV2?.concepts?.length ?? activeLessonCard?.conceptMiniCards.length ?? coveredConceptCount);
+  const completedConceptProgressPercent = $derived(
+    totalConceptCount > 0 ? Math.min(100, (coveredConceptCount / totalConceptCount) * 100) : 0
   );
   const lessonNotes = $derived(
     lessonSession ? viewState.lessonNotes.filter((note) => note.lessonSessionId === lessonSession.id) : []
@@ -313,11 +345,52 @@
       return ['question', 'feedback', 'wrap', 'side_thread'].includes(message.type);
     });
   });
+  const hasLearnerResponse = $derived.by(() => {
+    const messageEntries = [...conversationView.visibleMessages, ...conversationView.collapsedMessages];
+
+    return messageEntries.some(({ message }) => message.role === 'user');
+  });
+  const hasContextualTranscriptActivity = $derived.by(() => {
+    const messageEntries = [...conversationView.visibleMessages, ...conversationView.collapsedMessages];
+
+    return messageEntries.some(({ message }) => {
+      if (message.role === 'user') {
+        return true;
+      }
+
+      return (
+        message.metadata?.response_mode === 'support' ||
+        ['question', 'feedback', 'wrap', 'side_thread'].includes(message.type)
+      );
+    });
+  });
+  const hasPendingAssistant = $derived(viewState.ui.pendingAssistantSessionId === lessonSession?.id);
   const hasHistoryRegion = $derived(
     conversationView.visibleMessages.length > 0 ||
     conversationView.collapsedMessages.length > 0 ||
-    viewState.ui.pendingAssistantSessionId === lessonSession?.id
+    hasPendingAssistant
   );
+  const shouldRenderHistoryRegion = $derived(
+    hasHistoryRegion && (hasLearnerResponse || hasContextualTranscriptActivity || !activeLessonCard || hasPendingAssistant)
+  );
+  const visibleTranscriptEntries = $derived.by(() => {
+    if (!activeLessonCard || showCollapsedTranscript || conversationView.visibleMessages.length <= 2) {
+      return conversationView.visibleMessages;
+    }
+
+    return conversationView.visibleMessages.slice(-2);
+  });
+  const compactHiddenVisibleEntries = $derived.by(() => {
+    if (!activeLessonCard || conversationView.visibleMessages.length <= 2) {
+      return [];
+    }
+
+    return conversationView.visibleMessages.slice(0, -2);
+  });
+  const reviewableTranscriptEntries = $derived.by(() => [
+    ...conversationView.collapsedMessages,
+    ...compactHiddenVisibleEntries
+  ]);
   const shouldCompactOpeningCard = $derived(
     Boolean(activeLessonCard && activeLessonCard.stateLabel === 'Start' && hasTranscriptActivity)
   );
@@ -527,13 +600,13 @@
         return 'completed';
       }
 
-      const activeStage = lessonSession.v2State.labelBucket;
+      const activeStage = activeProgressStage;
       if (activeStage === 'complete') {
         return 'completed';
       }
 
       const stageIndex = visibleStages.indexOf(stage as (typeof visibleStages)[number]);
-      const activeIndex = visibleStages.indexOf(activeStage);
+      const activeIndex = activeStage ? visibleStages.indexOf(activeStage as (typeof visibleStages)[number]) : -1;
 
       if (stageIndex !== -1 && activeIndex !== -1) {
         if (stageIndex < activeIndex) {
@@ -542,6 +615,10 @@
 
         return stageIndex === activeIndex ? 'active' : 'upcoming';
       }
+
+      if (lessonSession.v2State.labelBucket === stage) {
+        return 'active';
+      }
     }
 
     if (lessonSession.stagesCompleted.includes(stage)) {
@@ -549,6 +626,10 @@
     }
 
     return lessonSession.currentStage === stage ? 'active' : 'upcoming';
+  }
+
+  function progressNodeDisplayStage(stage: LessonStage): LessonStage {
+    return statusForStage(stage) === 'active' && activeProgressStage ? activeProgressStage : stage;
   }
 
   function submit(): void {
@@ -830,6 +911,38 @@
     return content.length > 0 && content.length <= 28 && !content.includes('\n');
   }
 
+  function canShowTranscriptRoleLabel(message: LessonMessage): boolean {
+    return (
+      (message.role === 'assistant' || message.role === 'user') &&
+      message.type !== 'stage_start' &&
+      message.type !== 'concept_cards' &&
+      message.type !== 'question' &&
+      message.type !== 'side_thread' &&
+      !isSupportMessage(message)
+    );
+  }
+
+  function transcriptRoleLabel(
+    entries: LessonWorkspaceMessageEntry[],
+    index: number
+  ): 'Tutor feedback' | 'Your answer' | null {
+    const message = entries[index]?.message;
+    if (!message || !canShowTranscriptRoleLabel(message)) {
+      return null;
+    }
+
+    const previousMessage = entries[index - 1]?.message;
+    if (
+      previousMessage &&
+      canShowTranscriptRoleLabel(previousMessage) &&
+      previousMessage.role === message.role
+    ) {
+      return null;
+    }
+
+    return message.role === 'assistant' ? 'Tutor feedback' : 'Your answer';
+  }
+
   function stageEmoji(stage: LessonStage): string {
     if (stage === 'orientation') return '🧭';
     if (stage === 'concepts') return '💡';
@@ -841,8 +954,8 @@
   }
 
   function boardStageLabel(stage: LessonStage): string {
-    if (stage === 'orientation') return 'Concept';
-    if (stage === 'concepts') return 'Concept';
+    if (stage === 'orientation') return 'Overview';
+    if (stage === 'concepts') return 'Key idea';
     if (stage === 'examples') return 'Example';
     if (stage === 'construction' || stage === 'practice') return 'Your turn';
     if (stage === 'check') return 'Feedback';
@@ -851,7 +964,8 @@
   }
 
   function boardStageHelper(stage: LessonStage): string {
-    if (stage === 'orientation' || stage === 'concepts') return 'Learn the key idea';
+    if (stage === 'orientation') return 'Get oriented';
+    if (stage === 'concepts') return 'Learn the key idea';
     if (stage === 'examples') return 'See it in action';
     if (stage === 'construction' || stage === 'practice') return 'Apply the idea';
     if (stage === 'check') return 'Improve and grow';
@@ -1079,13 +1193,6 @@
           <span aria-hidden="true">▤</span>
           <span>Notes</span>
         </button>
-        <div class="lesson-side-learner">
-          <span class="lesson-side-avatar" aria-hidden="true">A</span>
-          <span>
-            <strong>Aiden</strong>
-            <small>Grade 9</small>
-          </span>
-        </div>
       </div>
     </aside>
 
@@ -1111,6 +1218,9 @@
       <!-- Timeline breadcrumb -->
       <nav class="progress-rail" class:lesson-complete={lessonSession?.status === 'complete'} aria-label="Lesson stages">
         {#each boardProgressStages as stage, i}
+          {@const stageStatus = statusForStage(stage)}
+          {@const displayStage = progressNodeDisplayStage(stage)}
+          {@const displayStageIdentity = stageIdentityForStage(displayStage)}
           {#if i > 0}
             <div
               class="stage-connector"
@@ -1122,27 +1232,27 @@
           {/if}
           <div
             class="stage-node"
-            data-stage={stage}
-            data-stage-identity={stageIdentityForStage(stage)}
-            data-stage-status={statusForStage(stage)}
-            data-stage-icon={stageNodeIcon(stageIdentityForStage(stage))}
-            class:completed={statusForStage(stage) === 'completed'}
-            class:active={statusForStage(stage) === 'active'}
+            data-stage={displayStage}
+            data-stage-identity={displayStageIdentity}
+            data-stage-status={stageStatus}
+            data-stage-icon={stageNodeIcon(displayStageIdentity)}
+            class:completed={stageStatus === 'completed'}
+            class:active={stageStatus === 'active'}
             class:celebrating={celebratingStage === stage}
-            class:activating={i > 0 && visibleStages[i - 1] === celebratingStage && statusForStage(stage) === 'active'}
-            class:settling={i > 0 && visibleStages[i - 1] === celebratingStage && statusForStage(stage) === 'active'}
+            class:activating={i > 0 && visibleStages[i - 1] === celebratingStage && stageStatus === 'active'}
+            class:settling={i > 0 && visibleStages[i - 1] === celebratingStage && stageStatus === 'active'}
             class:final-stage={lessonSession?.status === 'complete' && stage === finalVisibleStage}
           >
             <div class="node-dot">
-              {#if statusForStage(stage) === 'completed'}
+              {#if stageStatus === 'completed'}
                 <span aria-hidden="true">✓</span>
               {:else}
-                <span aria-hidden="true">{stageNodeIcon(stageIdentityForStage(stage))}</span>
+                <span aria-hidden="true">{stageNodeIcon(displayStageIdentity)}</span>
               {/if}
             </div>
             <span class="node-label">
-              <strong>{boardStageLabel(stage)}</strong>
-              <small>{boardStageHelper(stage)}</small>
+              <strong>{boardStageLabel(displayStage)}</strong>
+              <small>{boardStageHelper(displayStage)}</small>
             </span>
           </div>
         {/each}
@@ -1240,17 +1350,28 @@
           class:lesson-concepts-sidebar-quiet={hasTranscriptActivity}
           aria-label="Completed concepts"
         >
-          <p class="lesson-concepts-sidebar-label">Completed concepts</p>
+          <p class="lesson-concepts-sidebar-label">Covered so far</p>
+          <div class="concepts-progress" aria-label={`${coveredConceptCount} of ${totalConceptCount} concepts covered`}>
+            <span>{coveredConceptCount} of {totalConceptCount} concepts covered</span>
+            <div class="concepts-progress-bar" aria-hidden="true">
+              <div class="concepts-progress-fill" style={`width: ${completedConceptProgressPercent}%;`}></div>
+            </div>
+          </div>
           <ol class="lesson-concepts-sidebar-list">
             {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
-              <li class="lesson-concepts-sidebar-item">
-                <span class="lesson-concepts-sidebar-index" aria-hidden="true">{conceptIndex + 1}</span>
-                <span class="lesson-concepts-sidebar-marker" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
-                <span class="lesson-concepts-sidebar-text">
-                  <strong>{concept.name}</strong>
-                  <span>{concept.oneLineDefinition ?? concept.summary}</span>
-                </span>
-                <span class="lesson-concepts-sidebar-check" aria-hidden="true">✓</span>
+              {@const isCoveredConcept = conceptIndex < coveredConceptCount}
+              <li
+                class="concept-tile"
+                class:concept-tile-covered={isCoveredConcept}
+                class:concept-tile-upcoming={!isCoveredConcept}
+              >
+                <span class="concept-tile-stripe" aria-hidden="true"></span>
+                <span class="concept-tile-emoji" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
+                <div class="concept-tile-copy">
+                  <span class="concept-tile-status">{isCoveredConcept ? 'Covered' : 'Coming up'}</span>
+                  <strong class="concept-tile-name">{concept.name}</strong>
+                  <p class="concept-tile-tagline">{concept.oneLineDefinition ?? concept.summary}</p>
+                </div>
               </li>
             {/each}
           </ol>
@@ -1606,7 +1727,7 @@
         </section>
       {/snippet}
 
-      {#snippet transcriptEntry(entry: LessonWorkspaceMessageEntry, history: boolean)}
+      {#snippet transcriptEntry(entry: LessonWorkspaceMessageEntry, history: boolean, roleLabel: string | null)}
         {@const message = entry.message}
         {@const messageIndex = entry.index}
 
@@ -1678,6 +1799,7 @@
               data-interaction-mode={canPlayLessonAudio(message) ? 'button-only' : 'bubble'}
               data-motion-variant={bubbleMotionVariant(message)}
               data-response-mode={supportMessage ? 'support' : undefined}
+              data-role-label={roleLabel ?? undefined}
               data-support-intent={supportIntentForMessage(message)}
               data-topic-id={supportMessage ? lessonSession.topicId : undefined}
               data-topic-title={supportMessage ? lessonSession.topicTitle : undefined}
@@ -1843,6 +1965,56 @@
                     </section>
                   {/if}
 
+                  <section
+                    class="lesson-next-step-panel"
+                    aria-label="Current lesson task"
+                    data-action-required={isYourTurnMode ? 'true' : undefined}
+                  >
+                    <div class="lesson-next-step-copy">
+                      <p class="lesson-next-step-label">Current task</p>
+                      <p class="lesson-next-step-prompt" id={nextStepCtaState.cue ? nextStepCueId : undefined}>
+                        {nextStepCtaState.cue ?? composerPlaceholder}
+                      </p>
+                    </div>
+
+                    <div class="lesson-next-step-target">
+                      <p>Your answer should include</p>
+                      <ul class="answer-target-list" aria-label="Your answer should include">
+                        {#each answerTargetItems as target}
+                          <li>{target}</li>
+                        {/each}
+                      </ul>
+                    </div>
+
+                    <div
+                      class="active-lesson-card-primary"
+                      data-action-required={isYourTurnMode ? 'true' : undefined}
+                    >
+                      {#if isYourTurnMode}
+                        <div class="your-turn-callout active-lesson-card-your-turn-callout" aria-live="polite">
+                          <p class="your-turn-label">Your turn first</p>
+                        </div>
+                      {/if}
+                      <button
+                        type="button"
+                        class="btn btn-primary lesson-support-cta active-lesson-card-cta"
+                        class:lesson-support-cta-your-turn={isYourTurnMode}
+                        onclick={submitActiveLessonCardAction}
+                        disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
+                        aria-describedby={
+                          activeLessonCard.primaryAction === 'submit_diagnostic'
+                            ? undefined
+                            : nextStepCtaState.cue
+                              ? nextStepCueId
+                              : undefined
+                        }
+                      >
+                        <span>{activeLessonCard.ctaLabel}</span>
+                        <span class="next-step-arrow" aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  </section>
+
 	                </div>
 	              {/key}
 	            </section>
@@ -1855,70 +2027,51 @@
 	            </div>
 	          {/if}
 
-		          <section
-		            class="chat-area"
-	            class:active-card-feedback={Boolean(activeLessonCard)}
-	            aria-label={activeLessonCard ? 'Lesson feedback' : undefined}
-	          >
-          {#if conversationView.completedUnits.length > 0}
-            <section class="lesson-memory-shelf completed-unit-summary-list" aria-label="Lesson memory">
-              {#each conversationView.completedUnits as unit}
-                <article
-                  class="lesson-memory-tile completed-unit-summary"
-                  class:lesson-memory-tile-landed={shouldLandMemoryTiles}
-                  data-motion-state={shouldLandMemoryTiles ? 'memory-landed' : undefined}
-                >
-                  <p class="lesson-memory-tile-label completed-unit-summary-label">{unit.label}</p>
-                  <h4>{unit.title}</h4>
-                  <p class="lesson-memory-tile-copy completed-unit-summary-copy">{unit.summary}</p>
-                  {#if unit.supportingText}
-                    <p class="lesson-memory-tile-supporting completed-unit-summary-supporting">{unit.supportingText}</p>
-                  {/if}
-                </article>
-              {/each}
+          {#if shouldRenderHistoryRegion}
+            <section
+              class="chat-area"
+              class:active-card-feedback={Boolean(activeLessonCard)}
+              aria-label={activeLessonCard ? 'Lesson feedback' : undefined}
+            >
+              <section class="transcript-history-region" aria-label="Lesson history" data-secondary-surface="history">
+                <p class="transcript-history-heading">{activeLessonCard && hasTranscriptActivity ? 'Answer feedback' : 'Lesson history'}</p>
+
+                {#if reviewableTranscriptEntries.length > 0}
+                  <section class="collapsed-transcript-shell">
+                    <button
+                      type="button"
+                      class="collapsed-transcript-toggle"
+                      aria-expanded={showCollapsedTranscript}
+                      aria-controls="collapsed-transcript-panel"
+                      onclick={() => (showCollapsedTranscript = !showCollapsedTranscript)}
+                    >
+                      {showCollapsedTranscript
+                        ? 'Hide earlier conversation'
+                        : `Review earlier steps (${reviewableTranscriptEntries.length})`}
+                    </button>
+
+                    {#if showCollapsedTranscript}
+                      <div class="collapsed-transcript-panel" id="collapsed-transcript-panel">
+                        {#each reviewableTranscriptEntries as entry, entryIndex (entry.message.id)}
+                          {@render transcriptEntry(entry, true, transcriptRoleLabel(reviewableTranscriptEntries, entryIndex))}
+                        {/each}
+                      </div>
+                    {/if}
+                  </section>
+                {/if}
+
+                {#each visibleTranscriptEntries as entry, entryIndex (entry.message.id)}
+                  {@render transcriptEntry(entry, false, transcriptRoleLabel(visibleTranscriptEntries, entryIndex))}
+                {/each}
+
+                {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
+                  <article class="bubble assistant pending enter-assistant">
+                    <LoadingDots label="Doceo is thinking" />
+                  </article>
+                {/if}
+              </section>
             </section>
           {/if}
-
-          {#if hasHistoryRegion}
-            <section class="transcript-history-region" aria-label="Lesson history" data-secondary-surface="history">
-              <p class="transcript-history-heading">{activeLessonCard && hasTranscriptActivity ? 'Answer feedback' : 'Lesson history'}</p>
-
-              {#if conversationView.collapsedMessages.length > 0}
-                <section class="collapsed-transcript-shell">
-                  <button
-                    type="button"
-                    class="collapsed-transcript-toggle"
-                    aria-expanded={showCollapsedTranscript}
-                    aria-controls="collapsed-transcript-panel"
-                    onclick={() => (showCollapsedTranscript = !showCollapsedTranscript)}
-                  >
-                    {showCollapsedTranscript
-                      ? 'Hide earlier conversation'
-                      : `Show earlier conversation (${conversationView.collapsedMessages.length} items)`}
-                  </button>
-
-                  {#if showCollapsedTranscript}
-                    <div class="collapsed-transcript-panel" id="collapsed-transcript-panel">
-                      {#each conversationView.collapsedMessages as entry (entry.message.id)}
-                        {@render transcriptEntry(entry, true)}
-                      {/each}
-                    </div>
-                  {/if}
-                </section>
-              {/if}
-
-              {#each conversationView.visibleMessages as entry (entry.message.id)}
-                {@render transcriptEntry(entry, false)}
-              {/each}
-
-              {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
-                <article class="bubble assistant pending enter-assistant">
-                  <LoadingDots label="Doceo is thinking" />
-                </article>
-              {/if}
-            </section>
-          {/if}
-          </section>
         </div>
 
         {#if showScrollDown}
@@ -1939,47 +2092,9 @@
         {/if}
       </section>
 
-      {#if activeLessonCard && lessonSession.status !== 'complete'}
-        <div class="lesson-action-bar" data-action-required={isYourTurnMode ? 'true' : undefined}>
-          <div
-            class="active-lesson-card-actions"
-            class:active-lesson-card-actions-your-turn={isYourTurnMode}
-            data-action-required={isYourTurnMode ? 'true' : undefined}
-          >
-            <div
-              class="active-lesson-card-primary"
-              data-action-required={isYourTurnMode ? 'true' : undefined}
-            >
-              {#if isYourTurnMode}
-                <div class="your-turn-callout active-lesson-card-your-turn-callout" aria-live="polite">
-                  <p class="your-turn-label">Your turn first</p>
-                  {#if nextStepCtaState.cue}
-                    <p class="your-turn-copy" id={nextStepCueId}>{nextStepCtaState.cue}</p>
-                  {/if}
-                </div>
-              {/if}
-              <button
-                type="button"
-                class="btn btn-primary lesson-support-cta active-lesson-card-cta"
-                class:lesson-support-cta-your-turn={isYourTurnMode}
-                onclick={submitActiveLessonCardAction}
-                disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
-                aria-describedby={
-                  activeLessonCard.primaryAction === 'submit_diagnostic'
-                    ? undefined
-                    : nextStepCtaState.cue
-                      ? nextStepCueId
-                      : undefined
-                }
-              >
-                <span>{activeLessonCard.ctaLabel}</span>
-                <span class="next-step-arrow" aria-hidden="true">→</span>
-              </button>
-              {#if !isYourTurnMode && activeLessonCard.primaryAction !== 'submit_diagnostic' && nextStepCtaState.cue}
-                <p class="lesson-support-cue active-lesson-card-cue" id={nextStepCueId}>{nextStepCtaState.cue}</p>
-              {/if}
-            </div>
-
+      {#if activeLessonCard && lessonSession.status !== 'complete' && visibleQuickActions.length > 0}
+        <div class="lesson-action-bar lesson-support-dock" data-action-required={isYourTurnMode ? 'true' : undefined}>
+          <div class="active-lesson-card-actions">
             <div class="active-lesson-card-secondary">
               {#each visibleQuickActions as action}
                 <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
@@ -2271,20 +2386,24 @@
     margin-top: auto;
   }
 
-  .lesson-side-notes-toggle,
-  .lesson-side-learner {
+  .lesson-side-notes-toggle {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    min-height: 2.35rem;
-    padding: 0.45rem 0.55rem;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    padding: 0.56rem 0.68rem;
     border-radius: 0.6rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-    background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
-    color: var(--text-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-strong));
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--accent) 8%, var(--surface-soft)),
+        color-mix(in srgb, var(--surface-soft) 82%, transparent)
+      );
+    color: var(--text);
     font: inherit;
-    font-size: 0.78rem;
-    font-weight: 650;
+    font-size: 0.88rem;
+    font-weight: 760;
   }
 
 	.lesson-side-notes-toggle {
@@ -2305,28 +2424,6 @@
 	.lesson-side-notes-toggle:active {
 		transform: scale(var(--press-scale));
 	}
-
-  .lesson-side-avatar {
-    display: inline-grid;
-    place-items: center;
-    width: 1.7rem;
-    height: 1.7rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-orange) 26%, var(--surface-tint));
-    color: var(--text);
-    font-weight: 800;
-  }
-
-  .lesson-side-learner > span:last-child {
-    display: grid;
-    gap: 0.05rem;
-    min-width: 0;
-  }
-
-  .lesson-side-learner small {
-    color: var(--muted);
-    font-size: 0.68rem;
-  }
 
   .lesson-side-notes {
     min-width: 0;
@@ -2919,8 +3016,8 @@
 
   .lesson-header {
     display: grid;
-    gap: 0.8rem;
-    padding: 0.85rem 1.05rem;
+    gap: 0.62rem;
+    padding: 0.65rem 0.95rem;
   }
 
   /* ── Top bar ── */
@@ -3093,8 +3190,8 @@
 	  }
 
   .node-dot {
-    width: 2.2rem;
-    height: 2.2rem;
+    width: 1.85rem;
+    height: 1.85rem;
     border-radius: 999px;
     display: grid;
     place-items: center;
@@ -3254,6 +3351,37 @@
     color: var(--text-soft);
   }
 
+  .concepts-progress {
+    display: grid;
+    gap: 0.45rem;
+    margin: 0 0 0.8rem;
+  }
+
+  .concepts-progress span {
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 760;
+  }
+
+  .concepts-progress-bar {
+    height: 0.42rem;
+    overflow: hidden;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--stage-concept-color) 16%, var(--border-strong));
+    background: color-mix(in srgb, var(--stage-concept-color) 8%, var(--surface-soft));
+  }
+
+  .concepts-progress-fill {
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      var(--stage-concept-color),
+      color-mix(in srgb, var(--stage-concept-color) 72%, var(--color-success) 28%)
+    );
+  }
+
   .lesson-concepts-sidebar-list {
     list-style: none;
     margin: 0;
@@ -3262,57 +3390,104 @@
     gap: 0.55rem;
   }
 
-  .lesson-concepts-sidebar-item {
+  .concept-tile {
     display: grid;
-    grid-template-columns: 1.2rem auto 1fr auto;
+    grid-template-columns: 0.2rem auto minmax(0, 1fr);
     align-items: start;
-    gap: 0.4rem;
-    padding: 0.6rem 0.7rem;
+    gap: 0.55rem;
+    min-width: 0;
+    padding: 0.68rem 0.72rem;
     border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
-    background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--stage-concept-color) 18%, var(--border-strong));
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--stage-concept-color) 8%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 86%, transparent)
+      );
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 42%, transparent),
+      0 8px 18px color-mix(in srgb, var(--stage-concept-color) 7%, rgba(15, 23, 42, 0.08));
   }
 
-  .lesson-concepts-sidebar-index {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--muted);
-    padding-top: 0.12rem;
+  .concept-tile-upcoming {
+    border-color: color-mix(in srgb, var(--stage-concept-color) 15%, var(--border-strong));
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--stage-concept-color) 5%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 90%, transparent)
+      );
   }
 
-  .lesson-concepts-sidebar-marker {
+  .concept-tile-upcoming .concept-tile-stripe {
+    background: color-mix(in srgb, var(--stage-concept-color) 48%, var(--border-strong));
+  }
+
+  .concept-tile-upcoming .concept-tile-status {
+    color: color-mix(in srgb, var(--stage-concept-color) 42%, var(--text-soft) 58%);
+  }
+
+  .concept-tile-upcoming .concept-tile-name {
+    color: color-mix(in srgb, var(--text) 82%, var(--text-soft) 18%);
+  }
+
+  .concept-tile-upcoming .concept-tile-tagline {
+    color: color-mix(in srgb, var(--text-soft) 86%, var(--text) 14%);
+  }
+
+  .concept-tile-covered .concept-tile-status {
+    color: color-mix(in srgb, var(--color-success) 72%, var(--text-soft) 28%);
+  }
+
+  .concept-tile-stripe {
+    width: 0.2rem;
+    min-height: 100%;
+    border-radius: 999px;
+    background: var(--stage-concept-color);
+  }
+
+  .concept-tile-emoji {
+    display: inline-grid;
+    place-items: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 0.58rem;
+    background: color-mix(in srgb, var(--stage-concept-color) 14%, var(--surface-tint));
     font-size: 1rem;
     line-height: 1;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 38%, transparent);
   }
 
-  .lesson-concepts-sidebar-text {
+  .concept-tile-copy {
     display: grid;
-    gap: 0.1rem;
+    gap: 0.18rem;
     min-width: 0;
   }
 
-  .lesson-concepts-sidebar-text strong {
+  .concept-tile-status {
+    color: var(--muted);
+    font-size: 0.62rem;
+    font-weight: 820;
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+
+  .concept-tile-name {
     font-size: 0.82rem;
-    font-weight: 700;
+    font-weight: 800;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .lesson-concepts-sidebar-text span {
+  .concept-tile-tagline {
+    margin: 0;
     font-size: 0.72rem;
+    line-height: 1.35;
     color: var(--text-soft);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .lesson-concepts-sidebar-check {
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--color-success);
-    padding-top: 0.12rem;
   }
 
   .lesson-concepts-sidebar-quiet {
@@ -3321,18 +3496,19 @@
 
 	.active-lesson-card {
     --lesson-phase-color: var(--lesson-active-stage-color, var(--color-blue));
+    --lesson-phase-contrast: var(--accent-contrast, white);
     --lesson-phase-dim: var(--lesson-active-stage-dim, var(--color-blue-dim));
     --lesson-phase-surface: color-mix(in srgb, var(--lesson-phase-color) 9%, var(--surface-strong));
     display: grid;
     gap: 1rem;
     padding: 1.55rem;
     border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 32%, var(--border-strong));
-    border-left: 5px solid var(--lesson-active-stage-color);
+    border-left: 7px solid var(--lesson-active-stage-color);
     border-radius: calc(var(--radius-lg) + 0.15rem);
     background:
       radial-gradient(
         circle at top left,
-        color-mix(in srgb, var(--lesson-phase-color) 26%, transparent),
+        color-mix(in srgb, var(--lesson-phase-color) 32%, transparent),
         transparent 42%
       ),
       linear-gradient(
@@ -3341,8 +3517,9 @@
         color-mix(in srgb, var(--surface-soft) 92%, transparent)
       );
     box-shadow:
-      0 20px 52px color-mix(in srgb, var(--lesson-phase-color) 11%, rgba(15, 23, 42, 0.12)),
-      var(--glass-inset-tile);
+      0 2px 0 color-mix(in srgb, var(--lesson-phase-color) 40%, transparent),
+      0 8px 36px color-mix(in srgb, var(--lesson-phase-color) 18%, rgba(15, 23, 42, 0.14)),
+      0 32px 72px color-mix(in srgb, var(--lesson-phase-color) 8%, rgba(15, 23, 42, 0.08));
 		transition:
 			background 220ms var(--ease-soft),
 			border-color 220ms var(--ease-soft),
@@ -3351,10 +3528,6 @@
 
   .primary-learning-moment {
     border-width: 1.5px;
-    box-shadow:
-      0 24px 58px color-mix(in srgb, var(--lesson-phase-color) 14%, rgba(15, 23, 42, 0.14)),
-      0 0 0 1px color-mix(in srgb, var(--lesson-phase-color) 8%, transparent),
-      var(--glass-inset-tile);
   }
 
   .active-lesson-card[data-stage-identity='concept'] {
@@ -3364,11 +3537,13 @@
 
   .active-lesson-card[data-stage-identity='example'] {
     --lesson-phase-color: var(--stage-example-color);
+    --lesson-phase-contrast: #07111f;
     --lesson-phase-dim: var(--stage-example-dim);
   }
 
   .active-lesson-card[data-stage-identity='your-turn'] {
     --lesson-phase-color: var(--stage-your-turn-color);
+    --lesson-phase-contrast: #07111f;
     --lesson-phase-dim: var(--stage-your-turn-dim);
   }
 
@@ -3379,6 +3554,7 @@
 
   .active-lesson-card[data-stage-identity='summary'] {
     --lesson-phase-color: var(--stage-summary-color);
+    --lesson-phase-contrast: #07111f;
     --lesson-phase-dim: var(--stage-summary-dim);
   }
 
@@ -3388,7 +3564,7 @@
     background:
       radial-gradient(
         circle at top left,
-        color-mix(in srgb, var(--lesson-phase-color) 22%, transparent),
+        color-mix(in srgb, var(--lesson-phase-color) 28%, transparent),
         transparent 38%
       ),
       linear-gradient(
@@ -3447,33 +3623,40 @@
   }
 
   .active-lesson-card-state {
+    display: inline-flex;
+    align-items: center;
     justify-self: start;
+    max-width: max-content;
     margin: 0;
-    padding: 0.28rem 0.72rem;
-    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 48%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--lesson-phase-color) 22%, var(--surface-soft));
-    color: color-mix(in srgb, var(--lesson-phase-color) 88%, var(--text) 12%);
-    font-size: 0.76rem;
+    padding: 0.22rem 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 28%, var(--border-strong));
+    border-radius: 0.42rem;
+    background: color-mix(in srgb, var(--lesson-phase-color) 12%, var(--surface-strong));
+    color: color-mix(in srgb, var(--lesson-phase-color) 72%, var(--text) 28%);
+    font-size: 0.66rem;
     font-weight: 800;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
+    line-height: 1.1;
     text-transform: uppercase;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
   }
 
   .active-lesson-card h3 {
     margin: 0;
     color: var(--text);
-    font-size: clamp(1.42rem, 2.4vw, 2.05rem);
-    line-height: 1.08;
+    font-size: clamp(2rem, 3.2vw, 2.8rem);
+    font-weight: 800;
+    line-height: 1.05;
     max-width: 52rem;
   }
 
   .active-lesson-card-context {
     margin: 0;
     color: var(--text-soft);
-    font-size: 1rem;
+    font-size: 0.92rem;
     line-height: 1.52;
     max-width: 42rem;
+    opacity: 0.82;
   }
 
   .active-lesson-visual {
@@ -3527,7 +3710,7 @@
   }
 
   .active-lesson-card-compact h3 {
-    font-size: clamp(1.2rem, 2vw, 1.65rem);
+    font-size: clamp(1.4rem, 2.2vw, 1.9rem);
   }
 
   .active-lesson-card-body-shell {
@@ -3541,8 +3724,8 @@
   .active-lesson-card-body {
     display: grid;
     gap: 0.88rem;
-    font-size: 1.08rem;
-    line-height: 1.72;
+    font-size: 1.05rem;
+    line-height: 1.78;
     color: var(--text);
   }
 
@@ -3648,6 +3831,54 @@
     accent-color: var(--accent);
   }
 
+  .lesson-next-step-panel {
+    display: grid;
+    gap: 0.85rem;
+    padding: 0.9rem 0.95rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 24%, var(--border-strong));
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--lesson-phase-color) 8%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 92%, transparent)
+      );
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 12%, transparent),
+      0 10px 24px color-mix(in srgb, var(--lesson-phase-color) 7%, rgba(15, 23, 42, 0.08));
+  }
+
+  .lesson-next-step-copy {
+    display: grid;
+    gap: 0.22rem;
+    min-width: 0;
+  }
+
+  .lesson-next-step-label,
+  .lesson-next-step-target p {
+    margin: 0;
+    color: color-mix(in srgb, var(--lesson-phase-color) 58%, var(--text-soft) 42%);
+    font-size: 0.72rem;
+    font-weight: 820;
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+    text-transform: uppercase;
+  }
+
+  .lesson-next-step-prompt {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.94rem;
+    font-weight: 650;
+    line-height: 1.45;
+  }
+
+  .lesson-next-step-target {
+    display: grid;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
   .diagnostic-option-copy {
     display: grid;
     gap: 0.15rem;
@@ -3667,15 +3898,41 @@
   }
 
   .lesson-action-bar {
-    padding: 0.85rem 1.1rem;
-    border-top: 2px solid color-mix(in srgb, var(--lesson-active-stage-color) 28%, var(--border-strong));
-    background: color-mix(in srgb, var(--lesson-active-stage-color) 6%, var(--chat-wrap-bg, var(--surface-base)));
+    padding: 0.68rem 1.1rem;
+    border-top: 1px solid color-mix(in srgb, var(--lesson-active-stage-color) 18%, var(--border-strong));
+    background: color-mix(in srgb, var(--lesson-active-stage-color) 4%, var(--chat-wrap-bg, var(--surface-base)));
+    box-shadow: 0 -4px 18px color-mix(in srgb, var(--lesson-active-stage-color) 8%, rgba(0, 0, 0, 0.08));
     flex-shrink: 0;
+  }
+
+  .lesson-support-dock {
+    color: var(--text-soft);
   }
 
   .active-lesson-card-actions {
     display: grid;
     gap: 0.8rem;
+  }
+
+  .answer-target-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.46rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .answer-target-list li {
+    min-height: 1.75rem;
+    padding: 0.32rem 0.58rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--lesson-phase-color, var(--lesson-active-stage-color)) 20%, var(--border-strong));
+    background: color-mix(in srgb, var(--lesson-phase-color, var(--lesson-active-stage-color)) 8%, var(--surface-soft));
+    color: color-mix(in srgb, var(--text) 78%, var(--text-soft) 22%);
+    font-size: 0.74rem;
+    font-weight: 760;
+    line-height: 1.15;
   }
 
   .active-lesson-card-actions-your-turn {
@@ -3787,6 +4044,11 @@
     flex: 1;
   }
 
+  .chat-scroll-area-has-active-card {
+    gap: 0.78rem;
+    padding-bottom: calc(0.72rem + var(--lesson-composer-clearance, 0px));
+  }
+
   .chat-area {
     display: grid;
     gap: 1.1rem;
@@ -3795,8 +4057,8 @@
   }
 
   .active-card-feedback {
-    gap: 0.72rem;
-    padding: 0.85rem 0.9rem;
+    gap: 0.55rem;
+    padding: 0.68rem 0.76rem;
     border: 1px solid color-mix(in srgb, var(--lesson-active-stage-color) 16%, var(--border-strong));
     border-radius: var(--radius-lg);
     background:
@@ -3841,6 +4103,7 @@
 
   .active-card-feedback .bubble.user::before,
   .active-card-feedback .bubble.assistant::before {
+    content: attr(data-role-label);
     color: color-mix(in srgb, var(--lesson-active-stage-color) 62%, var(--text-soft) 38%);
     font-size: 0.72rem;
     font-weight: 820;
@@ -3849,31 +4112,13 @@
     text-transform: uppercase;
   }
 
-  .active-card-feedback .bubble.user::before {
-    content: 'Your answer';
-  }
-
-  .active-card-feedback .bubble.assistant::before {
-    content: 'Tutor feedback';
+  .active-card-feedback .bubble:not([data-role-label])::before {
+    content: none;
   }
 
   .active-card-feedback .bubble.assistant {
     border-color: color-mix(in srgb, var(--lesson-active-stage-color) 22%, var(--border-strong));
     border-left-color: color-mix(in srgb, var(--lesson-active-stage-color) 66%, transparent);
-  }
-
-  .lesson-memory-shelf {
-    position: relative;
-    padding: 0.1rem 0.08rem 0.3rem;
-  }
-
-  .lesson-memory-shelf::before {
-    content: 'Lesson memory';
-    display: block;
-    margin: 0 0 0.45rem;
-    color: color-mix(in srgb, var(--muted) 84%, var(--text-soft) 16%);
-    font-size: 0.73rem;
-    font-weight: 750;
   }
 
   .completed-unit-summary-list {
@@ -4033,7 +4278,7 @@
     background:
       radial-gradient(
         circle at top left,
-        color-mix(in srgb, var(--lesson-phase-color) 13%, transparent),
+        color-mix(in srgb, var(--lesson-phase-color) 18%, transparent),
         transparent 36%
       ),
       linear-gradient(
@@ -4042,15 +4287,9 @@
         color-mix(in srgb, var(--surface-strong) 96%, rgba(8, 13, 18, 0.98))
       );
     box-shadow:
-      0 20px 48px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(0, 0, 0, 0.36)),
-      var(--glass-inset-tile);
-  }
-
-  :global(:root[data-theme='dark']) .primary-learning-moment {
-    box-shadow:
-      0 24px 58px color-mix(in srgb, var(--lesson-phase-color) 13%, rgba(0, 0, 0, 0.42)),
-      0 0 0 1px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(255, 255, 255, 0.08)),
-      var(--glass-inset-tile);
+      0 2px 0 color-mix(in srgb, var(--lesson-phase-color) 34%, transparent),
+      0 10px 38px color-mix(in srgb, var(--lesson-phase-color) 16%, rgba(0, 0, 0, 0.38)),
+      0 34px 74px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(0, 0, 0, 0.32));
   }
 
   :global(:root[data-theme='dark']) .active-lesson-card-your-turn {
@@ -4065,6 +4304,51 @@
       0 0 0 3px color-mix(in srgb, var(--color-yellow) 7%, transparent),
       0 20px 48px color-mix(in srgb, var(--color-yellow) 9%, rgba(0, 0, 0, 0.36)),
       var(--glass-inset-tile);
+  }
+
+  :global(:root[data-theme='dark']) .concept-tile {
+    border-color: color-mix(in srgb, var(--stage-concept-color) 24%, rgba(255, 255, 255, 0.1));
+    background:
+      linear-gradient(
+        140deg,
+        color-mix(in srgb, var(--stage-concept-color) 10%, rgba(16, 24, 32, 0.96)),
+        color-mix(in srgb, var(--surface-strong) 94%, rgba(8, 13, 18, 0.98))
+      );
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
+      0 10px 22px color-mix(in srgb, var(--stage-concept-color) 9%, rgba(0, 0, 0, 0.28));
+  }
+
+  :global(:root[data-theme='dark']) .concept-tile-upcoming {
+    border-color: color-mix(in srgb, var(--stage-concept-color) 19%, rgba(255, 255, 255, 0.1));
+    background:
+      linear-gradient(
+        140deg,
+        color-mix(in srgb, var(--stage-concept-color) 7%, rgba(16, 24, 32, 0.96)),
+        color-mix(in srgb, var(--surface-strong) 96%, rgba(8, 13, 18, 0.98))
+      );
+  }
+
+  :global(:root[data-theme='dark']) .concept-tile-upcoming .concept-tile-tagline {
+    color: color-mix(in srgb, #d7e0ee 68%, var(--text-soft) 32%);
+  }
+
+  :global(:root[data-theme='dark']) .lesson-next-step-panel {
+    border-color: color-mix(in srgb, var(--lesson-phase-color) 22%, rgba(255, 255, 255, 0.1));
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--lesson-phase-color) 8%, rgba(16, 24, 32, 0.98)),
+        color-mix(in srgb, var(--surface-strong) 95%, rgba(8, 13, 18, 0.98))
+      );
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, white 7%, transparent),
+      0 10px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  :global(:root[data-theme='dark']) .concepts-progress-bar {
+    border-color: color-mix(in srgb, var(--stage-concept-color) 22%, rgba(255, 255, 255, 0.1));
+    background: color-mix(in srgb, var(--stage-concept-color) 10%, rgba(8, 13, 18, 0.94));
   }
 
   :global(:root[data-theme='dark']) .active-lesson-card-actions-your-turn,
@@ -4370,7 +4654,6 @@
   }
 
   .bubble-tts-control:active:not(:disabled),
-  .lesson-support-cta:active:not(:disabled),
   .send:active:not(:disabled) {
     transform: scale(var(--press-scale));
   }
@@ -4606,7 +4889,12 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    background: var(--lesson-active-stage-color);
+    border-radius: 999px;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lesson-active-stage-color) 82%, white 18%),
+      var(--lesson-active-stage-color)
+    );
     box-shadow: 0 10px 26px color-mix(in srgb, var(--lesson-active-stage-color) 38%, transparent);
     letter-spacing: -0.01em;
     font-size: 1rem;
@@ -4625,7 +4913,7 @@
   }
 
   .lesson-support-cta:active {
-    transform: translateY(0) scale(0.985);
+    transform: scale(0.97);
     box-shadow: 0 8px 18px color-mix(in srgb, var(--lesson-active-stage-color) 22%, transparent);
   }
 
@@ -5749,6 +6037,11 @@
       grid-column: unset;
     }
 
+    .concept-tile {
+      grid-template-columns: 0.2rem auto minmax(0, 1fr);
+      padding: 0.72rem;
+    }
+
     .top-actions {
       justify-content: space-between;
       flex-wrap: wrap;
@@ -5804,14 +6097,6 @@
     .active-lesson-card {
       padding: 0.95rem 0.85rem 0.9rem;
       gap: 0.85rem;
-    }
-
-    .active-lesson-card h3 {
-      font-size: clamp(1.18rem, 6vw, 1.48rem);
-    }
-
-    .active-lesson-card-body {
-      font-size: 0.96rem;
     }
 
 	    .progress-rail {
@@ -5967,8 +6252,13 @@
       padding: 1.35rem 1.35rem 1.1rem;
     }
 
+    .lesson-next-step-panel {
+      grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.72fr) auto;
+      align-items: center;
+    }
+
     .active-lesson-card-actions {
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
       align-items: start;
       column-gap: 0.85rem;
     }
@@ -6123,8 +6413,8 @@
     }
 
     .node-dot {
-      width: 2rem;
-      height: 2rem;
+      width: 1.85rem;
+      height: 1.85rem;
       font-size: 0.82rem;
     }
 
@@ -6684,10 +6974,6 @@
 		gap: 1rem;
 		padding: clamp(1rem, 2vw, 1.35rem);
 		border-radius: 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--border-strong) 82%, transparent);
-    border-left: 3px solid color-mix(in srgb, var(--accent) 78%, var(--color-blue) 22%);
-    background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
-    box-shadow: none;
 		transform: none;
 	}
 
@@ -6697,7 +6983,7 @@
     background:
       radial-gradient(
         circle at top left,
-        color-mix(in srgb, var(--lesson-phase-color) 10%, transparent),
+        color-mix(in srgb, var(--lesson-phase-color) 28%, transparent),
         transparent 34%
       ),
       linear-gradient(
@@ -6716,29 +7002,20 @@
   }
 
   .active-lesson-card-state {
-    font-size: 0.72rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
 
   .active-lesson-card h3 {
-    font-size: clamp(1.26rem, 2.35vw, 1.72rem);
-    line-height: 1.16;
     letter-spacing: 0;
   }
 
   .active-lesson-card-context {
     max-width: 46rem;
-    font-size: 0.95rem;
   }
 
   .active-lesson-card-body-shell-with-tts .active-lesson-card-body {
     padding-right: 3.4rem;
-  }
-
-  .active-lesson-card-body {
-    font-size: 1.02rem;
-    line-height: 1.68;
   }
 
   .active-lesson-card-body :global(p + p) {
@@ -6845,7 +7122,7 @@
     background:
       radial-gradient(
         circle at top left,
-        color-mix(in srgb, var(--lesson-phase-color) 13%, transparent),
+        color-mix(in srgb, var(--lesson-phase-color) 18%, transparent),
         transparent 36%
       ),
       linear-gradient(
@@ -6854,8 +7131,9 @@
         color-mix(in srgb, var(--surface-strong) 96%, rgba(8, 13, 18, 0.98))
       );
     box-shadow:
-      0 20px 48px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(0, 0, 0, 0.36)),
-      var(--glass-inset-tile);
+      0 2px 0 color-mix(in srgb, var(--lesson-phase-color) 34%, transparent),
+      0 10px 38px color-mix(in srgb, var(--lesson-phase-color) 16%, rgba(0, 0, 0, 0.38)),
+      0 34px 74px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(0, 0, 0, 0.32));
   }
 
   :global(:root[data-theme='dark']) .active-lesson-card-your-turn {
@@ -6900,14 +7178,6 @@
       border-radius: 0.5rem;
     }
 
-    .active-lesson-card h3 {
-      font-size: 1.22rem;
-    }
-
-    .active-lesson-card-body {
-      font-size: 0.96rem;
-    }
-
     .concept-card-body {
       padding: 0.1rem 0.8rem 0.78rem;
     }
@@ -6946,15 +7216,14 @@
       gap: 0.62rem;
     }
 
-    .lesson-side-notes-toggle,
-    .lesson-side-learner {
+    .lesson-side-notes-toggle {
       min-height: 2.55rem;
       padding: 0.5rem 0.58rem;
       font-size: 0.8rem;
     }
 
     .lesson-header {
-      padding: 0.85rem 1.05rem 0.9rem;
+      padding: 0.7rem 0.95rem 0.78rem;
       border-radius: 0.95rem;
       background:
         linear-gradient(
@@ -7019,8 +7288,8 @@
     }
 
     .node-dot {
-      width: 2rem;
-      height: 2rem;
+      width: 1.85rem;
+      height: 1.85rem;
       border-width: 2px;
       font-size: 0.86rem;
       background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
@@ -7247,12 +7516,10 @@
       gap: 1.05rem;
       padding: 1.15rem 1.2rem 1.25rem;
       border-radius: 0.78rem;
-      border: 1px solid color-mix(in srgb, var(--lesson-phase-color) 28%, var(--border-strong));
-      border-left: 3px solid color-mix(in srgb, var(--lesson-phase-color) 72%, transparent);
       background:
         radial-gradient(
           circle at 10% 0%,
-          color-mix(in srgb, var(--lesson-phase-color) 13%, transparent),
+          color-mix(in srgb, var(--lesson-phase-color) 32%, transparent),
           transparent 26rem
         ),
         linear-gradient(
@@ -7260,9 +7527,6 @@
           color-mix(in srgb, var(--lesson-phase-color) 8%, var(--surface-strong)),
           color-mix(in srgb, var(--surface-soft) 95%, transparent)
         );
-      box-shadow:
-        0 20px 46px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(15, 23, 42, 0.14)),
-        var(--glass-inset-tile);
     }
 
     .active-lesson-card-hero-with-visual {
@@ -7279,31 +7543,17 @@
     }
 
     .active-lesson-card-state {
-      padding: 0.28rem 0.62rem;
-      border-radius: 999px;
-      font-size: 0.68rem;
       letter-spacing: 0.07em;
       text-transform: uppercase;
-      color: color-mix(in srgb, var(--lesson-phase-color) 68%, var(--text) 32%);
-      background: color-mix(in srgb, var(--lesson-phase-color) 12%, var(--surface-soft));
     }
 
     .active-lesson-card h3 {
       max-width: 42rem;
-      font-size: clamp(1.45rem, 2.2vw, 2.05rem);
-      line-height: 1.08;
       letter-spacing: 0;
     }
 
     .active-lesson-card-context {
       max-width: 42rem;
-      color: color-mix(in srgb, var(--text-soft) 90%, var(--text) 10%);
-      font-size: 0.98rem;
-    }
-
-    .active-lesson-card-body {
-      font-size: 1rem;
-      line-height: 1.72;
     }
 
     .active-lesson-visual {
@@ -7332,7 +7582,7 @@
     }
 
     .active-lesson-card-actions {
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: auto minmax(12rem, 0.72fr) minmax(0, 1fr);
       align-items: center;
       gap: 0.72rem;
     }
@@ -7446,6 +7696,10 @@
     .bubble:active {
       transform: none !important;
       box-shadow: inherit !important;
+    }
+
+    .lesson-support-cta:active {
+      transform: none !important;
     }
   }
 </style>

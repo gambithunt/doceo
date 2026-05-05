@@ -54,6 +54,8 @@
 6. **Notes Library Surface**: add a dedicated notes surface/tab that groups persisted notes and links back to lessons.
 7. **Stage-Aware Real Imagery**: keep real images relevant as the lesson progresses through concept, example, practice, feedback, and summary states.
 8. **Visual QA And Mockup Convergence**: verify desktop/mobile and light/dark against the approved reference, fixing only remaining mismatches inside the already-built scope.
+9. **Layout and Visual Convergence**: close the remaining structural and visual gap — progress rail icon nodes, two-column body, detached action bar, and bold color application.
+10. **Live-Session Polish**: fix progress rail active-node stage mismatch, remove redundant Lesson Memory section, deduplicate consecutive tutor feedback labels, eliminate blank gap above the composer, and improve Notes entry-point discoverability.
 
 Each phase is independently testable and must leave the app stable after completion.
 
@@ -669,6 +671,76 @@ Close the remaining structural and visual gap between the current implementation
 **Touch Points:**
 - `src/lib/components/LessonWorkspace.svelte`
 - `src/lib/components/LessonWorkspace.test.ts`
+
+---
+
+## Phase 10: Live-Session Polish — Rail Accuracy, Feedback Clarity, and Layout Tightness
+
+### Goal
+Fix four concrete defects visible in a live lesson session that were surfaced during manual QA on 2026-05-02: the progress rail active node does not match the lesson card stage badge, the "Lesson memory" box is redundant with the completed-concepts sidebar, consecutive tutor feedback cards repeat their label pill noisily, and a large blank gap appears above the composer when feedback is present.
+
+### Scope
+Included:
+- Fix the progress rail active-node stage mismatch so the highlighted node reflects the actual checkpoint stage (e.g. Example, not Concept) when the lesson card badge and internal stage differ.
+- Remove or repurpose the "Lesson memory" section that duplicates information already shown in the completed-concepts sidebar added by Phase 9 Sub-task 2.
+- Deduplicate consecutive "TUTOR FEEDBACK" label pills so the label appears once per tutor run, not on every individual card.
+- Remove the excess vertical whitespace between the last feedback card and the composer input.
+- Improve the discoverability of the Notes entry point on desktop (bottom-left toggle currently has very low visual weight).
+
+Excluded:
+- New lesson stages or changed lesson progression rules.
+- Stage-aware imagery changes (covered by Phase 7).
+- Notes persistence or new notes routes.
+- Any new AI routes.
+- Playwright screenshot infrastructure.
+
+### Tasks
+- [x] Add a failing test proving the active `.stage-node` carries a `data-stage` attribute that matches the current checkpoint stage reported by `LessonHarnessMoment`, not just the outer lesson stage.
+- [x] Add a failing test proving no `.lesson-memory` or equivalent "Lesson memory" labelled section is rendered when the completed-concepts sidebar is present.
+- [x] Add a failing test proving that when multiple consecutive tutor messages exist, only the first in each tutor run renders the label pill (or a single shared label is present above the run).
+- [x] Fix `statusForStage` or the progress rail node-rendering logic so the active highlighted node reflects the checkpoint stage identity returned by `LessonHarnessMoment`.
+- [x] Remove the "Lesson memory" markup block from `LessonWorkspace.svelte` and delete its associated CSS; verify concept data now appears only in the completed-concepts sidebar.
+- [x] Update the feedback area rendering so consecutive same-role messages share a single label header instead of repeating the pill on every card.
+- [x] Remove or collapse the min-height/padding on the feedback scroll container that creates the blank gap above the composer when content is shorter than the reserved height.
+- [x] Increase the visual weight of the bottom-left Notes toggle (larger text, icon, or border) so it is clearly discoverable without changing its position.
+
+### TDD Plan
+RED
+- Add `LessonWorkspace.test.ts` cases for: active node stage attribute correctness, absence of Lesson Memory section, deduplicated tutor label.
+- Each test must fail against the current implementation before any code changes.
+
+GREEN
+- Fix node active-stage attribute derivation to use the checkpoint-level stage from `LessonHarnessMoment`.
+- Delete Lesson Memory markup and CSS.
+- Wrap consecutive same-role messages under a shared header in the feedback area render loop.
+- Remove excess padding/min-height from the feedback scroll container.
+- Bump Notes toggle font-size or add an icon.
+
+REFACTOR
+- Remove any CSS that was only used by the deleted Lesson Memory block.
+- Do not alter store message ordering or lesson progression logic.
+
+### Touch Points
+- `src/lib/components/LessonWorkspace.svelte`
+- `src/lib/components/LessonWorkspace.test.ts`
+- `src/lib/components/lesson-workspace-ui.ts` (if stage attribute derivation lives there)
+- Existing helpers: `LessonHarnessMoment`, `statusForStage`, `boardProgressStages`
+
+### Risks / Edge Cases
+- The rail may correctly show "Concept" twice when the lesson genuinely loops back through concept checkpoints; the fix must distinguish a real loop label from a stale stage derivation bug — verify against the `LessonHarnessMoment` checkpoint identity rather than the outer lesson stage.
+- Removing Lesson Memory must not remove any data that is not already shown in the sidebar; audit mini-card content parity before deleting.
+- Grouping tutor messages under a shared label must preserve per-message TTS buttons.
+- Reducing feedback container height must not cause layout thrash when a pending assistant message arrives.
+
+### Done Criteria
+- Tasks complete.
+- Tests passing.
+- Active progress node label and color match the stage badge on the lesson card.
+- No "Lesson memory" duplicate section is rendered.
+- Consecutive tutor messages share a single label header, not repeated pills.
+- No large blank gap appears between the last feedback card and the composer.
+- Notes toggle is clearly readable and discoverable on desktop.
+- No later-phase behavior is introduced.
 
 ---
 

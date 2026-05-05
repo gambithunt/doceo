@@ -44,6 +44,17 @@ export async function POST({ request }: { request: Request }) {
     });
   } catch (error) {
     if (error instanceof LessonTtsServiceError) {
+      console.error('[lesson-tts] request failed', {
+        code: error.code,
+        message: error.message,
+        reasonCategory:
+          error.fallbackError?.category ?? error.primaryError?.category ?? error.normalizedError?.category ?? null,
+        provider:
+          error.fallbackError?.provider ?? error.primaryError?.provider ?? error.normalizedError?.provider ?? null,
+        lessonSessionId: parsed.data.lessonSessionId,
+        lessonMessageId: parsed.data.lessonMessageId
+      });
+
       const status =
         error.code === 'bad_request'
           ? 400
@@ -71,6 +82,12 @@ export async function POST({ request }: { request: Request }) {
         { status }
       );
     }
+
+    console.error('[lesson-tts] unexpected request failure', {
+      message: error instanceof Error ? error.message : String(error),
+      lessonSessionId: parsed.data.lessonSessionId,
+      lessonMessageId: parsed.data.lessonMessageId
+    });
 
     return json({ error: 'Lesson TTS unavailable.' }, { status: 502 });
   }

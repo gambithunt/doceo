@@ -370,7 +370,25 @@ export function getVisibleProgressStagesForSession(
 }
 
 function getLoopStateLabel(loopIndex: number, label: string): string {
-  return `Loop ${loopIndex + 1} • ${label}`;
+  const stepNumber = loopIndex + 1;
+
+  if (label === 'Teach') {
+    return `Key idea ${stepNumber}`;
+  }
+
+  if (label === 'Example') {
+    return `Example ${stepNumber}`;
+  }
+
+  if (label === 'Practice') {
+    return `Your turn ${stepNumber}`;
+  }
+
+  if (label === 'Check') {
+    return `Check ${stepNumber}`;
+  }
+
+  return `${label} ${stepNumber}`;
 }
 
 function getCompletedLoopCount(
