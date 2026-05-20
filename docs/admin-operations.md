@@ -28,6 +28,7 @@ Admin behavior is server-enforced and governance-aware.
 - provider model catalogs
 - model scans
 - TTS config
+- admin TTS preview
 - registration mode
 - invite list management
 
@@ -38,6 +39,7 @@ Dynamic governance actions are recorded for important mutations such as:
 - AI config changes
 - TTS config changes
 - lesson lineage preference changes
+- registration and invite changes
 
 Treat those records as the immutable audit trail for admin-controlled generation behavior.
 
@@ -59,7 +61,9 @@ Admin reporting pulls from:
 - `analytics_events`
 - `ai_interactions`
 - `user_subscriptions`
-- billing cost views
+- `user_billing_period_costs` view
+- `dynamic_operation_events`
+- `dynamic_governance_actions`
 
 If admin data looks wrong, check the underlying repository/query module before changing UI code.
 
@@ -71,4 +75,4 @@ Registration modes are:
 - `invite_only`
 - `closed`
 
-Pending invites live in `invited_users`, and settings mutations update `registration_settings`.
+Pending invites live in `invited_users`, and registration mode updates mutate `registration_settings`.

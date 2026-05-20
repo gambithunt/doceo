@@ -13,6 +13,7 @@ These routes sit under `src/routes/(app)`.
 
 - `/dashboard` — dashboard, resume state, discovery rail, quota badge, subject hints
 - `/lesson` and `/lesson/[id]` — lesson workspace
+- `/notes` — saved lesson notes library
 - `/revision` — revision home, active session, revision planner, saved plans
 - `/progress` — learner progress summaries
 - `/settings` — onboarding edits, adaptive profile view, billing status, plan upgrades
@@ -52,9 +53,14 @@ It owns:
 
 - `/api/state/*` — bootstrap and state sync
 - `/api/onboarding/*` — onboarding options, progress, completion, reset
-- `/api/ai/*` — lesson, revision, shortlist, verification, and tutoring routes
-- `/api/curriculum/*` — curriculum programs, subject topics, discovery
+- `/api/ai/*` — lesson, revision, shortlist, institution/programme verification, evaluation, and tutoring routes
+- `/api/curriculum/*` — curriculum programs, subject topics, discovery, and discovery event routes
+- `/api/auth/*` — registration mode and registration
+- `/api/geo/*` — country inference
+- `/api/subjects/*` — contributed subject verification
+- `/api/lesson-artifacts/*` — learner artifact feedback
 - `/api/payments/*` — checkout, quota status, Stripe webhook
+- `/api/revision/*` — revision planner resolution
 - `/api/tts/*` — lesson TTS
 - `/api/admin/*` — admin-only operational APIs
 

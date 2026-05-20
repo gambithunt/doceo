@@ -7,7 +7,7 @@ This document describes the implemented system, not the aspirational one.
 - Frontend: SvelteKit, Svelte 5, TypeScript, Tailwind v4
 - Persistence and auth: Supabase
 - Payments: Stripe
-- AI transport: authenticated app routes plus Supabase edge functions
+- AI transport: authenticated app routes, Supabase edge functions, and server-side provider adapters for selected fallback paths
 - TTS: OpenAI and ElevenLabs adapters behind app settings
 
 ## Code Ownership Map
@@ -18,7 +18,7 @@ This document describes the implemented system, not the aspirational one.
 - `src/lib/server/*` — repositories, service layer, admin queries, billing, quota, graph, artifacts, and integrations
 - `src/lib/components/*` — learner and admin UI components
 - `supabase/migrations` — schema history
-- `supabase/functions` — edge functions used by discovery and AI routes
+- `supabase/functions` — edge functions used by AI, discovery, and subject-topic routes
 
 ## Main Runtime Flows
 
@@ -33,7 +33,7 @@ This document describes the implemented system, not the aspirational one.
 
 - Onboarding options come from the graph catalog repository when available, with local fallbacks when allowed.
 - School onboarding is strongly structured around country, curriculum, grade, year, term, and subjects.
-- University onboarding stores provider, programme, level, and subjects, but does not currently have the same structured graph path as South African school data.
+- University onboarding stores provider, programme, level, and subjects. Topic discovery for university subjects uses the subject-topic catalog and candidate promotion path rather than the school graph-backed curriculum tree.
 
 ### 3. Lesson Launch
 
@@ -51,9 +51,10 @@ This document describes the implemented system, not the aspirational one.
 
 ### 5. Topic Discovery
 
-- Dashboard topic discovery is additive to the curriculum tree.
-- The route merges graph-backed topics with edge-generated candidates, then records discovery events for ranking.
+- Dashboard topic discovery is additive to the curriculum tree for school learners and to the subject-topic catalog for university learners.
+- The school route merges graph-backed topics with model candidates when GitHub Models discovery is enabled. The university route reads ranked subject topics and can insert fresh candidate topics on refresh.
 - Discovery does not create graph nodes directly; node creation happens on lesson launch.
+- Discovery events include clicks, feedback, refreshes, lesson starts, completions, and abandonments for ranking and diagnostics.
 
 ### 6. Billing, Quota, And TTS
 
@@ -69,6 +70,6 @@ This document describes the implemented system, not the aspirational one.
 
 ## Architectural Reality Checks
 
-- Provider abstractions now exist in the app code, but the primary learner AI routes still call Supabase edge functions.
+- Provider abstractions now exist in the app code. Most learner AI routes still call Supabase edge functions, while topic discovery also has server-side provider-adapter fallback behavior.
 - The graph/artifact layer is a first-class part of lesson and revision generation.
 - The repo still carries historical redesign documents in `docs/workstreams`, but those are not authoritative.

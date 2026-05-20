@@ -14,6 +14,7 @@ Canonical mode definitions live in `src/lib/ai/model-tiers.ts`.
 - `programme-verify` -> `fast`
 - `tutor` -> `default`
 - `lesson-chat` -> `default`
+- `lesson-evaluate` -> `fast`
 - `lesson-plan` -> `thinking`
 - `revision-pack` -> `thinking`
 - `revision-evaluate` -> `fast`
@@ -46,12 +47,16 @@ These definitions power admin configuration and model scans.
 
 - The main learner AI routes still call Supabase edge functions through `invokeAuthenticatedAiEdge`.
 - The primary edge function is `github-models-tutor`.
-- Topic discovery calls a separate edge function, `dashboard-topic-discovery`.
-- Route code may expose provider abstractions and model overrides, but the active transport is still edge-function-based.
+- Subject-topic generation calls `subject-topics`.
+- Topic discovery calls `dashboard-topic-discovery` for GitHub Models-backed discovery and also has a server-side provider-adapter fallback for model-generated school topics.
+- University topic discovery reads `subject_topic_ranked` rows first and can insert candidate `subject_topics` on refresh.
+- Route code may expose provider abstractions and model overrides, but most learner generation and evaluation routes are still edge-function-based.
 
 ## Important Caveat
 
 Some app routes still validate for GitHub Models shaped responses. Do not assume the multi-provider registry is already end-to-end live on every learner route without checking the route implementation.
+
+`/api/subjects/verify` still uses the edge path directly and can fall back to a local provisional subject result.
 
 ## Telemetry
 

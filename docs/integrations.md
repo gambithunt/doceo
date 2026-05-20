@@ -25,7 +25,7 @@ Current edge functions in the repo include:
 - `dashboard-topic-discovery`
 - `subject-topics`
 
-The main learner AI routes currently depend on the edge path being available.
+Most learner AI routes currently depend on the `github-models-tutor` edge path being available. Topic discovery uses `dashboard-topic-discovery` for GitHub Models-backed generation and can fall back to graph, subject-catalog, or server-side provider-adapter behavior depending on the route path.
 
 ## Stripe
 
@@ -42,9 +42,9 @@ Important env vars:
 - `STRIPE_PRICE_ID_BASIC`
 - `STRIPE_PRICE_ID_STANDARD`
 - `STRIPE_PRICE_ID_PREMIUM`
-- `STRIPE_PRICE_ID_BASIC_ZAR`
-- `STRIPE_PRICE_ID_STANDARD_ZAR`
-- `STRIPE_PRICE_ID_PREMIUM_ZAR`
+- `STRIPE_PRICE_ID_BASIC_ZAR` optional regional price override
+- `STRIPE_PRICE_ID_STANDARD_ZAR` optional regional price override
+- `STRIPE_PRICE_ID_PREMIUM_ZAR` optional regional price override
 
 ## TTS Providers
 
@@ -65,11 +65,14 @@ Provider enablement and runtime settings are primarily controlled through admin-
 The server env loader currently reads:
 
 - `GITHUB_MODELS_TOKEN`
+- `GITHUB_MODELS_FAST`
+- `GITHUB_MODELS_DEFAULT`
+- `GITHUB_MODELS_THINKING`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `KIMI_API_KEY`
 
-The provider registry exists locally even where the route transport still goes through edge functions.
+The provider registry exists locally even where the route transport still goes through edge functions. AI config falls back to the `GITHUB_MODELS_*` tier env vars, then hardcoded GitHub Models defaults.
 
 ## Failure Expectations
 

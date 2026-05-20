@@ -17,12 +17,14 @@ Bootstrap reconstructs the learner state from normalized tables when possible, t
 - `student_onboarding`
 - `student_selected_subjects`
 - `student_custom_subjects`
+- `registration_settings`
+- `invited_users`
 - `countries`
 - `curriculums`
 - `curriculum_grades`
 - `curriculum_subjects`
 
-Use these for learner identity, academic context, and selectable catalog metadata.
+Use these for learner identity, academic context, selectable catalog metadata, registration mode, and invite-only access.
 
 ## Learner State And Telemetry
 
@@ -36,6 +38,8 @@ Use these for learner identity, academic context, and selectable catalog metadat
 - `lesson_signals`
 
 These tables back bootstrap, sync, adaptive profile reconstruction, and analytics views.
+
+`student_progress` still exists from the early schema, but current learner state is reconstructed through the normalized state tables above plus the app-state snapshot fallback.
 
 ## Curriculum Content And Graph
 
@@ -79,6 +83,13 @@ These tables do for revision sessions what lesson artifacts do for lessons.
 - `legacy_migration_events`
 
 These tables support ranking, observability, governance, and migration cleanup work.
+
+## Admin Settings And Governance
+
+- `admin_settings`
+- `dynamic_governance_actions`
+
+AI routing config, provider model catalogs, and TTS config are stored in `admin_settings`. Important admin mutations write governance actions for auditability.
 
 ## Billing And Commercial State
 
