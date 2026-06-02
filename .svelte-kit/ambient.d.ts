@@ -72,6 +72,7 @@ declare module '$env/static/private' {
 	export const npm_execpath: string;
 	export const PATH: string;
 	export const npm_package_json: string;
+	export const LaunchInstanceID: string;
 	export const GHOSTTY_SHELL_FEATURES: string;
 	export const npm_config_userconfig: string;
 	export const npm_config_init_module: string;
@@ -87,8 +88,8 @@ declare module '$env/static/private' {
 	export const npm_config_node_gyp: string;
 	export const npm_package_version: string;
 	export const XPC_SERVICE_NAME: string;
-	export const HOME: string;
 	export const SHLVL: string;
+	export const HOME: string;
 	export const TERMINFO: string;
 	export const npm_config_cache: string;
 	export const STARSHIP_SESSION_KEY: string;
@@ -98,6 +99,7 @@ declare module '$env/static/private' {
 	export const GHOSTTY_BIN_DIR: string;
 	export const npm_config_user_agent: string;
 	export const OSLogRateLimit: string;
+	export const SECURITYSESSIONID: string;
 	export const npm_node_execpath: string;
 	export const npm_config_prefix: string;
 	export const COLORTERM: string;
@@ -224,6 +226,7 @@ declare module '$env/dynamic/private' {
 		npm_execpath: string;
 		PATH: string;
 		npm_package_json: string;
+		LaunchInstanceID: string;
 		GHOSTTY_SHELL_FEATURES: string;
 		npm_config_userconfig: string;
 		npm_config_init_module: string;
@@ -239,8 +242,8 @@ declare module '$env/dynamic/private' {
 		npm_config_node_gyp: string;
 		npm_package_version: string;
 		XPC_SERVICE_NAME: string;
-		HOME: string;
 		SHLVL: string;
+		HOME: string;
 		TERMINFO: string;
 		npm_config_cache: string;
 		STARSHIP_SESSION_KEY: string;
@@ -250,6 +253,7 @@ declare module '$env/dynamic/private' {
 		GHOSTTY_BIN_DIR: string;
 		npm_config_user_agent: string;
 		OSLogRateLimit: string;
+		SECURITYSESSIONID: string;
 		npm_node_execpath: string;
 		npm_config_prefix: string;
 		COLORTERM: string;

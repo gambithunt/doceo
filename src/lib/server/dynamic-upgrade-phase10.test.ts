@@ -15,8 +15,8 @@ describe('dynamic upgrade phase 10 cleanup', () => {
     const graphRepository = readWorkspaceFile('src/lib/server/graph-repository.ts');
     const revisionEngine = readWorkspaceFile('src/lib/revision/engine.ts');
 
-    expect(lessonPlanRoute).toContain('if (dev) {');
-    expect(lessonPlanRoute).toContain('Lesson generation unavailable.');
+    expect(lessonPlanRoute).toContain('if (dev &&');
+    expect(lessonPlanRoute).toContain('Lesson generation');
     expect(lessonChatRoute).not.toContain("import { buildDynamicLessonFromTopic } from '$lib/lesson-system';");
     expect(appStateSource).not.toContain('function buildEmergencyLessonPlan(');
     expect(lessonLaunchService).not.toContain('export async function bridgeLegacySessionArtifacts');
@@ -27,7 +27,7 @@ describe('dynamic upgrade phase 10 cleanup', () => {
   it('removes seeded coverage wording from the admin content surface', () => {
     const adminContentPage = readWorkspaceFile('src/routes/admin/content/+page.svelte');
     const adminContentServer = readWorkspaceFile('src/routes/admin/content/+page.server.ts');
-    const executionDoc = readWorkspaceFile('docs/workstreams/dynamic-upgrade-ex04.md');
+    const executionDoc = readWorkspaceFile('docs/workstreams/archived/dynamic-upgrade-ex04.md');
 
     expect(adminContentPage).not.toMatch(/fully seeded|dynamic lesson generator|dynamic only/i);
     expect(adminContentServer).not.toContain("status: 'seeded'");

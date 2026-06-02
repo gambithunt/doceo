@@ -215,12 +215,7 @@ test.describe('lesson harness design visual QA', () => {
     const after = await card.boundingBox();
     expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(1);
 
-    const image = page.locator('.active-lesson-visual img');
-    await expect(image).toBeVisible();
-    await expect(page.locator('.active-lesson-visual figcaption')).toBeVisible();
-    const imageBox = await image.boundingBox();
-    expect(imageBox?.width ?? 0).toBeGreaterThan(180);
-    expect(imageBox?.height ?? 0).toBeGreaterThan(140);
+    await expect(page.locator('.active-lesson-visual')).toHaveCount(0);
 
     await expect(page.locator('.active-lesson-card-tts-control')).toBeVisible();
     await page.getByRole('button', { name: 'Open notes' }).click();
@@ -254,7 +249,7 @@ test.describe('lesson harness design visual QA', () => {
       await page.goto('/lesson/lesson-session-1');
       await expect(page.locator('.active-lesson-card')).toBeVisible();
       await page.waitForTimeout(300);
-      await expect(page.locator('.active-lesson-visual img')).toBeVisible();
+      await expect(page.locator('.active-lesson-visual')).toHaveCount(0);
       await expectNoHorizontalOverflow(page);
       await page.screenshot({ path: `/tmp/doceo-design-qa/mobile-active-${theme}-final.png`, fullPage: false });
     });

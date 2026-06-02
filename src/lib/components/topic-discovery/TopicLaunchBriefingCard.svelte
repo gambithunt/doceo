@@ -136,14 +136,17 @@
   }
 
   .launch-briefing-card h2 {
-    font-size: clamp(1.5rem, 3.2vw, 2.6rem);
-    line-height: 1.05;
-    letter-spacing: -0.03em;
+    width: 100%;
+    max-width: 100%;
+    font-size: 2.35rem;
+    line-height: 1.08;
+    letter-spacing: 0;
     color: var(--text);
     font-weight: 800;
     margin: 0;
-    white-space: nowrap;
-    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    text-wrap: balance;
   }
 
   .launch-briefing-status {
@@ -247,7 +250,8 @@
     }
 
     .launch-briefing-card h2 {
-      font-size: clamp(1.2rem, 6vw, 1.8rem);
+      font-size: 1.55rem;
+      line-height: 1.14;
     }
   }
 </style>

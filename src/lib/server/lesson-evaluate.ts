@@ -1,4 +1,9 @@
-import type { LessonEvaluationRequest, LessonEvaluationResult } from '$lib/types';
+import type {
+  LessonEvaluationRequest,
+  LessonEvaluationResult,
+  LoopEvidence,
+  LoopStyleSignals
+} from '$lib/types';
 
 function normalizeText(value: string): string {
   return value
@@ -81,6 +86,25 @@ export function evaluateLessonResponseHeuristically(request: LessonEvaluationReq
         : mode === 'skip_with_accountability'
           ? `This gap is being marked to revisit: ${missingMustHitConcepts.join(', ') || 'core concept still missing'}.`
           : `This needs support on: ${criticalMisconceptions[0] ?? missingMustHitConcepts[0] ?? 'the core concept'}.`;
+  const styleSignals: LoopStyleSignals = {
+    neededScaffolding: request.remediationStep !== 'none',
+    askedClarifyingQuestion: request.answer.trim().endsWith('?'),
+    answeredOnFirstAttempt: request.revisionAttemptCount === 0 && score >= 0.75,
+    explanationWasVague: normalizedAnswer.split(' ').filter(Boolean).length > 20 && mustHitConceptsMet.length === 0,
+    usedConcreteLanguage: mustHitConceptsMet.length > 0
+  };
+  const loopEvidence: LoopEvidence = {
+    loopId: request.loopId ?? 'unknown',
+    loopIndex: request.loopIndex ?? 0,
+    loopTitle: request.lesson.loopTitle ?? request.lesson.topicTitle,
+    conceptsMet: mustHitConceptsMet,
+    gaps: missingMustHitConcepts,
+    misconceptions: criticalMisconceptions,
+    score,
+    attemptCount: request.revisionAttemptCount + 1,
+    styleSignals,
+    evaluatedAt: new Date().toISOString()
+  };
 
   return {
     score,
@@ -90,6 +114,7 @@ export function evaluateLessonResponseHeuristically(request: LessonEvaluationReq
     feedback,
     mode,
     provider: 'local-heuristic',
-    model: 'local-heuristic'
+    model: 'local-heuristic',
+    loopEvidence
   };
 }

@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import { readFileSync } from 'node:fs';
 import { render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TopicLaunchBriefingCard from './TopicLaunchBriefingCard.svelte';
@@ -165,5 +166,14 @@ describe('TopicLaunchBriefingCard', () => {
 
     expect(screen.getByTestId('launch-briefing-border-glow')).toHaveAttribute('data-reduced-motion', 'true');
     expect(screen.getByRole('heading', { name: 'Equivalent Fractions' })).toBeInTheDocument();
+  });
+
+  it('allows long launch topic titles to wrap inside the card', () => {
+    const source = readFileSync('src/lib/components/topic-discovery/TopicLaunchBriefingCard.svelte', 'utf8');
+    const headingRule = source.match(/\.launch-briefing-card h2\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? '';
+
+    expect(headingRule).not.toContain('white-space: nowrap');
+    expect(headingRule).toContain('overflow-wrap: anywhere');
+    expect(headingRule).toContain('max-width: 100%');
   });
 });

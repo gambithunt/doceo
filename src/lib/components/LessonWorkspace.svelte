@@ -8,9 +8,11 @@
   import LoadingDots from '$lib/components/LoadingDots.svelte';
   import { splitTutorPrompt } from '$lib/components/lesson-workspace-message';
   import {
+    buildCheckpointEyebrow,
     deriveActiveLessonCardForSession,
     deriveLessonHarnessMomentForSession,
     deriveConversationViewForSession,
+    deriveCheckpointResponseChips,
     deriveLessonComposerCopy,
     deriveNextStepCtaStateForSession,
     deriveLessonVisualIntent,
@@ -18,7 +20,10 @@
     getVisiblePromptStageForSession,
     getVisibleProgressStagesForSession,
     getVisibleQuickActionDefinitionsForSession,
+    isAssessmentMoment,
     isTrustedImageResource,
+    shouldShowStageContextCopyForSession,
+    type CheckpointResponseChip,
     type LessonComposerHelperChip,
     type LessonWorkspaceMessageEntry,
     type LessonVisualIntent,
@@ -76,6 +81,7 @@
   let ratingPending = $state(false);
   let useDesktopActionRow = $state(false);
   let composerClearance = $state(0);
+  let composerForced = $state(false);
   const showDebug = dev && import.meta.env.VITE_DOCEO_DEBUG === '1';
   const noteStarterChips = ['This means...', 'Example:', 'Remember:', 'In my own words:'];
 
@@ -221,6 +227,12 @@
   const isYourTurnMode = $derived(
     Boolean(nextStepCtaState.disabled && activeLessonCard?.primaryAction !== 'submit_diagnostic')
   );
+  const showComposer = $derived(isYourTurnMode || !activeLessonCard || composerForced);
+  const checkpointChips = $derived<CheckpointResponseChip[]>(
+    lessonSession
+      ? deriveCheckpointResponseChips(lessonSession, lesson)
+      : []
+  );
   const composerHelperChips = $derived.by((): LessonComposerHelperChip[] =>
     isYourTurnMode ? lessonComposerCopy.helperChips : []
   );
@@ -334,6 +346,66 @@
       ? viewState.revisionTopics.find((topic) => topic.lessonSessionId === lessonSession.id) ?? null
       : null
   );
+  const activeCheckpointEyebrow = $derived(
+    lessonHarnessMoment ? buildCheckpointEyebrow(lessonHarnessMoment.kind) : null
+  );
+  const isActiveCardAssessment = $derived(
+    lessonHarnessMoment ? isAssessmentMoment(lessonHarnessMoment.kind) : false
+  );
+  const loopDepth = $derived.by(() => {
+    if (
+      !lessonSession ||
+      lessonSession.lessonFlowVersion !== 'v2' ||
+      !lessonSession.v2State ||
+      lessonSession.v2State.totalLoops < 2
+    ) {
+      return null;
+    }
+    return {
+      total: lessonSession.v2State.totalLoops,
+      completed: lessonSession.v2Evidence?.loops.length ?? 0,
+      active: lessonSession.v2State.activeLoopIndex
+    };
+  });
+  const bridgeContextMessage = $derived.by((): string | null => {
+    if (
+      !lessonSession?.v2State?.bridgeNeeded ||
+      lessonSession.v2State.activeCheckpoint !== 'loop_teach'
+    ) {
+      return null;
+    }
+    const target = lessonSession.v2State.misconceptionTarget;
+    const prevLoop = lessonSession.v2Evidence?.loops.at(-1);
+    if (target) {
+      return `Connecting this to a correction from ${prevLoop?.loopTitle ?? 'the previous concept'}.`;
+    }
+    if (prevLoop?.gaps.length) {
+      return `Building on what we worked through in ${prevLoop.loopTitle}.`;
+    }
+    return `Connecting this to the previous concept.`;
+  });
+  const lastLoopWasFirstAttempt = $derived(
+    lessonSession?.v2Evidence?.loops.at(-1)?.styleSignals.answeredOnFirstAttempt === true
+  );
+  const loopBreakdownRows = $derived.by(() => {
+    const loops = lessonSession?.v2Evidence?.loops;
+    if (!loops || loops.length === 0) return [];
+    return loops.map((loop) => {
+      const passed = loop.gaps.length === 0 && loop.misconceptions.length === 0;
+      const hadMisconception = loop.misconceptions.length > 0;
+      const icon = passed
+        ? loop.styleSignals.answeredOnFirstAttempt ? '✓' : '~'
+        : '✗';
+      const label = passed
+        ? loop.styleSignals.answeredOnFirstAttempt
+          ? 'Got it first try'
+          : `Took ${loop.attemptCount} attempt${loop.attemptCount === 1 ? '' : 's'}`
+        : hadMisconception
+          ? 'Misconception resolved'
+          : 'Gaps remained';
+      return { title: loop.loopTitle, icon, label, passed, hadMisconception };
+    });
+  });
   const hasTranscriptActivity = $derived.by(() => {
     const messageEntries = [...conversationView.visibleMessages, ...conversationView.collapsedMessages];
 
@@ -365,13 +437,22 @@
     });
   });
   const hasPendingAssistant = $derived(viewState.ui.pendingAssistantSessionId === lessonSession?.id);
+  const shouldShowConversationEmptyHint = $derived(
+    Boolean(lessonSession && lessonSession.status === 'active' && conversationView.visibleMessages.length === 0)
+  );
   const hasHistoryRegion = $derived(
     conversationView.visibleMessages.length > 0 ||
     conversationView.collapsedMessages.length > 0 ||
-    hasPendingAssistant
+    hasPendingAssistant ||
+    shouldShowConversationEmptyHint
   );
   const shouldRenderHistoryRegion = $derived(
-    hasHistoryRegion && (hasLearnerResponse || hasContextualTranscriptActivity || !activeLessonCard || hasPendingAssistant)
+    hasHistoryRegion &&
+      (hasLearnerResponse ||
+        hasContextualTranscriptActivity ||
+        !activeLessonCard ||
+        hasPendingAssistant ||
+        shouldShowConversationEmptyHint)
   );
   const visibleTranscriptEntries = $derived.by(() => {
     if (!activeLessonCard || showCollapsedTranscript || conversationView.visibleMessages.length <= 2) {
@@ -448,6 +529,11 @@
 
     activeDiagnosticPrompt = diagnosticPrompt;
     selectedDiagnosticOptionId = null;
+  });
+
+  $effect(() => {
+    activeLessonCardMotionKey;
+    composerForced = false;
   });
 
   $effect(() => {
@@ -673,6 +759,7 @@
   }
 
   function focusCurrentTask(): void {
+    composerForced = true;
     composerFocused = true;
     void tick().then(() => {
       composerElement?.focus();
@@ -700,6 +787,7 @@
   }
 
   function usePromptStarter(): void {
+    composerForced = true;
     insertComposerStarter(lessonPromptStarter);
   }
 
@@ -1187,7 +1275,7 @@
         <button
           type="button"
           class="lesson-side-notes-toggle"
-          aria-label="Open notes from lesson map"
+          aria-label={notesOpen ? 'Hide notes' : 'Open notes from lesson map'}
           onclick={() => (notesOpen = !notesOpen)}
         >
           <span aria-hidden="true">▤</span>
@@ -1254,6 +1342,18 @@
               <strong>{boardStageLabel(displayStage)}</strong>
               <small>{boardStageHelper(displayStage)}</small>
             </span>
+            {#if loopDepth && displayStage === 'concepts' && stageStatus === 'active'}
+              <div class="loop-depth-indicator" aria-label="{loopDepth.completed} of {loopDepth.total} concepts done">
+                {#each { length: loopDepth.total } as _, dotIndex}
+                  <span
+                    class="loop-depth-dot"
+                    class:loop-depth-dot-done={dotIndex < loopDepth.completed}
+                    class:loop-depth-dot-active={dotIndex === loopDepth.active && dotIndex >= loopDepth.completed}
+                    aria-hidden="true"
+                  ></span>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/each}
       </nav>
@@ -1273,7 +1373,7 @@
           <button type="button" aria-pressed="false">Saved ideas</button>
         </div>
 
-        {#if notesOpen && useDesktopActionRow}
+        {#if notesOpen && (useDesktopActionRow || !showComposer)}
           {@render notesComposer()}
         {/if}
 
@@ -1351,12 +1451,19 @@
           aria-label="Completed concepts"
         >
           <p class="lesson-concepts-sidebar-label">Covered so far</p>
-          <div class="concepts-progress" aria-label={`${coveredConceptCount} of ${totalConceptCount} concepts covered`}>
-            <span>{coveredConceptCount} of {totalConceptCount} concepts covered</span>
-            <div class="concepts-progress-bar" aria-hidden="true">
-              <div class="concepts-progress-fill" style={`width: ${completedConceptProgressPercent}%;`}></div>
+          {#if coveredConceptCount > 0}
+            <div class="concepts-progress" aria-label={`${coveredConceptCount} of ${totalConceptCount} completed`}>
+              <span>{coveredConceptCount} of {totalConceptCount} completed</span>
+              <div class="concepts-progress-bar" aria-hidden="true">
+                <div class="concepts-progress-fill" style={`width: ${completedConceptProgressPercent}%;`}></div>
+              </div>
             </div>
-          </div>
+          {/if}
+          {#if lessonSession?.v2Evidence?.pace === 'fast' && (lessonSession.v2Evidence?.loops.length ?? 0) >= 2}
+            <p class="lesson-pace-note">You're picking these up quickly.</p>
+          {:else if lessonSession?.v2Evidence?.pace === 'slow' && (lessonSession.v2Evidence?.loops.length ?? 0) >= 2}
+            <p class="lesson-pace-note">Taking it steady — each idea is worth the time.</p>
+          {/if}
           <ol class="lesson-concepts-sidebar-list">
             {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
               {@const isCoveredConcept = conceptIndex < coveredConceptCount}
@@ -1364,6 +1471,7 @@
                 class="concept-tile"
                 class:concept-tile-covered={isCoveredConcept}
                 class:concept-tile-upcoming={!isCoveredConcept}
+                class:lesson-concept-mastery-glow={isCoveredConcept && conceptIndex === coveredConceptCount - 1 && lastLoopWasFirstAttempt}
               >
                 <span class="concept-tile-stripe" aria-hidden="true"></span>
                 <span class="concept-tile-emoji" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
@@ -1438,7 +1546,9 @@
           aria-label="Lesson support"
           data-action-required={isYourTurnMode ? 'true' : undefined}
         >
-          <p class="lesson-support-copy">{getStageContextCopyForSession(lessonSession)}</p>
+          {#if shouldShowStageContextCopyForSession(lessonSession)}
+            <p class="lesson-support-copy">{getStageContextCopyForSession(lessonSession)}</p>
+          {/if}
           {#if isYourTurnMode}
             <div class="your-turn-callout" aria-live="polite">
               <p class="your-turn-label">Your turn</p>
@@ -1580,6 +1690,24 @@
             </div>
           {:else}
             <p class="complete-payoff-empty">You completed the lesson. No concept memory tiles were available.</p>
+          {/if}
+
+          {#if loopBreakdownRows.length > 0}
+            <section class="complete-loop-breakdown" aria-label="How each concept landed">
+              <p class="complete-section-label">How each concept landed</p>
+              <ul class="loop-breakdown-list">
+                {#each loopBreakdownRows as row}
+                  <li
+                    class="loop-breakdown-row"
+                    data-loop-result={row.passed ? 'passed' : 'partial'}
+                  >
+                    <span class="loop-breakdown-icon" aria-hidden="true">{row.icon}</span>
+                    <span class="loop-breakdown-title">{row.title}</span>
+                    <span class="loop-breakdown-label">{row.label}</span>
+                  </li>
+                {/each}
+              </ul>
+            </section>
           {/if}
 
           {#if lessonNotes.length > 0}
@@ -1878,6 +2006,12 @@
           onscroll={onChatScroll}
         >
           {#if activeLessonCard}
+            {#if bridgeContextMessage}
+              <div class="lesson-bridge-strip" role="note" aria-live="polite">
+                <span class="lesson-bridge-icon" aria-hidden="true">↩</span>
+                {bridgeContextMessage}
+              </div>
+            {/if}
             <section
               class="active-lesson-card"
               class:primary-learning-moment={Boolean(lessonHarnessMoment)}
@@ -1887,6 +2021,7 @@
               aria-label={activeLessonRegionLabel}
               data-harness-moment={lessonHarnessMoment?.kind}
               data-stage-identity={activeStageIdentity}
+              data-is-assessment={isActiveCardAssessment ? 'true' : undefined}
               data-learner-action-required={lessonHarnessMoment ? (lessonHarnessMoment.expectsLearnerAnswer ? 'true' : 'false') : undefined}
               data-card-state={toDataState(activeLessonCard.stateLabel)}
               data-action-required={isYourTurnMode ? 'true' : undefined}
@@ -1896,9 +2031,12 @@
                   <div class="active-lesson-card-hero" class:active-lesson-card-hero-with-visual={Boolean(activeLessonVisual)}>
                     <div class="active-lesson-card-copy">
                       <div class="active-lesson-card-header">
-                        <p class="active-lesson-card-state">{activeLessonCard.stateLabel}</p>
+                        <p class="active-lesson-card-state"
+                           data-checkpoint-eyebrow={activeCheckpointEyebrow ?? undefined}>
+                          {activeCheckpointEyebrow ?? activeLessonCard.stateLabel}
+                        </p>
                         <h3>{activeLessonCard.title}</h3>
-                        {#if !shouldCompactOpeningCard}
+                        {#if !shouldCompactOpeningCard && shouldShowStageContextCopyForSession(lessonSession)}
                           <p class="active-lesson-card-context">{getStageContextCopyForSession(lessonSession)}</p>
                         {/if}
                       </div>
@@ -1977,14 +2115,16 @@
                       </p>
                     </div>
 
-                    <div class="lesson-next-step-target">
-                      <p>Your answer should include</p>
-                      <ul class="answer-target-list" aria-label="Your answer should include">
-                        {#each answerTargetItems as target}
-                          <li>{target}</li>
-                        {/each}
-                      </ul>
-                    </div>
+                    {#if activeStageIdentity === 'example' || activeStageIdentity === 'your-turn' || activeStageIdentity === 'feedback' || activeStageIdentity === 'summary'}
+                      <div class="lesson-next-step-target">
+                        <p>Your answer should include</p>
+                        <ul class="answer-target-list" aria-label="Your answer should include">
+                          {#each answerTargetItems as target}
+                            <li>{target}</li>
+                          {/each}
+                        </ul>
+                      </div>
+                    {/if}
 
                     <div
                       class="active-lesson-card-primary"
@@ -2031,7 +2171,7 @@
             <section
               class="chat-area"
               class:active-card-feedback={Boolean(activeLessonCard)}
-              aria-label={activeLessonCard ? 'Lesson feedback' : undefined}
+              aria-label={shouldShowConversationEmptyHint ? 'Lesson conversation' : activeLessonCard ? 'Lesson feedback' : undefined}
             >
               <section class="transcript-history-region" aria-label="Lesson history" data-secondary-surface="history">
                 <p class="transcript-history-heading">{activeLessonCard && hasTranscriptActivity ? 'Answer feedback' : 'Lesson history'}</p>
@@ -2058,6 +2198,10 @@
                       </div>
                     {/if}
                   </section>
+                {/if}
+
+                {#if conversationView.visibleMessages.length === 0 && lessonSession}
+                  <p class="conversation-empty-hint">Read the card above and type your response below.</p>
                 {/if}
 
                 {#each visibleTranscriptEntries as entry, entryIndex (entry.message.id)}
@@ -2114,113 +2258,150 @@
 	          bind:this={inputAreaElement}
 	          data-action-required={isYourTurnMode ? 'true' : undefined}
 	        >
-	          {#if !useDesktopActionRow}
-	          <div class="lesson-notes-shell" class:lesson-notes-shell-open={notesOpen}>
-            <div class="lesson-notes-bar">
-              <button
-                type="button"
-                class="btn btn-secondary notes-toggle"
-                aria-expanded={notesOpen}
-                aria-controls="lesson-notes-panel"
-                onclick={() => (notesOpen = !notesOpen)}
-              >
-                {notesOpen ? 'Hide notes' : 'Notes'}
-              </button>
-              {#if lessonNotes.length > 0}
-                <span class="lesson-notes-count">{lessonNotes.length} saved</span>
-              {/if}
-            </div>
+	          {#if showComposer}
+	            {#if !useDesktopActionRow}
+	              <div class="lesson-notes-shell" class:lesson-notes-shell-open={notesOpen}>
+	                <div class="lesson-notes-bar">
+	                  <button
+	                    type="button"
+	                    class="btn btn-secondary notes-toggle"
+	                    aria-expanded={notesOpen}
+	                    aria-controls="lesson-notes-panel"
+	                    onclick={() => (notesOpen = !notesOpen)}
+	                  >
+	                    {notesOpen ? 'Hide notes' : 'Notes'}
+	                  </button>
+	                  {#if lessonNotes.length > 0}
+	                    <span class="lesson-notes-count">{lessonNotes.length} saved</span>
+	                  {/if}
+	                </div>
 
-            {#if notesOpen}
-              {@render notesComposer()}
-            {/if}
-          </div>
-          {/if}
-
-          {#if !activeLessonCard}
-            <div
-              class="lesson-action-row"
-              class:lesson-action-row-your-turn={isYourTurnMode}
-              data-action-required={isYourTurnMode ? 'true' : undefined}
-            >
-              <div class="quick-actions">
-                {#each visibleQuickActions as action}
-                  <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
-                    {action.label}
-                  </button>
-                {/each}
-              </div>
-              {#if useDesktopActionRow}
-                <div class="progress-action-slot">
-                  <button
-                    type="button"
-                    class="btn btn-primary lesson-support-cta lesson-support-cta-row"
-                    class:lesson-support-cta-your-turn={isYourTurnMode}
-                    onclick={sendNextStepControl}
-                    disabled={nextStepCtaState.disabled}
-                    aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
-                  >
-                    <span>Next step</span>
-                    <span class="next-step-arrow" aria-hidden="true">→</span>
-                  </button>
-                </div>
-              {/if}
-            </div>
-          {/if}
-          <div
-            class="composer"
-            class:composer-your-turn={isYourTurnMode}
-            data-action-required={isYourTurnMode ? 'true' : undefined}
-            data-motion-state={isYourTurnMode ? 'action-required' : undefined}
-          >
-            {#if composerHelperChips.length > 0}
-              <div class="answer-helper-chips" aria-label="Answer starters">
-                {#each composerHelperChips as chip}
-                  <button
-                    type="button"
-                    class="answer-helper-chip"
-                    data-helper-action={chip.action}
-                    onclick={() => useComposerHelperChip(chip)}
-                  >
-                    {chip.label}
-                  </button>
-                {/each}
-              </div>
-            {/if}
-            <div class="composer-row">
-              <textarea
-                rows={composerFocused || composer.length > 0 ? 2 : 1}
-                bind:this={composerElement}
-                bind:value={composer}
-                placeholder={composerPlaceholder}
-                aria-describedby={composerNudge ? 'composer-nudge' : undefined}
-                oninput={onInput}
-                onfocus={() => (composerFocused = true)}
-                onblur={() => {
-                  if (!composer) composerFocused = false;
-                }}
-                onkeydown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    submit();
-                  }
-                }}
-              ></textarea>
-              <button
-                type="button"
-                class="btn btn-primary send"
-                class:ready={hasInput}
-                onclick={submit}
-                aria-label="Send response"
-              >
-                <span class="send-label">Send</span>
-                <span class="send-icon" aria-hidden="true">→</span>
-              </button>
-            </div>
-            {#if composerNudge}
-	              <p class="composer-nudge" id="composer-nudge" role="status" aria-live="polite">{composerNudge}</p>
+	                {#if notesOpen}
+	                  {@render notesComposer()}
+	                {/if}
+	              </div>
 	            {/if}
-	          </div>
+
+	            {#if !activeLessonCard}
+	              <div
+	                class="lesson-action-row"
+	                class:lesson-action-row-your-turn={isYourTurnMode}
+	                data-action-required={isYourTurnMode ? 'true' : undefined}
+	              >
+	                <div class="quick-actions">
+	                  {#each visibleQuickActions as action}
+	                    <button type="button" class="btn btn-secondary quick" onclick={() => sendQuickReply(action.prompt)}>
+	                      {action.label}
+	                    </button>
+	                  {/each}
+	                </div>
+	                {#if useDesktopActionRow}
+	                  <div class="progress-action-slot">
+	                    <button
+	                      type="button"
+	                      class="btn btn-primary lesson-support-cta lesson-support-cta-row"
+	                      class:lesson-support-cta-your-turn={isYourTurnMode}
+	                      onclick={sendNextStepControl}
+	                      disabled={nextStepCtaState.disabled}
+	                      aria-describedby={nextStepCtaState.cue ? nextStepCueId : undefined}
+	                    >
+	                      <span>Next step</span>
+	                      <span class="next-step-arrow" aria-hidden="true">→</span>
+	                    </button>
+	                  </div>
+	                {/if}
+	              </div>
+	            {/if}
+	            <div
+	              class="composer"
+	              class:composer-your-turn={isYourTurnMode}
+	              data-action-required={isYourTurnMode ? 'true' : undefined}
+	              data-motion-state={isYourTurnMode ? 'action-required' : undefined}
+	            >
+	              {#if composerHelperChips.length > 0}
+	                <div class="answer-helper-chips" aria-label="Answer starters">
+	                  {#each composerHelperChips as chip}
+	                    <button
+	                      type="button"
+	                      class="answer-helper-chip"
+	                      data-helper-action={chip.action}
+	                      onclick={() => useComposerHelperChip(chip)}
+	                    >
+	                      {chip.label}
+	                    </button>
+	                  {/each}
+	                </div>
+	              {/if}
+	              <div class="composer-row">
+	                <textarea
+	                  rows={composerFocused || composer.length > 0 ? 2 : 1}
+	                  bind:this={composerElement}
+	                  bind:value={composer}
+	                  placeholder={composerPlaceholder}
+	                  aria-describedby={composerNudge ? 'composer-nudge' : undefined}
+	                  oninput={onInput}
+	                  onfocus={() => (composerFocused = true)}
+	                  onblur={() => {
+	                    if (!composer) composerFocused = false;
+	                  }}
+	                  onkeydown={(e) => {
+	                    if (e.key === 'Enter' && !e.shiftKey) {
+	                      e.preventDefault();
+	                      submit();
+	                    }
+	                  }}
+	                ></textarea>
+	                <button
+	                  type="button"
+	                  class="btn btn-primary send"
+	                  class:ready={hasInput}
+	                  onclick={submit}
+	                  aria-label="Send response"
+	                >
+	                  <span class="send-label">Send</span>
+	                  <span class="send-icon" aria-hidden="true">→</span>
+	                </button>
+	              </div>
+	              {#if composerNudge}
+	                <p class="composer-nudge" id="composer-nudge" role="status" aria-live="polite">{composerNudge}</p>
+	              {/if}
+	            </div>
+	          {:else}
+	            {#if checkpointChips.length > 0}
+	              <div class="checkpoint-chip-strip">
+	                {#each checkpointChips as chip (chip.id)}
+	                  <button
+	                    type="button"
+	                    class="checkpoint-chip"
+	                    class:checkpoint-chip-escape={chip.prompt === null}
+	                    onclick={() => {
+	                      if (chip.prompt !== null) {
+	                        sendQuickReply(chip.prompt);
+	                      } else {
+	                        composerForced = true;
+	                        composerFocused = true;
+	                      }
+	                    }}
+	                  >
+	                    {chip.label}
+	                  </button>
+	                {/each}
+	              </div>
+	            {:else}
+	              <div class="ask-question-affordance">
+	                <button
+	                  type="button"
+	                  class="ask-question-btn"
+	                  onclick={() => {
+	                    composerForced = true;
+	                    composerFocused = true;
+	                  }}
+	                >
+	                  Ask a question about this
+	                </button>
+	              </div>
+	            {/if}
+	          {/if}
 	        </div>
 	      {/if}
 	    </section>
@@ -3301,6 +3482,30 @@
     animation: label-arrive 300ms cubic-bezier(0.22, 1, 0.36, 1) 170ms both;
   }
 
+  .loop-depth-indicator {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    justify-content: center;
+  }
+
+  .loop-depth-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-surface-raised, #e0e0e0);
+    transition: background 200ms ease;
+  }
+
+  .loop-depth-dot-done {
+    background: var(--lesson-active-stage-color, var(--accent));
+  }
+
+  .loop-depth-dot-active {
+    background: var(--lesson-active-stage-color, var(--accent));
+    opacity: 0.45;
+  }
+
   .progress-rail.lesson-complete .stage-node.final-stage .node-dot {
     background: linear-gradient(
       180deg,
@@ -3639,6 +3844,37 @@
     line-height: 1.1;
     text-transform: uppercase;
     box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  }
+
+  .active-lesson-card[data-is-assessment='true'] {
+    border-left-width: 5px;
+    border-left-color: var(--lesson-stage-check-color, var(--lesson-active-stage-color));
+  }
+
+  .active-lesson-card[data-is-assessment='true'] .active-lesson-card-state {
+    background: var(--lesson-stage-check-color, var(--lesson-active-stage-color));
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .lesson-bridge-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary, #888);
+    background: var(--color-surface-tinted, rgba(0,0,0,0.03));
+    border-radius: 6px;
+    border-left: 3px solid var(--lesson-active-stage-color, var(--accent));
+  }
+
+  .lesson-bridge-icon {
+    flex-shrink: 0;
+    font-size: 0.9rem;
   }
 
   .active-lesson-card h3 {
@@ -4056,6 +4292,13 @@
     min-height: min-content;
   }
 
+  .conversation-empty-hint {
+    color: var(--color-text-secondary, #888);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 1.5rem 0;
+  }
+
   .active-card-feedback {
     gap: 0.55rem;
     padding: 0.68rem 0.76rem;
@@ -4153,6 +4396,25 @@
     animation: memory-tile-land 300ms var(--ease-spring) both;
   }
 
+  @keyframes mastery-glow {
+    0%   { box-shadow: 0 0 0 0 var(--lesson-active-stage-color, var(--accent)); }
+    40%  { box-shadow: 0 0 0 6px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .lesson-concept-mastery-glow {
+      animation: mastery-glow 600ms ease-out forwards;
+    }
+  }
+
+  .lesson-pace-note {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary, #888);
+    margin-top: 4px;
+    font-style: italic;
+  }
+
   @media (hover: hover) and (pointer: fine) {
     .lesson-memory-tile:hover {
       border-color: color-mix(in srgb, var(--color-success) 24%, var(--border-strong));
@@ -4191,6 +4453,49 @@
   .completed-unit-summary-supporting {
     color: var(--text-soft);
     font-size: 0.84rem;
+  }
+
+  .complete-loop-breakdown {
+    margin-top: 16px;
+  }
+
+  .loop-breakdown-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .loop-breakdown-row {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--color-surface-raised, rgba(0,0,0,0.03));
+    font-size: 0.875rem;
+  }
+
+  .loop-breakdown-row[data-loop-result='passed'] {
+    background: var(--color-success-surface, rgba(34,197,94,0.08));
+  }
+
+  .loop-breakdown-icon {
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .loop-breakdown-title {
+    font-weight: 500;
+  }
+
+  .loop-breakdown-label {
+    color: var(--color-text-secondary, #888);
+    font-size: 0.8rem;
+    white-space: nowrap;
   }
 
   .transcript-history-region {
@@ -4290,6 +4595,32 @@
       0 2px 0 color-mix(in srgb, var(--lesson-phase-color) 34%, transparent),
       0 10px 38px color-mix(in srgb, var(--lesson-phase-color) 16%, rgba(0, 0, 0, 0.38)),
       0 34px 74px color-mix(in srgb, var(--lesson-phase-color) 10%, rgba(0, 0, 0, 0.32));
+  }
+
+  :global(:root[data-theme='dark']) .active-lesson-card[data-is-assessment='true'] {
+    border-left-color: var(--lesson-stage-check-color, var(--lesson-active-stage-color));
+  }
+
+  :global(:root[data-theme='dark']) .active-lesson-card[data-is-assessment='true'] .active-lesson-card-state {
+    background: var(--lesson-stage-check-color, var(--lesson-active-stage-color));
+    color: #fff;
+  }
+
+  :global(:root[data-theme='dark']) .lesson-bridge-strip {
+    background: rgba(255,255,255,0.04);
+    color: var(--text-soft);
+  }
+
+  :global(:root[data-theme='dark']) .loop-depth-dot {
+    background: rgba(255,255,255,0.14);
+  }
+
+  :global(:root[data-theme='dark']) .loop-depth-dot-done {
+    background: var(--lesson-active-stage-color, var(--accent));
+  }
+
+  :global(:root[data-theme='dark']) .loop-breakdown-row[data-loop-result='passed'] {
+    background: rgba(34,197,94,0.12);
   }
 
   :global(:root[data-theme='dark']) .active-lesson-card-your-turn {
@@ -5262,6 +5593,71 @@
       );
   }
 
+  @keyframes composer-enter {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ask-question-affordance {
+    display: flex;
+    justify-content: center;
+    padding: 0.65rem 1rem;
+  }
+
+  .ask-question-btn {
+    font-size: 0.8rem;
+    opacity: 0.6;
+    transition: opacity 120ms ease;
+  }
+
+  .ask-question-btn:hover {
+    opacity: 1;
+  }
+
+  .checkpoint-chip-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding: 0.65rem 1rem;
+    justify-content: center;
+  }
+
+  .checkpoint-chip {
+    font-size: 0.82rem;
+    padding: 0.38rem 0.85rem;
+    border-radius: var(--radius-full, 999px);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-strong);
+    color: var(--text);
+    cursor: pointer;
+    transition:
+      background 120ms ease,
+      border-color 120ms ease,
+      opacity 120ms ease;
+    white-space: nowrap;
+  }
+
+  .checkpoint-chip:hover {
+    background: var(--surface-raised, var(--surface-strong));
+    border-color: var(--border-focus, var(--color-blue));
+  }
+
+  .checkpoint-chip-escape {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+
+  .checkpoint-chip-escape:hover {
+    opacity: 1;
+  }
+
   .quick-actions {
     display: flex;
     gap: 0.55rem;
@@ -5547,6 +5943,10 @@
     display: flex;
     align-items: flex-end;
     gap: 0.9rem;
+  }
+
+  .composer-your-turn {
+    animation: composer-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .composer-your-turn textarea {
@@ -6247,6 +6647,37 @@
   }
 
   @media (min-width: 900px) {
+    .lesson-body {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 0.72rem;
+      align-content: stretch;
+      min-height: 0;
+    }
+
+    .lesson-side-notes {
+      display: none;
+    }
+
+    .lesson-concepts-sidebar {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      display: block;
+      overflow-y: auto;
+      padding: 1rem;
+      border: 1px solid color-mix(in srgb, var(--border-strong) 76%, transparent);
+      border-radius: var(--radius-lg);
+      background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+      box-shadow: var(--glass-inset-tile);
+      transition: opacity 250ms var(--ease-soft);
+    }
+
+    .chat-wrap {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
     .active-lesson-card {
       gap: 1.05rem;
       padding: 1.35rem 1.35rem 1.1rem;
@@ -6353,7 +6784,7 @@
       grid-column: 2;
       grid-row: 2;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 14.5rem;
+      grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
       grid-template-rows: minmax(0, 1fr) auto;
       gap: 0.55rem;
       border: 0;
@@ -7343,7 +7774,7 @@
     }
 
     .lesson-body {
-      grid-template-columns: minmax(0, 1fr) minmax(16.5rem, 18rem);
+      grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
       grid-template-rows: minmax(0, 1fr) auto;
       align-content: stretch;
       gap: 0.72rem;

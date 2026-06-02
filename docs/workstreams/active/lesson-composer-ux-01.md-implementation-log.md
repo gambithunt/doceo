@@ -1,0 +1,50 @@
+# Implementation Log: lesson-composer-ux-01
+
+## Prompt 1: Context-Sensitive Composer Visibility
+
+- Completed tasks:
+  - Added `composerForced` state and `showComposer` derived visibility guard in `LessonWorkspace.svelte`.
+  - Reset `composerForced` when `activeLessonCardMotionKey` changes so forced-open composer state does not leak across checkpoints.
+  - Kept the outer `.input-area` always rendered with `bind:this={inputAreaElement}` to preserve `composerClearance` measurement.
+  - Wrapped the existing full composer content in `showComposer` and added the read-only fallback button, `Ask a question about this`.
+  - Added composer entrance animation and ask-question affordance CSS.
+  - Preserved hidden-composer access paths by forcing the composer open from `focusCurrentTask()` and `usePromptStarter()`.
+  - Preserved notes access while the bottom composer is hidden by rendering `notesComposer()` in the side notes rail when `notesOpen && !showComposer`.
+- Files modified:
+  - `src/lib/components/LessonWorkspace.svelte`
+  - `src/lib/components/LessonWorkspace.test.ts`
+- Architectural decisions:
+  - Reused `isYourTurnMode` as the primary semantic signal for showing the composer.
+  - Reused `activeLessonCardMotionKey` as the checkpoint boundary for clearing the manual escape hatch.
+  - Reused the existing notes composer render function and side notes rail instead of introducing a parallel notes UI.
+  - Updated focused tests only where existing note tests assumed the bottom action-row `Notes` button was always visible.
+- Reasoning:
+  - The spec hides bottom composer content at read-only checkpoints, so bottom note controls are also hidden in that state. The side rail is the existing persistent notes affordance and keeps notes reachable without violating the composer visibility model.
+  - Focus and starter helpers can be triggered while the composer is hidden; setting `composerForced = true` before focusing or inserting text preserves existing behavior.
+- Newly introduced abstractions:
+  - `composerForced`: short-lived user escape hatch to show the composer during read-only checkpoints.
+  - `showComposer`: derived visibility rule combining `isYourTurnMode`, absence of an active lesson card, and `composerForced`.
+- Tests added/updated:
+  - Updated existing `LessonWorkspace` notes tests to open notes via `Open notes from lesson map` when the read-only composer is hidden.
+- Bugs encountered:
+  - Initial focused tests failed because existing tests looked for hidden bottom note controls.
+  - Prompt starter and current-task focus paths could not reach the textarea while the composer was hidden.
+- Resolutions applied:
+  - Routed read-only notes access through the existing side notes rail.
+  - Forced the composer open before textarea focus or prompt-starter insertion.
+- Validation:
+  - `npm run typecheck`: passed with 0 errors and 10 pre-existing admin warnings.
+  - `npm test -- LessonWorkspace`: passed, 214 tests.
+  - `npm test`: passed, 154 files and 1540 tests.
+- Blockers encountered:
+  - Browser validation against `http://127.0.0.1:5187/` / `http://127.0.0.1:5187` was rejected by the in-app browser security policy. The policy explicitly prohibited using a workaround, indirect execution, alternate browser surface, or policy circumvention.
+- Mitigation attempts:
+  - Started the Vite dev server on port 5187 and attempted the required in-app browser validation once.
+  - Stopped at the browser-validation boundary after policy rejection.
+- Known limitations:
+  - Manual desktop/mobile browser verification for Prompt 1 remains incomplete because browser access to the local dev URL is blocked by policy.
+  - The local dev server session could not be interrupted through the tool after browser validation was blocked; a direct kill attempt for the Vite PID was also denied by the environment.
+- Deferred work:
+  - Prompt 2 and later prompts have not started because Prompt 1 browser validation is blocked.
+- Follow-up recommendations:
+  - Allow the in-app browser to access the local dev URL or provide an approved alternate validation path for `localhost:5187` before continuing to Prompt 2.

@@ -618,9 +618,9 @@ Close the remaining structural and visual gap between the current implementation
 - On mobile: single column, sidebar stacks below the lesson card.
 
 **Tasks:**
-- [ ] RED: add failing tests — sidebar exists with `aria-label="Completed concepts"`, each concept mini-card appears in the sidebar, counter renders.
-- [ ] GREEN: restructure `lesson-body` grid, add sidebar element, move concept tiles, add counter markup + CSS.
-- [ ] REFACTOR: remove concept mini-card markup from inside the active lesson card; clean up obsolete single-column CSS.
+- [x] RED: add failing tests — sidebar exists with `aria-label="Completed concepts"`, each concept mini-card appears in the sidebar, counter renders.
+- [x] GREEN: restructure `lesson-body` grid, add sidebar element, move concept tiles, add counter markup + CSS.
+- [x] REFACTOR: remove concept mini-card markup from inside the active lesson card; clean up obsolete single-column CSS.
 
 **Touch Points:**
 - `src/lib/components/LessonWorkspace.svelte`

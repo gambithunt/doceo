@@ -25,7 +25,7 @@ import {
   SOFT_STUCK_STAY_THRESHOLD,
   updateLearnerProfile
 } from '$lib/lesson-system';
-import { advanceLessonFlowV2State, getLessonStageForV2Checkpoint } from '$lib/lesson-flow-v2';
+import { advanceLessonFlowV2State, appendLoopEvidence, getLessonStageForV2Checkpoint } from '$lib/lesson-flow-v2';
 import {
   deriveConcept1EarlyDiagnostic,
   detectLessonSupportIntentForSession,
@@ -2734,14 +2734,18 @@ export function createAppStore(initialState: AppState = readState()) {
         const currentSession = latest.lessonSessions.find((item) => item.id === lessonSession.id) ?? lessonSession;
 
         const currentLesson = getLessonForSession(latest, currentSession);
+        const evaluationCheckpoints = new Set<string>([
+          'loop_check',
+          'independent_attempt',
+          'exit_check'
+        ]);
         const useLessonEvaluation =
           currentSession.lessonFlowVersion === 'v2' &&
           messageType === 'response' &&
           !supportIntent &&
           currentSession.currentStage !== 'complete' &&
           Boolean(currentSession.v2State) &&
-          currentSession.v2State?.activeCheckpoint !== 'start' &&
-          currentSession.v2State?.activeCheckpoint !== 'synthesis';
+          evaluationCheckpoints.has(currentSession.v2State?.activeCheckpoint ?? '');
 
         if (useLessonEvaluation) {
           const response = await fetch('/api/ai/lesson-evaluate', {
@@ -2768,7 +2772,13 @@ export function createAppStore(initialState: AppState = readState()) {
           update((state) => {
             const current = state.lessonSessions.find((item) => item.id === lessonSession.id) ?? currentSession;
             const assistantMessage = buildLessonEvaluationAssistantMessage(current, evaluation);
-            let nextSession = applyLessonAssistantResponse(current, assistantMessage);
+            const nextV2Evidence = evaluation.loopEvidence
+              ? appendLoopEvidence(current.v2Evidence, evaluation.loopEvidence)
+              : current.v2Evidence ?? null;
+            let nextSession: LessonSession = {
+              ...applyLessonAssistantResponse(current, assistantMessage),
+              v2Evidence: nextV2Evidence
+            };
 
             if (!nextSession.topicDiscovery && current.topicDiscovery) {
               nextSession = {

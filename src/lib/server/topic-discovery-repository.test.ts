@@ -158,11 +158,14 @@ describe('topic discovery repository', () => {
       createdAt: '2026-04-02T08:15:00.000Z'
     });
 
-    const [score] = await repository.listScores({
-      subjectId: 'caps-grade-6-mathematics',
-      curriculumId: 'caps',
-      gradeId: 'grade-6'
-    });
+    const [score] = await repository.listScores(
+      {
+        subjectId: 'caps-grade-6-mathematics',
+        curriculumId: 'caps',
+        gradeId: 'grade-6'
+      },
+      { now: new Date('2026-04-02T09:00:00.000Z') }
+    );
 
     expect(score).toEqual(
       expect.objectContaining({

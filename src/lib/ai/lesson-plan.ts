@@ -3,7 +3,7 @@ import {
   buildDynamicLessonFlowV2FromTopic,
   buildDynamicLessonFromTopic,
   buildDynamicQuestionsForLesson
-} from '$lib/lesson-system';
+} from '$lib/lesson-dynamic-builder';
 import { buildConceptDiagnostic } from '$lib/concept-diagnostics';
 import { validateConceptRecords } from '$lib/lesson-concept-contract';
 import type {

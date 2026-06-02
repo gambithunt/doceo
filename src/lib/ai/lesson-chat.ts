@@ -1,12 +1,8 @@
-import {
-  buildLocalLessonChatResponse,
-  parseDoceoMeta,
-  SOFT_STUCK_STAY_THRESHOLD,
-  stripDoceoMeta
-} from '$lib/lesson-system';
+import { buildLocalLessonChatResponse } from '$lib/lesson-local-response';
+import { parseDoceoMeta, SOFT_STUCK_STAY_THRESHOLD, stripDoceoMeta } from '$lib/lesson-system';
 import { isLessonFlowV2Session } from '$lib/lesson-flow-v2';
 import { getLatestTutorPrompt, getLatestTutorTeachingAnchor } from '$lib/lesson-tutor-prompt';
-import type { Lesson, LessonChatRequest, LessonChatResponse } from '$lib/types';
+import type { Lesson, LessonChatRequest, LessonChatResponse, LessonFlowV2Checkpoint, LessonFlowV2SessionState, LessonSessionEvidence } from '$lib/types';
 
 export interface GithubModelsMessage {
   role: 'system' | 'user' | 'assistant';
@@ -109,6 +105,163 @@ function buildLearnerInstructions(profile: LessonChatRequest['learnerProfile']):
   return instructions.join('\n');
 }
 
+export function buildCheckpointInstructions(
+  checkpoint: LessonFlowV2Checkpoint | undefined,
+  v2State?: LessonFlowV2SessionState | null
+): string {
+  switch (checkpoint) {
+    case 'start':
+      return [
+        'CHECKPOINT: Lesson Start.',
+        'The student is answering the prior knowledge question. Wait for their response.',
+        'When they respond, follow the ORIENTATION INSTRUCTION section above.'
+      ].join('\n');
+    case 'loop_teach': {
+      const lines = [
+        'CHECKPOINT: Teaching.',
+        'Introduce the concept clearly and concisely.',
+        'End with one concrete, specific question — identify, name, state, or locate.',
+        'Do not present the worked example yet; that comes next.'
+      ];
+      if (v2State?.bridgeNeeded) {
+        lines.push(
+          'BRIDGE REQUIRED: The student had gaps or misconceptions in a previous loop. ' +
+          'Open by explicitly connecting this concept to what went wrong before.'
+        );
+      }
+      if (v2State?.misconceptionTarget) {
+        lines.push(
+          `CORRECT FIRST — ${v2State.misconceptionTarget}: State what is wrong in one sentence. Give the correct version. Then introduce the new concept.`
+        );
+      }
+      if (v2State?.compress) {
+        lines.push(
+          'PACE — FAST LEARNER: Omit the worked example for this concept. Teach the rule in two sentences, then ask one specific question.'
+        );
+      }
+      return lines.join('\n');
+    }
+    case 'loop_example':
+      return [
+        'CHECKPOINT: Worked Example.',
+        'Walk through the example step by step.',
+        'Point to one specific step or value and ask the learner to explain what it shows or why it is necessary.',
+        'Stay inside this example — do not introduce new scenarios.'
+      ].join('\n');
+    case 'loop_practice':
+      return [
+        'CHECKPOINT: Learner Practice.',
+        'The learner is attempting the task.',
+        'Your job is to scaffold, not give the answer.',
+        'If they are stuck, give one concrete first move tied to the task.',
+        'If they have attempted, respond to what they wrote specifically — quote their words, not generic praise.'
+      ].join('\n');
+    case 'synthesis':
+      return [
+        'CHECKPOINT: Synthesis.',
+        'Tie all loops together before the learner works alone.',
+        'Ask the learner to connect the concepts from all loops in one sentence.',
+        'Do not introduce new content — synthesise only what was taught.'
+      ].join('\n');
+    case 'independent_attempt':
+      return [
+        'CHECKPOINT: Independent Attempt.',
+        'The learner is working alone on the combined task.',
+        'Scaffold only if explicitly asked. Otherwise wait for their attempt.'
+      ].join('\n');
+    case 'exit_check':
+      return [
+        'CHECKPOINT: Exit Check.',
+        'This is the final evidence gate. Hold the standard.',
+        'A vague or partial answer does not pass. Require the specific must-hit concept to be named correctly.'
+      ].join('\n');
+    default:
+      return '';
+  }
+}
+
+export function buildEvidenceInstructions(
+  evidence: LessonSessionEvidence | null | undefined
+): string {
+  if (!evidence || (evidence.loops.length === 0 && evidence.criticalGaps.length === 0 && evidence.confirmedMisconceptions.length === 0)) {
+    return '';
+  }
+
+  const lines: string[] = [
+    `--- IN-SESSION EVIDENCE (${evidence.loops.length} loop(s) completed) ---`
+  ];
+
+  for (const loop of evidence.loops) {
+    const status =
+      loop.gaps.length === 0 && loop.misconceptions.length === 0
+        ? 'passed cleanly'
+        : loop.misconceptions.length > 0
+          ? `failed — misconception: ${loop.misconceptions.join(', ')}`
+          : `partial — gaps: ${loop.gaps.join(', ')}`;
+    lines.push(
+      `Loop ${loop.loopIndex + 1} (${loop.loopTitle}): ${status}. ` +
+      `Attempts: ${loop.attemptCount}. Score: ${loop.score.toFixed(2)}.`
+    );
+  }
+
+  const directives: string[] = [];
+
+  if (evidence.pace === 'fast') {
+    directives.push(
+      'PACE: Student is fast. Skip the worked example restatement; ask one concrete question directly.'
+    );
+  } else if (evidence.pace === 'slow') {
+    directives.push(
+      'PACE: Student needs anchoring. Before asking anything, give one concrete sentence from the content above as a starting point.'
+    );
+  }
+
+  for (const gap of evidence.criticalGaps) {
+    directives.push(
+      `CRITICAL GAP — ${gap}: Restate the rule for ${gap} in one sentence before moving on. Then ask the student to apply it to the next task. Do not advance until they have done so.`
+    );
+  }
+
+  for (const misconception of evidence.confirmedMisconceptions) {
+    directives.push(
+      `CONFIRMED MISCONCEPTION — ${misconception}: Name it explicitly. In one sentence, say what is wrong. Show the correct version before introducing any new idea.`
+    );
+  }
+
+  if (directives.length > 0) {
+    lines.push('', '--- DIRECTIVES ---', ...directives);
+  }
+
+  return lines.join('\n');
+}
+
+export function buildOrientationFirstResponseInstruction(): string {
+  return [
+    'ORIENTATION INSTRUCTION:',
+    'The student has NOT yet seen the lesson content. They just answered a prior knowledge question.',
+    'Your response must do three things in order:',
+    '1. Acknowledge what they said specifically — name the idea, term, or question they gave. Do not be generic.',
+    '2. Bridge from their prior knowledge to the lesson topic using the orientation content provided in CURRENT STAGE CONTENT.',
+    '3. End with one concrete question that opens the first concept — do not ask another prior knowledge question.',
+    'If they said they know nothing or are unsure, validate that and start from first principles using the orientation content.',
+    'Do not start with "Great!" or any other praise. Respond to the content of what they said.'
+  ].join('\n');
+}
+
+function isFirstOrientationResponse(request: LessonChatRequest): boolean {
+  const userMessageCount = request.lessonSession.messages.filter((m) => m.role === 'user').length;
+
+  if (userMessageCount !== 1) {
+    return false;
+  }
+
+  if (isLessonFlowV2Session(request.lessonSession)) {
+    return request.lessonSession.v2State?.activeCheckpoint === 'start';
+  }
+
+  return request.lessonSession.currentStage === 'orientation';
+}
+
 // buildSystemPrompt is exported for testing
 export function buildSystemPrompt(request: LessonChatRequest): string {
   const lesson = request.lesson!;
@@ -197,6 +350,23 @@ Rules:
         ]
       : []),
     `Support Intent: ${request.supportIntent ?? 'none'}`,
+    ...(isLessonFlowV2Session(request.lessonSession)
+      ? (() => {
+          const cpInstruction = buildCheckpointInstructions(
+            request.lessonSession.v2State?.activeCheckpoint,
+            request.lessonSession.v2State
+          );
+          const evInstruction = buildEvidenceInstructions(request.lessonSession.v2Evidence);
+          const parts: string[] = [];
+          if (cpInstruction) {
+            parts.push('', '--- CHECKPOINT INSTRUCTIONS ---', cpInstruction);
+          }
+          if (evInstruction) {
+            parts.push('', evInstruction);
+          }
+          return parts;
+        })()
+      : []),
     `Current Stage Content: ${getCurrentStageContent(request)}`,
     `Latest Tutor Prompt Awaiting Answer: ${getLatestTutorPrompt(request.lessonSession) ?? 'none'}`,
     `Latest Tutor Teaching Anchor: ${getLatestTutorTeachingAnchor(request.lessonSession) ?? 'none'}`,
@@ -210,6 +380,9 @@ Rules:
     `Soft-Stuck Same-Point Stays: ${request.lessonSession.softStuckCount ?? 0}`,
     `Last Message Type: ${getLastMessageType(request.lessonSession)}`,
     ``,
+    ...(isFirstOrientationResponse(request)
+      ? [buildOrientationFirstResponseInstruction(), ``]
+      : []),
     `--- LEARNER PROFILE ---`,
     `Learner Profile:`,
     buildLearnerInstructions(request.learnerProfile),

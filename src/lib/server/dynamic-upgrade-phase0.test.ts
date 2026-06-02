@@ -8,7 +8,7 @@ function readWorkspaceFile(relativePath: string): string {
 
 describe('dynamic upgrade phase 0 audit', () => {
   it('documents the current lesson-start entry points and compatibility boundaries', () => {
-    const audit = readWorkspaceFile('docs/workstreams/dynamic-upgrade-phase0-audit.md');
+    const audit = readWorkspaceFile('docs/workstreams/archived/dynamic-upgrade-phase0-audit.md');
 
     expect(audit).toContain('Current Lesson-Start Entry Points');
     expect(audit).toContain('`appState.launchLesson(lessonId)`');

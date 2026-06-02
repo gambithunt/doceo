@@ -5,6 +5,7 @@ import type {
   ConceptItem,
   Lesson,
   LessonFlowV2Checkpoint,
+  LessonFlowV2SessionState,
   LessonGroupedLabelBucket,
   LessonMessage,
   LessonResource,
@@ -20,6 +21,12 @@ export interface LessonWorkspaceQuickActionDefinition {
   id: string;
   label: string;
   prompt: string;
+}
+
+export interface CheckpointResponseChip {
+  id: string;
+  label: string;
+  prompt: string | null;
 }
 
 export interface LessonWorkspaceNextStepCtaState {
@@ -61,6 +68,23 @@ export type LessonHarnessMomentKind =
   | 'independent_attempt'
   | 'exit_check';
 
+export function buildCheckpointEyebrow(kind: LessonHarnessMomentKind): string {
+  switch (kind) {
+    case 'orientation_start':  return 'Start';
+    case 'tutor_concept':      return 'Teaching';
+    case 'tutor_example':      return 'Example';
+    case 'learner_practice':   return 'Your Turn';
+    case 'retrieval_check':    return 'Concept check';
+    case 'synthesis':          return 'Bringing it together';
+    case 'independent_attempt': return 'Solo attempt';
+    case 'exit_check':         return 'Final check';
+  }
+}
+
+export function isAssessmentMoment(kind: LessonHarnessMomentKind): boolean {
+  return kind === 'retrieval_check' || kind === 'exit_check';
+}
+
 export type LessonHarnessLearnerActionRequirement = 'answer_required' | 'can_continue';
 
 export interface LessonHarnessMoment {
@@ -84,7 +108,7 @@ export interface LessonVisualIntent {
   alt: string;
   caption: string;
   eyebrow: string;
-  source: 'active_resource' | 'concept_resource' | 'fallback';
+  source: 'active_resource' | 'concept_resource';
 }
 
 export interface LessonWorkspaceEarlyDiagnostic {
@@ -136,7 +160,7 @@ const NEXT_STEP_PROMPTS: Record<VisibleLessonStage, string> = {
 };
 
 const HELP_ME_START_PROMPTS: Record<VisibleLessonStage, string> = {
-  orientation: 'Help me start thinking about this topic.',
+  orientation: 'I am not sure what I already know here — help me find one starting point without teaching me the lesson yet.',
   concepts: 'Help me start sorting out these concepts.',
   construction: 'Help me start this step.',
   examples: 'Help me start reading this example.',
@@ -153,19 +177,29 @@ const NEXT_STEP_DISABLED_CUES: Partial<Record<VisibleLessonStage, string>> = {
 const DEFAULT_COMPOSER_EMPTY_NUDGE = 'Type a lesson response first, or use a lesson helper.';
 
 const COMPOSER_PLACEHOLDERS: Record<VisibleLessonStage, string> = {
-  orientation: 'Share what you already know about this lesson topic.',
-  concepts: 'Explain the key idea in your own words.',
+  orientation: 'Name something you already know, or a question you want answered.',
+  concepts: 'Put it in your own words, or ask a question.',
   construction: 'Write the next step here.',
   examples: 'Tell me what you notice in the example.',
   practice: 'Try the task here, or ask for bounded help.',
   check: 'Explain or apply the idea here.'
 };
 
+const LOOP_CHECKPOINTS_WITH_CARD_CONTEXT: ReadonlyArray<LessonFlowV2Checkpoint> = [
+  'loop_teach',
+  'loop_example',
+  'loop_practice',
+  'loop_check',
+  'synthesis',
+  'independent_attempt',
+  'exit_check'
+];
+
 const COMPOSER_STARTER_COPY: Record<VisibleLessonStage, { firstStep: string; because: string; shape: string }> = {
   orientation: {
     firstStep: 'I already know that ',
-    because: 'This matters because ',
-    shape: 'Help me shape my first thought about this topic without giving away the answer.'
+    because: 'Something I am not sure about is ',
+    shape: 'Help me put what I already know into words before seeing the lesson.'
   },
   concepts: {
     firstStep: 'The key idea is ',
@@ -195,7 +229,7 @@ const COMPOSER_STARTER_COPY: Record<VisibleLessonStage, { firstStep: string; bec
 };
 
 const GIVE_ME_AN_EXAMPLE_PROMPTS: Record<VisibleLessonStage, string> = {
-  orientation: 'Give me a real-world example for this topic.',
+  orientation: 'Give me one real-world example of this topic to help me connect it to what I already know — do not teach me the lesson content yet.',
   concepts: 'Give me an example that makes this concept concrete.',
   construction: 'Give me a worked example that shows this step in action.',
   examples: 'Give me another example that is even simpler.',
@@ -233,38 +267,6 @@ const VISUAL_CONTEXT_COPY: Record<LessonVisualIntentContext, { eyebrow: string; 
     eyebrow: 'Summary',
     fallbackCaption: 'Connect the lesson ideas back to the real world.'
   }
-};
-
-const CURATED_LESSON_VISUAL_FALLBACKS: Array<{
-  matches: string[];
-  src: string;
-  altTopic: string;
-  exampleCaption: string;
-}> = [
-  {
-    matches: ['biome', 'ecosystem', 'geography'],
-    src: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80',
-    altTopic: 'ecosystems',
-    exampleCaption: 'See the example in a real ecosystem context.'
-  },
-  {
-    matches: ['market', 'economics', 'supply', 'demand'],
-    src: 'https://images.unsplash.com/photo-1556741533-411cf82e4e2d?auto=format&fit=crop&w=900&q=80',
-    altTopic: 'markets',
-    exampleCaption: 'See the example in a real market context.'
-  },
-  {
-    matches: ['community', 'service', 'leadership'],
-    src: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=900&q=80',
-    altTopic: 'community action',
-    exampleCaption: 'See the example in a real community context.'
-  }
-];
-
-const DEFAULT_LESSON_VISUAL_FALLBACK = {
-  src: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80',
-  altTopic: 'the lesson topic',
-  exampleCaption: VISUAL_CONTEXT_COPY.example.fallbackCaption
 };
 
 export function getStageContextCopy(stage: LessonStage): string {
@@ -311,6 +313,16 @@ export function getStageContextCopyForSession(
   lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>
 ): string {
   return getStageContextCopy(getVisiblePromptStageForSession(lessonSession));
+}
+
+export function shouldShowStageContextCopyForSession(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+): boolean {
+  if (lessonSession.lessonFlowVersion !== 'v2' || !lessonSession.v2State) {
+    return true;
+  }
+
+  return !LOOP_CHECKPOINTS_WITH_CARD_CONTEXT.includes(lessonSession.v2State.activeCheckpoint);
 }
 
 export function deriveLessonComposerCopy(
@@ -473,7 +485,33 @@ function getLegacyExchangeKey(entry: LessonWorkspaceMessageEntry): string {
   return `legacy-message:${entry.index}`;
 }
 
-function isRedundantStartMirrorMessage(
+function getActiveCheckpointSectionBody(
+  lesson: Pick<Lesson, 'flowV2'>,
+  v2State: LessonFlowV2SessionState
+): string | null {
+  const loop = lesson.flowV2?.loops[v2State.activeLoopIndex] ?? null;
+
+  switch (v2State.activeCheckpoint) {
+    case 'loop_teach':
+      return loop?.teaching.body ?? null;
+    case 'loop_example':
+      return loop?.example.body ?? null;
+    case 'loop_practice':
+      return loop?.learnerTask.body ?? null;
+    case 'loop_check':
+      return loop?.retrievalCheck.body ?? null;
+    case 'synthesis':
+      return lesson.flowV2?.synthesis?.body ?? null;
+    case 'independent_attempt':
+      return lesson.flowV2?.independentAttempt?.body ?? null;
+    case 'exit_check':
+      return lesson.flowV2?.exitCheck?.body ?? null;
+    default:
+      return null;
+  }
+}
+
+function isRedundantActiveCheckpointMessage(
   message: LessonMessage,
   lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State' | 'status'>,
   lesson: Pick<Lesson, 'flowV2'> | null
@@ -482,7 +520,6 @@ function isRedundantStartMirrorMessage(
     lessonSession.lessonFlowVersion !== 'v2' ||
     !lessonSession.v2State ||
     lessonSession.status === 'complete' ||
-    lessonSession.v2State.activeCheckpoint !== 'start' ||
     !lesson?.flowV2
   ) {
     return false;
@@ -492,11 +529,23 @@ function isRedundantStartMirrorMessage(
     return false;
   }
 
-  if (message.v2Context?.checkpoint !== 'start') {
+  const { activeCheckpoint, activeLoopIndex } = lessonSession.v2State;
+  const msgCtx = message.v2Context;
+
+  if (!msgCtx || msgCtx.checkpoint !== activeCheckpoint) {
     return false;
   }
 
-  return message.content.trim() === lesson.flowV2.start.body.trim();
+  if (activeCheckpoint.startsWith('loop_') && msgCtx.loopIndex !== activeLoopIndex) {
+    return false;
+  }
+
+  const sectionBody = getActiveCheckpointSectionBody(lesson, lessonSession.v2State);
+  if (!sectionBody) {
+    return false;
+  }
+
+  return message.content.trim() === sectionBody.trim();
 }
 
 export function deriveConversationViewForSession(
@@ -506,7 +555,7 @@ export function deriveConversationViewForSession(
 ): LessonWorkspaceConversationView {
   const allMessageEntries = lessonSession.messages
     .map((message, index) => ({ index, message }))
-    .filter((entry) => !isRedundantStartMirrorMessage(entry.message, lessonSession, lesson));
+    .filter((entry) => !isRedundantActiveCheckpointMessage(entry.message, lessonSession, lesson));
 
   if (
     lessonSession.lessonFlowVersion !== 'v2' ||
@@ -643,14 +692,16 @@ export function deriveConcept1EarlyDiagnostic(
 }
 
 function getActiveLessonCardCtaLabel(
-  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>,
+  lesson: Pick<Lesson, 'flowV2'> | null = null
 ): string {
   if (isConcept1EarlyDiagnosticActive(lessonSession)) {
     return 'Submit quick check';
   }
 
   if (shouldUseConcept1EarlyDiagnostic(lessonSession)) {
-    return 'Check concept 1';
+    const conceptName = lesson?.flowV2?.concepts?.[0]?.name ?? null;
+    return conceptName ? `Check: ${conceptName}` : 'Quick check';
   }
 
   if (lessonSession.lessonFlowVersion !== 'v2' || !lessonSession.v2State) {
@@ -665,7 +716,7 @@ function getActiveLessonCardCtaLabel(
     case 'loop_example':
       return 'Try it yourself';
     case 'loop_practice':
-      return 'Check what stuck';
+      return 'Submit my attempt';
     case 'loop_check':
       return lessonSession.v2State.activeLoopIndex + 1 < lessonSession.v2State.totalLoops
         ? 'Next concept'
@@ -700,7 +751,7 @@ export function deriveActiveLessonCardForSession(
     ? deriveConcept1EarlyDiagnostic(lesson)
     : null;
   const baseCard = {
-    ctaLabel: getActiveLessonCardCtaLabel(lessonSession),
+    ctaLabel: getActiveLessonCardCtaLabel(lessonSession, lesson),
     primaryAction: diagnostic ? ('submit_diagnostic' as const) : ('next_step' as const),
     conceptMiniCards: lesson.flowV2.concepts ?? [],
     diagnostic
@@ -843,12 +894,6 @@ export function isTrustedImageResource(resource: LessonResource): boolean {
   }
 }
 
-function toSentenceCase(str: string): string {
-  if (!str) return str;
-  const lower = str.toLowerCase();
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
-}
-
 function getVisualIntentContext(
   lessonSession: Pick<LessonSession, 'currentStage' | 'status'>,
   lessonHarnessMoment: LessonHarnessMoment | null
@@ -893,25 +938,6 @@ function getActiveConceptResource(
     activeCard?.conceptMiniCards.find((concept) => concept.resource && isTrustedImageResource(concept.resource))
       ?.resource ?? null
   );
-}
-
-function getCuratedFallbackVisual(
-  lessonSession: Pick<LessonSession, 'subject' | 'topicTitle'>,
-  context: LessonVisualIntentContext
-): LessonVisualIntent {
-  const topic = `${lessonSession.subject} ${lessonSession.topicTitle}`.toLowerCase();
-  const fallback =
-    CURATED_LESSON_VISUAL_FALLBACKS.find((item) => item.matches.some((match) => topic.includes(match))) ??
-    DEFAULT_LESSON_VISUAL_FALLBACK;
-  const contextCopy = VISUAL_CONTEXT_COPY[context];
-
-  return {
-    src: fallback.src,
-    alt: `Real-world visual for ${toSentenceCase(lessonSession.topicTitle)}`,
-    eyebrow: contextCopy.eyebrow,
-    caption: context === 'example' ? fallback.exampleCaption : contextCopy.fallbackCaption,
-    source: 'fallback'
-  };
 }
 
 function buildResourceVisualIntent(
@@ -962,7 +988,7 @@ export function deriveLessonVisualIntent({
     return buildResourceVisualIntent(conceptResource, context, 'concept_resource');
   }
 
-  return getCuratedFallbackVisual(lessonSession, context);
+  return null;
 }
 
 export function detectLessonSupportIntent(
@@ -1084,6 +1110,11 @@ export function getVisibleQuickActionDefinitions(
 ): LessonWorkspaceQuickActionDefinition[] {
   return [
     {
+      id: 'help-me-start',
+      label: 'Help me start',
+      prompt: HELP_ME_START_PROMPTS[stage]
+    },
+    {
       id: 'give-me-an-example',
       label: 'Give me an example',
       prompt: GIVE_ME_AN_EXAMPLE_PROMPTS[stage]
@@ -1092,11 +1123,6 @@ export function getVisibleQuickActionDefinitions(
       id: 'explain-it-differently',
       label: 'Explain it differently',
       prompt: EXPLAIN_IT_DIFFERENTLY_PROMPTS[stage]
-    },
-    {
-      id: 'help-me-start',
-      label: 'Help me start',
-      prompt: HELP_ME_START_PROMPTS[stage]
     }
   ];
 }
@@ -1105,4 +1131,73 @@ export function getVisibleQuickActionDefinitionsForSession(
   lessonSession: Pick<LessonSession, 'currentStage' | 'lessonFlowVersion' | 'v2State'>
 ): LessonWorkspaceQuickActionDefinition[] {
   return getVisibleQuickActionDefinitions(getVisiblePromptStageForSession(lessonSession));
+}
+
+function buildConceptName(
+  lesson: Pick<Lesson, 'flowV2'>,
+  loopIndex: number
+): string {
+  return (
+    lesson.flowV2?.concepts?.[loopIndex]?.name ??
+    lesson.flowV2?.loops[loopIndex]?.teaching.title ??
+    'this concept'
+  );
+}
+
+export function deriveCheckpointResponseChips(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State'>,
+  lesson: Pick<Lesson, 'flowV2'> | null
+): CheckpointResponseChip[] {
+  if (
+    lessonSession.lessonFlowVersion !== 'v2' ||
+    !lessonSession.v2State ||
+    !lesson?.flowV2
+  ) {
+    return [];
+  }
+
+  const { activeCheckpoint, activeLoopIndex } = lessonSession.v2State;
+
+  if (activeCheckpoint === 'loop_teach') {
+    const conceptName = buildConceptName(lesson, activeLoopIndex);
+    return [
+      {
+        id: 'got-it',
+        label: `I follow ${conceptName}`,
+        prompt: `I think I understand ${conceptName}. I'm ready to continue.`
+      },
+      {
+        id: 'unclear',
+        label: `Not sure about ${conceptName}`,
+        prompt: `I'm not sure I fully understand ${conceptName}. Can you explain it differently?`
+      },
+      {
+        id: 'ask',
+        label: 'Ask something specific',
+        prompt: null
+      }
+    ];
+  }
+
+  if (activeCheckpoint === 'loop_example') {
+    return [
+      {
+        id: 'got-it',
+        label: 'I can follow this example',
+        prompt: `I understand this example. I'm ready to try it myself.`
+      },
+      {
+        id: 'unclear',
+        label: 'Something is unclear',
+        prompt: `I have a question about this example. Can you walk me through it?`
+      },
+      {
+        id: 'ask',
+        label: 'Ask something specific',
+        prompt: null
+      }
+    ];
+  }
+
+  return [];
 }

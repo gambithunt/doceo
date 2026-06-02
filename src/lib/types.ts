@@ -60,6 +60,37 @@ export type LessonFlowV2Checkpoint =
   | 'exit_check'
   | 'complete';
 export type LessonFlowV2CardSubstate = 'default' | 'concept1_early_diagnostic';
+
+export interface LoopStyleSignals {
+  neededScaffolding: boolean;
+  askedClarifyingQuestion: boolean;
+  answeredOnFirstAttempt: boolean;
+  explanationWasVague: boolean;
+  usedConcreteLanguage: boolean;
+}
+
+export interface LoopEvidence {
+  loopId: string;
+  loopIndex: number;
+  loopTitle: string;
+  conceptsMet: string[];
+  gaps: string[];
+  misconceptions: string[];
+  score: number;
+  attemptCount: number;
+  styleSignals: LoopStyleSignals;
+  evaluatedAt: string;
+}
+
+export interface LessonSessionEvidence {
+  loops: LoopEvidence[];
+  pace: 'fast' | 'normal' | 'slow';
+  criticalGaps: string[];
+  confirmedMisconceptions: string[];
+  independentAttemptScore: number | null;
+  exitCheckPassed: boolean | null;
+}
+
 export type LessonRemediationStep = 'none' | 'hint' | 'scaffold' | 'mini_reteach' | 'worked_example';
 export type LessonResidueGapStatus = 'partial' | 'skipped' | 'blocked';
 export type LessonAbandonmentFrictionSignal =
@@ -306,6 +337,9 @@ export interface LessonFlowV2SessionState {
   needsTeacherReview: boolean;
   cardSubstate?: LessonFlowV2CardSubstate;
   concept1EarlyDiagnosticCompleted?: boolean;
+  compress?: boolean;
+  bridgeNeeded?: boolean;
+  misconceptionTarget?: string | null;
 }
 
 export interface Lesson {
@@ -722,6 +756,8 @@ export interface LessonEvaluationRequest {
   lessonSessionId: string;
   nodeId?: string | null;
   lessonArtifactId?: string | null;
+  loopId?: string | null;
+  loopIndex?: number | null;
   answer: string;
   checkpoint: LessonFlowV2Checkpoint;
   lesson: {
@@ -745,6 +781,7 @@ export interface LessonEvaluationResult {
   mode: LessonEvaluationMode;
   provider: string;
   model: string;
+  loopEvidence?: LoopEvidence | null;
 }
 
 export interface DoceoMeta {
@@ -822,6 +859,7 @@ export interface LessonSession {
   status: LessonSessionStatus;
   lessonRating?: LessonRating | null;
   v2State?: LessonFlowV2SessionState | null;
+  v2Evidence?: LessonSessionEvidence | null;
   residue?: LessonResidueSummary | null;
   topicDiscovery?: {
     topicSignature: string;

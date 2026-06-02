@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCheckpointEyebrow,
   deriveActiveLessonCardForSession,
   deriveConcept1EarlyDiagnostic,
   deriveConversationViewForSession,
@@ -8,10 +9,13 @@ import {
   deriveLessonVisualIntent,
   deriveNextStepCtaState,
   deriveNextStepCtaStateForSession,
+  deriveCheckpointResponseChips,
+  isAssessmentMoment,
   LESSON_WORKSPACE_VISIBLE_STAGES,
   getNextStepPrompt,
   getNextStepPromptForSession,
   getStageContextCopy,
+  shouldShowStageContextCopyForSession,
   getVisibleQuickActionDefinitions,
   getVisibleQuickActionDefinitionsForSession
 } from './lesson-workspace-ui';
@@ -207,6 +211,11 @@ describe('lesson workspace UI helpers', () => {
   it('defines the locked visible quick actions', () => {
     expect(getVisibleQuickActionDefinitions('practice')).toEqual([
       {
+        id: 'help-me-start',
+        label: 'Help me start',
+        prompt: 'Help me start this practice question with the first move only.'
+      },
+      {
         id: 'give-me-an-example',
         label: 'Give me an example',
         prompt: 'Give me a similar example that helps me see the pattern.'
@@ -215,13 +224,130 @@ describe('lesson workspace UI helpers', () => {
         id: 'explain-it-differently',
         label: 'Explain it differently',
         prompt: 'Give me a hint instead of the answer.'
-      },
-      {
-        id: 'help-me-start',
-        label: 'Help me start',
-        prompt: 'Help me start this practice question with the first move only.'
       }
     ]);
+  });
+
+  it('places Help me start first in the global quick-action order', () => {
+    for (const stage of LESSON_WORKSPACE_VISIBLE_STAGES) {
+      expect(getVisibleQuickActionDefinitions(stage)[0]?.id).toBe('help-me-start');
+    }
+
+    expect(getVisibleQuickActionDefinitions('orientation')[1]?.id).toBe('give-me-an-example');
+  });
+
+  it('suppresses generic stage context copy for v2 checkpoints that already show active-card context', () => {
+    const hiddenCheckpoints = [
+      'loop_teach',
+      'loop_example',
+      'loop_practice',
+      'loop_check',
+      'synthesis',
+      'independent_attempt',
+      'exit_check'
+    ] as const;
+
+    for (const activeCheckpoint of hiddenCheckpoints) {
+      expect(
+        shouldShowStageContextCopyForSession({
+          lessonFlowVersion: 'v2',
+          v2State: {
+            totalLoops: 1,
+            activeLoopIndex: 0,
+            activeCheckpoint,
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false
+          }
+        })
+      ).toBe(false);
+    }
+  });
+
+  it('keeps generic stage context copy visible for v2 start and v1 sessions', () => {
+    expect(
+      shouldShowStageContextCopyForSession({
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'start',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'orientation',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      })
+    ).toBe(true);
+
+    expect(
+      shouldShowStageContextCopyForSession({
+        lessonFlowVersion: 'v1',
+        v2State: null
+      })
+    ).toBe(true);
+  });
+
+  it('uses memory-based orientation composer placeholder copy', () => {
+    const copy = deriveLessonComposerCopy({
+      currentStage: 'orientation',
+      status: 'active',
+      softStuckCount: 0,
+      messages: []
+    });
+
+    expect(copy.placeholder).toMatch(/already know/i);
+    expect(copy.placeholder).not.toMatch(/lesson topic/i);
+  });
+
+  it('uses uncertainty-based orientation starter chip copy', () => {
+    const copy = deriveLessonComposerCopy(
+      {
+        currentStage: 'orientation',
+        status: 'active',
+        softStuckCount: 0,
+        messages: []
+      },
+      {
+        activeStageBucket: 'orientation',
+        expectsLearnerAnswer: true,
+        learnerActionCue: 'Your turn first: share one prior idea.'
+      }
+    );
+
+    const because = copy.helperChips.find((chip) => chip.id === 'because');
+    const shape = copy.helperChips.find((chip) => chip.id === 'shape-this');
+
+    expect(because?.text).toMatch(/not sure/i);
+    expect(shape?.text).toMatch(/prior knowledge|already know/i);
+    expect(shape?.text).not.toContain('giving away');
+  });
+
+  it('uses prior-knowledge orientation quick action prompts', () => {
+    const actions = getVisibleQuickActionDefinitions('orientation');
+    const help = actions.find((action) => action.id === 'help-me-start');
+    const example = actions.find((action) => action.id === 'give-me-an-example');
+
+    expect(help?.prompt).toMatch(/not sure what I already know/i);
+    expect(help?.prompt).toMatch(/without teaching me the lesson/i);
+    expect(example?.prompt).toMatch(/without teach|do not teach/i);
+  });
+
+  it('keeps concepts composer and help prompts unchanged', () => {
+    const copy = deriveLessonComposerCopy({
+      currentStage: 'concepts',
+      status: 'active',
+      softStuckCount: 0,
+      messages: []
+    });
+    const help = getVisibleQuickActionDefinitions('concepts').find((action) => action.id === 'help-me-start');
+
+    expect(copy.placeholder).toMatch(/own words/i);
+    expect(copy.placeholder).not.toContain('Explain the key idea in your own words.');
+    expect(help?.prompt).toMatch(/concepts/i);
   });
 
   it('maps v2 sessions onto the active checkpoint prompt copy without changing the simple rail stage', () => {
@@ -359,7 +485,7 @@ describe('lesson workspace UI helpers', () => {
       stateLabel: 'Key idea 1',
       title: 'Teach Loop 1',
       body: 'Teach the first core idea.',
-      ctaLabel: 'Check concept 1'
+      ctaLabel: 'Quick check'
     });
 
     expect(
@@ -483,6 +609,144 @@ describe('lesson workspace UI helpers', () => {
     });
   });
 
+  it('names the first concept in the pending early diagnostic CTA', () => {
+    const card = deriveActiveLessonCardForSession(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      {
+        flowV2: {
+          ...conversationLesson.flowV2,
+          concepts: [
+            {
+              name: 'Photosynthesis',
+              summary: 'Plants convert light into stored energy.',
+              detail: 'Chlorophyll captures light energy for the reaction.',
+              example: 'A leaf uses sunlight, water, and carbon dioxide to make glucose.'
+            }
+          ]
+        }
+      }
+    );
+
+    expect(card?.ctaLabel).toBe('Check: Photosynthesis');
+  });
+
+  it('falls back to a generic pending early diagnostic CTA when no concept is available', () => {
+    const card = deriveActiveLessonCardForSession(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      {
+        flowV2: {
+          ...conversationLesson.flowV2,
+          concepts: undefined
+        }
+      }
+    );
+
+    expect(card?.ctaLabel).toBe('Quick check');
+  });
+
+  it('uses learner-facing CTA labels for v2 practice and loop progression checkpoints', () => {
+    expect(
+      deriveActiveLessonCardForSession(
+        {
+          lessonFlowVersion: 'v2',
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_practice',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false
+          }
+        },
+        conversationLesson
+      )?.ctaLabel
+    ).toBe('Submit my attempt');
+
+    expect(
+      deriveActiveLessonCardForSession(
+        {
+          lessonFlowVersion: 'v2',
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 1,
+            activeCheckpoint: 'loop_teach',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false,
+            concept1EarlyDiagnosticCompleted: true
+          }
+        },
+        conversationLesson
+      )?.ctaLabel
+    ).toBe('See an example');
+
+    expect(
+      deriveActiveLessonCardForSession(
+        {
+          lessonFlowVersion: 'v2',
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_check',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false
+          }
+        },
+        conversationLesson
+      )?.ctaLabel
+    ).toBe('Next concept');
+
+    expect(
+      deriveActiveLessonCardForSession(
+        {
+          lessonFlowVersion: 'v2',
+          v2State: {
+            totalLoops: 2,
+            activeLoopIndex: 1,
+            activeCheckpoint: 'loop_check',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false
+          }
+        },
+        conversationLesson
+      )?.ctaLabel
+    ).toBe('Bring it together');
+  });
+
   it('derives a harness orientation/start moment from the v2 start checkpoint', () => {
     const moment = deriveLessonHarnessMomentForSession(
       {
@@ -556,7 +820,7 @@ describe('lesson workspace UI helpers', () => {
       activeStageBucket: 'concepts',
       learnerActionRequirement: 'can_continue',
       expectsLearnerAnswer: false,
-      primaryActionLabel: 'Check concept 1',
+      primaryActionLabel: 'Check: Core idea one',
       activeCard: expect.objectContaining({
         title: 'Teach Loop 1'
       })
@@ -600,7 +864,7 @@ describe('lesson workspace UI helpers', () => {
       learnerActionRequirement: 'answer_required',
       expectsLearnerAnswer: true,
       learnerActionCue: 'Your turn first: try the question or tap Help me start.',
-      primaryActionLabel: 'Check what stuck',
+      primaryActionLabel: 'Submit my attempt',
       activeCard: expect.objectContaining({
         title: 'Try Loop 1'
       })
@@ -715,7 +979,7 @@ describe('lesson workspace UI helpers', () => {
     });
 
     expect(deriveLessonComposerCopy(startSession, startMoment)).toMatchObject({
-      placeholder: 'Share what you already know about this lesson topic.',
+      placeholder: 'Name something you already know, or a question you want answered.',
       emptySubmitNudge: 'Type a lesson response first, or use a lesson helper.',
       helperChips: []
     });
@@ -1138,7 +1402,154 @@ describe('lesson workspace UI helpers', () => {
     ]);
   });
 
-  it('suppresses the redundant start mirror when the focused opening card is already showing it', () => {
+  it('suppresses redundant loop_teach card body mirrors from the visible conversation', () => {
+    const conversation = deriveConversationViewForSession(
+      {
+        lessonFlowVersion: 'v2',
+        status: 'active',
+        messages: [
+          createV2Message('loop-teach-mirror', 'Teach the first core idea.', {
+            checkpoint: 'loop_teach',
+            loopIndex: 0
+          })
+        ],
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual([]);
+  });
+
+  it('suppresses redundant loop_example card body mirrors from the visible conversation', () => {
+    const conversation = deriveConversationViewForSession(
+      {
+        lessonFlowVersion: 'v2',
+        status: 'active',
+        messages: [
+          createV2Message('loop-example-mirror', 'Walk through the first worked example.', {
+            checkpoint: 'loop_example',
+            loopIndex: 0
+          })
+        ],
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_example',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual([]);
+  });
+
+  it('suppresses redundant loop_practice card body mirrors from the visible conversation', () => {
+    const conversation = deriveConversationViewForSession(
+      {
+        lessonFlowVersion: 'v2',
+        status: 'active',
+        messages: [
+          createV2Message('loop-practice-mirror', 'Try the first task on your own.', {
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          })
+        ],
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_practice',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual([]);
+  });
+
+  it('suppresses redundant loop_check card body mirrors from the visible conversation', () => {
+    const conversation = deriveConversationViewForSession(
+      {
+        lessonFlowVersion: 'v2',
+        status: 'active',
+        messages: [
+          createV2Message('loop-check-mirror', 'Explain the first idea in your own words.', {
+            checkpoint: 'loop_check',
+            loopIndex: 0
+          })
+        ],
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_check',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual([]);
+  });
+
+  it('keeps historical loop messages when the same checkpoint type is active on a later loop', () => {
+    const conversation = deriveConversationViewForSession(
+      {
+        lessonFlowVersion: 'v2',
+        status: 'active',
+        messages: [
+          createV2Message('loop-1-teach-history', 'Teach the first core idea.', {
+            checkpoint: 'loop_teach',
+            loopIndex: 0
+          }),
+          createV2Message('loop-2-teach-active', 'Teach the second core idea.', {
+            checkpoint: 'loop_teach',
+            loopIndex: 1
+          })
+        ],
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 1,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect([
+      ...conversation.collapsedMessages.map((entry) => entry.message.id),
+      ...conversation.visibleMessages.map((entry) => entry.message.id)
+    ]).toContain('loop-1-teach-history');
+  });
+
+  it('does not suppress start checkpoint body mirrors from the visible conversation', () => {
     const conversation = deriveConversationViewForSession(
       {
         lessonFlowVersion: 'v2',
@@ -1178,9 +1589,62 @@ describe('lesson workspace UI helpers', () => {
 
     expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual([
       'start-stage',
+      'start-teach',
       'start-question'
     ]);
     expect(conversation.collapsedMessages).toEqual([]);
+  });
+
+  it('does not suppress user messages even when they match the active checkpoint card body', () => {
+    const conversation = deriveConversationViewForSession(
+      {
+        lessonFlowVersion: 'v2',
+        status: 'active',
+        messages: [
+          createV2Message('loop-user-same-content', 'Teach the first core idea.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_teach',
+            loopIndex: 0
+          })
+        ],
+        v2State: {
+          totalLoops: 2,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      conversationLesson
+    );
+
+    expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual(['loop-user-same-content']);
+  });
+
+  it('leaves v1 conversation messages unchanged', () => {
+    const conversation = deriveConversationViewForSession({
+      lessonFlowVersion: 'v1',
+      status: 'active',
+      messages: [
+        createAssistantStageMessage('orientation', 'Teach the first core idea.'),
+        {
+          id: 'v1-user',
+          role: 'user',
+          type: 'response',
+          content: 'I know one thing.',
+          stage: 'orientation',
+          timestamp: '2026-04-22T08:05:00.000Z',
+          metadata: null
+        }
+      ],
+      v2State: null
+    });
+
+    expect(conversation.visibleMessages.map((entry) => entry.message.id)).toEqual(['msg-orientation', 'v1-user']);
   });
 
   it('derives aligned interpretation options for metaphor quick checks', () => {
@@ -1291,7 +1755,7 @@ describe('lesson workspace UI helpers', () => {
     }
   });
 
-  it('prefers active card image resources before concept resources and fallback imagery', () => {
+  it('prefers active card image resources before concept resources', () => {
     const session = {
       subject: 'Economics',
       topicId: 'topic-resource',
@@ -1353,6 +1817,36 @@ describe('lesson workspace UI helpers', () => {
       eyebrow: 'Example',
       caption: 'A real market stall showing sellers competing.'
     });
+  });
+
+  it('does not derive fallback visual intent when no real image resource exists', () => {
+    const session = {
+      subject: 'Geography',
+      topicId: 'topic-no-resource',
+      topicTitle: 'Biomes and ecosystems',
+      currentStage: 'concepts' as const,
+      status: 'active' as const,
+      softStuckCount: 0,
+      messages: [],
+      lessonFlowVersion: 'v2' as const,
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach' as const,
+        revisionAttemptCount: 0,
+        remediationStep: 'none' as const,
+        labelBucket: 'concepts' as const,
+        skippedGaps: [],
+        needsTeacherReview: false,
+        concept1EarlyDiagnosticCompleted: true
+      }
+    };
+    const lesson = {
+      flowV2: conversationLesson.flowV2
+    } as Pick<Lesson, 'flowV2'>;
+    const moment = deriveLessonHarnessMomentForSession(session, lesson);
+
+    expect(deriveLessonVisualIntent({ lessonSession: session, lesson, lessonHarnessMoment: moment })).toBeNull();
   });
 
   it('derives sense-based options for imagery quick checks', () => {
@@ -1419,5 +1913,270 @@ describe('lesson workspace UI helpers', () => {
       ],
       correctOptionId: 'a'
     });
+  });
+
+  // --- Prompt 7: Checkpoint eyebrow + assessment distinction ---
+
+  it('buildCheckpointEyebrow tutor_concept returns Teaching', () => {
+    expect(buildCheckpointEyebrow('tutor_concept')).toBe('Teaching');
+  });
+
+  it('buildCheckpointEyebrow retrieval_check returns Concept check', () => {
+    expect(buildCheckpointEyebrow('retrieval_check')).toBe('Concept check');
+  });
+
+  it('buildCheckpointEyebrow exit_check returns Final check', () => {
+    expect(buildCheckpointEyebrow('exit_check')).toBe('Final check');
+  });
+
+  it('buildCheckpointEyebrow learner_practice returns Your Turn', () => {
+    expect(buildCheckpointEyebrow('learner_practice')).toBe('Your Turn');
+  });
+
+  it('isAssessmentMoment retrieval_check returns true', () => {
+    expect(isAssessmentMoment('retrieval_check')).toBe(true);
+  });
+
+  it('isAssessmentMoment exit_check returns true', () => {
+    expect(isAssessmentMoment('exit_check')).toBe(true);
+  });
+
+  it('isAssessmentMoment tutor_concept returns false', () => {
+    expect(isAssessmentMoment('tutor_concept')).toBe(false);
+  });
+
+  it('isAssessmentMoment learner_practice returns false', () => {
+    expect(isAssessmentMoment('learner_practice')).toBe(false);
+  });
+
+  it('derives three loop_teach checkpoint response chips using the concept name', () => {
+    const chips = deriveCheckpointResponseChips(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      {
+        flowV2: {
+          ...conversationLesson.flowV2,
+          concepts: [
+            {
+              ...conversationLesson.flowV2.concepts[0],
+              name: 'Photosynthesis'
+            }
+          ]
+        }
+      }
+    );
+
+    expect(chips).toHaveLength(3);
+    expect(chips[0]).toMatchObject({
+      id: 'got-it',
+      label: expect.stringContaining('Photosynthesis')
+    });
+  });
+
+  it('includes the loop_teach concept name in the first chip label and prompt', () => {
+    const chips = deriveCheckpointResponseChips(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      {
+        flowV2: {
+          ...conversationLesson.flowV2,
+          concepts: [
+            {
+              ...conversationLesson.flowV2.concepts[0],
+              name: 'Photosynthesis'
+            }
+          ]
+        }
+      }
+    );
+
+    expect(chips[0]?.label).toContain('Photosynthesis');
+    expect(chips[0]?.prompt).toEqual(expect.any(String));
+    expect(chips[0]?.prompt).toContain('Photosynthesis');
+  });
+
+  it('sets the final loop_teach chip to the ask escape with a null prompt', () => {
+    const chips = deriveCheckpointResponseChips(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      { flowV2: conversationLesson.flowV2 }
+    );
+
+    expect(chips.at(-1)).toMatchObject({
+      id: 'ask',
+      label: 'Ask something specific',
+      prompt: null
+    });
+  });
+
+  it('falls back to the loop teaching title when loop_teach concept names are unavailable', () => {
+    const chips = deriveCheckpointResponseChips(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      {
+        flowV2: {
+          ...conversationLesson.flowV2,
+          concepts: undefined
+        }
+      }
+    );
+
+    expect(chips[0]?.label).toContain('Teach Loop 1');
+    expect(chips[0]?.prompt).toContain('Teach Loop 1');
+  });
+
+  it('falls back to this concept when loop_teach has no concept name or teaching title', () => {
+    const chips = deriveCheckpointResponseChips(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 10,
+          activeCheckpoint: 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      {
+        flowV2: {
+          ...conversationLesson.flowV2,
+          concepts: []
+        }
+      }
+    );
+
+    expect(chips[0]?.label).toContain('this concept');
+    expect(chips[0]?.prompt).toContain('this concept');
+  });
+
+  it('derives three loop_example checkpoint response chips with the ask escape last', () => {
+    const chips = deriveCheckpointResponseChips(
+      {
+        lessonFlowVersion: 'v2',
+        v2State: {
+          totalLoops: 1,
+          activeLoopIndex: 0,
+          activeCheckpoint: 'loop_example',
+          revisionAttemptCount: 0,
+          remediationStep: 'none',
+          labelBucket: 'concepts',
+          skippedGaps: [],
+          needsTeacherReview: false
+        }
+      },
+      { flowV2: conversationLesson.flowV2 }
+    );
+
+    expect(chips).toHaveLength(3);
+    expect(chips[0]?.prompt).toEqual(expect.any(String));
+    expect(chips[1]?.prompt).toEqual(expect.any(String));
+    expect(chips.at(-1)).toMatchObject({
+      id: 'ask',
+      prompt: null
+    });
+  });
+
+  it.each(['loop_check', 'loop_practice', 'start'] as const)(
+    'returns no checkpoint response chips at %s',
+    (activeCheckpoint) => {
+      expect(
+        deriveCheckpointResponseChips(
+          {
+            lessonFlowVersion: 'v2',
+            v2State: {
+              totalLoops: 1,
+              activeLoopIndex: 0,
+              activeCheckpoint,
+              revisionAttemptCount: 0,
+              remediationStep: 'none',
+              labelBucket: 'concepts',
+              skippedGaps: [],
+              needsTeacherReview: false
+            }
+          },
+          { flowV2: conversationLesson.flowV2 }
+        )
+      ).toEqual([]);
+    }
+  );
+
+  it('returns no checkpoint response chips for v1 sessions', () => {
+    expect(
+      deriveCheckpointResponseChips(
+        {
+          lessonFlowVersion: 'v1',
+          v2State: null
+        },
+        { flowV2: conversationLesson.flowV2 }
+      )
+    ).toEqual([]);
+  });
+
+  it('returns no checkpoint response chips when the lesson is unavailable', () => {
+    expect(
+      deriveCheckpointResponseChips(
+        {
+          lessonFlowVersion: 'v2',
+          v2State: {
+            totalLoops: 1,
+            activeLoopIndex: 0,
+            activeCheckpoint: 'loop_teach',
+            revisionAttemptCount: 0,
+            remediationStep: 'none',
+            labelBucket: 'concepts',
+            skippedGaps: [],
+            needsTeacherReview: false
+          }
+        },
+        null
+      )
+    ).toEqual([]);
   });
 });

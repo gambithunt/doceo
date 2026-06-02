@@ -2,31 +2,29 @@ import { describe, expect, it } from 'vitest';
 import {
   LESSON_STAGE_ORDER,
   applyLessonAssistantResponse,
-  buildDynamicLessonFromTopic,
-  buildDynamicLessonFlowV2FromTopic,
-  buildDynamicQuestionsForLesson,
   buildInitialLessonMessages,
   buildInitialLessonMessagesForSession,
+  buildStageLearnerPrompt,
   buildStageStartMessage,
-  buildLocalLessonChatResponse,
+  buildWarmLessonOpening,
+  buildV2CheckpointMessages,
   buildLessonSessionFromTopic,
   buildLessonEvaluationAssistantMessage,
   buildLessonEvaluationRequest,
   calculateNextRevisionInterval,
-  classifyLessonTopicShape,
   classifyLessonMessage,
+  canonicalStageTeachingContent,
   createDefaultLearnerProfile,
   deriveLessonProgressDisplay,
   getLessonSectionForStage,
   getNextStage,
   getStageNumber,
-  getSubjectLens,
   parseDoceoMeta,
   repairLessonSessionMessages,
+  shouldRepairStageTeachingMessage,
   stripDoceoMeta,
   updateLearnerProfile
 } from '$lib/lesson-system';
-import { validateConceptRecords } from '$lib/lesson-concept-contract';
 import { createInitialState, normalizeAppState } from '$lib/data/platform';
 import type { Lesson, LessonSession } from '$lib/types';
 
@@ -440,7 +438,10 @@ describe('lesson-system', () => {
     expect(normalized.lessonSessions[0]?.v2State).toEqual({
       ...v2Session.v2State,
       cardSubstate: 'default',
-      concept1EarlyDiagnosticCompleted: false
+      concept1EarlyDiagnosticCompleted: false,
+      compress: false,
+      bridgeNeeded: false,
+      misconceptionTarget: null
     });
   });
 
@@ -509,51 +510,6 @@ describe('lesson-system', () => {
       visibleStageCount: 6,
       progressPercent: 100
     });
-  });
-
-  it('builds a lesson with all 9 sections around the exact chosen subject and topic', () => {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId: 'subject-english',
-      subjectName: 'English Home Language',
-      grade: 'Grade 6',
-      topicTitle: 'Verbs',
-      topicDescription: 'Focus on action and helping verbs in simple sentences.',
-      curriculumReference: 'CAPS · Grade 6 · English Home Language'
-    });
-
-    expect(lesson.subjectId).toBe('subject-english');
-    expect(lesson.title).toContain('Verbs');
-
-    // All 9 sections must be present with non-empty title and body
-    const sections = [
-      lesson.orientation, lesson.mentalModel, lesson.concepts,
-      lesson.guidedConstruction, lesson.workedExample, lesson.practicePrompt,
-      lesson.commonMistakes, lesson.transferChallenge, lesson.summary
-    ];
-    for (const section of sections) {
-      expect(section).toBeDefined();
-      expect(section.title.length).toBeGreaterThan(0);
-      expect(section.body.length).toBeGreaterThan(0);
-    }
-
-    // Topic name should appear in content
-    expect(lesson.orientation.body.toLowerCase()).toContain('verbs');
-    expect(lesson.concepts.body.toLowerCase()).toContain('verbs');
-    expect(lesson.workedExample.body.toLowerCase()).toContain('verbs');
-  });
-
-  it('construction stage content is distinct from concepts stage content', () => {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 6',
-      topicTitle: 'Fractions',
-      topicDescription: 'Adding and subtracting fractions with unlike denominators.',
-      curriculumReference: 'CAPS · Grade 6 · Mathematics'
-    });
-
-    expect(lesson.guidedConstruction.body).not.toBe(lesson.concepts.body);
-    expect(lesson.guidedConstruction.body.toLowerCase()).toContain('fractions');
   });
 
   it('buildLessonSessionFromTopic initialises currentStage to orientation', () => {
@@ -638,7 +594,148 @@ describe('lesson-system', () => {
       })
     );
     expect(session.residue).toBeNull();
-    expect(session.messages[1]?.content).toContain('Start block');
+    expect(session.messages[1]?.content).toBe(buildWarmLessonOpening(lesson));
+    expect(session.messages[2]?.content).toBe(buildStageLearnerPrompt(lesson, 'orientation'));
+    expect(session.messages[2]?.content).not.toContain('Start block');
+  });
+
+  it('buildV2CheckpointMessages for start returns stage start plus warm opener and teaching message', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0]!,
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      v2State: {
+        totalLoops: 0,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'orientation',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const messages = buildV2CheckpointMessages(lesson, session);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[0]?.type).toBe('stage_start');
+    expect(messages[1]?.type).toBe('teaching');
+    expect(messages[2]?.type).toBe('teaching');
+  });
+
+  it('buildV2CheckpointMessages for start does not reveal flowV2 start body before the student answers', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0]!,
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      v2State: {
+        totalLoops: 0,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'orientation',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const teaching = buildV2CheckpointMessages(lesson, session)[2];
+
+    expect(teaching?.content).not.toContain(lesson.flowV2.start.body);
+  });
+
+  it('buildV2CheckpointMessages for start uses the orientation prior knowledge prompt', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0]!,
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      v2State: {
+        totalLoops: 0,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'orientation',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const teaching = buildV2CheckpointMessages(lesson, session)[2];
+
+    expect(teaching?.content).toBe(buildStageLearnerPrompt(lesson, 'orientation'));
+  });
+
+  it('buildV2CheckpointMessages for start inserts a warm opener before the prior knowledge prompt', () => {
+    const state = createInitialState();
+    const lesson = {
+      ...state.lessons[0]!,
+      lessonFlowVersion: 'v2' as const,
+      flowV2: {
+        groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'] as const,
+        start: { title: 'Start', body: 'Start block' },
+        loops: [],
+        synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+        independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+        exitCheck: { title: 'Exit Check', body: 'Exit body' }
+      }
+    };
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      v2State: {
+        totalLoops: 0,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'orientation',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+    const topicName = lesson.title.split(':')[1]?.trim() || lesson.title;
+
+    const messages = buildV2CheckpointMessages(lesson, session);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[1]?.content).toContain(topicName);
+    expect(messages[1]?.content).not.toMatch(/what do you already know/i);
+    expect(messages[2]?.content).toBe(buildStageLearnerPrompt(lesson, 'orientation'));
   });
 
   it('advances v2 loop checkpoints in order while keeping learner-facing labels simple', () => {
@@ -1085,15 +1182,104 @@ describe('lesson-system', () => {
     expect(session.v2State?.activeCheckpoint).toBe('loop_example');
   });
 
-  it('buildInitialLessonMessages for orientation includes orientation body', () => {
+  it('buildStageLearnerPrompt asks a direct prior knowledge question for orientation', () => {
     const state = createInitialState();
-    const lesson = state.lessons[0];
+    const lesson = state.lessons[0]!;
+
+    const prompt = buildStageLearnerPrompt(lesson, 'orientation');
+
+    expect(prompt).toMatch(/what do you already know/i);
+    expect(prompt).not.toMatch(/connect with/i);
+  });
+
+  it('buildWarmLessonOpening frames the extracted topic without asking the prior knowledge question', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const topicName = lesson.title.split(':')[1]?.trim() || lesson.title;
+
+    const opening = buildWarmLessonOpening(lesson);
+
+    expect(opening).toContain(`**${topicName}**`);
+    expect(opening).not.toMatch(/what do you already know/i);
+  });
+
+  it('buildInitialLessonMessages for orientation returns stage start plus two teaching messages', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
     const messages = buildInitialLessonMessages(lesson, 'orientation');
 
-    expect(messages.length).toBe(2);
+    expect(messages.length).toBe(3);
     expect(messages[0].type).toBe('stage_start');
+  });
+
+  it('buildInitialLessonMessages for orientation inserts a warm opener before the prior knowledge prompt', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const topicName = lesson.title.split(':')[1]?.trim() || lesson.title;
+    const messages = buildInitialLessonMessages(lesson, 'orientation');
+
+    expect(messages).toHaveLength(3);
+    expect(messages[1]?.content).toContain(topicName);
+    expect(messages[1]?.content).not.toMatch(/what do you already know/i);
+    expect(messages[2]?.content).toMatch(/what do you already know/i);
+  });
+
+  it('buildInitialLessonMessages for orientation emits teaching assistant messages after the stage start', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const messages = buildInitialLessonMessages(lesson, 'orientation');
+
     expect(messages[1].role).toBe('assistant');
-    expect(messages[1].content).toContain(lesson.orientation.body);
+    expect(messages[1].type).toBe('teaching');
+    expect(messages[2].role).toBe('assistant');
+    expect(messages[2].type).toBe('teaching');
+  });
+
+  it('buildInitialLessonMessages for orientation does not reveal the orientation body before the student answers', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const messages = buildInitialLessonMessages(lesson, 'orientation');
+
+    expect(messages[1]?.content).not.toContain(lesson.orientation.body);
+  });
+
+  it('buildInitialLessonMessages for orientation contains the prior knowledge prompt', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const messages = buildInitialLessonMessages(lesson, 'orientation');
+
+    expect(messages[2]?.content).toBe(buildStageLearnerPrompt(lesson, 'orientation'));
+  });
+
+  it('buildInitialLessonMessages for construction still prepends guided construction body', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const messages = buildInitialLessonMessages(lesson, 'construction');
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]?.content).toContain(lesson.guidedConstruction.body);
+  });
+
+  it('canonicalStageTeachingContent for orientation resolves to the prior knowledge prompt', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+
+    expect(canonicalStageTeachingContent(lesson, 'orientation', 1)).toBe(buildWarmLessonOpening(lesson));
+    expect(canonicalStageTeachingContent(lesson, 'orientation', 2)).toBe(
+      buildStageLearnerPrompt(lesson, 'orientation')
+    );
+  });
+
+  it('shouldRepairStageTeachingMessage does not flag the new orientation prior knowledge prompt', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+
+    expect(
+      shouldRepairStageTeachingMessage(
+        { content: buildStageLearnerPrompt(lesson, 'orientation'), stage: 'orientation' },
+        1
+      )
+    ).toBe(false);
   });
 
   // Backward-compatibility: old stage names must not crash
@@ -1153,53 +1339,6 @@ describe('lesson-system', () => {
 
     expect(normalized.lessonSessions[0].currentStage).toBe('orientation');
     expect(normalized.lessonSessions[0].stagesCompleted).toContain('construction');
-  });
-
-  // T1.3: fallback question reply must not echo student message
-  it('fallback question reply does not echo the student message text', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0];
-    const lessonSession = makeMockSession(lesson);
-    const studentMessage = 'What is the difference between a numerator and a denominator?';
-
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession,
-        message: studentMessage,
-        messageType: 'question'
-      },
-      lesson
-    );
-
-    expect(result.displayContent).not.toContain('What is the difference between a numerator');
-    expect(result.displayContent).not.toContain('numerator and a denominator');
-    expect(result.displayContent.length).toBeGreaterThan(20);
-  });
-
-  // T1.4: lesson questions should be bounded and answerable, not broad intuition prompts
-  it('dynamic lesson questions use a bounded check and a structured task frame', () => {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 6',
-      topicTitle: 'Fractions',
-      topicDescription: 'Adding and subtracting fractions.',
-      curriculumReference: 'CAPS · Grade 6 · Mathematics'
-    });
-    const questions = buildDynamicQuestionsForLesson(lesson, 'Mathematics', 'Fractions');
-    const checkQuestion = questions[0]!;
-    const structuredQuestion = questions[1]!;
-
-    expect(checkQuestion.type).toBe('multiple-choice');
-    expect(checkQuestion.options).toHaveLength(4);
-    expect(checkQuestion.expectedAnswer.toLowerCase()).not.toBe('fractions');
-    expect(checkQuestion.prompt.toLowerCase()).not.toContain('practical example');
-    expect(structuredQuestion.prompt).toContain('Use this task');
-    expect(structuredQuestion.prompt).toContain(lesson.practicePrompt.body);
-    expect(structuredQuestion.prompt).toContain('the first step');
   });
 
   // T3.5: AI message history is capped at 20
@@ -1311,25 +1450,6 @@ describe('lesson-system', () => {
     expect(content).toBe(lesson.summary.body);
   });
 
-  it('P1: complete action in local fallback includes transferChallenge body', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0];
-    const checkSession = makeMockSession(lesson, { currentStage: 'check' });
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession: checkSession,
-        message: 'I understand — the rule is add the common difference to find the next term.',
-        messageType: 'response'
-      },
-      lesson
-    );
-    expect(result.metadata?.action).toBe('complete');
-    expect(result.displayContent).toContain(lesson.transferChallenge.body);
-  });
-
   it('P1: stage opening prompts are concrete and bounded instead of using the old slow-down wording', () => {
     const state = createInitialState();
     const lesson = state.lessons[0]!;
@@ -1381,612 +1501,102 @@ describe('lesson-system', () => {
     expect(repairedMessage?.content).not.toContain('Tell me where you want to slow down.');
   });
 
-  it('local fallback treats a short but meaningful concepts answer as progression-ready', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0];
-    const session = makeMockSession(lesson, { currentStage: 'concepts' });
+  // --- Prompt 6: Wire routing ---
 
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession: session,
-        message: 'It adds 4 each time.',
-        messageType: 'response'
-      },
-      lesson
-    );
-
-    expect(result.metadata?.action).toBe('advance');
-    expect(result.metadata?.next_stage).toBe('construction');
-  });
-
-  it('local fallback keeps concepts-stage acknowledgement-only replies on stay before the soft-stuck threshold', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0];
-    const session = makeMockSession(lesson, {
-      currentStage: 'concepts',
-      softStuckCount: 1
-    });
-
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession: session,
-        message: 'ok',
-        messageType: 'response'
-      },
-      lesson
-    );
-
-    expect(result.metadata?.action).toBe('stay');
-    expect(result.metadata?.next_stage).toBeNull();
-  });
-
-  it('local fallback keeps vague concepts replies on stay before the soft-stuck threshold', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0];
-    const session = makeMockSession(lesson, {
-      currentStage: 'concepts',
-      softStuckCount: 1
-    });
-
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession: session,
-        message: 'maybe',
-        messageType: 'response'
-      },
-      lesson
-    );
-
-    expect(result.metadata?.action).toBe('stay');
-    expect(result.metadata?.next_stage).toBeNull();
-  });
-
-  it('local fallback does not return another stay after the concepts soft-stuck threshold', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0];
-    const session = makeMockSession(lesson, {
-      currentStage: 'concepts',
-      softStuckCount: 2
-    });
-
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession: session,
-        message: 'ok',
-        messageType: 'response'
-      },
-      lesson
-    );
-
-    expect(result.metadata?.action).not.toBe('stay');
-    expect(result.metadata?.action).toBe('advance');
-    expect(result.metadata?.next_stage).toBe('construction');
-  });
-
-  it('local fallback turns Help me start into a scaffold without a fresh bottom question', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0]!;
-    const session = makeMockSession(lesson, {
-      currentStage: 'practice',
-      messages: [
-        {
-          id: 'assistant-practice-question',
-          role: 'assistant',
-          type: 'teaching',
-          content:
-            'Exactly! By building ships, the Greeks could travel further for trade and fishing.\n\nNow, let’s wrap this up. Can you summarize how the ocean, as a key resource, influenced the Greek civilization in terms of food, trade, and shipbuilding? What’s the big picture?',
-          stage: 'practice',
-          timestamp: new Date().toISOString(),
-          metadata: null
-        }
-      ]
-    });
-
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession: session,
-        message: 'Help me start this practice question with the first move only.',
-        messageType: 'response',
-        supportIntent: 'help_me_start'
-      },
-      lesson
-    );
-
-    expect(result.metadata?.action).toBe('stay');
-    expect(result.metadata?.response_mode).toBe('support');
-    expect(result.metadata?.support_intent).toBe('help_me_start');
-    expect(result.displayContent).toContain('food, trade, shipbuilding');
-    expect(result.displayContent).toContain('Start with one sentence that states the main idea');
-    expect(result.displayContent).toContain('Try just that first move now.');
-    expect(result.displayContent).not.toContain('Identify the rule, clue, category, or quantity');
-  });
-
-  it('local fallback narrows multi-part examples questions to the first concrete part when helping the learner start', () => {
-    const state = createInitialState();
-    const lesson = state.lessons[0]!;
-    const session = makeMockSession(lesson, {
-      currentStage: 'examples',
-      messages: [
-        {
-          id: 'assistant-examples-question',
-          role: 'assistant',
-          type: 'teaching',
-          content:
-            "You've captured the essence of how Ancient Egypt functioned beautifully!\n\nNow, let’s connect this to the bigger picture. How do you think these elements would impact the daily lives of the people living in Ancient Egypt? What do you think they valued most based on these components?",
-          stage: 'examples',
-          timestamp: new Date().toISOString(),
-          metadata: null
-        }
-      ]
-    });
-
-    const result = buildLocalLessonChatResponse(
-      {
-        student: state.profile,
-        learnerProfile: state.learnerProfile,
-        lesson,
-        lessonSession: session,
-        message: 'Help me start reading this example.',
-        messageType: 'response',
-        supportIntent: 'help_me_start'
-      },
-      lesson
-    );
-
-    expect(result.displayContent).toContain('Answer the first part only.');
-    expect(result.displayContent).toContain('Choose one element already mentioned above');
-    expect(result.displayContent).toContain('Try just that first move now.');
-  });
-
-  // ─── Phase 2: Subject lenses ────────────────────────────────────────────────
-
-  it('P2: getSubjectLens returns unique lens for Life Sciences', () => {
-    const lens = getSubjectLens('Life Sciences');
-    expect(lens.conceptWord).not.toBe('core idea');
-    expect(lens.conceptWord.toLowerCase()).toContain('biolog');
-  });
-
-  it('P2: getSubjectLens returns unique lens for Physical Sciences', () => {
-    const lens = getSubjectLens('Physical Sciences');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/law|formula|principle/);
-  });
-
-  it('P2: getSubjectLens returns unique lens for History', () => {
-    const lens = getSubjectLens('History');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/histor|cause|consequence/);
-  });
-
-  it('P2: getSubjectLens returns unique lens for Geography', () => {
-    const lens = getSubjectLens('Geography');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/spatial|pattern|process/);
-  });
-
-  it('P2: getSubjectLens returns unique lens for Accounting', () => {
-    const lens = getSubjectLens('Accounting');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/financ|account|econom/);
-  });
-
-  it('P2: getSubjectLens returns unique lens for Business Studies', () => {
-    const lens = getSubjectLens('Business Studies');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/financ|business|econom/);
-  });
-
-  it('P2: getSubjectLens returns unique lens for Computer Applications Technology', () => {
-    const lens = getSubjectLens('Computer Applications Technology');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/system|algorithm|component/);
-  });
-
-  it('P2: getSubjectLens returns unique lens for Information Technology', () => {
-    const lens = getSubjectLens('Information Technology');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/system|algorithm|component/);
-  });
-
-  it('P2: getSubjectLens returns unique lens for Creative Arts', () => {
-    const lens = getSubjectLens('Creative Arts');
-    expect(lens.conceptWord.toLowerCase()).toMatch(/design|element|technique/);
-  });
-
-  it('P2: getSubjectLens accepts grade and returns grade-calibrated example for Math foundation', () => {
-    const lensF = getSubjectLens('Mathematics', 'Grade 5');
-    const lensS = getSubjectLens('Mathematics', 'Grade 12');
-    expect(lensF.example).not.toBe(lensS.example);
-  });
-
-  it('P2: getSubjectLens Mathematics Grade 5 uses concrete language', () => {
-    const lens = getSubjectLens('Mathematics', 'Grade 5');
-    const combined = lens.example.toLowerCase() + lens.actionWord.toLowerCase();
-    expect(combined).toMatch(/whole number|count|concrete|step/);
-  });
-
-  it('P2: getSubjectLens Mathematics Grade 12 uses abstract language', () => {
-    const lens = getSubjectLens('Mathematics', 'Grade 12');
-    const combined = lens.example.toLowerCase() + lens.evidenceWord.toLowerCase();
-    expect(combined).toMatch(/function|proof|justif|formal|equat|theorem/i);
-  });
-
-  it('P2: buildDynamicLessonFromTopic Grade 12 guidedConstruction differs from Grade 5', () => {
-    const lessonGr5 = buildDynamicLessonFromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 5',
-      topicTitle: 'Fractions',
-      topicDescription: 'Equal parts.',
-      curriculumReference: 'CAPS · Grade 5 · Mathematics'
-    });
-    const lessonGr12 = buildDynamicLessonFromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 12',
-      topicTitle: 'Fractions',
-      topicDescription: 'Algebraic fractions.',
-      curriculumReference: 'CAPS · Grade 12 · Mathematics'
-    });
-    expect(lessonGr5.guidedConstruction.body).not.toBe(lessonGr12.guidedConstruction.body);
-  });
-
-  // ─── Phase 3: Summary rewrite ────────────────────────────────────────────────
-
-  it('P3: dynamic lesson summary contains core rule reference', () => {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 8',
-      topicTitle: 'Linear Equations',
-      topicDescription: 'Solving one-variable equations.',
-      curriculumReference: 'CAPS · Grade 8 · Mathematics'
-    });
-    const summaryLower = lesson.summary.body.toLowerCase();
-    // Must contain all three parts: rule, mistake warning, transfer hook
-    expect(summaryLower).toMatch(/core|rule|key/);
-    expect(summaryLower).toMatch(/watch out|mistake|avoid|common error/);
-    expect(summaryLower).toMatch(/transfer|ready|if you can/i);
-  });
-
-  it('P3: dynamic lesson summary references the lesson misconception', () => {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId: 'subject-science',
-      subjectName: 'Physical Sciences',
-      grade: 'Grade 10',
-      topicTitle: 'Newton\'s Laws',
-      topicDescription: 'Forces and motion.',
-      curriculumReference: 'CAPS · Grade 10 · Physical Sciences'
-    });
-    // Extract the actual misconception text — it follows " is " in the commonMistakes body
-    const isIdx = lesson.commonMistakes.body.indexOf(' is ');
-    const misconceptionText = (isIdx >= 0 ? lesson.commonMistakes.body.slice(isIdx + 4) : lesson.commonMistakes.body)
-      .toLowerCase().split(' ').slice(0, 5).join(' ');
-    // Summary's "Watch out for" section should share the same misconception wording
-    expect(lesson.summary.body.toLowerCase()).toContain(misconceptionText);
-  });
-
-  // ─── Concept card clarification via fallback ─────────────────────────────
-
-  it('concept card question returns stay action when concept is found in keyConcepts', () => {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId: 'subject-geo',
-      subjectName: 'Geography',
-      grade: 'Grade 10',
-      topicTitle: 'Climate Zones',
-      topicDescription: 'Types of climate zones.',
-      curriculumReference: 'CAPS · Grade 10 · Geography'
-    });
-    // Inject a known concept name
-    lesson.keyConcepts = [
-      {
-        name: 'Impact on Ecosystems',
-        summary: 'How climate affects ecosystems.',
-        detail: 'Detailed explanation of ecosystem impact.',
-        example: 'Example of ecosystem impact.'
+  function makeV2LoopCheckSession(lesson: Lesson): LessonSession {
+    return makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_check',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
       }
-    ];
-    const session = makeMockSession(lesson, { currentStage: 'concepts' });
-    const message = '[CONCEPT: Impact on Ecosystems]\n[STUDENT_HAS_READ: How climate affects ecosystems. Detailed explanation.]\nCan you explain this differently?';
+    });
+  }
 
-    const result = buildLocalLessonChatResponse(
-      { student: { id: 's1', fullName: 'Test', email: '', role: 'student', grade: 'Grade 10', gradeId: 'grade-10', curriculum: 'CAPS', curriculumId: 'caps', country: 'ZA', countryId: 'za', term: 'Term 1', schoolYear: '2026', recommendedStartSubjectId: null, recommendedStartSubjectName: null },
-        learnerProfile: createDefaultLearnerProfile('s1'),
-        lesson, lessonSession: session, message, messageType: 'question' },
-      lesson
-    );
-
-    expect(result.metadata?.action).toBe('stay');
-    expect(result.displayContent).toContain('Impact on Ecosystems');
+  it('applyLessonAssistantResponse at loop_check with clean first-attempt result sets compress=true', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeV2LoopCheckSession(lesson);
+    const updated = applyLessonAssistantResponse(session, {
+      id: 'msg-advance-1',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Great work.',
+      stage: 'concepts',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.9,
+        lesson_score: 0.9,
+        must_hit_concepts_met: ['gradient'],
+        missing_must_hit_concepts: [],
+        critical_misconceptions: [],
+        profile_update: {}
+      }
+    });
+    expect(updated.v2State?.compress).toBe(true);
   });
 
-  it('concept card question returns stay (not side_thread) when concept is NOT in keyConcepts but STUDENT_HAS_READ is present', () => {
-    const lesson = buildDynamicLessonFromTopic({
-      subjectId: 'subject-geo',
-      subjectName: 'Geography',
-      grade: 'Grade 10',
-      topicTitle: 'Climate Zones',
-      topicDescription: 'Types of climate zones.',
-      curriculumReference: 'CAPS · Grade 10 · Geography'
+  it('applyLessonAssistantResponse at loop_check with missing concepts sets bridgeNeeded=true', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeV2LoopCheckSession(lesson);
+    const updated = applyLessonAssistantResponse(session, {
+      id: 'msg-advance-2',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Not quite.',
+      stage: 'concepts',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.55,
+        lesson_score: 0.55,
+        must_hit_concepts_met: [],
+        missing_must_hit_concepts: ['y-intercept'],
+        critical_misconceptions: [],
+        profile_update: {}
+      }
     });
-    // keyConcepts has generic names — concept name won't match
-    const session = makeMockSession(lesson, { currentStage: 'concepts' });
-    const message = '[CONCEPT: Impact on Ecosystems and Human Life]\n[STUDENT_HAS_READ: Plants and animals depend on stable climates. Rising sea levels threaten coastal communities.]\nCan you explain this differently?';
-
-    const result = buildLocalLessonChatResponse(
-      { student: { id: 's1', fullName: 'Test', email: '', role: 'student', grade: 'Grade 10', gradeId: 'grade-10', curriculum: 'CAPS', curriculumId: 'caps', country: 'ZA', countryId: 'za', term: 'Term 1', schoolYear: '2026', recommendedStartSubjectId: null, recommendedStartSubjectName: null },
-        learnerProfile: createDefaultLearnerProfile('s1'),
-        lesson, lessonSession: session, message, messageType: 'question' },
-      lesson
-    );
-
-    expect(result.metadata?.action).toBe('stay');
-    expect(result.displayContent).toContain('Impact on Ecosystems and Human Life');
+    expect(updated.v2State?.bridgeNeeded).toBe(true);
   });
 
-  it('buildDynamicLessonFlowV2FromTopic fallback concepts satisfy the stronger minimum contract', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 10',
-      topicTitle: 'Quadratic Equations',
-      topicDescription: 'Solving quadratic equations by factoring and the quadratic formula.',
-      curriculumReference: 'CAPS · Grade 10 · Mathematics'
+  it('applyLessonAssistantResponse at loop_check with misconception sets misconceptionTarget', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0];
+    const session = makeV2LoopCheckSession(lesson);
+    const updated = applyLessonAssistantResponse(session, {
+      id: 'msg-advance-3',
+      role: 'assistant',
+      type: 'feedback',
+      content: 'Address the misconception.',
+      stage: 'concepts',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        action: 'advance',
+        next_stage: 'concepts',
+        reteach_style: null,
+        reteach_count: 0,
+        confidence_assessment: 0.3,
+        lesson_score: 0.3,
+        must_hit_concepts_met: [],
+        missing_must_hit_concepts: [],
+        critical_misconceptions: ['gradient is always positive'],
+        profile_update: {}
+      }
     });
-
-    expect(lesson.flowV2?.concepts).toHaveLength(3);
-    for (const concept of lesson.flowV2?.concepts ?? []) {
-      expect(concept.name.length).toBeGreaterThan(0);
-      expect(concept.simpleDefinition?.length ?? 0).toBeGreaterThan(0);
-      expect(concept.oneLineDefinition?.length ?? 0).toBeGreaterThan(0);
-      expect(concept.explanation?.length ?? 0).toBeGreaterThan(0);
-      expect(concept.example.length).toBeGreaterThan(0);
-      expect(concept.quickCheck?.length ?? 0).toBeGreaterThan(0);
-      expect(concept.curriculumAlignment?.topicMatch).toBe('Quadratic Equations');
-      expect(concept.curriculumAlignment?.gradeMatch).toBe('Grade 10');
-    }
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic fallback concepts expose concrete example and quick-check data', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 10',
-      topicTitle: 'Quadratic Equations',
-      topicDescription: 'Solving quadratic equations by factoring and the quadratic formula.',
-      curriculumReference: 'CAPS · Grade 10 · Mathematics'
-    });
-    const firstConcept = lesson.keyConcepts?.[0];
-
-    expect(firstConcept?.example).not.toMatch(/quick test|you use it in many|read the problem again/i);
-    expect(firstConcept?.quickCheck).toMatch(/rewrite|factor|check|solve|state|what|why|how/i);
-    expect(firstConcept?.detail).toContain(firstConcept?.explanation ?? '');
-  });
-
-  it('classifies the initial topic-shape buckets deterministically', () => {
-    expect(classifyLessonTopicShape('English Home Language', 'Poetry and Prose Techniques')).toBe('technique_or_feature');
-    expect(classifyLessonTopicShape('Mathematics', 'Equivalent Fractions')).toBe('principle_or_rule');
-    expect(classifyLessonTopicShape('Life Sciences', 'Osmosis')).toBe('process_or_mechanism');
-    expect(classifyLessonTopicShape('History', 'Causes of World War I')).toBe('cause_and_effect');
-    expect(classifyLessonTopicShape('Accounting', 'Debit and Credit')).toBe('comparison_or_distinction');
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic uses shape-only fallback concepts for non-bespoke principle topics', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 7',
-      topicTitle: 'Equivalent Ratios',
-      topicDescription: 'Focus on equal ratios, scaling both quantities, and checking matching pairs like 2:3 and 4:6.',
-      curriculumReference: 'CAPS · Grade 7 · Mathematics'
-    });
-    const concepts = lesson.flowV2?.concepts ?? [];
-    const names = concepts.map((concept) => concept.name);
-    const validation = validateConceptRecords(concepts, {
-      topicTitle: 'Equivalent Ratios',
-      grade: 'Grade 7',
-      subject: 'Mathematics'
-    });
-
-    expect(concepts).toHaveLength(3);
-    expect(validation.hardFailures).toEqual([]);
-    expect(new Set(names).size).toBe(3);
-    expect(names.every((name) => !/^(core rule|worked pattern|check and apply|central idea|using the idea|checking the result)$/i.test(name))).toBe(true);
-    expect(names.some((name) => /ratio/i.test(name))).toBe(true);
-    expect(concepts[0]).toEqual(
-      expect.objectContaining({
-        simpleDefinition: expect.stringMatching(/\w{4,}/),
-        example: expect.stringMatching(/2:3|4:6|ratio/i),
-        explanation: expect.stringMatching(/\w{4,}/),
-        quickCheck: expect.stringMatching(/\?$/)
-      })
-    );
-    expect(concepts[0]?.example).toMatch(/2:3|4:6|ratio/i);
-    expect(concepts[0]?.quickCheck).toMatch(/what|which|why|how|solve|check|state|compare/i);
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic produces classification concepts without wrapper labels', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-math',
-      subjectName: 'Mathematics',
-      grade: 'Grade 8',
-      topicTitle: 'Types of Triangles',
-      topicDescription: 'Compare equilateral, isosceles, and scalene triangles by their sides and angles.',
-      curriculumReference: 'CAPS · Grade 8 · Mathematics'
-    });
-    const concepts = lesson.flowV2?.concepts ?? [];
-    const names = concepts.map((concept) => concept.name);
-    const validation = validateConceptRecords(concepts, {
-      topicTitle: 'Types of Triangles',
-      grade: 'Grade 8',
-      subject: 'Mathematics'
-    });
-    const combinedText = concepts
-      .map((concept) => [concept.summary, concept.detail, concept.example, concept.quickCheck].join(' '))
-      .join(' ');
-
-    expect(concepts).toHaveLength(3);
-    expect(validation.hardFailures).toEqual([]);
-    expect(new Set(names).size).toBe(3);
-    expect(names.every((name) => !/^(first category|second category|category test)$/i.test(name))).toBe(true);
-    expect(names.some((name) => /triangle|equilateral|isosceles|scalene/i.test(name))).toBe(true);
-    expect(combinedText).not.toMatch(/identify the rule|show the first step|use the evidence|name the clue|apply the rule/i);
-    expect(combinedText).not.toMatch(/this topic|this lesson|helps you understand|important idea/i);
-    expect(concepts[0]).toEqual(
-      expect.objectContaining({
-        simpleDefinition: expect.stringMatching(/\w{4,}/),
-        example: expect.stringMatching(/triangle|equilateral|isosceles|scalene/i),
-        explanation: expect.stringMatching(/\w{4,}/),
-        quickCheck: expect.stringMatching(/\?$/)
-      })
-    );
-    expect(concepts[0]?.example).toMatch(/triangle|equilateral|isosceles|scalene/i);
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic still produces boundary-valid concepts for uncatalogued technique topics', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-english',
-      subjectName: 'English Home Language',
-      grade: 'Grade 9',
-      topicTitle: 'Sound Devices in Poetry',
-      topicDescription: 'Including alliteration, onomatopoeia, and repetition in short lines to shape mood and emphasis.',
-      curriculumReference: 'CAPS · Grade 9 · English Home Language'
-    });
-    const concepts = lesson.flowV2?.concepts ?? [];
-    const names = concepts.map((concept) => concept.name);
-    const validation = validateConceptRecords(concepts, {
-      topicTitle: 'Sound Devices in Poetry',
-      grade: 'Grade 9',
-      subject: 'English Home Language'
-    });
-    const combinedText = concepts
-      .map((concept) => [concept.name, concept.summary, concept.detail, concept.example, concept.quickCheck].join(' '))
-      .join(' ');
-
-    expect(concepts).toHaveLength(3);
-    expect(validation.hardFailures).toEqual([]);
-    expect(new Set(names).size).toBe(3);
-    expect(names.some((name) => /alliteration|onomatopoeia|repetition|sound/i.test(name))).toBe(true);
-    expect(combinedText).not.toMatch(/identify the rule|show the first step|use the evidence|name the clue|apply the rule/i);
-    expect(combinedText).not.toMatch(/this topic|this lesson|helps you understand|important idea/i);
-    expect(concepts[0]).toEqual(
-      expect.objectContaining({
-        simpleDefinition: expect.stringMatching(/\w{4,}/),
-        example: expect.stringMatching(/\w{4,}/),
-        explanation: expect.stringMatching(/\w{4,}/),
-        quickCheck: expect.stringMatching(/\?$/)
-      })
-    );
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic ignores placeholder descriptions and rejects slot-style fallback content for poetry and prose techniques', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-english',
-      subjectName: 'English Home Language',
-      grade: 'Grade 11',
-      topicTitle: 'Poetry and Prose Techniques',
-      topicDescription: 'AI-suggested topic',
-      curriculumReference: 'CAPS · Grade 11 · English Home Language'
-    });
-    const concepts = lesson.flowV2?.concepts ?? [];
-    const names = concepts.map((concept) => concept.name);
-    const combinedText = concepts
-      .map((concept) => [concept.name, concept.summary, concept.detail, concept.example, concept.quickCheck].join(' '))
-      .join(' ');
-
-    expect(concepts).toHaveLength(3);
-    expect(names.every((name) => !/^ai-suggested topic$/i.test(name))).toBe(true);
-    expect(names.every((name) => !/^poetry and prose techniques (effect|detail|example|check)$/i.test(name))).toBe(true);
-    expect(names.some((name) => /metaphor|imagery|tone/i.test(name))).toBe(true);
-    expect(combinedText).not.toMatch(/ai-suggested topic/i);
-    expect(combinedText).not.toMatch(/quote the technique|identify the author's purpose|analyse how word choice or structure/i);
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic derives real opening concepts for broad life orientation topics', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-lo',
-      subjectName: 'Life Orientation',
-      grade: 'Grade 11',
-      topicTitle: 'Understanding Personal Identity',
-      topicDescription: 'AI-suggested topic',
-      curriculumReference: 'CAPS · Grade 11 · Life Orientation'
-    });
-    const concepts = lesson.flowV2?.concepts ?? [];
-    const names = concepts.map((concept) => concept.name);
-    const validation = validateConceptRecords(concepts, {
-      topicTitle: 'Understanding Personal Identity',
-      grade: 'Grade 11',
-      subject: 'Life Orientation'
-    });
-
-    expect(concepts).toHaveLength(3);
-    expect(validation.hardFailures).toEqual([]);
-    expect(names.every((name) => !/^ai-suggested topic$/i.test(name))).toBe(true);
-    expect(names.every((name) => !/^understanding personal identity (example|check|effect|detail)$/i.test(name))).toBe(true);
-    expect(names.some((name) => /self|identity|values|belonging|influence/i.test(name))).toBe(true);
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic derives real biology concepts for plant reproduction and growth', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-life-sciences',
-      subjectName: 'Life Sciences',
-      grade: 'Grade 11',
-      topicTitle: 'Plant Reproduction And Growth',
-      topicDescription: 'Exploration candidate',
-      curriculumReference: 'CAPS · Grade 11 · Life Sciences'
-    });
-    const concepts = lesson.flowV2?.concepts ?? [];
-    const names = concepts.map((concept) => concept.name);
-    const combinedText = concepts
-      .map((concept) => [concept.name, concept.summary, concept.detail, concept.example, concept.quickCheck].join(' '))
-      .join(' ');
-    const validation = validateConceptRecords(concepts, {
-      topicTitle: 'Plant Reproduction And Growth',
-      grade: 'Grade 11',
-      subject: 'Life Sciences'
-    });
-
-    expect(concepts).toHaveLength(3);
-    expect(validation.hardFailures).toEqual([]);
-    expect(names).toEqual(['Pollination', 'Fertilisation', 'Germination']);
-    expect(combinedText).not.toMatch(/exploration candidate|real-world case|reflection check/i);
-    expect(concepts[0]).toEqual(
-      expect.objectContaining({
-        name: 'Pollination',
-        simpleDefinition: expect.stringMatching(/pollen|anther|stigma/i),
-        example: expect.stringMatching(/bee|pollen|anther|stigma/i),
-        explanation: expect.stringMatching(/seed/i),
-        quickCheck: expect.stringMatching(/stigma|pollen/i)
-      })
-    );
-    expect(lesson.flowV2?.start.title).toBe('Pollination');
-    expect(lesson.flowV2?.start.body).toMatch(/What it is:.*Pollination|pollen/i);
-  });
-
-  it('buildDynamicLessonFlowV2FromTopic uses concept 1 as the v2 opening teaching surface instead of the generic orientation scaffold', () => {
-    const lesson = buildDynamicLessonFlowV2FromTopic({
-      subjectId: 'subject-english',
-      subjectName: 'English Home Language',
-      grade: 'Grade 11',
-      topicTitle: 'Poetry and Prose Techniques',
-      topicDescription: 'AI-suggested topic',
-      curriculumReference: 'CAPS · Grade 11 · English Home Language'
-    });
-    const firstConcept = lesson.flowV2?.concepts?.[0];
-
-    expect(lesson.flowV2?.start.title).toBe(firstConcept?.name);
-    expect(lesson.flowV2?.start.body).toContain(firstConcept?.simpleDefinition ?? '');
-    expect(lesson.flowV2?.start.body).toContain(firstConcept?.example ?? '');
-    expect(lesson.flowV2?.start.body).toContain(firstConcept?.explanation ?? '');
-    expect(lesson.flowV2?.start.body).toContain(firstConcept?.quickCheck ?? '');
-    expect(lesson.flowV2?.start.body).not.toMatch(/in this lesson you're exploring|by the end you should be able to|this topic matters because/i);
+    expect(updated.v2State?.misconceptionTarget).toBe('gradient is always positive');
   });
 });

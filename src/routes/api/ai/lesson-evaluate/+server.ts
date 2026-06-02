@@ -4,7 +4,7 @@ import { invokeAuthenticatedAiEdge } from '$lib/server/ai-edge';
 import { getAiConfig, resolveAiRoute } from '$lib/server/ai-config';
 import { logAiInteraction, logLessonSignal } from '$lib/server/state-repository';
 import { evaluateLessonResponseHeuristically } from '$lib/server/lesson-evaluate';
-import type { DoceoMeta, LessonEvaluationRequest, LessonEvaluationResult } from '$lib/types';
+import type { DoceoMeta, LessonEvaluationRequest, LessonEvaluationResult, LoopEvidence } from '$lib/types';
 
 const LessonEvaluateBodySchema = z.object({
   request: z.object({
@@ -12,6 +12,8 @@ const LessonEvaluateBodySchema = z.object({
     lessonSessionId: z.string().min(1),
     nodeId: z.string().min(1).nullable().optional(),
     lessonArtifactId: z.string().min(1).nullable().optional(),
+    loopId: z.string().min(1).nullable().optional(),
+    loopIndex: z.number().int().min(0).nullable().optional(),
     answer: z.string(),
     checkpoint: z.enum([
       'start',
@@ -42,28 +44,104 @@ function buildLessonEvaluateSystemPrompt(): string {
 
 Return valid JSON only with these top-level keys:
 - score (float 0.0-1.0)
-- mustHitConceptsMet (array of strings)
-- missingMustHitConcepts (array of strings)
-- criticalMisconceptions (array of strings)
-- feedback (string)
+- mustHitConceptsMet (array of strings from mustHitConcepts that the answer demonstrates)
+- missingMustHitConcepts (array of strings from mustHitConcepts NOT demonstrated)
+- criticalMisconceptions (array of strings from criticalMisconceptionTags triggered by the answer)
+- feedback (string - short, concrete, names the exact missing or wrong idea)
 - mode ("advance" | "targeted_revision" | "remediation" | "skip_with_accountability")
+- loopEvidence (object - see schema below)
 
-Rules:
-- A learner can advance only if score >= 0.75, all must-hit concepts are covered, and there is no critical misconception.
-- If score is 0.5-0.74, return mode "targeted_revision" only when no critical misconception blocks the answer.
-- Any critical misconception must block advancement.
-- After the revision chance is already used, below-threshold answers should return "remediation" unless the ladder is already at worked_example, then return "skip_with_accountability".
-- Feedback must be short, concrete, and name the exact missing or incorrect idea.`;
+loopEvidence schema:
+{
+  "conceptsMet": [],
+  "gaps": [],
+  "misconceptions": [],
+  "score": 0.0,
+  "styleSignals": {
+    "neededScaffolding": false,
+    "askedClarifyingQuestion": false,
+    "answeredOnFirstAttempt": false,
+    "explanationWasVague": false,
+    "usedConcreteLanguage": false
+  }
+}
+
+Advancement rules:
+- Advance only when score >= 0.75 AND all must-hit concepts covered AND no critical misconception.
+- targeted_revision when score 0.50-0.74 with no critical misconception AND revisionAttemptCount is 0.
+- remediation when critical misconception present, OR score < 0.50, OR revision already used.
+- skip_with_accountability when remediationStep is already "worked_example" and score still < 0.75.
+- feedback must name the exact missing concept or triggered misconception by its label.`;
 }
 
 function buildLessonEvaluateUserPrompt(request: LessonEvaluationRequest): string {
   return JSON.stringify({
     checkpoint: request.checkpoint,
+    loopId: request.loopId ?? null,
+    loopIndex: request.loopIndex ?? null,
     lesson: request.lesson,
     revisionAttemptCount: request.revisionAttemptCount,
     remediationStep: request.remediationStep,
     studentAnswer: request.answer
   });
+}
+
+function stringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string') ? value : null;
+}
+
+function normalizeLoopEvidence(raw: unknown, result: LessonEvaluationResult): LoopEvidence | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const input = raw as Record<string, unknown>;
+  const styleSignals = input.styleSignals;
+
+  if (
+    typeof input.score !== 'number' ||
+    !styleSignals ||
+    typeof styleSignals !== 'object'
+  ) {
+    return null;
+  }
+
+  const signals = styleSignals as Record<string, unknown>;
+  const conceptsMet = stringArray(input.conceptsMet) ?? result.mustHitConceptsMet;
+  const gaps = stringArray(input.gaps) ?? result.missingMustHitConcepts;
+  const misconceptions = stringArray(input.misconceptions) ?? result.criticalMisconceptions;
+
+  if (
+    !conceptsMet ||
+    !gaps ||
+    !misconceptions ||
+    typeof signals.neededScaffolding !== 'boolean' ||
+    typeof signals.askedClarifyingQuestion !== 'boolean' ||
+    typeof signals.answeredOnFirstAttempt !== 'boolean' ||
+    typeof signals.explanationWasVague !== 'boolean' ||
+    typeof signals.usedConcreteLanguage !== 'boolean'
+  ) {
+    return null;
+  }
+
+  return {
+    loopId: typeof input.loopId === 'string' ? input.loopId : 'unknown',
+    loopIndex: typeof input.loopIndex === 'number' ? input.loopIndex : 0,
+    loopTitle: typeof input.loopTitle === 'string' ? input.loopTitle : 'Unknown loop',
+    conceptsMet,
+    gaps,
+    misconceptions,
+    score: Math.max(0, Math.min(1, input.score)),
+    attemptCount: typeof input.attemptCount === 'number' ? input.attemptCount : 1,
+    styleSignals: {
+      neededScaffolding: signals.neededScaffolding,
+      askedClarifyingQuestion: signals.askedClarifyingQuestion,
+      answeredOnFirstAttempt: signals.answeredOnFirstAttempt,
+      explanationWasVague: signals.explanationWasVague,
+      usedConcreteLanguage: signals.usedConcreteLanguage
+    },
+    evaluatedAt: typeof input.evaluatedAt === 'string' ? input.evaluatedAt : new Date().toISOString()
+  };
 }
 
 function parseLessonEvaluatePayload(payload: { content: string; provider: string; model: string }): LessonEvaluationResult | null {
@@ -85,7 +163,7 @@ function parseLessonEvaluatePayload(payload: { content: string; provider: string
       return null;
     }
 
-    return {
+    const result: LessonEvaluationResult = {
       score: Math.max(0, Math.min(1, parsed.score)),
       mustHitConceptsMet: parsed.mustHitConceptsMet.filter((item): item is string => typeof item === 'string'),
       missingMustHitConcepts: parsed.missingMustHitConcepts.filter((item): item is string => typeof item === 'string'),
@@ -94,6 +172,11 @@ function parseLessonEvaluatePayload(payload: { content: string; provider: string
       mode: parsed.mode as LessonEvaluationResult['mode'],
       provider: payload.provider,
       model: payload.model
+    };
+
+    return {
+      ...result,
+      loopEvidence: normalizeLoopEvidence(parsed.loopEvidence, result) ?? null
     };
   } catch {
     return null;

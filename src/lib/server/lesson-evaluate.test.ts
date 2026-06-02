@@ -73,4 +73,56 @@ describe('lesson-evaluate heuristic', () => {
 
     expect(result.mode).toBe('skip_with_accountability');
   });
+
+  it('returns loop evidence for a perfect answer', () => {
+    const result = evaluateLessonResponseHeuristically({
+      ...baseRequest,
+      answer: 'Equivalent fractions represent the same value when both parts are scaled by the same factor.'
+    });
+
+    expect(result.loopEvidence?.score).toBeGreaterThanOrEqual(0.75);
+    expect(result.loopEvidence?.gaps).toEqual([]);
+    expect(result.loopEvidence?.styleSignals.answeredOnFirstAttempt).toBe(true);
+  });
+
+  it('returns empty concept evidence and no first-attempt signal for an empty answer', () => {
+    const result = evaluateLessonResponseHeuristically({
+      ...baseRequest,
+      answer: ''
+    });
+
+    expect(result.loopEvidence?.conceptsMet).toEqual([]);
+    expect(result.loopEvidence?.styleSignals.answeredOnFirstAttempt).toBe(false);
+  });
+
+  it('marks scaffolding as needed when remediation is already active', () => {
+    const result = evaluateLessonResponseHeuristically({
+      ...baseRequest,
+      answer: 'Equivalent fractions show the same value.',
+      remediationStep: 'hint'
+    });
+
+    expect(result.loopEvidence?.styleSignals.neededScaffolding).toBe(true);
+  });
+
+  it('sets loop evidence attempt count from revision attempts', () => {
+    const result = evaluateLessonResponseHeuristically({
+      ...baseRequest,
+      answer: 'Equivalent fractions show the same value.',
+      revisionAttemptCount: 1
+    });
+
+    expect(result.loopEvidence?.attemptCount).toBe(2);
+  });
+
+  it('uses the request loop id in loop evidence when provided', () => {
+    const result = evaluateLessonResponseHeuristically({
+      ...baseRequest,
+      loopId: 'loop-equivalence',
+      loopIndex: 2,
+      answer: 'Equivalent fractions show the same value.'
+    });
+
+    expect(result.loopEvidence?.loopId).toBe('loop-equivalence');
+  });
 });

@@ -770,6 +770,126 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
     expect(appState.sendLessonMessage).not.toHaveBeenCalled();
   });
 
+  it('shows concept-specific checkpoint chips instead of the generic ask button at loop_teach', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'response-chip-teach-message',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_teach',
+          loopIndex: 0
+        }
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    expect(screen.getByRole('button', { name: 'I follow Core idea one' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Not sure about Core idea one' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ask something specific' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ask a question about this' })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Put it in your own words, or ask a question.')).not.toBeInTheDocument();
+  });
+
+  it('sends non-escape checkpoint chip prompts through the quick reply path', async () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'response-chip-send-message',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_teach',
+          loopIndex: 0
+        }
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'I follow Core idea one' }));
+
+    expect(appState.sendLessonMessage).toHaveBeenCalledWith(
+      "I think I understand Core idea one. I'm ready to continue."
+    );
+  });
+
+  it('opens the full composer without sending when the checkpoint escape chip is clicked', async () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'response-chip-escape-message',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Teach the first core idea.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_teach',
+          loopIndex: 0
+        }
+      })
+    ], {
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Ask something specific' }));
+    await tick();
+
+    expect(screen.getByPlaceholderText('Put it in your own words, or ask a question.')).toBeInTheDocument();
+    expect(appState.sendLessonMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows example checkpoint chips at loop_example', () => {
+    renderV2Workspace([
+      createMessage({
+        id: 'response-chip-example-message',
+        role: 'assistant',
+        type: 'teaching',
+        content: 'Here is the first worked example.',
+        stage: 'concepts',
+        v2Context: {
+          checkpoint: 'loop_example',
+          loopIndex: 0
+        }
+      })
+    ]);
+
+    expect(screen.getByRole('button', { name: 'I can follow this example' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Something is unclear' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ask something specific' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Tell me what you notice in the example.')).not.toBeInTheDocument();
+  });
+
   it('renders a focused lesson card for active v2 sessions with checkpoint-aware state, title, and content', () => {
     renderV2Workspace([
       createMessage({
@@ -793,7 +913,7 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
 
-    expect(within(activeCard).getByText('Example 1')).toBeInTheDocument();
+    expect(activeCard.querySelector('.active-lesson-card-state')).toHaveTextContent('Example');
     expect(within(activeCard).getByRole('heading', { name: 'Example Loop 1' })).toBeInTheDocument();
     expect(within(activeCard).getByText('Here is the first worked example.')).toBeInTheDocument();
   });
@@ -879,7 +999,7 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
     expect(within(sidebar).getByText('Core idea two')).toBeInTheDocument();
   });
 
-  it('compacts the opening card, quiets the concept stack, and suppresses the duplicate opening mirror once the learner is interacting', () => {
+  it('compacts the opening card, quiets the concept stack, and keeps the opening mirror once the learner is interacting', () => {
     renderV2Workspace([
       createMessage({
         id: 'opening-assistant',
@@ -928,7 +1048,7 @@ describe('LessonWorkspace Phase 3 focused lesson card', () => {
     expect(activeCard).toHaveClass('active-lesson-card-with-transcript');
     expect(within(activeCard).queryByText('Get the big picture before you dive into the details.')).not.toBeInTheDocument();
     expect(conceptSidebar).toHaveClass('lesson-concepts-sidebar-quiet');
-    expect(within(conversation).getAllByText('Start with the big picture.')).toHaveLength(1);
+    expect(within(conversation).getAllByText('Start with the big picture.')).toHaveLength(2);
     expect(within(conversation).getByText('Can you explain this differently?')).toBeInTheDocument();
   });
 
@@ -1332,7 +1452,7 @@ describe('LessonWorkspace harness design Phase 2 purposeful motion', () => {
     const activeCard = screen.getByRole('region', { name: 'Active lesson: Try Loop 1' });
     const actions = activeCard.querySelector('.lesson-next-step-panel');
     const primary = activeCard.querySelector('.active-lesson-card-primary');
-    const cta = within(activeCard).getByRole('button', { name: 'Check what stuck' });
+    const cta = within(activeCard).getByRole('button', { name: 'Submit my attempt' });
     const composer = document.querySelector('.composer');
 
     expect(activeCard).toHaveAttribute('data-action-required', 'true');
@@ -1559,7 +1679,7 @@ describe('LessonWorkspace Phase 2 Your Turn mode', () => {
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
     const actionArea = activeCard.querySelector('.lesson-next-step-panel');
-    const progressButton = within(activeCard).getByRole('button', { name: 'Check what stuck' });
+    const progressButton = within(activeCard).getByRole('button', { name: 'Submit my attempt' });
 
     expect(activeCard).toHaveAttribute('data-action-required', 'true');
     expect(actionArea).toHaveAttribute('data-action-required', 'true');
@@ -1848,7 +1968,7 @@ describe('LessonWorkspace Phase 5 session notes MVP', () => {
 
     expect(screen.queryByRole('region', { name: 'Session notes' })).not.toBeInTheDocument();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Open notes from lesson map' }));
 
     expect(screen.getByRole('region', { name: 'Session notes' })).toBeInTheDocument();
 
@@ -1860,7 +1980,7 @@ describe('LessonWorkspace Phase 5 session notes MVP', () => {
   it('uses starter chips to populate the note input', async () => {
     renderNotesWorkspace();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Open notes from lesson map' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Remember:' }));
 
     expect(screen.getByLabelText('Note draft')).toHaveValue('Remember: ');
@@ -1870,7 +1990,7 @@ describe('LessonWorkspace Phase 5 session notes MVP', () => {
     const createLessonNote = vi.spyOn(appState, 'createLessonNote').mockImplementation(() => undefined);
     renderNotesWorkspace();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Open notes from lesson map' }));
     await fireEvent.input(screen.getByLabelText('Note draft'), {
       target: { value: 'Remember: the first clue names the rule.' }
     });
@@ -1957,7 +2077,7 @@ describe('LessonWorkspace Phase 5 session notes MVP', () => {
       }
     });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Open notes from lesson map' }));
     await fireEvent.input(screen.getByLabelText('Note draft'), {
       target: { value: 'Remember: first lesson only.' }
     });
@@ -1985,7 +2105,7 @@ describe('LessonWorkspace Phase 5 session notes MVP', () => {
     };
 
     await rendered.rerender({ state: secondState });
-    await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Open notes from lesson map' }));
 
     expect(screen.queryByText('Remember: first lesson only.')).not.toBeInTheDocument();
     expect(screen.getByText('No notes yet.')).toBeInTheDocument();
@@ -2167,7 +2287,7 @@ describe('LessonWorkspace harness design Phase 5 persisted lesson notes', () => 
       })
     ]);
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Open notes from lesson map' }));
     await fireEvent.input(screen.getByLabelText('Note draft'), {
       target: { value: 'Remember: save manual notes through app state.' }
     });
@@ -2371,7 +2491,7 @@ describe('LessonWorkspace Phase 4 early diagnostic and concept cards', () => {
       }
     });
 
-    expect(screen.getByRole('button', { name: 'Check concept 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check: Core idea one' })).toBeInTheDocument();
   });
 
   it('uses an explanation-state CTA label in the focused card example state', () => {
@@ -3133,7 +3253,7 @@ describe('LessonWorkspace Phase 6 resource image presentation', () => {
     expect(within(activeCard).queryByRole('link', { name: 'Open supporting resource' })).not.toBeInTheDocument();
   });
 
-  it('renders a topical real-image panel when the active lesson has no embedded image resource', () => {
+  it('does not render a generic image panel when the active lesson has no embedded image resource', () => {
     renderV2Workspace([
       createMessage({
         role: 'assistant',
@@ -3157,16 +3277,12 @@ describe('LessonWorkspace Phase 6 resource image presentation', () => {
     });
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
-    const image = within(activeCard).getByRole('img', {
-      name: 'Real-world visual for Biomes and ecosystems'
-    });
 
-    expect(image).toHaveAttribute('src', expect.stringContaining('images.unsplash.com'));
-    expect(within(activeCard).getByText('Concept')).toBeInTheDocument();
-    expect(within(activeCard).getByText('Use the image to ground the key idea in the real world.')).toBeInTheDocument();
+    expect(within(activeCard).queryByRole('img')).not.toBeInTheDocument();
+    expect(activeCard.querySelector('.active-lesson-visual')).not.toBeInTheDocument();
   });
 
-  it('updates the active image caption for example, practice, and check checkpoints', () => {
+  it('does not render checkpoint fallback images for example, practice, or check checkpoints', () => {
     function renderCheckpoint(activeCheckpoint: 'loop_example' | 'loop_practice' | 'loop_check') {
       return renderV2Workspace([
         createMessage({
@@ -3193,18 +3309,14 @@ describe('LessonWorkspace Phase 6 resource image presentation', () => {
       });
     }
 
-    const expected = [
-      ['loop_example', 'Example', 'See the example in a real ecosystem context.'],
-      ['loop_practice', 'Your Turn', 'Use the image as context while you try the task.'],
-      ['loop_check', 'Feedback', 'Use the image to check what stuck.']
-    ] as const;
+    const checkpoints = ['loop_example', 'loop_practice', 'loop_check'] as const;
 
-    for (const [checkpoint, eyebrow, caption] of expected) {
+    for (const checkpoint of checkpoints) {
       renderCheckpoint(checkpoint);
       const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
 
-      expect(within(activeCard).getByText(eyebrow)).toBeInTheDocument();
-      expect(within(activeCard).getByText(caption)).toBeInTheDocument();
+      expect(activeCard.querySelector('.active-lesson-visual')).not.toBeInTheDocument();
+      expect(within(activeCard).queryByRole('img')).not.toBeInTheDocument();
 
       document.body.innerHTML = '';
     }
@@ -3243,7 +3355,7 @@ describe('LessonWorkspace Phase 6 resource image presentation', () => {
     );
   });
 
-  it('shows a real-image thumbnail for saved ideas in the notes rail', () => {
+  it('does not show a generic real-image thumbnail for saved ideas in the notes rail', () => {
     renderV2Workspace([
       createMessage({
         role: 'assistant',
@@ -3258,11 +3370,8 @@ describe('LessonWorkspace Phase 6 resource image presentation', () => {
     });
 
     const notesPanel = screen.getByRole('complementary', { name: 'Notes and saved ideas' });
-    const thumbnail = within(notesPanel).getByRole('img', {
-      name: 'Real-world visual for Biomes and ecosystems'
-    });
 
-    expect(thumbnail).toHaveAttribute('src', expect.stringContaining('images.unsplash.com'));
+    expect(within(notesPanel).queryByRole('img')).not.toBeInTheDocument();
   });
 });
 
@@ -3482,7 +3591,7 @@ describe('LessonWorkspace Phase 8 summary payoff refinement', () => {
       }
     });
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Open notes from lesson map' }));
     await fireEvent.input(screen.getByLabelText('Note draft'), {
       target: { value: 'Remember: connect the clue to the rule.' }
     });
@@ -4020,7 +4129,7 @@ describe('LessonWorkspace Phase 5 progress strip states', () => {
       }
     });
 
-    expect(screen.getByText('See the idea working in real situations.')).toBeInTheDocument();
+    expect(screen.queryByText('See the idea working in real situations.')).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: /^Active lesson/ })).getByLabelText('Play tutor audio')).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Lesson conversation' })).getAllByLabelText('Play tutor audio')).toHaveLength(2);
     const wrapBubble = screen.getByText("Good. Let's move into Worked Example.").closest('article');
@@ -4619,13 +4728,13 @@ describe('LessonWorkspace visual weight Phase 6 completed concept achievement ti
     ).toBeInTheDocument();
   });
 
-  it('shows completed concept progress as X of Y concepts covered with a fill bar', () => {
+  it('hides completed concept progress until at least one concept is covered', () => {
     renderV2Workspace([]);
 
     const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
     expect(within(sidebar).getByText('Covered so far')).toBeInTheDocument();
-    expect(within(sidebar).getByText('0 of 2 concepts covered')).toBeInTheDocument();
-    expect(sidebar.querySelector('.concepts-progress-fill')).toHaveAttribute('style', 'width: 0%;');
+    expect(within(sidebar).queryByText('0 of 2 completed')).not.toBeInTheDocument();
+    expect(sidebar.querySelector('.concepts-progress-fill')).not.toBeInTheDocument();
   });
 
   it('falls back to concept summary when a one-line definition is unavailable', () => {
@@ -4766,6 +4875,21 @@ describe('LessonWorkspace Phase 9 Sub-task 2: Two-column lesson body with concep
     expect(within(sidebar).getByText('Core idea two')).toBeInTheDocument();
   });
 
+  it('renders concept tiles in the sidebar and not inside the active lesson card', () => {
+    renderV2Workspace([]);
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+
+    expect(sidebar.querySelectorAll('.concept-tile')).toHaveLength(2);
+    expect(activeCard.querySelector('.concept-tile')).not.toBeInTheDocument();
+  });
+
+  it('does not render a completed concepts counter before progress begins', () => {
+    renderV2Workspace([]);
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    expect(within(sidebar).queryByText('0 of 2 completed')).not.toBeInTheDocument();
+  });
+
   it('does not render "Core ideas in this lesson" inside the active lesson card', () => {
     renderV2Workspace([]);
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
@@ -4808,6 +4932,14 @@ describe('LessonWorkspace Phase 9 Sub-task 2: Two-column lesson body with concep
     });
     const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
     expect(sidebar).toHaveClass('lesson-concepts-sidebar-quiet');
+  });
+
+  it('defines the lesson body two-column layout at the 900px desktop breakpoint', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    const desktopBlock = source.match(/@media \(min-width: 900px\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+
+    expect(desktopBlock).toMatch(/\.lesson-body\s*\{[\s\S]*grid-template-columns:\s*minmax\(0,\s*3fr\)\s+minmax\(16rem,\s*2fr\)/);
+    expect(desktopBlock).toMatch(/\.lesson-concepts-sidebar\s*\{[\s\S]*display:\s*block/);
   });
 });
 
@@ -4911,7 +5043,7 @@ describe('LessonWorkspace Phase 10: live-session polish', () => {
     expect(document.querySelector('.lesson-memory-shelf')).not.toBeInTheDocument();
   });
 
-  it('does not render an empty active-card feedback shell before there is feedback or history', () => {
+  it('renders an empty conversation hint before there is feedback or history', () => {
     renderV2Workspace([], {
       currentStage: 'concepts',
       stagesCompleted: [],
@@ -4928,9 +5060,9 @@ describe('LessonWorkspace Phase 10: live-session polish', () => {
     });
 
     expect(screen.getByRole('region', { name: /Active lesson/i })).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Lesson history' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Lesson history' })).toBeInTheDocument();
+    expect(screen.getByText('Read the card above and type your response below.')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Lesson feedback' })).not.toBeInTheDocument();
-    expect(document.querySelector('.active-card-feedback')).not.toBeInTheDocument();
   });
 
   it('renders the tutor feedback label only once for consecutive assistant feedback messages', () => {
@@ -5000,7 +5132,7 @@ describe('LessonWorkspace lesson flow clarity improvements', () => {
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
     const stateBadge = activeCard.querySelector('.active-lesson-card-state');
-    expect(stateBadge).toHaveTextContent('Example 2');
+    expect(stateBadge).toHaveTextContent('Example');
     expect(stateBadge).not.toHaveTextContent(/Loop 2/i);
   });
 
@@ -5054,7 +5186,7 @@ describe('LessonWorkspace lesson flow clarity improvements', () => {
 
     const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
     expect(within(sidebar).getByText('Covered so far')).toBeInTheDocument();
-    expect(within(sidebar).getByText('1 of 2 concepts covered')).toBeInTheDocument();
+    expect(within(sidebar).getByText('1 of 2 completed')).toBeInTheDocument();
     expect(sidebar.querySelectorAll('.concept-tile-covered')).toHaveLength(1);
     expect(sidebar.querySelectorAll('.concept-tile-upcoming')).toHaveLength(1);
   });
@@ -5250,5 +5382,607 @@ describe('LessonWorkspace lesson flow clarity improvements', () => {
     const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
     expect(source).toMatch(/\.lesson-header\s*\{[\s\S]{0,180}padding:\s*0\.65rem 0\.95rem/);
     expect(source).toMatch(/\.node-dot\s*\{[\s\S]{0,160}width:\s*1\.85rem;[\s\S]{0,80}height:\s*1\.85rem/);
+  });
+});
+
+// ── Prompt 7: Checkpoint Eyebrow + Assessment Distinction ────────────────────
+describe('LessonWorkspace Prompt 7: checkpoint eyebrow and assessment distinction', () => {
+  it('marks the active card with data-is-assessment=true at loop_check', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_check',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    expect(activeCard).toHaveAttribute('data-is-assessment', 'true');
+  });
+
+  it('does NOT set data-is-assessment at loop_teach', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    expect(activeCard).not.toHaveAttribute('data-is-assessment');
+  });
+
+  it('shows Concept check as the state badge text at loop_check', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_check',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    const stateBadge = activeCard.querySelector('.active-lesson-card-state');
+    expect(stateBadge).toHaveTextContent('Concept check');
+    expect(stateBadge).not.toHaveTextContent(/Check \d/);
+  });
+
+  it('sets the assessment CSS on active-lesson-card for loop_check', () => {
+    const source = readFileSync('src/lib/components/LessonWorkspace.svelte', 'utf8');
+    expect(source).toContain(".active-lesson-card[data-is-assessment='true']");
+    expect(source).toContain(".active-lesson-card[data-is-assessment='true'] .active-lesson-card-state");
+  });
+});
+
+// ── Prompt 8: Loop Depth Indicator in Progress Rail ──────────────────────────
+describe('LessonWorkspace Prompt 8: loop depth indicator in progress rail', () => {
+  it('renders a loop-depth-indicator with 3 dots for a v2 session with totalLoops=3', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const indicator = document.querySelector('.loop-depth-indicator');
+    expect(indicator).toBeInTheDocument();
+    expect(indicator!.querySelectorAll('.loop-depth-dot')).toHaveLength(3);
+  });
+
+  it('marks one dot as loop-depth-dot-done when 1 loop is completed', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops: [
+          {
+            loopId: '0',
+            loopIndex: 0,
+            loopTitle: 'Loop 1',
+            conceptsMet: ['core idea one'],
+            gaps: [],
+            misconceptions: [],
+            score: 1,
+            attemptCount: 1,
+            styleSignals: {
+              neededScaffolding: false,
+              askedClarifyingQuestion: false,
+              answeredOnFirstAttempt: true,
+              explanationWasVague: false,
+              usedConcreteLanguage: true
+            },
+            evaluatedAt: '2026-04-16T05:30:00.000Z'
+          }
+        ],
+        pace: 'normal',
+        criticalGaps: [],
+        confirmedMisconceptions: [],
+        independentAttemptScore: null,
+        exitCheckPassed: null
+      }
+    });
+
+    const indicator = document.querySelector('.loop-depth-indicator');
+    expect(indicator).toBeInTheDocument();
+    expect(indicator!.querySelectorAll('.loop-depth-dot-done')).toHaveLength(1);
+  });
+
+  it('does not render a loop-depth-indicator for a v1 session', () => {
+    renderWorkspace([]);
+    expect(document.querySelector('.loop-depth-indicator')).not.toBeInTheDocument();
+  });
+
+  it('does not render a loop-depth-indicator when totalLoops is 1', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    expect(document.querySelector('.loop-depth-indicator')).not.toBeInTheDocument();
+  });
+
+  it('sets the correct aria-label on loop-depth-indicator', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops: [
+          {
+            loopId: '0',
+            loopIndex: 0,
+            loopTitle: 'Loop 1',
+            conceptsMet: [],
+            gaps: [],
+            misconceptions: [],
+            score: 1,
+            attemptCount: 1,
+            styleSignals: {
+              neededScaffolding: false,
+              askedClarifyingQuestion: false,
+              answeredOnFirstAttempt: true,
+              explanationWasVague: false,
+              usedConcreteLanguage: true
+            },
+            evaluatedAt: '2026-04-16T05:30:00.000Z'
+          }
+        ],
+        pace: 'normal',
+        criticalGaps: [],
+        confirmedMisconceptions: [],
+        independentAttemptScore: null,
+        exitCheckPassed: null
+      }
+    });
+
+    const indicator = document.querySelector('.loop-depth-indicator');
+    expect(indicator).toHaveAttribute('aria-label', '1 of 3 concepts done');
+  });
+});
+
+// ── Prompt 9: Bridge Strip + Mastery Glow + Pace Signal ──────────────────────
+describe('LessonWorkspace Prompt 9: bridge strip, mastery glow, and pace signal', () => {
+  it('renders a lesson-bridge-strip when bridgeNeeded is true and checkpoint is loop_teach', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        bridgeNeeded: true,
+        misconceptionTarget: null
+      }
+    });
+
+    expect(document.querySelector('.lesson-bridge-strip')).toBeInTheDocument();
+  });
+
+  it('does not render a lesson-bridge-strip when bridgeNeeded is false', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        bridgeNeeded: false
+      }
+    });
+
+    expect(document.querySelector('.lesson-bridge-strip')).not.toBeInTheDocument();
+  });
+
+  it('does not render a lesson-bridge-strip when bridgeNeeded is true but checkpoint is loop_practice', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_practice',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        bridgeNeeded: true
+      }
+    });
+
+    expect(document.querySelector('.lesson-bridge-strip')).not.toBeInTheDocument();
+  });
+
+  it('includes correction mention in bridge strip when misconceptionTarget is set', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        bridgeNeeded: true,
+        misconceptionTarget: 'sign error'
+      }
+    });
+
+    const strip = document.querySelector('.lesson-bridge-strip');
+    expect(strip).toBeInTheDocument();
+    expect(strip!.textContent).toMatch(/sign error|correction/i);
+  });
+
+  it('renders pace note with quickly when pace is fast and 2+ loops are completed', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops: [
+          {
+            loopId: '0', loopIndex: 0, loopTitle: 'L1', conceptsMet: [], gaps: [], misconceptions: [],
+            score: 1, attemptCount: 1,
+            styleSignals: { neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true, explanationWasVague: false, usedConcreteLanguage: true },
+            evaluatedAt: '2026-04-16T05:30:00.000Z'
+          },
+          {
+            loopId: '1', loopIndex: 1, loopTitle: 'L2', conceptsMet: [], gaps: [], misconceptions: [],
+            score: 1, attemptCount: 1,
+            styleSignals: { neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true, explanationWasVague: false, usedConcreteLanguage: true },
+            evaluatedAt: '2026-04-16T05:45:00.000Z'
+          }
+        ],
+        pace: 'fast',
+        criticalGaps: [],
+        confirmedMisconceptions: [],
+        independentAttemptScore: null,
+        exitCheckPassed: null
+      }
+    });
+
+    const paceNote = document.querySelector('.lesson-pace-note');
+    expect(paceNote).toBeInTheDocument();
+    expect(paceNote!.textContent).toMatch(/quickly/i);
+  });
+
+  it('does not render a pace note when pace is normal', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops: [
+          {
+            loopId: '0', loopIndex: 0, loopTitle: 'L1', conceptsMet: [], gaps: [], misconceptions: [],
+            score: 1, attemptCount: 1,
+            styleSignals: { neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true, explanationWasVague: false, usedConcreteLanguage: true },
+            evaluatedAt: '2026-04-16T05:30:00.000Z'
+          },
+          {
+            loopId: '1', loopIndex: 1, loopTitle: 'L2', conceptsMet: [], gaps: [], misconceptions: [],
+            score: 1, attemptCount: 1,
+            styleSignals: { neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: false, explanationWasVague: false, usedConcreteLanguage: true },
+            evaluatedAt: '2026-04-16T05:45:00.000Z'
+          }
+        ],
+        pace: 'normal',
+        criticalGaps: [],
+        confirmedMisconceptions: [],
+        independentAttemptScore: null,
+        exitCheckPassed: null
+      }
+    });
+
+    expect(document.querySelector('.lesson-pace-note')).not.toBeInTheDocument();
+  });
+
+  it('renders pace note with steady when pace is slow and 2+ loops are completed', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops: [
+          {
+            loopId: '0', loopIndex: 0, loopTitle: 'L1', conceptsMet: [], gaps: [], misconceptions: [],
+            score: 1, attemptCount: 2,
+            styleSignals: { neededScaffolding: true, askedClarifyingQuestion: false, answeredOnFirstAttempt: false, explanationWasVague: false, usedConcreteLanguage: false },
+            evaluatedAt: '2026-04-16T05:30:00.000Z'
+          },
+          {
+            loopId: '1', loopIndex: 1, loopTitle: 'L2', conceptsMet: [], gaps: [], misconceptions: [],
+            score: 1, attemptCount: 2,
+            styleSignals: { neededScaffolding: true, askedClarifyingQuestion: false, answeredOnFirstAttempt: false, explanationWasVague: false, usedConcreteLanguage: false },
+            evaluatedAt: '2026-04-16T05:45:00.000Z'
+          }
+        ],
+        pace: 'slow',
+        criticalGaps: [],
+        confirmedMisconceptions: [],
+        independentAttemptScore: null,
+        exitCheckPassed: null
+      }
+    });
+
+    const paceNote = document.querySelector('.lesson-pace-note');
+    expect(paceNote).toBeInTheDocument();
+    expect(paceNote!.textContent).toMatch(/steady/i);
+  });
+
+  it('adds lesson-concept-mastery-glow to the most recently covered concept tile when last loop was first attempt', () => {
+    renderV2Workspace([], {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops: [
+          {
+            loopId: '0', loopIndex: 0, loopTitle: 'L1', conceptsMet: ['core idea one'], gaps: [], misconceptions: [],
+            score: 1, attemptCount: 1,
+            styleSignals: { neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true, explanationWasVague: false, usedConcreteLanguage: true },
+            evaluatedAt: '2026-04-16T05:30:00.000Z'
+          }
+        ],
+        pace: 'fast',
+        criticalGaps: [],
+        confirmedMisconceptions: [],
+        independentAttemptScore: null,
+        exitCheckPassed: null
+      }
+    });
+
+    const glowTile = document.querySelector('.lesson-concept-mastery-glow');
+    expect(glowTile).toBeInTheDocument();
+  });
+});
+
+// ── Prompt 10: Completion Summary Per-Loop Breakdown ─────────────────────────
+describe('LessonWorkspace Prompt 10: completion summary per-loop breakdown', () => {
+  function makeLoopEvidence(overrides: {
+    loopId: string;
+    loopTitle: string;
+    gaps?: string[];
+    misconceptions?: string[];
+    attemptCount?: number;
+    answeredOnFirstAttempt?: boolean;
+  }) {
+    return {
+      loopId: overrides.loopId,
+      loopIndex: 0,
+      loopTitle: overrides.loopTitle,
+      conceptsMet: [],
+      gaps: overrides.gaps ?? [],
+      misconceptions: overrides.misconceptions ?? [],
+      score: 1,
+      attemptCount: overrides.attemptCount ?? 1,
+      styleSignals: {
+        neededScaffolding: false,
+        askedClarifyingQuestion: false,
+        answeredOnFirstAttempt: overrides.answeredOnFirstAttempt ?? true,
+        explanationWasVague: false,
+        usedConcreteLanguage: true
+      },
+      evaluatedAt: '2026-04-16T05:30:00.000Z'
+    };
+  }
+
+  function renderCompleteWithEvidence(loops: ReturnType<typeof makeLoopEvidence>[]) {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'feedback',
+        content: 'You brought the ideas together clearly.',
+        stage: 'complete'
+      })
+    ], {
+      currentStage: 'complete',
+      stagesCompleted: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+      status: 'complete',
+      completedAt: '2026-04-16T06:00:00.000Z',
+      v2State: {
+        totalLoops: loops.length,
+        activeLoopIndex: loops.length - 1,
+        activeCheckpoint: 'complete',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'complete',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops,
+        pace: 'normal',
+        criticalGaps: [],
+        confirmedMisconceptions: [],
+        independentAttemptScore: null,
+        exitCheckPassed: null
+      }
+    });
+  }
+
+  it('renders 3 loop-breakdown-row items for a complete session with 3 loop evidence entries', () => {
+    renderCompleteWithEvidence([
+      makeLoopEvidence({ loopId: '0', loopTitle: 'Core idea one' }),
+      makeLoopEvidence({ loopId: '1', loopTitle: 'Core idea two' }),
+      makeLoopEvidence({ loopId: '2', loopTitle: 'Core idea three' })
+    ]);
+
+    const breakdown = document.querySelector('.complete-loop-breakdown');
+    expect(breakdown).toBeInTheDocument();
+    expect(breakdown!.querySelectorAll('.loop-breakdown-row')).toHaveLength(3);
+  });
+
+  it('renders Got it first try for a loop with no gaps and answeredOnFirstAttempt=true', () => {
+    renderCompleteWithEvidence([
+      makeLoopEvidence({ loopId: '0', loopTitle: 'Core idea one', gaps: [], answeredOnFirstAttempt: true })
+    ]);
+
+    const row = document.querySelector('.loop-breakdown-row');
+    expect(row).toBeInTheDocument();
+    expect(row!.textContent).toContain('Got it first try');
+  });
+
+  it('renders Took 2 attempts for a loop with no gaps and attemptCount=2', () => {
+    renderCompleteWithEvidence([
+      makeLoopEvidence({ loopId: '0', loopTitle: 'Core idea one', gaps: [], answeredOnFirstAttempt: false, attemptCount: 2 })
+    ]);
+
+    const row = document.querySelector('.loop-breakdown-row');
+    expect(row).toBeInTheDocument();
+    expect(row!.textContent).toContain('Took 2 attempts');
+  });
+
+  it('sets data-loop-result=partial for a loop with remaining gaps', () => {
+    renderCompleteWithEvidence([
+      makeLoopEvidence({ loopId: '0', loopTitle: 'Core idea one', gaps: ['gradient direction'] })
+    ]);
+
+    const row = document.querySelector('.loop-breakdown-row');
+    expect(row).toBeInTheDocument();
+    expect(row).toHaveAttribute('data-loop-result', 'partial');
+  });
+
+  it('does not render complete-loop-breakdown when v2Evidence is null', () => {
+    renderV2Workspace([
+      createMessage({
+        role: 'assistant',
+        type: 'feedback',
+        content: 'You brought the ideas together clearly.',
+        stage: 'complete'
+      })
+    ], {
+      currentStage: 'complete',
+      stagesCompleted: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+      status: 'complete',
+      completedAt: '2026-04-16T06:00:00.000Z',
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'complete',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'complete',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      v2Evidence: null
+    });
+
+    expect(document.querySelector('.complete-loop-breakdown')).not.toBeInTheDocument();
+  });
+
+  it('does not render complete-loop-breakdown when v2Evidence.loops is empty', () => {
+    renderCompleteWithEvidence([]);
+
+    expect(document.querySelector('.complete-loop-breakdown')).not.toBeInTheDocument();
   });
 });

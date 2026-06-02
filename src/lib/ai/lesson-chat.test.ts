@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { buildSystemPrompt, createLessonChatBody } from '$lib/ai/lesson-chat';
+import {
+  buildCheckpointInstructions,
+  buildEvidenceInstructions,
+  buildOrientationFirstResponseInstruction,
+  buildSystemPrompt,
+  createLessonChatBody
+} from '$lib/ai/lesson-chat';
 import { createInitialState } from '$lib/data/platform';
 import { buildDynamicLessonFromTopic } from '$lib/lesson-system';
-import type { LessonMessage, LessonSession } from '$lib/types';
+import type { Lesson, LessonMessage, LessonSession } from '$lib/types';
 
 function makeMessage(i: number): LessonMessage {
   return {
@@ -43,6 +49,32 @@ function makeMockSession(lesson: { id: string }, overrides: Partial<LessonSessio
     status: 'active',
     profileUpdates: [],
     ...overrides
+  };
+}
+
+function makeV2Lesson(baseLesson: Lesson): Lesson {
+  return {
+    ...baseLesson,
+    lessonFlowVersion: 'v2',
+    flowV2: {
+      groupedLabels: ['orientation', 'concepts', 'practice', 'check', 'complete'],
+      start: { title: 'Start', body: 'Start body for AI context' },
+      loops: [
+        {
+          id: 'loop-1',
+          title: 'Loop 1',
+          teaching: { title: 'Teach', body: 'Teach body' },
+          example: { title: 'Example', body: 'Example body' },
+          learnerTask: { title: 'Task', body: 'Task body' },
+          retrievalCheck: { title: 'Check', body: 'Check body' },
+          mustHitConcepts: ['core idea'],
+          criticalMisconceptionTags: ['core-gap']
+        }
+      ],
+      synthesis: { title: 'Synthesis', body: 'Synthesis body' },
+      independentAttempt: { title: 'Independent Attempt', body: 'Attempt body' },
+      exitCheck: { title: 'Exit Check', body: 'Exit body' }
+    }
   };
 }
 
@@ -234,6 +266,179 @@ describe('lesson-chat', () => {
     expect(prompt).toContain('Give one concrete first move');
   });
 
+  it('buildOrientationFirstResponseInstruction labels the orientation instruction section', () => {
+    expect(buildOrientationFirstResponseInstruction()).toContain('ORIENTATION INSTRUCTION');
+  });
+
+  it('buildOrientationFirstResponseInstruction says the student has not seen lesson content', () => {
+    expect(buildOrientationFirstResponseInstruction()).toContain('has NOT yet seen the lesson content');
+  });
+
+  it('buildSystemPrompt injects orientation instruction for the first v1 orientation user reply', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      currentStage: 'orientation',
+      messages: [
+        {
+          id: 'user-prior-knowledge',
+          role: 'user',
+          type: 'response',
+          content: 'I know this has something to do with patterns.',
+          stage: 'orientation',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'I know this has something to do with patterns.', messageType: 'response' });
+
+    expect(prompt).toContain('ORIENTATION INSTRUCTION');
+  });
+
+  it('buildSystemPrompt does not inject orientation instruction before a v1 orientation user reply exists', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, { currentStage: 'orientation', messages: [] });
+
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'hello', messageType: 'response' });
+
+    expect(prompt).not.toContain('ORIENTATION INSTRUCTION');
+  });
+
+  it('buildSystemPrompt does not inject orientation instruction after more than one v1 orientation user reply', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      currentStage: 'orientation',
+      messages: [
+        {
+          id: 'user-prior-knowledge-1',
+          role: 'user',
+          type: 'response',
+          content: 'I know one thing.',
+          stage: 'orientation',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        },
+        {
+          id: 'assistant-orientation-1',
+          role: 'assistant',
+          type: 'teaching',
+          content: 'Let us build from that.',
+          stage: 'orientation',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        },
+        {
+          id: 'user-prior-knowledge-2',
+          role: 'user',
+          type: 'response',
+          content: 'I also know another thing.',
+          stage: 'orientation',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'I also know another thing.', messageType: 'response' });
+
+    expect(prompt).not.toContain('ORIENTATION INSTRUCTION');
+  });
+
+  it('buildSystemPrompt injects orientation instruction for the first v2 start user reply', () => {
+    const state = createInitialState();
+    const lesson = makeV2Lesson(state.lessons[0]!);
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      currentStage: 'orientation',
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'start',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'orientation',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      messages: [
+        {
+          id: 'user-v2-prior-knowledge',
+          role: 'user',
+          type: 'response',
+          content: 'I have heard the word before.',
+          stage: 'orientation',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'I have heard the word before.', messageType: 'response' });
+
+    expect(prompt).toContain('ORIENTATION INSTRUCTION');
+  });
+
+  it('buildSystemPrompt does not inject orientation instruction for v1 concepts stage', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      currentStage: 'concepts',
+      messages: [
+        {
+          id: 'user-concepts',
+          role: 'user',
+          type: 'response',
+          content: 'The key idea is change.',
+          stage: 'concepts',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'The key idea is change.', messageType: 'response' });
+
+    expect(prompt).not.toContain('ORIENTATION INSTRUCTION');
+  });
+
+  it('buildSystemPrompt does not inject orientation instruction for a v2 loop_teach checkpoint', () => {
+    const state = createInitialState();
+    const lesson = makeV2Lesson(state.lessons[0]!);
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      currentStage: 'concepts',
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      },
+      messages: [
+        {
+          id: 'user-v2-loop',
+          role: 'user',
+          type: 'response',
+          content: 'I am ready.',
+          stage: 'concepts',
+          timestamp: new Date().toISOString(),
+          metadata: null
+        }
+      ]
+    });
+
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'I am ready.', messageType: 'response' });
+
+    expect(prompt).not.toContain('ORIENTATION INSTRUCTION');
+  });
+
   it('buildSystemPrompt includes v2 checkpoint and rubric metadata fields for loop sessions', () => {
     const state = createInitialState();
     const lesson = {
@@ -289,5 +494,243 @@ describe('lesson-chat', () => {
     expect(prompt).toContain('"lesson_score": null');
     expect(prompt).toContain('"critical_misconceptions": []');
     expect(prompt).toContain('Use the optional lesson_score');
+  });
+
+  // --- Prompt 4: Adaptive teacher prompt ---
+
+  it('buildCheckpointInstructions returns teaching instruction for loop_teach', () => {
+    expect(buildCheckpointInstructions('loop_teach')).toContain('CHECKPOINT: Teaching');
+  });
+
+  it('buildCheckpointInstructions returns practice instruction for loop_practice', () => {
+    expect(buildCheckpointInstructions('loop_practice')).toContain('CHECKPOINT: Learner Practice');
+  });
+
+  it('buildCheckpointInstructions returns synthesis instruction for synthesis', () => {
+    expect(buildCheckpointInstructions('synthesis')).toContain('CHECKPOINT: Synthesis');
+  });
+
+  it('buildEvidenceInstructions returns empty string for null evidence', () => {
+    expect(buildEvidenceInstructions(null)).toBe('');
+  });
+
+  it('buildEvidenceInstructions with a passing loop contains "passed cleanly"', () => {
+    const evidence = {
+      loops: [{
+        loopId: 'l1', loopIndex: 0, loopTitle: 'Loop 1',
+        conceptsMet: ['core idea'], gaps: [], misconceptions: [],
+        score: 0.9, attemptCount: 1,
+        styleSignals: {
+          neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true,
+          explanationWasVague: false, usedConcreteLanguage: true
+        },
+        evaluatedAt: '2026-05-21T10:00:00.000Z'
+      }],
+      pace: 'normal' as const, criticalGaps: [], confirmedMisconceptions: [],
+      independentAttemptScore: null, exitCheckPassed: null
+    };
+    expect(buildEvidenceInstructions(evidence)).toContain('passed cleanly');
+  });
+
+  it('buildEvidenceInstructions with gaps contains the gap label', () => {
+    const evidence = {
+      loops: [{
+        loopId: 'l1', loopIndex: 0, loopTitle: 'Loop 1',
+        conceptsMet: [], gaps: ['chain rule'], misconceptions: [],
+        score: 0.4, attemptCount: 2,
+        styleSignals: {
+          neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: false,
+          explanationWasVague: false, usedConcreteLanguage: false
+        },
+        evaluatedAt: '2026-05-21T10:00:00.000Z'
+      }],
+      pace: 'normal' as const, criticalGaps: [], confirmedMisconceptions: [],
+      independentAttemptScore: null, exitCheckPassed: null
+    };
+    expect(buildEvidenceInstructions(evidence)).toContain('chain rule');
+  });
+
+  it('buildEvidenceInstructions with criticalGaps contains CRITICAL and the gap', () => {
+    const evidence = {
+      loops: [],
+      pace: 'normal' as const,
+      criticalGaps: ['integration by parts'],
+      confirmedMisconceptions: [],
+      independentAttemptScore: null,
+      exitCheckPassed: null
+    };
+    const result = buildEvidenceInstructions(evidence);
+    expect(result).toContain('CRITICAL');
+    expect(result).toContain('integration by parts');
+  });
+
+  it('buildEvidenceInstructions with pace=fast emits a direct pacing instruction', () => {
+    const evidence = {
+      loops: [{
+        loopId: 'l1', loopIndex: 0, loopTitle: 'L1',
+        conceptsMet: ['x'], gaps: [], misconceptions: [], score: 0.9, attemptCount: 1,
+        styleSignals: {
+          neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true,
+          explanationWasVague: false, usedConcreteLanguage: true
+        },
+        evaluatedAt: '2026-05-21T10:00:00.000Z'
+      }],
+      pace: 'fast' as const, criticalGaps: [], confirmedMisconceptions: [],
+      independentAttemptScore: null, exitCheckPassed: null
+    };
+    const result = buildEvidenceInstructions(evidence);
+    expect(result).toContain('PACE: Student is fast');
+    expect(result).toContain('Skip the worked example restatement');
+  });
+
+  it('buildEvidenceInstructions slow pace emits an anchoring directive', () => {
+    const evidence = {
+      loops: [{
+        loopId: 'l1', loopIndex: 0, loopTitle: 'L1',
+        conceptsMet: [], gaps: ['first step'], misconceptions: [], score: 0.4, attemptCount: 3,
+        styleSignals: {
+          neededScaffolding: true, askedClarifyingQuestion: true, answeredOnFirstAttempt: false,
+          explanationWasVague: true, usedConcreteLanguage: false
+        },
+        evaluatedAt: '2026-05-21T10:00:00.000Z'
+      }],
+      pace: 'slow' as const, criticalGaps: [], confirmedMisconceptions: [],
+      independentAttemptScore: null, exitCheckPassed: null
+    };
+    const result = buildEvidenceInstructions(evidence);
+    expect(result).toMatch(/anchor sentence|concrete sentence/i);
+  });
+
+  it('buildEvidenceInstructions critical gap emits a per-gap correction directive', () => {
+    const evidence = {
+      loops: [],
+      pace: 'normal' as const,
+      criticalGaps: ['y-intercept'],
+      confirmedMisconceptions: [],
+      independentAttemptScore: null,
+      exitCheckPassed: null
+    };
+    const result = buildEvidenceInstructions(evidence);
+    expect(result).toMatch(/CRITICAL GAP.*y-intercept/);
+    expect(result).toMatch(/Restate the rule/i);
+  });
+
+  it('buildEvidenceInstructions confirmed misconception emits a named correction directive', () => {
+    const evidence = {
+      loops: [],
+      pace: 'normal' as const,
+      criticalGaps: [],
+      confirmedMisconceptions: ['gradient is always positive'],
+      independentAttemptScore: null,
+      exitCheckPassed: null
+    };
+    const result = buildEvidenceInstructions(evidence);
+    expect(result).toMatch(/CONFIRMED MISCONCEPTION.*gradient is always positive/);
+    expect(result).toMatch(/correct version/i);
+  });
+
+  it('buildSystemPrompt for a v2 session at loop_teach contains checkpoint instruction', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      v2State: {
+        totalLoops: 2, activeLoopIndex: 0, activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+        skippedGaps: [], needsTeacherReview: false
+      }
+    });
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'Hello', messageType: 'response' });
+    expect(prompt).toContain('CHECKPOINT: Teaching');
+  });
+
+  it('buildSystemPrompt for a v2 session with v2Evidence contains IN-SESSION EVIDENCE', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson, {
+      lessonFlowVersion: 'v2',
+      v2State: {
+        totalLoops: 2, activeLoopIndex: 1, activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+        skippedGaps: [], needsTeacherReview: false
+      },
+      v2Evidence: {
+        loops: [{
+          loopId: 'l1', loopIndex: 0, loopTitle: 'Loop 1',
+          conceptsMet: ['core idea'], gaps: [], misconceptions: [], score: 0.9, attemptCount: 1,
+          styleSignals: {
+            neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true,
+            explanationWasVague: false, usedConcreteLanguage: true
+          },
+          evaluatedAt: '2026-05-21T10:00:00.000Z'
+        }],
+        pace: 'fast', criticalGaps: [], confirmedMisconceptions: [],
+        independentAttemptScore: null, exitCheckPassed: null
+      }
+    });
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'Hello', messageType: 'response' });
+    expect(prompt).toContain('IN-SESSION EVIDENCE');
+  });
+
+  it('buildSystemPrompt for a v1 session does NOT contain CHECKPOINT:', () => {
+    const state = createInitialState();
+    const lesson = state.lessons[0]!;
+    const session = makeMockSession(lesson);
+    const prompt = buildSystemPrompt({ student: state.profile, learnerProfile: state.learnerProfile, lesson, lessonSession: session, message: 'Hello', messageType: 'response' });
+    expect(prompt).not.toContain('CHECKPOINT:');
+  });
+
+  // --- Prompt 6: routing flag injection ---
+
+  it('buildCheckpointInstructions loop_teach with bridgeNeeded=true contains BRIDGE REQUIRED', () => {
+    const result = buildCheckpointInstructions('loop_teach', {
+      totalLoops: 2, activeLoopIndex: 1, activeCheckpoint: 'loop_teach',
+      revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+      skippedGaps: [], needsTeacherReview: false,
+      compress: false, bridgeNeeded: true, misconceptionTarget: null
+    });
+    expect(result).toContain('BRIDGE REQUIRED');
+  });
+
+  it('buildCheckpointInstructions loop_teach with misconceptionTarget contains the target', () => {
+    const result = buildCheckpointInstructions('loop_teach', {
+      totalLoops: 2, activeLoopIndex: 1, activeCheckpoint: 'loop_teach',
+      revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+      skippedGaps: [], needsTeacherReview: false,
+      compress: false, bridgeNeeded: false, misconceptionTarget: 'sign error'
+    });
+    expect(result).toContain('sign error');
+  });
+
+  it('buildCheckpointInstructions loop_teach with compress=true contains PACE', () => {
+    const result = buildCheckpointInstructions('loop_teach', {
+      totalLoops: 2, activeLoopIndex: 1, activeCheckpoint: 'loop_teach',
+      revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+      skippedGaps: [], needsTeacherReview: false,
+      compress: true, bridgeNeeded: false, misconceptionTarget: null
+    });
+    expect(result).toContain('PACE');
+  });
+
+  it('buildCheckpointInstructions loop_teach with compress omits worked example', () => {
+    const result = buildCheckpointInstructions('loop_teach', {
+      totalLoops: 2, activeLoopIndex: 1, activeCheckpoint: 'loop_teach',
+      revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+      skippedGaps: [], needsTeacherReview: false,
+      compress: true, bridgeNeeded: false, misconceptionTarget: null
+    });
+    expect(result).toMatch(/omit the worked example/i);
+  });
+
+  it('buildCheckpointInstructions loop_teach with no flags does NOT contain BRIDGE REQUIRED or PACE or CORRECT FIRST', () => {
+    const result = buildCheckpointInstructions('loop_teach', {
+      totalLoops: 2, activeLoopIndex: 1, activeCheckpoint: 'loop_teach',
+      revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+      skippedGaps: [], needsTeacherReview: false,
+      compress: false, bridgeNeeded: false, misconceptionTarget: null
+    });
+    expect(result).not.toContain('BRIDGE REQUIRED');
+    expect(result).not.toContain('PACE');
+    expect(result).not.toContain('CORRECT FIRST');
   });
 });

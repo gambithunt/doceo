@@ -3949,4 +3949,194 @@ describe('app-state lesson notes', () => {
 
     expect(normalized.lessonNotes).toEqual([]);
   });
+
+  // --- Prompt 3: Evidence accumulation ---
+
+  it('routes loop_teach through lesson-chat, not lesson-evaluate', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, { id: 'lesson-p3-teach' });
+    const requestedUrls: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      requestedUrls.push(url);
+      if (url === '/api/ai/lesson-evaluate') {
+        throw new Error('loop_teach should not call lesson-evaluate');
+      }
+      if (url === '/api/ai/lesson-chat') {
+        return new Response(
+          JSON.stringify({
+            response: 'Here is the teaching for this concept.',
+            metadata: { action: 'stay', confidence_assessment: 'developing', must_hit_concepts_met: [] }
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(JSON.stringify({ persisted: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      lessons: [v2Lesson],
+      ui: { ...baseState.ui, currentScreen: 'lesson', learningMode: 'learn', activeLessonSessionId: 'p3-teach-session' },
+      lessonSessions: [
+        createV2LessonSession({
+          id: 'p3-teach-session',
+          lessonId: v2Lesson.id,
+          v2State: {
+            totalLoops: 2, activeLoopIndex: 0, activeCheckpoint: 'loop_teach',
+            revisionAttemptCount: 0, remediationStep: 'none', labelBucket: 'concepts',
+            skippedGaps: [], needsTeacherReview: false
+          }
+        })
+      ]
+    });
+
+    await store.sendLessonMessage('Ready to learn.');
+
+    expect(requestedUrls).toContain('/api/ai/lesson-chat');
+    expect(requestedUrls).not.toContain('/api/ai/lesson-evaluate');
+  });
+
+  it('routes loop_check through lesson-evaluate, not lesson-chat', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, { id: 'lesson-p3-check' });
+    const requestedUrls: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      requestedUrls.push(url);
+      if (url === '/api/ai/lesson-evaluate') {
+        return new Response(
+          JSON.stringify({
+            score: 0.88, mustHitConceptsMet: ['core idea one'], missingMustHitConcepts: [],
+            criticalMisconceptions: [], feedback: 'Good.', mode: 'advance',
+            provider: 'local-heuristic', model: 'heuristic'
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(JSON.stringify({ persisted: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      lessons: [v2Lesson],
+      ui: { ...baseState.ui, currentScreen: 'lesson', learningMode: 'learn', activeLessonSessionId: 'p3-check-session' },
+      lessonSessions: [createV2LessonSession({ id: 'p3-check-session', lessonId: v2Lesson.id, lessonArtifactId: 'art-p3' })]
+    });
+
+    await store.sendLessonMessage('The first rule is that fractions must be equivalent.');
+
+    expect(requestedUrls).toContain('/api/ai/lesson-evaluate');
+    expect(requestedUrls).not.toContain('/api/ai/lesson-chat');
+  });
+
+  it('accumulates loopEvidence on session.v2Evidence after a loop_check evaluation', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, { id: 'lesson-p3-evidence' });
+    const loopEvidence = {
+      loopId: 'lesson-p3-evidence-loop-1',
+      loopIndex: 0,
+      loopTitle: 'Loop 1',
+      conceptsMet: ['core idea one'],
+      gaps: [],
+      misconceptions: [],
+      score: 0.9,
+      attemptCount: 1,
+      styleSignals: {
+        neededScaffolding: false, askedClarifyingQuestion: false, answeredOnFirstAttempt: true,
+        explanationWasVague: false, usedConcreteLanguage: true
+      },
+      evaluatedAt: '2026-05-21T10:00:00.000Z'
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      if (url === '/api/ai/lesson-evaluate') {
+        return new Response(
+          JSON.stringify({
+            score: 0.9, mustHitConceptsMet: ['core idea one'], missingMustHitConcepts: [],
+            criticalMisconceptions: [], feedback: 'Good.', mode: 'advance',
+            provider: 'local-heuristic', model: 'heuristic',
+            loopEvidence
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(JSON.stringify({ persisted: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      lessons: [v2Lesson],
+      ui: { ...baseState.ui, currentScreen: 'lesson', learningMode: 'learn', activeLessonSessionId: 'p3-evidence-session' },
+      lessonSessions: [createV2LessonSession({ id: 'p3-evidence-session', lessonId: v2Lesson.id, lessonArtifactId: 'art-p3-ev' })]
+    });
+
+    await store.sendLessonMessage('Equivalent fractions have the same value.');
+
+    const state = get(store);
+    const session = state.lessonSessions.find((s) => s.id === 'p3-evidence-session');
+
+    expect(session?.v2Evidence?.loops).toHaveLength(1);
+    expect(session?.v2Evidence?.loops[0]?.conceptsMet).toEqual(['core idea one']);
+  });
+
+  it('promotes a repeated gap to criticalGaps after two loop_check evaluations', async () => {
+    const baseState = createInitialState();
+    const v2Lesson = createV2Lesson(baseState.lessons[0]!, { id: 'lesson-p3-gaps' });
+    const makeGapEvidence = (loopIndex: number) => ({
+      loopId: `lesson-p3-gaps-loop-${loopIndex + 1}`,
+      loopIndex,
+      loopTitle: `Loop ${loopIndex + 1}`,
+      conceptsMet: [],
+      gaps: ['chain rule'],
+      misconceptions: [],
+      score: 0.4,
+      attemptCount: 2,
+      styleSignals: {
+        neededScaffolding: true, askedClarifyingQuestion: false, answeredOnFirstAttempt: false,
+        explanationWasVague: false, usedConcreteLanguage: false
+      },
+      evaluatedAt: '2026-05-21T10:00:00.000Z'
+    });
+
+    let callCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      if (url === '/api/ai/lesson-evaluate') {
+        return new Response(
+          JSON.stringify({
+            score: 0.4, mustHitConceptsMet: [], missingMustHitConcepts: ['chain rule'],
+            criticalMisconceptions: [], feedback: 'Not quite.', mode: 'targeted_revision',
+            provider: 'local-heuristic', model: 'heuristic',
+            loopEvidence: makeGapEvidence(callCount++)
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(JSON.stringify({ persisted: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const store = createAppStore({
+      ...baseState,
+      lessons: [v2Lesson],
+      ui: { ...baseState.ui, currentScreen: 'lesson', learningMode: 'learn', activeLessonSessionId: 'p3-gaps-session' },
+      lessonSessions: [createV2LessonSession({ id: 'p3-gaps-session', lessonId: v2Lesson.id, lessonArtifactId: 'art-p3-gaps' })]
+    });
+
+    await store.sendLessonMessage('I am not sure.');
+
+    const stateAfterFirst = get(store);
+    const sessionAfterFirst = stateAfterFirst.lessonSessions.find((s) => s.id === 'p3-gaps-session');
+    expect(sessionAfterFirst?.v2Evidence?.criticalGaps).toEqual([]);
+
+    await store.sendLessonMessage('Still not sure about chain rule.');
+
+    const stateAfterSecond = get(store);
+    const sessionAfterSecond = stateAfterSecond.lessonSessions.find((s) => s.id === 'p3-gaps-session');
+    expect(sessionAfterSecond?.v2Evidence?.criticalGaps).toEqual(['chain rule']);
+  });
 });
