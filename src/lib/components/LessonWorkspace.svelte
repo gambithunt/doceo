@@ -11,6 +11,9 @@
     buildCheckpointEyebrow,
     deriveActiveLessonCardForSession,
     deriveLessonHarnessMomentForSession,
+    deriveLessonConceptProgressItems,
+    deriveLessonFeedbackViewModel,
+    deriveLessonLearnerActionContract,
     deriveConversationViewForSession,
     deriveCheckpointResponseChips,
     deriveLessonComposerCopy,
@@ -194,6 +197,19 @@
       ? deriveActiveLessonCardForSession(lessonSession, lesson)
       : null)
   );
+  const learnerActionContract = $derived(
+    lessonSession && lessonSession.currentStage !== 'complete'
+      ? deriveLessonLearnerActionContract(lessonSession, lesson)
+      : null
+  );
+  const showEmbeddedAnswerComposer = $derived(
+    Boolean(
+      activeLessonCard &&
+      learnerActionContract?.requiresAnswer &&
+      learnerActionContract.showEmbeddedComposer &&
+      activeLessonCard.primaryAction !== 'submit_diagnostic'
+    )
+  );
   const activeStageIdentity = $derived(
     lessonSession?.status === 'complete'
       ? 'summary'
@@ -225,9 +241,9 @@
   );
   const lessonPromptStarter = $derived.by(() => getLessonPromptStarter());
   const isYourTurnMode = $derived(
-    Boolean(nextStepCtaState.disabled && activeLessonCard?.primaryAction !== 'submit_diagnostic')
+    Boolean((nextStepCtaState.disabled || showEmbeddedAnswerComposer) && activeLessonCard?.primaryAction !== 'submit_diagnostic')
   );
-  const showComposer = $derived(isYourTurnMode || !activeLessonCard || composerForced);
+  const showComposer = $derived((isYourTurnMode || !activeLessonCard || composerForced) && !showEmbeddedAnswerComposer);
   const checkpointChips = $derived<CheckpointResponseChip[]>(
     lessonSession
       ? deriveCheckpointResponseChips(lessonSession, lesson)
@@ -298,8 +314,24 @@
       visibleMessages: []
     }
   );
-  const coveredConceptCount = $derived(conversationView.completedUnits.length);
-  const totalConceptCount = $derived(lesson?.flowV2?.concepts?.length ?? activeLessonCard?.conceptMiniCards.length ?? coveredConceptCount);
+  const conceptProgressItems = $derived(
+    lessonSession ? deriveLessonConceptProgressItems(lessonSession, lesson) : []
+  );
+  const feedbackView = $derived(
+    lessonSession
+      ? deriveLessonFeedbackViewModel(lessonSession, lesson)
+      : {
+          currentEntries: [],
+          reviewEntries: [],
+          transitionEntries: [],
+          hasCurrentFeedback: false,
+          reviewCount: 0
+        }
+  );
+  const coveredConceptCount = $derived(
+    conceptProgressItems.filter((item) => item.status === 'covered').length
+  );
+  const totalConceptCount = $derived(conceptProgressItems.length);
   const completedConceptProgressPercent = $derived(
     totalConceptCount > 0 ? Math.min(100, (coveredConceptCount / totalConceptCount) * 100) : 0
   );
@@ -440,21 +472,42 @@
   const shouldShowConversationEmptyHint = $derived(
     Boolean(lessonSession && lessonSession.status === 'active' && conversationView.visibleMessages.length === 0)
   );
+  const useFocusedFeedbackView = $derived(
+    Boolean(
+      activeLessonCard &&
+        (learnerActionContract?.requiresAnswer || feedbackView.hasCurrentFeedback || hasPendingAssistant)
+    )
+  );
+  const hasActiveFeedbackEntries = $derived(
+    Boolean(
+      useFocusedFeedbackView &&
+        (feedbackView.currentEntries.length > 0 ||
+          feedbackView.reviewEntries.length > 0 ||
+          feedbackView.transitionEntries.length > 0)
+    )
+  );
   const hasHistoryRegion = $derived(
-    conversationView.visibleMessages.length > 0 ||
-    conversationView.collapsedMessages.length > 0 ||
-    hasPendingAssistant ||
-    shouldShowConversationEmptyHint
+    useFocusedFeedbackView
+      ? hasActiveFeedbackEntries || hasPendingAssistant || shouldShowConversationEmptyHint
+      : conversationView.visibleMessages.length > 0 ||
+          conversationView.collapsedMessages.length > 0 ||
+          hasPendingAssistant ||
+          shouldShowConversationEmptyHint
   );
   const shouldRenderHistoryRegion = $derived(
     hasHistoryRegion &&
       (hasLearnerResponse ||
         hasContextualTranscriptActivity ||
+        hasActiveFeedbackEntries ||
         !activeLessonCard ||
         hasPendingAssistant ||
         shouldShowConversationEmptyHint)
   );
   const visibleTranscriptEntries = $derived.by(() => {
+    if (useFocusedFeedbackView) {
+      return feedbackView.currentEntries;
+    }
+
     if (!activeLessonCard || showCollapsedTranscript || conversationView.visibleMessages.length <= 2) {
       return conversationView.visibleMessages;
     }
@@ -469,9 +522,26 @@
     return conversationView.visibleMessages.slice(0, -2);
   });
   const reviewableTranscriptEntries = $derived.by(() => [
-    ...conversationView.collapsedMessages,
-    ...compactHiddenVisibleEntries
+    ...(useFocusedFeedbackView
+      ? [
+          ...feedbackView.reviewEntries.filter(({ message }) => !isSupportMessage(message)),
+          ...(feedbackView.currentEntries.length > 0 ? feedbackView.transitionEntries : [])
+        ]
+      : [...conversationView.collapsedMessages, ...compactHiddenVisibleEntries])
   ]);
+  const compactTransitionEntries = $derived.by(() =>
+    useFocusedFeedbackView && feedbackView.currentEntries.length === 0 ? feedbackView.transitionEntries : []
+  );
+  const focusedSupportEntries = $derived.by(() =>
+    useFocusedFeedbackView
+      ? [...conversationView.visibleMessages, ...conversationView.collapsedMessages].filter(({ message }) =>
+          isSupportMessage(message)
+        )
+      : []
+  );
+  const focusedVisibleTranscriptEntries = $derived.by(() =>
+    useFocusedFeedbackView ? [...focusedSupportEntries, ...feedbackView.currentEntries] : visibleTranscriptEntries
+  );
   const shouldCompactOpeningCard = $derived(
     Boolean(activeLessonCard && activeLessonCard.stateLabel === 'Start' && hasTranscriptActivity)
   );
@@ -721,6 +791,10 @@
   function submit(): void {
     if (composer.trim().length === 0) {
       composerNudge = lessonComposerCopy.emptySubmitNudge;
+      composerFocused = true;
+      void tick().then(() => {
+        composerElement?.focus();
+      });
       return;
     }
 
@@ -1077,8 +1151,8 @@
     return '◉';
   }
 
-  function conceptEmoji(concept: ConceptItem, index: number): string {
-    const name = concept.name.toLowerCase();
+  function conceptNameEmoji(conceptName: string, index: number): string {
+    const name = conceptName.toLowerCase();
     if (name.includes('competition')) return '🍎';
     if (name.includes('oligopoly')) return '📱';
     if (name.includes('monopoly')) return '👑';
@@ -1086,6 +1160,10 @@
     if (name.includes('control')) return '🎛️';
     const fallback = ['💡', '🧩', '✨', '📘', '🎯'];
     return fallback[index % fallback.length];
+  }
+
+  function conceptEmoji(concept: ConceptItem, index: number): string {
+    return conceptNameEmoji(concept.name, index);
   }
 
   function canPlayLessonAudio(message: LessonMessage): boolean {
@@ -1444,7 +1522,7 @@
         </div>
       </aside>
 
-      {#if activeLessonCard && activeLessonCard.conceptMiniCards.length > 0}
+      {#if activeLessonCard && conceptProgressItems.length > 0}
         <aside
           class="lesson-concepts-sidebar"
           class:lesson-concepts-sidebar-quiet={hasTranscriptActivity}
@@ -1465,20 +1543,21 @@
             <p class="lesson-pace-note">Taking it steady — each idea is worth the time.</p>
           {/if}
           <ol class="lesson-concepts-sidebar-list">
-            {#each activeLessonCard.conceptMiniCards as concept, conceptIndex}
-              {@const isCoveredConcept = conceptIndex < coveredConceptCount}
+            {#each conceptProgressItems as concept, conceptIndex (concept.id)}
               <li
                 class="concept-tile"
-                class:concept-tile-covered={isCoveredConcept}
-                class:concept-tile-upcoming={!isCoveredConcept}
-                class:lesson-concept-mastery-glow={isCoveredConcept && conceptIndex === coveredConceptCount - 1 && lastLoopWasFirstAttempt}
+                class:concept-tile-covered={concept.status === 'covered'}
+                class:concept-tile-in-progress={concept.status === 'in_progress'}
+                class:concept-tile-upcoming={concept.status === 'coming_up'}
+                class:concept-tile-needs-review={concept.status === 'needs_review'}
+                class:lesson-concept-mastery-glow={concept.status === 'covered' && conceptIndex === coveredConceptCount - 1 && lastLoopWasFirstAttempt}
               >
                 <span class="concept-tile-stripe" aria-hidden="true"></span>
-                <span class="concept-tile-emoji" aria-hidden="true">{conceptEmoji(concept, conceptIndex)}</span>
+                <span class="concept-tile-emoji" aria-hidden="true">{conceptNameEmoji(concept.title, conceptIndex)}</span>
                 <div class="concept-tile-copy">
-                  <span class="concept-tile-status">{isCoveredConcept ? 'Covered' : 'Coming up'}</span>
-                  <strong class="concept-tile-name">{concept.name}</strong>
-                  <p class="concept-tile-tagline">{concept.oneLineDefinition ?? concept.summary}</p>
+                  <span class="concept-tile-status">{concept.statusLabel}</span>
+                  <strong class="concept-tile-name">{concept.title}</strong>
+                  <p class="concept-tile-tagline">{concept.summary}</p>
                 </div>
               </li>
             {/each}
@@ -1650,6 +1729,65 @@
             <p class="lesson-notes-empty">No notes yet.</p>
           {/if}
         </section>
+      {/snippet}
+
+      {#snippet answerComposer(submitLabel: string, embedded: boolean)}
+        <div
+          class="composer"
+          class:composer-your-turn={isYourTurnMode}
+          class:embedded-answer-composer={embedded}
+          data-action-required={isYourTurnMode ? 'true' : undefined}
+          data-motion-state={isYourTurnMode ? 'action-required' : undefined}
+          data-composer-placement={embedded ? 'active-card' : 'footer'}
+        >
+          {#if composerHelperChips.length > 0}
+            <div class="answer-helper-chips" aria-label="Answer starters">
+              {#each composerHelperChips as chip}
+                <button
+                  type="button"
+                  class="answer-helper-chip"
+                  data-helper-action={chip.action}
+                  onclick={() => useComposerHelperChip(chip)}
+                >
+                  {chip.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+          <div class="composer-row">
+            <textarea
+              rows={composerFocused || composer.length > 0 ? 2 : 1}
+              bind:this={composerElement}
+              bind:value={composer}
+              placeholder={composerPlaceholder}
+              aria-describedby={composerNudge ? 'composer-nudge' : undefined}
+              oninput={onInput}
+              onfocus={() => (composerFocused = true)}
+              onblur={() => {
+                if (!composer) composerFocused = false;
+              }}
+              onkeydown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+            ></textarea>
+            <button
+              type="button"
+              class="btn btn-primary send"
+              class:ready={hasInput}
+              onclick={submit}
+              aria-label={submitLabel}
+            >
+              <span class="send-label">{embedded ? submitLabel : 'Send'}</span>
+              <span class="send-icon" aria-hidden="true">→</span>
+            </button>
+          </div>
+          {#if composerNudge}
+            <p class="composer-nudge" id="composer-nudge" role="status" aria-live="polite">{composerNudge}</p>
+          {/if}
+        </div>
       {/snippet}
 
       {#snippet completeReview()}
@@ -2108,12 +2246,14 @@
                     aria-label="Current lesson task"
                     data-action-required={isYourTurnMode ? 'true' : undefined}
                   >
-                    <div class="lesson-next-step-copy">
-                      <p class="lesson-next-step-label">Current task</p>
-                      <p class="lesson-next-step-prompt" id={nextStepCtaState.cue ? nextStepCueId : undefined}>
-                        {nextStepCtaState.cue ?? composerPlaceholder}
-                      </p>
-                    </div>
+                    {#if learnerActionContract?.showTaskInstruction !== false}
+                      <div class="lesson-next-step-copy">
+                        <p class="lesson-next-step-label">Current task</p>
+                        <p class="lesson-next-step-prompt" id={nextStepCtaState.cue ? nextStepCueId : undefined}>
+                          {nextStepCtaState.cue ?? learnerActionContract?.taskInstruction ?? composerPlaceholder}
+                        </p>
+                      </div>
+                    {/if}
 
                     {#if activeStageIdentity === 'example' || activeStageIdentity === 'your-turn' || activeStageIdentity === 'feedback' || activeStageIdentity === 'summary'}
                       <div class="lesson-next-step-target">
@@ -2126,33 +2266,37 @@
                       </div>
                     {/if}
 
-                    <div
-                      class="active-lesson-card-primary"
-                      data-action-required={isYourTurnMode ? 'true' : undefined}
-                    >
-                      {#if isYourTurnMode}
-                        <div class="your-turn-callout active-lesson-card-your-turn-callout" aria-live="polite">
-                          <p class="your-turn-label">Your turn first</p>
-                        </div>
-                      {/if}
-                      <button
-                        type="button"
-                        class="btn btn-primary lesson-support-cta active-lesson-card-cta"
-                        class:lesson-support-cta-your-turn={isYourTurnMode}
-                        onclick={submitActiveLessonCardAction}
-                        disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
-                        aria-describedby={
-                          activeLessonCard.primaryAction === 'submit_diagnostic'
-                            ? undefined
-                            : nextStepCtaState.cue
-                              ? nextStepCueId
-                              : undefined
-                        }
+                    {#if showEmbeddedAnswerComposer}
+                      {@render answerComposer(activeLessonCard.ctaLabel, true)}
+                    {:else}
+                      <div
+                        class="active-lesson-card-primary"
+                        data-action-required={isYourTurnMode ? 'true' : undefined}
                       >
-                        <span>{activeLessonCard.ctaLabel}</span>
-                        <span class="next-step-arrow" aria-hidden="true">→</span>
-                      </button>
-                    </div>
+                        {#if isYourTurnMode}
+                          <div class="your-turn-callout active-lesson-card-your-turn-callout" aria-live="polite">
+                            <p class="your-turn-label">Your turn first</p>
+                          </div>
+                        {/if}
+                        <button
+                          type="button"
+                          class="btn btn-primary lesson-support-cta active-lesson-card-cta"
+                          class:lesson-support-cta-your-turn={isYourTurnMode}
+                          onclick={submitActiveLessonCardAction}
+                          disabled={activeLessonCard.primaryAction === 'submit_diagnostic' ? !selectedDiagnosticOptionId : nextStepCtaState.disabled}
+                          aria-describedby={
+                            activeLessonCard.primaryAction === 'submit_diagnostic'
+                              ? undefined
+                              : nextStepCtaState.cue
+                                ? nextStepCueId
+                                : undefined
+                          }
+                        >
+                          <span>{activeLessonCard.ctaLabel}</span>
+                          <span class="next-step-arrow" aria-hidden="true">→</span>
+                        </button>
+                      </div>
+                    {/if}
                   </section>
 
 	                </div>
@@ -2204,8 +2348,19 @@
                   <p class="conversation-empty-hint">Read the card above and type your response below.</p>
                 {/if}
 
-                {#each visibleTranscriptEntries as entry, entryIndex (entry.message.id)}
-                  {@render transcriptEntry(entry, false, transcriptRoleLabel(visibleTranscriptEntries, entryIndex))}
+                {#if compactTransitionEntries.length > 0}
+                  <div class="feedback-transition-list" aria-label="Lesson status">
+                    {#each compactTransitionEntries as entry (entry.message.id)}
+                      <div class="feedback-transition-status" role="status">
+                        <span class="feedback-transition-dot" aria-hidden="true">✓</span>
+                        <span>{entry.message.content}</span>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+
+                {#each focusedVisibleTranscriptEntries as entry, entryIndex (entry.message.id)}
+                  {@render transcriptEntry(entry, false, transcriptRoleLabel(focusedVisibleTranscriptEntries, entryIndex))}
                 {/each}
 
                 {#if viewState.ui.pendingAssistantSessionId === lessonSession.id}
@@ -2312,60 +2467,7 @@
 	                {/if}
 	              </div>
 	            {/if}
-	            <div
-	              class="composer"
-	              class:composer-your-turn={isYourTurnMode}
-	              data-action-required={isYourTurnMode ? 'true' : undefined}
-	              data-motion-state={isYourTurnMode ? 'action-required' : undefined}
-	            >
-	              {#if composerHelperChips.length > 0}
-	                <div class="answer-helper-chips" aria-label="Answer starters">
-	                  {#each composerHelperChips as chip}
-	                    <button
-	                      type="button"
-	                      class="answer-helper-chip"
-	                      data-helper-action={chip.action}
-	                      onclick={() => useComposerHelperChip(chip)}
-	                    >
-	                      {chip.label}
-	                    </button>
-	                  {/each}
-	                </div>
-	              {/if}
-	              <div class="composer-row">
-	                <textarea
-	                  rows={composerFocused || composer.length > 0 ? 2 : 1}
-	                  bind:this={composerElement}
-	                  bind:value={composer}
-	                  placeholder={composerPlaceholder}
-	                  aria-describedby={composerNudge ? 'composer-nudge' : undefined}
-	                  oninput={onInput}
-	                  onfocus={() => (composerFocused = true)}
-	                  onblur={() => {
-	                    if (!composer) composerFocused = false;
-	                  }}
-	                  onkeydown={(e) => {
-	                    if (e.key === 'Enter' && !e.shiftKey) {
-	                      e.preventDefault();
-	                      submit();
-	                    }
-	                  }}
-	                ></textarea>
-	                <button
-	                  type="button"
-	                  class="btn btn-primary send"
-	                  class:ready={hasInput}
-	                  onclick={submit}
-	                  aria-label="Send response"
-	                >
-	                  <span class="send-label">Send</span>
-	                  <span class="send-icon" aria-hidden="true">→</span>
-	                </button>
-	              </div>
-	              {#if composerNudge}
-	                <p class="composer-nudge" id="composer-nudge" role="status" aria-live="polite">{composerNudge}</p>
-	              {/if}
-	            </div>
+	            {@render answerComposer('Send response', false)}
 	          {:else}
 	            {#if checkpointChips.length > 0}
 	              <div class="checkpoint-chip-strip">
@@ -3641,6 +3743,36 @@
     color: color-mix(in srgb, var(--text-soft) 86%, var(--text) 14%);
   }
 
+  .concept-tile-in-progress {
+    border-color: color-mix(in srgb, var(--lesson-active-stage-color) 34%, var(--border-strong));
+    background:
+      linear-gradient(
+        135deg,
+        color-mix(in srgb, var(--lesson-active-stage-color) 12%, var(--surface-strong)),
+        color-mix(in srgb, var(--surface-soft) 84%, transparent)
+      );
+  }
+
+  .concept-tile-in-progress .concept-tile-stripe {
+    background: color-mix(in srgb, var(--lesson-active-stage-color) 72%, var(--stage-concept-color) 28%);
+  }
+
+  .concept-tile-in-progress .concept-tile-status {
+    color: color-mix(in srgb, var(--lesson-active-stage-color) 72%, var(--text) 28%);
+  }
+
+  .concept-tile-needs-review {
+    border-color: color-mix(in srgb, var(--stage-feedback-color) 34%, var(--border-strong));
+  }
+
+  .concept-tile-needs-review .concept-tile-stripe {
+    background: color-mix(in srgb, var(--stage-feedback-color) 72%, var(--border-strong) 28%);
+  }
+
+  .concept-tile-needs-review .concept-tile-status {
+    color: color-mix(in srgb, var(--stage-feedback-color) 74%, var(--text) 26%);
+  }
+
   .concept-tile-covered .concept-tile-status {
     color: color-mix(in srgb, var(--color-success) 72%, var(--text-soft) 28%);
   }
@@ -4362,6 +4494,40 @@
   .active-card-feedback .bubble.assistant {
     border-color: color-mix(in srgb, var(--lesson-active-stage-color) 22%, var(--border-strong));
     border-left-color: color-mix(in srgb, var(--lesson-active-stage-color) 66%, transparent);
+  }
+
+  .feedback-transition-list {
+    display: grid;
+    gap: 0.44rem;
+  }
+
+  .feedback-transition-status {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: 0.42rem;
+    max-width: min(100%, 34rem);
+    padding: 0.34rem 0.62rem;
+    border: 1px solid color-mix(in srgb, var(--lesson-active-stage-color) 20%, var(--border-strong));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--lesson-active-stage-color) 8%, var(--surface-strong));
+    color: color-mix(in srgb, var(--text) 82%, var(--text-soft) 18%);
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .feedback-transition-dot {
+    display: inline-grid;
+    place-items: center;
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--lesson-active-stage-color) 76%, transparent);
+    color: color-mix(in srgb, var(--surface-strong) 92%, white 8%);
+    font-size: 0.62rem;
+    line-height: 1;
   }
 
   .completed-unit-summary-list {
@@ -5943,6 +6109,26 @@
     display: flex;
     align-items: flex-end;
     gap: 0.9rem;
+  }
+
+  .embedded-answer-composer {
+    grid-column: 1 / -1;
+    width: 100%;
+    padding-top: 0.15rem;
+  }
+
+  .embedded-answer-composer .composer-row {
+    align-items: stretch;
+  }
+
+  .embedded-answer-composer textarea {
+    min-height: 4.2rem;
+  }
+
+  .embedded-answer-composer .send {
+    min-width: 10rem;
+    transform: none;
+    opacity: 1;
   }
 
   .composer-your-turn {

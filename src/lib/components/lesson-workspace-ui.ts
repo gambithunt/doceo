@@ -101,6 +101,28 @@ export interface LessonHarnessMoment {
   readonly activeCard: LessonWorkspaceActiveCard;
 }
 
+export type LessonLearnerActionKind =
+  | 'read'
+  | 'optional_reflection'
+  | 'quick_check'
+  | 'worked_example_reflection'
+  | 'practice_answer'
+  | 'review_feedback'
+  | 'synthesis_reflection'
+  | 'independent_answer'
+  | 'final_answer';
+
+export interface LessonLearnerActionContract {
+  kind: LessonLearnerActionKind;
+  requiresAnswer: boolean;
+  showEmbeddedComposer: boolean;
+  showTaskInstruction: boolean;
+  taskLabel: string;
+  taskInstruction: string;
+  primaryCtaLabel: string;
+  emptySubmitNudge: string | null;
+}
+
 export type LessonVisualIntentContext = 'concept' | 'example' | 'your-turn' | 'feedback' | 'summary';
 
 export interface LessonVisualIntent {
@@ -134,6 +156,26 @@ export interface LessonWorkspaceConversationView {
   completedUnits: LessonWorkspaceCompletedUnitSummary[];
   collapsedMessages: LessonWorkspaceMessageEntry[];
   visibleMessages: LessonWorkspaceMessageEntry[];
+}
+
+export interface LessonFeedbackViewModel {
+  currentEntries: LessonWorkspaceMessageEntry[];
+  reviewEntries: LessonWorkspaceMessageEntry[];
+  transitionEntries: LessonWorkspaceMessageEntry[];
+  hasCurrentFeedback: boolean;
+  reviewCount: number;
+}
+
+export type LessonConceptProgressStatus = 'covered' | 'in_progress' | 'coming_up' | 'needs_review';
+
+export interface LessonConceptProgressItem {
+  id: string;
+  index: number;
+  title: string;
+  summary: string;
+  supportingText: string | null;
+  status: LessonConceptProgressStatus;
+  statusLabel: string;
 }
 
 export const LESSON_WORKSPACE_VISIBLE_STAGES = LESSON_STAGE_ORDER.filter(
@@ -426,6 +468,79 @@ function getCompletedLoopCount(
   }
 }
 
+function statusLabelForConceptProgress(status: LessonConceptProgressStatus): string {
+  switch (status) {
+    case 'covered':
+      return 'Covered';
+    case 'in_progress':
+      return 'In progress';
+    case 'coming_up':
+      return 'Coming up';
+    case 'needs_review':
+      return 'Needs review';
+  }
+}
+
+function getConceptProgressStatus(
+  index: number,
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State' | 'status'>
+): LessonConceptProgressStatus {
+  if (
+    lessonSession.status === 'complete' ||
+    !lessonSession.v2State ||
+    !isLoopCheckpoint(lessonSession.v2State.activeCheckpoint)
+  ) {
+    return 'covered';
+  }
+
+  if (index < lessonSession.v2State.activeLoopIndex) {
+    return 'covered';
+  }
+
+  if (index === lessonSession.v2State.activeLoopIndex) {
+    return lessonSession.v2State.needsTeacherReview ? 'needs_review' : 'in_progress';
+  }
+
+  return 'coming_up';
+}
+
+export function deriveLessonConceptProgressItems(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State' | 'status'>,
+  lesson: Pick<Lesson, 'flowV2'> | null
+): LessonConceptProgressItem[] {
+  if (lessonSession.lessonFlowVersion !== 'v2' || !lessonSession.v2State || !lesson?.flowV2) {
+    return [];
+  }
+
+  const concepts = lesson.flowV2.concepts ?? [];
+  const loops = lesson.flowV2.loops;
+  const itemCount = Math.max(concepts.length, loops.length);
+
+  return Array.from({ length: itemCount }, (_, index) => {
+    const concept = concepts[index];
+    const loop = loops[index];
+    const status = getConceptProgressStatus(index, lessonSession);
+
+    return {
+      id: loop?.id ?? `concept-${index + 1}`,
+      index,
+      title: concept?.name ?? loop?.title ?? `Concept ${index + 1}`,
+      summary:
+        concept?.oneLineDefinition ??
+        concept?.summary ??
+        loop?.teaching.title ??
+        `Concept ${index + 1}.`,
+      supportingText:
+        concept?.whyItMatters ??
+        concept?.example ??
+        loop?.teaching.body ??
+        null,
+      status,
+      statusLabel: statusLabelForConceptProgress(status)
+    };
+  });
+}
+
 const LOOP_CHECKPOINTS = new Set<LessonFlowV2Checkpoint>([
   'loop_teach',
   'loop_example',
@@ -546,6 +661,101 @@ function isRedundantActiveCheckpointMessage(
   }
 
   return message.content.trim() === sectionBody.trim();
+}
+
+function isLoopScopedCheckpoint(checkpoint: LessonFlowV2Checkpoint): boolean {
+  return checkpoint.startsWith('loop_');
+}
+
+function messageMatchesActiveV2Checkpoint(
+  message: LessonMessage,
+  v2State: LessonFlowV2SessionState
+): boolean {
+  const context = message.v2Context;
+
+  if (!context || context.checkpoint !== v2State.activeCheckpoint) {
+    return false;
+  }
+
+  return !isLoopScopedCheckpoint(v2State.activeCheckpoint) || context.loopIndex === v2State.activeLoopIndex;
+}
+
+function isLearnerFeedbackEntry(entry: LessonWorkspaceMessageEntry): boolean {
+  return entry.message.role === 'user';
+}
+
+function isTutorFeedbackEntry(entry: LessonWorkspaceMessageEntry): boolean {
+  return entry.message.role === 'assistant' && entry.message.type === 'feedback';
+}
+
+function isTransitionOnlyAssistantMessage(message: LessonMessage): boolean {
+  if (message.role !== 'assistant') {
+    return false;
+  }
+
+  const content = message.content.trim();
+
+  return (
+    /^let'?s move into\b/i.test(content) ||
+    /^(good|great|nice|well done|okay|ok)[.!]?\s+(let'?s move|now (?:let'?s|see)|you picked|we'?ll move|time to move)\b/i.test(content)
+  );
+}
+
+export function deriveLessonFeedbackViewModel(
+  lessonSession: Pick<LessonSession, 'lessonFlowVersion' | 'v2State' | 'messages' | 'status'>,
+  lesson: Pick<Lesson, 'flowV2'> | null = null
+): LessonFeedbackViewModel {
+  const allEntries = lessonSession.messages
+    .map((message, index) => ({ index, message }))
+    .filter((entry) => !isRedundantActiveCheckpointMessage(entry.message, lessonSession, lesson));
+
+  if (
+    lessonSession.lessonFlowVersion !== 'v2' ||
+    !lessonSession.v2State ||
+    lessonSession.status === 'complete' ||
+    !lesson?.flowV2
+  ) {
+    const transitionEntries = allEntries.filter((entry) => isTransitionOnlyAssistantMessage(entry.message));
+    const transitionIds = new Set(transitionEntries.map((entry) => entry.message.id));
+    const currentEntries = allEntries.filter((entry) => !transitionIds.has(entry.message.id));
+
+    return {
+      currentEntries,
+      reviewEntries: [],
+      transitionEntries,
+      hasCurrentFeedback: currentEntries.some(isTutorFeedbackEntry),
+      reviewCount: transitionEntries.length
+    };
+  }
+
+  const activeCheckpointEntries = allEntries.filter((entry) =>
+    messageMatchesActiveV2Checkpoint(entry.message, lessonSession.v2State!)
+  );
+  const transitionEntries = allEntries.filter((entry) => isTransitionOnlyAssistantMessage(entry.message));
+  const transitionIds = new Set(transitionEntries.map((entry) => entry.message.id));
+  const latestLearnerEntry = activeCheckpointEntries.filter(isLearnerFeedbackEntry).at(-1) ?? null;
+  const latestTutorEntry =
+    activeCheckpointEntries
+      .filter((entry) => !transitionIds.has(entry.message.id))
+      .filter(isTutorFeedbackEntry)
+      .at(-1) ?? null;
+  const currentIds = new Set(
+    [latestLearnerEntry, latestTutorEntry]
+      .filter((entry): entry is LessonWorkspaceMessageEntry => Boolean(entry))
+      .map((entry) => entry.message.id)
+  );
+  const currentEntries = allEntries.filter((entry) => currentIds.has(entry.message.id));
+  const reviewEntries = allEntries.filter(
+    (entry) => !currentIds.has(entry.message.id) && !transitionIds.has(entry.message.id)
+  );
+
+  return {
+    currentEntries,
+    reviewEntries,
+    transitionEntries,
+    hasCurrentFeedback: Boolean(latestTutorEntry),
+    reviewCount: reviewEntries.length + transitionEntries.length
+  };
 }
 
 export function deriveConversationViewForSession(
@@ -879,6 +1089,119 @@ export function deriveLessonHarnessMomentForSession(
     primaryActionLabel: activeCard.ctaLabel,
     activeCard
   };
+}
+
+function buildActionContract(
+  kind: LessonLearnerActionKind,
+  {
+    requiresAnswer,
+    showEmbeddedComposer,
+    activeStage,
+    primaryCtaLabel
+  }: {
+    requiresAnswer: boolean;
+    showEmbeddedComposer: boolean;
+    activeStage: VisibleLessonStage;
+    primaryCtaLabel: string;
+  }
+): LessonLearnerActionContract {
+  const showTaskInstruction = kind !== 'read';
+  return {
+    kind,
+    requiresAnswer,
+    showEmbeddedComposer,
+    showTaskInstruction,
+    taskLabel: 'Current task',
+    taskInstruction: COMPOSER_PLACEHOLDERS[activeStage],
+    primaryCtaLabel,
+    emptySubmitNudge: requiresAnswer
+      ? (NEXT_STEP_DISABLED_CUES[activeStage] ?? DEFAULT_COMPOSER_EMPTY_NUDGE)
+      : null
+  };
+}
+
+export function deriveLessonLearnerActionContract(
+  lessonSession: Pick<
+    LessonSession,
+    'lessonFlowVersion' | 'v2State' | 'currentStage' | 'messages' | 'softStuckCount' | 'status'
+  >,
+  lesson: Pick<Lesson, 'flowV2'> | null
+): LessonLearnerActionContract | null {
+  if (
+    lessonSession.lessonFlowVersion !== 'v2' ||
+    !lessonSession.v2State ||
+    lessonSession.status === 'complete' ||
+    !lesson?.flowV2
+  ) {
+    return null;
+  }
+
+  const activeCard = deriveActiveLessonCardForSession(lessonSession, lesson);
+
+  if (!activeCard) {
+    return null;
+  }
+
+  const activeStage = getVisiblePromptStageForSession(lessonSession);
+  const ctaState = deriveNextStepCtaStateForSession(lessonSession);
+  const gatedAnswerRequired = ctaState.disabled;
+  const base = {
+    activeStage,
+    primaryCtaLabel: activeCard.ctaLabel
+  };
+
+  switch (lessonSession.v2State.activeCheckpoint) {
+    case 'start':
+      return buildActionContract('optional_reflection', {
+        ...base,
+        requiresAnswer: false,
+        showEmbeddedComposer: true
+      });
+    case 'loop_teach':
+      return buildActionContract('read', {
+        ...base,
+        requiresAnswer: false,
+        showEmbeddedComposer: false
+      });
+    case 'loop_example':
+      return buildActionContract('worked_example_reflection', {
+        ...base,
+        requiresAnswer: gatedAnswerRequired,
+        showEmbeddedComposer: gatedAnswerRequired
+      });
+    case 'loop_practice':
+      return buildActionContract('practice_answer', {
+        ...base,
+        requiresAnswer: true,
+        showEmbeddedComposer: true
+      });
+    case 'loop_check':
+      return buildActionContract(gatedAnswerRequired ? 'quick_check' : 'review_feedback', {
+        ...base,
+        requiresAnswer: gatedAnswerRequired,
+        showEmbeddedComposer: gatedAnswerRequired
+      });
+    case 'synthesis':
+      return buildActionContract('synthesis_reflection', {
+        ...base,
+        requiresAnswer: gatedAnswerRequired,
+        showEmbeddedComposer: gatedAnswerRequired
+      });
+    case 'independent_attempt':
+      return buildActionContract('independent_answer', {
+        ...base,
+        requiresAnswer: true,
+        showEmbeddedComposer: true
+      });
+    case 'exit_check':
+      return buildActionContract('final_answer', {
+        ...base,
+        requiresAnswer: true,
+        showEmbeddedComposer: true
+      });
+    case 'complete':
+      return null;
+  }
 }
 
 export function isTrustedImageResource(resource: LessonResource): boolean {

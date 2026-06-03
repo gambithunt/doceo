@@ -4,7 +4,10 @@ import {
   deriveActiveLessonCardForSession,
   deriveConcept1EarlyDiagnostic,
   deriveConversationViewForSession,
+  deriveLessonConceptProgressItems,
+  deriveLessonFeedbackViewModel,
   deriveLessonHarnessMomentForSession,
+  deriveLessonLearnerActionContract,
   deriveLessonComposerCopy,
   deriveLessonVisualIntent,
   deriveNextStepCtaState,
@@ -166,6 +169,195 @@ describe('lesson workspace UI helpers', () => {
       }
     }
   };
+
+  function createActionContractSession(
+    checkpoint:
+      | 'start'
+      | 'loop_teach'
+      | 'loop_example'
+      | 'loop_practice'
+      | 'loop_check'
+      | 'synthesis'
+      | 'independent_attempt'
+      | 'exit_check'
+      | 'complete',
+    overrides: Partial<{
+      currentStage: 'orientation' | 'concepts' | 'construction' | 'examples' | 'practice' | 'check' | 'complete';
+      messages: LessonMessage[];
+      status: 'active' | 'complete' | 'archived';
+    }> = {}
+  ) {
+    return {
+      lessonFlowVersion: 'v2' as const,
+      currentStage: overrides.currentStage ?? (checkpoint === 'start' ? 'orientation' : checkpoint === 'complete' ? 'complete' : 'concepts'),
+      messages: overrides.messages ?? [],
+      softStuckCount: 0,
+      status: overrides.status ?? (checkpoint === 'complete' ? 'complete' : 'active'),
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: checkpoint === 'synthesis' || checkpoint === 'independent_attempt' || checkpoint === 'exit_check' || checkpoint === 'complete'
+          ? 1
+          : 0,
+        activeCheckpoint: checkpoint,
+        revisionAttemptCount: 0,
+        remediationStep: 'none' as const,
+        labelBucket: checkpoint === 'start' ? 'orientation' as const : checkpoint === 'complete' ? 'complete' as const : 'concepts' as const,
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    };
+  }
+
+  describe('deriveLessonConceptProgressItems', () => {
+    const progressLesson = {
+      flowV2: {
+        ...conversationLesson.flowV2,
+        concepts: [
+          ...conversationLesson.flowV2.concepts,
+          {
+            name: 'Core idea three',
+            summary: 'The third rule to notice.',
+            detail: 'This is the third core idea in detail.',
+            example: 'Use the third example to finish the pattern.',
+            oneLineDefinition: 'Core idea three checks the final part of the pattern.',
+            whyItMatters: 'It helps the learner finish the reasoning chain.'
+          }
+        ],
+        loops: [
+          ...conversationLesson.flowV2.loops,
+          {
+            id: 'loop-3',
+            title: 'Loop 3',
+            teaching: {
+              title: 'Teach Loop 3',
+              body: 'Teach the third core idea.'
+            },
+            example: {
+              title: 'Example Loop 3',
+              body: 'Walk through the third worked example.'
+            },
+            learnerTask: {
+              title: 'Try Loop 3',
+              body: 'Try the third task on your own.'
+            },
+            retrievalCheck: {
+              title: 'Check Loop 3',
+              body: 'Explain the third idea in your own words.'
+            },
+            mustHitConcepts: ['core idea three'],
+            criticalMisconceptionTags: ['core-idea-three-gap']
+          }
+        ]
+      }
+    } as Pick<Lesson, 'flowV2'>;
+
+    function createConceptProgressSession(
+      overrides: Partial<{
+        activeLoopIndex: number;
+        activeCheckpoint:
+          | 'loop_teach'
+          | 'loop_example'
+          | 'loop_practice'
+          | 'loop_check'
+          | 'synthesis'
+          | 'independent_attempt'
+          | 'exit_check'
+          | 'complete';
+        status: 'active' | 'complete' | 'archived';
+        needsTeacherReview: boolean;
+      }> = {}
+    ) {
+      return {
+        lessonFlowVersion: 'v2' as const,
+        status: overrides.status ?? 'active',
+        v2State: {
+          totalLoops: 3,
+          activeLoopIndex: overrides.activeLoopIndex ?? 0,
+          activeCheckpoint: overrides.activeCheckpoint ?? 'loop_teach',
+          revisionAttemptCount: 0,
+          remediationStep: 'none' as const,
+          labelBucket: 'concepts' as const,
+          skippedGaps: [],
+          needsTeacherReview: overrides.needsTeacherReview ?? false
+        }
+      };
+    }
+
+    it('marks the first concept in progress at loop_teach', () => {
+      const items = deriveLessonConceptProgressItems(
+        createConceptProgressSession({ activeLoopIndex: 0, activeCheckpoint: 'loop_teach' }),
+        progressLesson
+      );
+
+      expect(items[0]).toMatchObject({
+        title: 'Core idea one',
+        status: 'in_progress',
+        statusLabel: 'In progress'
+      });
+      expect(items[0]?.status).not.toBe('coming_up');
+    });
+
+    it('marks earlier, current, and later loop concepts accurately', () => {
+      const items = deriveLessonConceptProgressItems(
+        createConceptProgressSession({ activeLoopIndex: 1, activeCheckpoint: 'loop_example' }),
+        progressLesson
+      );
+
+      expect(items.map((item) => item.status)).toEqual(['covered', 'in_progress', 'coming_up']);
+      expect(items.map((item) => item.statusLabel)).toEqual(['Covered', 'In progress', 'Coming up']);
+    });
+
+    it('marks all loop concepts covered at synthesis', () => {
+      const items = deriveLessonConceptProgressItems(
+        createConceptProgressSession({ activeLoopIndex: 2, activeCheckpoint: 'synthesis' }),
+        progressLesson
+      );
+
+      expect(items.map((item) => item.status)).toEqual(['covered', 'covered', 'covered']);
+    });
+
+    it('marks all concepts covered when the session is complete', () => {
+      const items = deriveLessonConceptProgressItems(
+        createConceptProgressSession({ status: 'complete', activeCheckpoint: 'complete' }),
+        progressLesson
+      );
+
+      expect(items.map((item) => item.status)).toEqual(['covered', 'covered', 'covered']);
+    });
+
+    it('falls back to loop titles and summaries when concept metadata is missing', () => {
+      const lessonWithoutConcepts = {
+        flowV2: {
+          ...progressLesson.flowV2,
+          concepts: undefined
+        }
+      } as Pick<Lesson, 'flowV2'>;
+
+      const items = deriveLessonConceptProgressItems(
+        createConceptProgressSession({ activeLoopIndex: 1, activeCheckpoint: 'loop_practice' }),
+        lessonWithoutConcepts
+      );
+
+      expect(items[0]).toMatchObject({
+        id: 'loop-1',
+        title: 'Loop 1',
+        summary: 'Teach Loop 1'
+      });
+      expect(items.map((item) => item.status)).toEqual(['covered', 'in_progress', 'coming_up']);
+    });
+
+    it('never labels the active loop concept as coming up', () => {
+      const items = deriveLessonConceptProgressItems(
+        createConceptProgressSession({ activeLoopIndex: 1, activeCheckpoint: 'loop_check' }),
+        progressLesson
+      );
+
+      expect(items[1]).toMatchObject({
+        status: 'in_progress',
+        statusLabel: 'In progress'
+      });
+    });
+  });
 
   it('returns contextual copy for every visible lesson stage', () => {
     expect(LESSON_WORKSPACE_VISIBLE_STAGES).toEqual([
@@ -1013,6 +1205,155 @@ describe('lesson workspace UI helpers', () => {
     ).toBeNull();
   });
 
+  it('derives an optional reflection action contract for the v2 start checkpoint', () => {
+    const contract = deriveLessonLearnerActionContract(
+      createActionContractSession('start'),
+      conversationLesson
+    );
+
+    expect(contract).toMatchObject({
+      kind: 'optional_reflection',
+      requiresAnswer: false,
+      showEmbeddedComposer: true,
+      primaryCtaLabel: 'Start lesson'
+    });
+    expect(contract?.taskInstruction).toContain('Name something');
+  });
+
+  it('derives a read-only action contract for loop_teach', () => {
+    const contract = deriveLessonLearnerActionContract(
+      createActionContractSession('loop_teach'),
+      conversationLesson
+    );
+
+    expect(contract).toMatchObject({
+      kind: 'read',
+      requiresAnswer: false,
+      showEmbeddedComposer: false
+    });
+    expect(contract?.primaryCtaLabel).toBeTruthy();
+  });
+
+  it('suppresses the current task instruction for read contracts', () => {
+    const contract = deriveLessonLearnerActionContract(
+      createActionContractSession('loop_teach'),
+      conversationLesson
+    );
+
+    expect(contract?.showTaskInstruction).toBe(false);
+  });
+
+  it('shows the current task instruction for answer-required and optional reflection contracts', () => {
+    const practiceContract = deriveLessonLearnerActionContract(
+      createActionContractSession('loop_practice'),
+      conversationLesson
+    );
+    const startContract = deriveLessonLearnerActionContract(
+      createActionContractSession('start'),
+      conversationLesson
+    );
+
+    expect(practiceContract?.showTaskInstruction).toBe(true);
+    expect(startContract?.showTaskInstruction).toBe(true);
+  });
+
+  it('derives a worked-example reflection contract that does not require an answer by default', () => {
+    const contract = deriveLessonLearnerActionContract(
+      createActionContractSession('loop_example'),
+      conversationLesson
+    );
+
+    expect(contract).toMatchObject({
+      kind: 'worked_example_reflection',
+      requiresAnswer: false,
+      showEmbeddedComposer: false,
+      primaryCtaLabel: 'Try it yourself'
+    });
+  });
+
+  it('derives a practice-answer contract that requires an embedded composer', () => {
+    const contract = deriveLessonLearnerActionContract(
+      createActionContractSession('loop_practice', { currentStage: 'practice' }),
+      conversationLesson
+    );
+
+    expect(contract).toMatchObject({
+      kind: 'practice_answer',
+      requiresAnswer: true,
+      showEmbeddedComposer: true,
+      primaryCtaLabel: 'Submit my attempt'
+    });
+    expect(contract?.emptySubmitNudge).toContain('try the question');
+  });
+
+  it('distinguishes loop_check review feedback from answer-required gating', () => {
+    const reviewContract = deriveLessonLearnerActionContract(
+      createActionContractSession('loop_check', { currentStage: 'check' }),
+      conversationLesson
+    );
+    const gatedContract = deriveLessonLearnerActionContract(
+      createActionContractSession('loop_check', {
+        currentStage: 'check',
+        messages: [createAssistantStageMessage('check', 'Answer the task above before moving on.')]
+      }),
+      conversationLesson
+    );
+
+    expect(reviewContract).toMatchObject({
+      kind: 'review_feedback',
+      requiresAnswer: false,
+      showEmbeddedComposer: false
+    });
+    expect(gatedContract).toMatchObject({
+      kind: 'quick_check',
+      requiresAnswer: true,
+      showEmbeddedComposer: true
+    });
+  });
+
+  it('derives an independent-answer contract that requires an embedded composer', () => {
+    const contract = deriveLessonLearnerActionContract(
+      createActionContractSession('independent_attempt', { currentStage: 'practice' }),
+      conversationLesson
+    );
+
+    expect(contract).toMatchObject({
+      kind: 'independent_answer',
+      requiresAnswer: true,
+      showEmbeddedComposer: true
+    });
+  });
+
+  it('derives a final-answer contract that requires an embedded composer', () => {
+    const contract = deriveLessonLearnerActionContract(
+      createActionContractSession('exit_check', { currentStage: 'check' }),
+      conversationLesson
+    );
+
+    expect(contract).toMatchObject({
+      kind: 'final_answer',
+      requiresAnswer: true,
+      showEmbeddedComposer: true
+    });
+  });
+
+  it('returns no action contract for v1 or unavailable lessons', () => {
+    expect(
+      deriveLessonLearnerActionContract(
+        {
+          ...createActionContractSession('loop_teach'),
+          lessonFlowVersion: 'v1' as const,
+          v2State: null
+        },
+        conversationLesson
+      )
+    ).toBeNull();
+
+    expect(
+      deriveLessonLearnerActionContract(createActionContractSession('loop_teach'), null)
+    ).toBeNull();
+  });
+
   it('returns a safe null harness moment for sessions without v2 state', () => {
     expect(
       deriveLessonHarnessMomentForSession(
@@ -1346,6 +1687,206 @@ describe('lesson workspace UI helpers', () => {
       'loop-1-user',
       'loop-1-feedback'
     ]);
+  });
+
+  function createFeedbackSession(
+    messages: LessonMessage[],
+    overrides: Partial<{
+      activeCheckpoint:
+        | 'start'
+        | 'loop_teach'
+        | 'loop_example'
+        | 'loop_practice'
+        | 'loop_check'
+        | 'synthesis'
+        | 'independent_attempt'
+        | 'exit_check';
+      activeLoopIndex: number;
+      labelBucket: 'orientation' | 'concepts' | 'practice' | 'check';
+    }> = {}
+  ) {
+    const activeCheckpoint = overrides.activeCheckpoint ?? 'loop_practice';
+    const labelBucket = overrides.labelBucket ?? (activeCheckpoint === 'start' ? 'orientation' : activeCheckpoint === 'exit_check' ? 'check' : 'concepts');
+
+    return {
+      lessonFlowVersion: 'v2' as const,
+      status: 'active' as const,
+      messages,
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: overrides.activeLoopIndex ?? 0,
+        activeCheckpoint,
+        revisionAttemptCount: 0,
+        remediationStep: 'none' as const,
+        labelBucket,
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    };
+  }
+
+  describe('deriveLessonFeedbackViewModel', () => {
+    it('keeps the latest active checkpoint learner answer and tutor feedback current', () => {
+      const feedback = deriveLessonFeedbackViewModel(
+        createFeedbackSession([
+          createV2Message('active-user-1', 'First active attempt.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          }),
+          createV2Message('active-feedback-1', 'First active feedback.', {
+            type: 'feedback',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          }),
+          createV2Message('active-user-2', 'Latest active attempt.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          }),
+          createV2Message('active-feedback-2', 'Latest active feedback.', {
+            type: 'feedback',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          })
+        ]),
+        conversationLesson
+      );
+
+      expect(feedback.currentEntries.map((entry) => entry.message.id)).toEqual(['active-user-2', 'active-feedback-2']);
+      expect(feedback.hasCurrentFeedback).toBe(true);
+    });
+
+    it('moves older checkpoint feedback into review entries', () => {
+      const feedback = deriveLessonFeedbackViewModel(
+        createFeedbackSession([
+          createV2Message('loop-1-user', 'Older learner reply from loop 1.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          }),
+          createV2Message('loop-1-feedback', 'Older tutor feedback from loop 1.', {
+            type: 'feedback',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          }),
+          createV2Message('loop-2-user', 'Current learner reply from loop 2.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_practice',
+            loopIndex: 1
+          }),
+          createV2Message('loop-2-feedback', 'Current tutor feedback from loop 2.', {
+            type: 'feedback',
+            checkpoint: 'loop_practice',
+            loopIndex: 1
+          })
+        ], { activeLoopIndex: 1 }),
+        conversationLesson
+      );
+
+      expect(feedback.currentEntries.map((entry) => entry.message.id)).toEqual(['loop-2-user', 'loop-2-feedback']);
+      expect(feedback.reviewEntries.map((entry) => entry.message.id)).toEqual(['loop-1-user', 'loop-1-feedback']);
+      expect(feedback.reviewCount).toBe(2);
+    });
+
+    it('identifies transition-only assistant messages separately', () => {
+      const feedback = deriveLessonFeedbackViewModel(
+        createFeedbackSession([
+          createV2Message('active-user', 'My answer.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          }),
+          createV2Message('transition-only', "Good. Let's move into Active Practice.", {
+            type: 'feedback',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          })
+        ]),
+        conversationLesson
+      );
+
+      expect(feedback.currentEntries.map((entry) => entry.message.id)).toEqual(['active-user']);
+      expect(feedback.transitionEntries.map((entry) => entry.message.id)).toEqual(['transition-only']);
+      expect(feedback.reviewCount).toBe(1);
+    });
+
+    it('does not leak earlier loop feedback when the same checkpoint is active on a later loop', () => {
+      const feedback = deriveLessonFeedbackViewModel(
+        createFeedbackSession([
+          createV2Message('loop-1-user', 'Loop 1 answer.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_check',
+            loopIndex: 0
+          }),
+          createV2Message('loop-1-feedback', 'Loop 1 feedback.', {
+            type: 'feedback',
+            checkpoint: 'loop_check',
+            loopIndex: 0
+          }),
+          createV2Message('loop-2-user', 'Loop 2 answer.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_check',
+            loopIndex: 1
+          })
+        ], { activeCheckpoint: 'loop_check', activeLoopIndex: 1 }),
+        conversationLesson
+      );
+
+      expect(feedback.currentEntries.map((entry) => entry.message.id)).toEqual(['loop-2-user']);
+      expect(feedback.reviewEntries.map((entry) => entry.message.id)).toEqual(['loop-1-user', 'loop-1-feedback']);
+    });
+
+    it('preserves user messages even when they match active-card body text', () => {
+      const feedback = deriveLessonFeedbackViewModel(
+        createFeedbackSession([
+          createV2Message('user-body-mirror', 'Try the first task on your own.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          })
+        ]),
+        conversationLesson
+      );
+
+      expect(feedback.currentEntries.map((entry) => entry.message.id)).toEqual(['user-body-mirror']);
+    });
+
+    it('keeps start and orientation messages available in review history', () => {
+      const feedback = deriveLessonFeedbackViewModel(
+        createFeedbackSession([
+          createV2Message('start-stage', '◉ Orientation', {
+            role: 'system',
+            type: 'stage_start',
+            checkpoint: 'start',
+            loopIndex: null
+          }),
+          createV2Message('start-teach', 'Start with the big picture.', {
+            checkpoint: 'start',
+            loopIndex: null
+          }),
+          createV2Message('current-user', 'Current loop answer.', {
+            role: 'user',
+            type: 'response',
+            checkpoint: 'loop_practice',
+            loopIndex: 0
+          })
+        ]),
+        conversationLesson
+      );
+
+      expect(feedback.currentEntries.map((entry) => entry.message.id)).toEqual(['current-user']);
+      expect(feedback.reviewEntries.map((entry) => entry.message.id)).toEqual(['start-stage', 'start-teach']);
+      expect(feedback.reviewCount).toBe(2);
+    });
   });
 
   it('keeps entire recent exchanges visible instead of slicing by raw message count', () => {

@@ -1451,14 +1451,14 @@ describe('LessonWorkspace harness design Phase 2 purposeful motion', () => {
 
     const activeCard = screen.getByRole('region', { name: 'Active lesson: Try Loop 1' });
     const actions = activeCard.querySelector('.lesson-next-step-panel');
-    const primary = activeCard.querySelector('.active-lesson-card-primary');
+    const embeddedComposer = activeCard.querySelector('.embedded-answer-composer');
     const cta = within(activeCard).getByRole('button', { name: 'Submit my attempt' });
     const composer = document.querySelector('.composer');
 
     expect(activeCard).toHaveAttribute('data-action-required', 'true');
     expect(actions).toHaveAttribute('data-action-required', 'true');
-    expect(primary).toHaveAttribute('data-action-required', 'true');
-    expect(cta).toHaveClass('lesson-support-cta', 'active-lesson-card-cta');
+    expect(embeddedComposer).toHaveAttribute('data-action-required', 'true');
+    expect(cta).toHaveClass('send');
     expect(composer).toHaveAttribute('data-action-required', 'true');
     expect(composer).toHaveAttribute('data-motion-state', 'action-required');
   });
@@ -1635,6 +1635,207 @@ describe('LessonWorkspace harness design Phase 3 visible composer feedback', () 
   });
 });
 
+describe('LessonWorkspace lesson flow clarity Prompt 2.2 feedback rendering', () => {
+  function renderPromptTwoFeedbackWorkspace(
+    messages: LessonMessage[],
+    overrides: Partial<LessonSession> = {}
+  ): void {
+    renderV2Workspace(messages, {
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation', 'concepts'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_practice',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      },
+      ...overrides
+    });
+  }
+
+  it('shows only the latest active learner answer and tutor feedback expanded', () => {
+    renderPromptTwoFeedbackWorkspace([
+      createMessage({
+        id: 'older-answer',
+        role: 'user',
+        type: 'response',
+        content: 'Earlier loop answer that should stay in review.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'older-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Earlier tutor feedback that should stay in review.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'current-answer',
+        role: 'user',
+        type: 'response',
+        content: 'Current answer about survival advantage.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 1 }
+      }),
+      createMessage({
+        id: 'current-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Current tutor feedback about connecting the claim to evidence.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 1 }
+      })
+    ]);
+
+    const feedback = screen.getByRole('region', { name: 'Lesson feedback' });
+
+    expect(within(feedback).getByText('Current answer about survival advantage.')).toBeInTheDocument();
+    expect(
+      within(feedback).getByText('Current tutor feedback about connecting the claim to evidence.')
+    ).toBeInTheDocument();
+    expect(within(feedback).queryByText('Earlier loop answer that should stay in review.')).not.toBeInTheDocument();
+    expect(
+      within(feedback).queryByText('Earlier tutor feedback that should stay in review.')
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps older feedback hidden until review is opened', async () => {
+    renderPromptTwoFeedbackWorkspace([
+      createMessage({
+        id: 'review-answer',
+        role: 'user',
+        type: 'response',
+        content: 'Review-only answer from the prior loop.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'review-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Review-only feedback from the prior loop.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 0 }
+      }),
+      createMessage({
+        id: 'latest-answer',
+        role: 'user',
+        type: 'response',
+        content: 'Latest active answer stays visible.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 1 }
+      })
+    ]);
+
+    const feedback = screen.getByRole('region', { name: 'Lesson feedback' });
+
+    expect(within(feedback).queryByText('Review-only answer from the prior loop.')).not.toBeInTheDocument();
+    await fireEvent.click(within(feedback).getByRole('button', { name: 'Review earlier steps (2)' }));
+
+    expect(within(feedback).getByText('Review-only answer from the prior loop.')).toBeInTheDocument();
+    expect(within(feedback).getByText('Review-only feedback from the prior loop.')).toBeInTheDocument();
+  });
+
+  it('renders transition-only tutor status compactly instead of as a feedback bubble', () => {
+    renderPromptTwoFeedbackWorkspace([
+      createMessage({
+        id: 'transition-only',
+        role: 'assistant',
+        type: 'teaching',
+        content: "Good. Let's move into Active Practice.",
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_example', loopIndex: 1 }
+      })
+    ]);
+
+    const status = screen.getByText("Good. Let's move into Active Practice.");
+
+    expect(status.closest('.feedback-transition-status')).toBeInTheDocument();
+    expect(status.closest('article.bubble')).not.toBeInTheDocument();
+  });
+
+  it('keeps the pending assistant state below the latest learner answer', () => {
+    const state = buildV2WorkspaceState([], {
+      messages: [
+        createMessage({
+          id: 'pending-current-answer',
+          role: 'user',
+          type: 'response',
+          content: 'Latest answer waiting for feedback.',
+          stage: 'concepts',
+          v2Context: { checkpoint: 'loop_practice', loopIndex: 1 }
+        })
+      ],
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation', 'concepts'],
+      v2State: {
+        totalLoops: 2,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_practice',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+
+    render(LessonWorkspace, {
+      props: {
+        state: {
+          ...state,
+          ui: {
+            ...state.ui,
+            pendingAssistantSessionId: 'lesson-session-1'
+          }
+        }
+      }
+    });
+
+    const feedback = screen.getByRole('region', { name: 'Lesson feedback' });
+
+    expect(within(feedback).getByText('Latest answer waiting for feedback.')).toBeInTheDocument();
+    expect(within(feedback).getByLabelText('Doceo is thinking')).toBeInTheDocument();
+  });
+
+  it('keeps tutor audio available on the current assistant feedback bubble', () => {
+    renderPromptTwoFeedbackWorkspace([
+      createMessage({
+        id: 'audio-current-answer',
+        role: 'user',
+        type: 'response',
+        content: 'Audio answer.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 1 }
+      }),
+      createMessage({
+        id: 'audio-current-feedback',
+        role: 'assistant',
+        type: 'feedback',
+        content: 'Audio tutor feedback should keep its playback control.',
+        stage: 'concepts',
+        v2Context: { checkpoint: 'loop_practice', loopIndex: 1 }
+      })
+    ]);
+
+    const feedback = screen.getByRole('region', { name: 'Lesson feedback' });
+    const tutorBubble = within(feedback).getByText('Audio tutor feedback should keep its playback control.').closest('article');
+
+    expect(tutorBubble).toHaveClass('bubble', 'assistant');
+    expect(within(tutorBubble!).getByRole('button', { name: 'Play tutor audio' })).toBeInTheDocument();
+  });
+});
+
 describe('LessonWorkspace Phase 2 Your Turn mode', () => {
   function renderV2PracticeYourTurn(): void {
     renderV2Workspace([
@@ -1670,20 +1871,21 @@ describe('LessonWorkspace Phase 2 Your Turn mode', () => {
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
 
-    expect(within(activeCard).getByText('Your turn first')).toBeInTheDocument();
     expect(within(activeCard).getByText('Your turn first: try the question or tap Help me start.')).toBeInTheDocument();
   });
 
-  it('keeps progression disabled and marks the active card action area as action-required', () => {
+  it('marks the embedded answer composer as the active required-action area', () => {
     renderV2PracticeYourTurn();
 
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
     const actionArea = activeCard.querySelector('.lesson-next-step-panel');
-    const progressButton = within(activeCard).getByRole('button', { name: 'Submit my attempt' });
+    const embeddedComposer = activeCard.querySelector('.embedded-answer-composer');
+    const submitButton = within(activeCard).getByRole('button', { name: 'Submit my attempt' });
 
     expect(activeCard).toHaveAttribute('data-action-required', 'true');
     expect(actionArea).toHaveAttribute('data-action-required', 'true');
-    expect(progressButton).toBeDisabled();
+    expect(embeddedComposer).toHaveAttribute('data-action-required', 'true');
+    expect(submitButton).not.toBeDisabled();
   });
 
   it('marks the composer as the active required-action area in gated states', () => {
@@ -1767,7 +1969,7 @@ describe('LessonWorkspace Phase 3 tactile answer composer', () => {
   it('shows an accessible empty-submit cue and does not send a message', async () => {
     renderV2PracticeYourTurn();
 
-    await fireEvent.click(screen.getByRole('button', { name: 'Send response' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Submit my attempt' }));
 
     expect(screen.getByRole('status')).toHaveTextContent('Your turn first: try the question or tap Help me start.');
     expect(appState.sendLessonMessage).not.toHaveBeenCalled();
@@ -1779,10 +1981,118 @@ describe('LessonWorkspace Phase 3 tactile answer composer', () => {
     const textarea = screen.getByPlaceholderText('Try the task here, or ask for bounded help.');
 
     await fireEvent.input(textarea, { target: { value: 'I would start by checking the first clue.' } });
-    await fireEvent.click(screen.getByRole('button', { name: 'Send response' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Submit my attempt' }));
 
     expect(appState.sendLessonMessage).toHaveBeenCalledWith('I would start by checking the first clue.');
     expect(textarea).toHaveValue('');
+  });
+});
+
+describe('LessonWorkspace lesson flow clarity Prompt 1.2 embedded answer composer', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(appState, 'sendLessonMessage').mockResolvedValue(undefined);
+    vi.spyOn(appState, 'updateComposerDraft').mockImplementation(() => {});
+  });
+
+  function renderCheckpoint(
+    checkpoint: 'loop_teach' | 'loop_practice' | 'independent_attempt' | 'exit_check',
+    currentStage: LessonSession['currentStage'] = checkpoint === 'exit_check' ? 'check' : checkpoint === 'independent_attempt' ? 'practice' : 'concepts'
+  ): void {
+    renderV2Workspace([], {
+      currentStage,
+      v2State: {
+        totalLoops: 1,
+        activeLoopIndex: 0,
+        activeCheckpoint: checkpoint,
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: currentStage === 'check' ? 'check' : 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false,
+        cardSubstate: 'default',
+        concept1EarlyDiagnosticCompleted: true
+      }
+    });
+  }
+
+  it('renders a textbox and submit CTA inside the active lesson card at loop_practice', () => {
+    renderCheckpoint('loop_practice', 'practice');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+
+    expect(within(activeCard).getByRole('textbox')).toBeInTheDocument();
+    expect(within(activeCard).getByRole('button', { name: 'Submit my attempt' })).toBeInTheDocument();
+  });
+
+  it('does not duplicate the bottom composer when the embedded practice composer is visible', () => {
+    renderCheckpoint('loop_practice', 'practice');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    const inputAreaComposer = document.querySelector('.input-area .composer');
+
+    expect(within(activeCard).getByRole('textbox')).toBeInTheDocument();
+    expect(inputAreaComposer).not.toBeInTheDocument();
+  });
+
+  it('submits the embedded composer through the existing lesson message path', async () => {
+    renderCheckpoint('loop_practice', 'practice');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    const textarea = within(activeCard).getByRole('textbox');
+
+    await fireEvent.input(textarea, { target: { value: 'I would start by naming the survival advantage.' } });
+    await fireEvent.click(within(activeCard).getByRole('button', { name: 'Submit my attempt' }));
+
+    expect(appState.sendLessonMessage).toHaveBeenCalledWith('I would start by naming the survival advantage.');
+  });
+
+  it('keeps focus in the embedded composer and shows the empty-submit nudge', async () => {
+    renderCheckpoint('loop_practice', 'practice');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+    const textarea = within(activeCard).getByRole('textbox');
+
+    await fireEvent.click(within(activeCard).getByRole('button', { name: 'Submit my attempt' }));
+    await tick();
+
+    expect(within(activeCard).getByRole('status')).toHaveTextContent('Type a lesson response first, or use a lesson helper.');
+    expect(document.activeElement).toBe(textarea);
+    expect(appState.sendLessonMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not render an embedded answer composer at loop_teach', () => {
+    renderCheckpoint('loop_teach', 'concepts');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+
+    expect(within(activeCard).queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('does not show the Current task instruction at loop_teach', () => {
+    renderCheckpoint('loop_teach', 'concepts');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+
+    expect(within(activeCard).queryByText(/put it in your own words/i)).not.toBeInTheDocument();
+    expect(within(activeCard).queryByText(/Current task/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the Current task instruction at loop_practice', () => {
+    renderCheckpoint('loop_practice', 'concepts');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+
+    expect(within(activeCard).getByText(/Current task/i)).toBeInTheDocument();
+  });
+
+  it('renders an embedded final-answer composer at exit_check', () => {
+    renderCheckpoint('exit_check', 'check');
+
+    const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
+
+    expect(within(activeCard).getByRole('textbox')).toBeInTheDocument();
+    expect(within(activeCard).getByRole('button', { name: /Finish lesson|Submit final/i })).toBeInTheDocument();
   });
 });
 
@@ -4852,7 +5162,7 @@ describe('LessonWorkspace Phase 9 Sub-task 3: Secondary support dock', () => {
       }
     });
     const activeCard = screen.getByRole('region', { name: /^Active lesson/ });
-    expect(within(activeCard).getByText('Your turn first')).toBeInTheDocument();
+    expect(within(activeCard).getByText('Your turn first: try the question or tap Help me start.')).toBeInTheDocument();
   });
 
   it('does not render lesson-action-bar when lesson is complete', () => {
@@ -4862,6 +5172,66 @@ describe('LessonWorkspace Phase 9 Sub-task 3: Secondary support dock', () => {
 });
 
 describe('LessonWorkspace Phase 9 Sub-task 2: Two-column lesson body with concepts sidebar', () => {
+  function renderThreeConceptV2Workspace(sessionOverrides: Partial<LessonSession> = {}): void {
+    const state = createInitialState();
+    const lesson = createV2Lesson(state.lessons[0]!);
+    lesson.flowV2 = {
+      ...lesson.flowV2!,
+      concepts: [
+        ...lesson.flowV2!.concepts!,
+        {
+          name: 'Core idea three',
+          summary: 'The third rule to notice.',
+          detail: 'This is the third core idea in detail.',
+          example: 'Use the third example to finish the pattern.',
+          oneLineDefinition: 'Core idea three checks the final part of the pattern.',
+          whyItMatters: 'It helps the learner finish the reasoning chain.'
+        }
+      ],
+      loops: [
+        ...lesson.flowV2!.loops,
+        {
+          id: 'lesson-v2-workspace-1-loop-3',
+          title: 'Loop 3',
+          teaching: {
+            title: 'Teach Loop 3',
+            body: 'Teach the third core idea.'
+          },
+          example: {
+            title: 'Example Loop 3',
+            body: 'Here is the third worked example.'
+          },
+          learnerTask: {
+            title: 'Try Loop 3',
+            body: 'Try the third task on your own.'
+          },
+          retrievalCheck: {
+            title: 'Check Loop 3',
+            body: 'Explain the third idea in your own words.'
+          },
+          mustHitConcepts: ['core idea three'],
+          criticalMisconceptionTags: ['core-idea-three-gap']
+        }
+      ]
+    };
+    const session = createV2Session({ lessonId: lesson.id, ...sessionOverrides });
+
+    render(LessonWorkspace, {
+      props: {
+        state: {
+          ...state,
+          lessons: [lesson],
+          lessonSessions: [session],
+          ui: {
+            ...state.ui,
+            currentScreen: 'lesson',
+            activeLessonSessionId: session.id
+          }
+        }
+      }
+    });
+  }
+
   it('renders a complementary "Completed concepts" region when the v2 lesson has concepts', () => {
     renderV2Workspace([]);
     const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
@@ -4888,6 +5258,97 @@ describe('LessonWorkspace Phase 9 Sub-task 2: Two-column lesson body with concep
     renderV2Workspace([]);
     const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
     expect(within(sidebar).queryByText('0 of 2 completed')).not.toBeInTheDocument();
+  });
+
+  it('marks the first concept as in progress at loop_teach instead of coming up', () => {
+    renderThreeConceptV2Workspace({
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 0,
+        activeCheckpoint: 'loop_teach',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    const tiles = sidebar.querySelectorAll('.concept-tile');
+
+    expect(within(tiles[0] as HTMLElement).getByText('In progress')).toBeInTheDocument();
+    expect(within(tiles[0] as HTMLElement).queryByText('Coming up')).not.toBeInTheDocument();
+  });
+
+  it('marks covered, current, and upcoming concepts distinctly at the second concept example', () => {
+    renderThreeConceptV2Workspace({
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+    const tiles = sidebar.querySelectorAll('.concept-tile');
+
+    expect(within(tiles[0] as HTMLElement).getByText('Covered')).toBeInTheDocument();
+    expect(within(tiles[1] as HTMLElement).getByText('In progress')).toBeInTheDocument();
+    expect(within(tiles[2] as HTMLElement).getByText('Coming up')).toBeInTheDocument();
+  });
+
+  it('marks all concepts covered once the session reaches synthesis', () => {
+    renderThreeConceptV2Workspace({
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation', 'concepts'],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 2,
+        activeCheckpoint: 'synthesis',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+
+    expect(sidebar.querySelectorAll('.concept-tile-covered')).toHaveLength(3);
+    expect(within(sidebar).getAllByText('Covered')).toHaveLength(3);
+  });
+
+  it('counts only covered concepts in the sidebar progress meter', () => {
+    renderThreeConceptV2Workspace({
+      currentStage: 'concepts',
+      stagesCompleted: ['orientation'],
+      v2State: {
+        totalLoops: 3,
+        activeLoopIndex: 1,
+        activeCheckpoint: 'loop_example',
+        revisionAttemptCount: 0,
+        remediationStep: 'none',
+        labelBucket: 'concepts',
+        skippedGaps: [],
+        needsTeacherReview: false
+      }
+    });
+
+    const sidebar = screen.getByRole('complementary', { name: 'Completed concepts' });
+
+    expect(within(sidebar).getByText('1 of 3 completed')).toBeInTheDocument();
+    expect(within(sidebar).queryByText('2 of 3 completed')).not.toBeInTheDocument();
   });
 
   it('does not render "Core ideas in this lesson" inside the active lesson card', () => {
@@ -5188,7 +5649,8 @@ describe('LessonWorkspace lesson flow clarity improvements', () => {
     expect(within(sidebar).getByText('Covered so far')).toBeInTheDocument();
     expect(within(sidebar).getByText('1 of 2 completed')).toBeInTheDocument();
     expect(sidebar.querySelectorAll('.concept-tile-covered')).toHaveLength(1);
-    expect(sidebar.querySelectorAll('.concept-tile-upcoming')).toHaveLength(1);
+    expect(sidebar.querySelectorAll('.concept-tile-in-progress')).toHaveLength(1);
+    expect(sidebar.querySelectorAll('.concept-tile-upcoming')).toHaveLength(0);
   });
 
   it('renders an answer target checklist near the active lesson action area', () => {
