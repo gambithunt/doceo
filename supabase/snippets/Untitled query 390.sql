@@ -1,1 +1,0 @@
-SELECT id, label, type FROM curriculum_graph_nodes WHERE type = 'subject' LIMIT 10;

@@ -1,1 +1,0 @@
-export const ESTIMATED_LESSON_COST_USD = 0.08;
