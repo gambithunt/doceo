@@ -1,9 +1,14 @@
 # Fractions Reference Journey
 
-Status: Draft reference experience  
+Status: Draft reference experience — **design check, not a build target**  
 Parent: [Doceo Concept Definition](./concept-definition.md)  
 Goal: “I want to understand fractions.”  
 Chosen route: Recognize them but get confused · Use a practical example
+
+This journey exists to check whether the grammar's rules and component boundaries
+generalise beyond black holes. It is not implemented in the first prototype. It
+was compressed from seven scenes to five to demonstrate that scene count follows
+the idea; see the Scene Count Note below.
 
 ## Purpose
 
@@ -86,12 +91,19 @@ sufficient. The lesson must not wait for decorative assets.
 
 ## 4. Focused Lesson
 
-Target duration: 75–100 seconds.  
+Target duration: 85–95 seconds.  
 Format: synchronized narration, captions, clean illustration, diagrammatic
 motion, and light sound design.  
 Interaction: none during the lesson; testing remains an explicit choice after it.
 
-### Scene 1 — The missing scoop (0–12s)
+**Five scenes.** This journey was originally drafted at seven, matching the
+black-hole journey — which the lesson grammar identified as the author's template
+leaking rather than the idea requiring it. Compressing it to five is a deliberate
+test of the grammar's claim that scene count follows the idea. The two pours
+belong in one scene because they are one comparison; the notation and the rule
+belong in one scene because the rule is the notation explained.
+
+### Scene 1 — The missing scoop (0–14s)
 
 **Visual:** A recipe calls for `1/2 cup` of water. A half-cup measure is missing;
 only a quarter-cup scoop remains. Both the recipe and scoop are immediately
@@ -104,7 +116,7 @@ legible.
 
 **Purpose:** Give equivalence a practical reason to matter.
 
-### Scene 2 — Keep the whole fixed (12–24s)
+### Scene 2 — Keep the whole fixed (14–28s)
 
 **Visual:** One transparent one-cup vessel becomes the shared reference. Its
 halfway line is marked. A second identical vessel appears beside it, preventing
@@ -118,62 +130,48 @@ an accidental comparison between differently sized wholes.
 **Purpose:** Establish the often-missed requirement that fraction comparisons
 refer to the same whole.
 
-### Scene 3 — Fill with one half (24–36s)
+### Scene 3 — Same level, two ways (28–52s)
 
-**Visual:** One half-cup measure pours into the left vessel and reaches the
-halfway line. The region is labelled `1/2` only after the level settles.
-
-**Narration:**
-
-> One half-cup scoop fills one of two equal parts of the whole. That amount is
-> one half.
-
-**Purpose:** Connect the symbol to an amount before naming numerator and
-denominator.
-
-### Scene 4 — Fill with two quarters (36–52s)
-
-**Visual:** Two quarter-cup scoops pour into the right vessel. Each pour fills one
-quarter. The final water levels align exactly across both vessels.
+**Visual:** One half-cup measure pours into the left vessel and settles exactly
+at the halfway line; the region is labelled `1/2` only once the level is still.
+Then two quarter-cup scoops pour into the right vessel, one after the other, each
+filling a quarter. The camera holds while both surfaces settle at precisely the
+same height, and a single line is drawn across both to make the match
+unmistakable.
 
 **Narration:**
 
-> Now use the smaller scoop twice. Each scoop is one quarter of the whole, so two
-> scoops make two quarters. The pieces are smaller, but the total amount is
-> unchanged.
+> One half-cup scoop fills one of two equal parts. That amount is one half. Now
+> use the smaller scoop twice — each one is a quarter of the same whole, so two
+> of them make two quarters. Smaller pieces, more of them, and the level lands in
+> exactly the same place.
 
-**Purpose:** Make `2/4` visibly equal to `1/2`.
+**Purpose:** Make `2/4` visibly equal to `1/2`. These were two scenes; they are
+one comparison, and splitting them across a scene break weakened the very moment
+the lesson exists to deliver.
 
-### Scene 5 — Reveal the two names (52–68s)
+### Scene 4 — Two names, and why the rule works (52–76s)
 
-**Visual:** The vessels simplify into equal-length bars. One is divided into two
-parts with one shaded; the other into four parts with two shaded. The shared end
-point aligns with `1/2 = 2/4`.
-
-**Narration:**
-
-> In one half, the whole is divided into two equal parts and we count one. In two
-> quarters, it is divided into four equal parts and we count two. Different
-> pieces, different names, same amount.
-
-**Purpose:** Connect concrete measurement to a visual fraction model and symbols.
-
-### Scene 6 — Why multiplying both works (68–84s)
-
-**Visual:** The single shaded half is split into two smaller equal pieces. Every
-part of the whole splits the same way. The labels animate from `1/2` to
-`(1 × 2)/(2 × 2)` to `2/4` without moving the endpoint.
+**Visual:** The vessels simplify into two equal-length bars sharing an endpoint —
+one divided in two with one part shaded, one divided in four with two shaded.
+Then the shaded half visibly splits down the middle, and every other part of the
+whole splits the same way. Labels animate from `1/2` to `(1 × 2)/(2 × 2)` to
+`2/4`. The shaded endpoint never moves throughout.
 
 **Narration:**
 
-> Splitting every piece in two doubles both the number of pieces in the whole and
-> the number we count. The amount never moved. That is why multiplying the top
-> and bottom by the same number makes an equivalent fraction.
+> In one half, the whole is split into two equal parts and we count one. In two
+> quarters, into four, and we count two. Different pieces, different names, same
+> amount. Watch what splitting actually does: every piece divides in two, so both
+> the number of parts and the number we count double — and the amount never moves.
+> That is why multiplying the top and bottom by the same number keeps the fraction
+> equivalent.
 
-**Purpose:** Derive the symbolic rule from preserved quantity instead of asking
-the learner to memorize it.
+**Purpose:** Derive the symbolic rule from preserved quantity rather than asking
+the learner to memorize it. The notation and the rule are one idea — the rule
+*is* what the notation is doing — so they belong in one continuous visual.
 
-### Scene 7 — End on the invariant (84–96s)
+### Scene 5 — End on the invariant (76–90s)
 
 **Visual:** `1/2`, `2/4`, `3/6`, and `4/8` settle on the same point of a number
 line. Their bars differ in partitioning but terminate at the same location.
@@ -304,6 +302,26 @@ should explain equivalence using visual fraction models:
   <https://www.thecorestandards.org/Math/Content/NF/>
 - Illustrative Mathematics, “Explaining Fraction Equivalence with Pictures”:
   <https://tasks.illustrativemathematics.org/content-standards/tasks/743>
+
+## Scene Count Note
+
+Compressing seven scenes to five was not padding removal. Two merges did real
+work:
+
+- **Old 3 + 4 → new 3.** The two pours were never two ideas; they are one
+  comparison, and a scene break sat directly across the moment the lesson exists
+  to deliver. Merging them lets the camera hold on both surfaces settling at the
+  same height, which is the whole point.
+- **Old 5 + 6 → new 4.** The `×2/×2` rule is not a consequence of the notation,
+  it *is* what the notation describes. Separating them invited the learner to
+  treat the rule as a new fact to memorise rather than a restatement of what they
+  just watched.
+
+The compression made the lesson better, not merely shorter — which is the
+strongest available evidence for the grammar's claim. The remaining risk is
+pacing: scenes 3 and 4 now run 24 seconds each, and if learners lose the thread
+mid-scene, the answer is a slower scene rather than a restored scene break.
+Watch for this in testing.
 
 ## Questions to Test
 

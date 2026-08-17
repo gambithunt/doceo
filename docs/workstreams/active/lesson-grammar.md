@@ -26,16 +26,21 @@ the explanatory structure and media that best fit the concept.
 
 ## What the Reference Journeys Show
 
-| Dimension | Black holes | Fractions | Shared rule |
-| --- | --- | --- | --- |
-| Learner intent | Guided curiosity | Defined outcome | Both begin from learner intent, not a catalog |
-| Focus | Event horizons from two viewpoints | Equivalent fractions preserve quantity | One coherent idea per lesson |
-| Teaching pattern | Contrast perspectives | Concrete model → visual model → symbolic rule | Select pedagogy by concept |
-| Visual language | Space, light paths, clocks | Measurement, levels, bars, number line | Visuals carry explanatory meaning |
-| Practical route | Real astronomical observation | Measuring and recipes | Question two includes a concrete route |
-| Optional check | Classify two valid viewpoints | Construct `3/4` from eighths | Evidence requires a concept-matched action |
-| Evidence | Distinguishes observer experiences | Transfers equivalence to a new quantity | Record narrow evidence, not broad mastery |
-| Continuity | Related space curiosities | Next fraction concepts | Adapt suggestions after the lesson |
+| Dimension | Black holes A — falling in | Black holes B — real example | Fractions | Shared rule |
+| --- | --- | --- | --- | --- |
+| Learner intent | Guided curiosity | Same curiosity, practical angle | Defined outcome | Begin from learner intent, not a catalog |
+| Focus | Event horizons from two viewpoints | Detecting the invisible by its effects | Equivalent fractions preserve quantity | One coherent idea per lesson |
+| Teaching pattern | Contrast viewpoints | Evidence to inference | Concrete → visual → symbolic | Select pedagogy by concept |
+| Visual language | Space, light paths, clocks | Telescopes, orbits, arrays, real imagery | Measurement, levels, bars, number line | Visuals carry explanatory meaning |
+| Scenes | 7 | 6 | 5 | Count follows the idea |
+| Optional check | Classify two valid viewpoints | Identify which observation is evidence | Construct `3/4` from eighths | Evidence requires a concept-matched action |
+| Evidence | Distinguishes observer experiences | Distinguishes inference from absence of signal | Transfers equivalence to a new quantity | Record narrow evidence, not broad mastery |
+| Continuity | Related space curiosities | Method and instrument curiosities | Next fraction concepts | Adapt suggestions after the lesson |
+
+Routes A and B share a topic and an entry, and diverge at orientation two. That
+divergence is what makes “orientation choices improve relevance” a testable
+claim rather than an assertion — the two routes teach different focused ideas
+through different patterns, not the same lesson in different words.
 
 ## The Outer Experience
 
@@ -52,7 +57,9 @@ dashboard.
 
 ### 2. Two-choice orientation
 
-Ask exactly two questions, one screen at a time:
+Ask a very small number of questions, one screen at a time. The round-one
+parameter is two — see the concept doc's Round-One Parameters table, where this
+and the other numeric constants carry explicit revisit conditions.
 
 1. **Where should we begin?** Calibrate assumed familiarity and vocabulary.
 2. **How should we explore it?** Choose the angle or explanatory approach.
@@ -183,6 +190,17 @@ Use for history, literature, policy, and contested interpretation. Ground the
 lesson in sources, distinguish evidence from interpretation, and represent
 meaningful perspectives without manufacturing false balance.
 
+### Evidence to inference
+
+Use when the subject of the lesson cannot be observed directly and must be
+established from its effects. Show the observation first and plainly, make the
+inference step explicit rather than implied, rule out the plausible alternatives,
+and separate what was measured from what was concluded.
+
+This pattern was surfaced by authoring the black-hole journey's Route B, not
+predicted in advance — which is a small piece of evidence that the pattern
+library should grow from authored journeys rather than from taxonomy.
+
 These patterns are hypotheses for future journeys, not validated templates.
 
 ## Scene Grammar
@@ -197,8 +215,18 @@ A focused lesson may use, combine, omit, or reorder these scene roles:
 - **Boundary:** state uncertainty, limitations, unsafe inference, or scope.
 - **Synthesis:** resolve the opening question in one memorable idea.
 
-Do not require seven scenes because both reference journeys currently have seven.
-Scene count follows the idea and target duration.
+**Scene count follows the idea and target duration. It is never a fixed number.**
+
+This was previously a warning against a pattern both reference journeys exhibited
+— they each landed on seven scenes, which was the author's template leaking
+rather than the ideas demanding it. The fixtures now demonstrate the rule instead
+of contradicting it:
+
+| Journey | Scenes | Why |
+| --- | --- | --- |
+| Black hole, Route A — falling in | 7 | Two viewpoints to establish, split, resolve, plus a safety boundary |
+| Black hole, Route B — real example | 6 | Observation, inference, elimination, payoff, synthesis |
+| Fractions | 5 | One invariant, shown concretely then symbolically |
 
 ## Media Grammar
 
@@ -288,6 +316,25 @@ Every history item needs enough information to reproduce its original experience
 Heavy assets may be stored or reconstructed according to cost and fidelity, but
 replay must not silently change facts, examples, pacing, or visual meaning.
 
+### Core and framing
+
+The representation splits in two, following the personalization model chosen in
+the concept doc:
+
+- **Lesson core** — focused idea, learner outcome, scene sequence, explanatory
+  moves, the relationships visuals must preserve, source basis, safe boundary,
+  and the optional-check definition. Reusable across learners, reviewable once,
+  versioned.
+- **Framing layer** — opening language, vocabulary level, pacing, chosen examples,
+  and the selected angle. Derived per learner from orientation choices and memory.
+
+A history entry pins **both**: the core version and the framing that learner
+received. Replaying must reproduce their lesson, not the current best version of
+the core. If a core is revised, prior entries keep their pinned version.
+
+This is what makes stable replay compatible with a library that improves over
+time.
+
 ## Quality Gates
 
 A lesson is not ready unless:
@@ -314,11 +361,12 @@ Include:
 
 - curiosity entry;
 - both orientation questions;
-- one complete progressively presented lesson;
-- optional check;
+- **two** complete progressively presented lessons — the authored A and B routes,
+  so the branch is real rather than cosmetic;
+- an optional check per route;
 - clean ending;
-- history; and
-- changed suggestions on the next visit.
+- history and stable replay; and
+- next-visit suggestions, staged rather than adaptive.
 
 Exclude:
 

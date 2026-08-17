@@ -3,7 +3,8 @@
 Status: Active  
 Started: 2026-08-13  
 Owner: Product  
-Phase: Discovery — no implementation
+Phase: Discovery, with two validation workstreams running — experience prototype
+and generation spike. Production architecture remains undecided.
 
 ## Purpose
 
@@ -14,6 +15,19 @@ This workstream is the source of truth for the product's audience, problem,
 learning model, first use case, value proposition, and initial validation plan.
 Decisions should be recorded here as they are made. Ideas are provisional until
 supported by evidence or explicitly accepted as a product bet.
+
+## Document Ownership
+
+Four active documents. Each owns one thing and references rather than repeats the
+others. When they disagree, the owner wins.
+
+| Document | Authoritative for |
+| --- | --- |
+| This file | Thesis, promise, principles, decision log, open questions |
+| [Lesson Grammar](./lesson-grammar.md) | Experience rules, lesson contract, teaching patterns, quality gates |
+| [Black Hole](./black-hole-reference-journey.md) and [Fractions](./fractions-reference-journey.md) journeys | Lesson content — scenes, narration, checks, evidence handling |
+| [Experience Prototype](./prototype-validation.md) | Prototype scope, states, method, evidence |
+| [Generation Spike](./generation-spike.md) | Feasibility method, domain selection, measured cost and latency |
 
 ## Starting Point
 
@@ -117,8 +131,9 @@ This loop is a hypothesis to refine, not an implementation specification.
 
 - Learning requires learner action; content consumption alone is insufficient.
 - Diagnose knowledge through small demonstrations, not only self-reported level.
-- Make initial orientation exactly two quick button questions with sensible
-  defaults: where to begin and how to approach the topic.
+- Keep initial orientation to a very small number of quick button questions with
+  sensible defaults. The round-one parameter is two — where to begin and how to
+  approach the topic — but the principle is minimal setup, not the number itself.
 - Offer a quiz only after the focused lesson and only with the learner's consent.
   Do not imply measured mastery when they decline it.
 - When chosen, keep the post-lesson quiz playful and brief enough to preserve
@@ -146,13 +161,29 @@ This loop is a hypothesis to refine, not an implementation specification.
 ## Experience Character
 
 Doceo should promote curiosity before the learner starts a lesson. It should feel
-like an interactive science magazine, a beautifully illustrated reference book,
-or a museum exhibit that invites exploration—not a corporate SaaS product.
+like an illustrated science magazine that invites exploration — warm, confident,
+and immediately legible — not a corporate SaaS product.
 
-Use strong editorial typography, atmospheric topic-specific colour, meaningful
-imagery, tactile choices, and restrained motion that responds to curiosity.
-Avoid dashboards, white configuration cards, sidebars, progress steppers,
-analytics language, generic AI glows, and unnecessary interface chrome.
+The chosen direction is **flat editorial illustration**: warm cream and yellow
+ground, saturated teal and orange accents, deep navy type, hand-drawn marks and
+loose organic shapes. Home is a calm, warm, neutral field. Each lesson then
+transforms the visual world to suit its topic — the black-hole lesson's deep
+navy star field is the same illustration language at a different temperature, so
+entering a lesson is a dissolve into the subject rather than a jump between
+design systems.
+
+Use strong editorial typography, topic-specific colour, meaningful imagery,
+tactile choices, and restrained motion that responds to curiosity.
+
+The load-bearing prohibitions remain. Avoid dashboards, metric tiles, sidebars,
+progress steppers, analytics language, generic AI glows, glowing assistant orbs,
+permanent chat transcripts, and unnecessary interface chrome. Suggestion lists
+presented as editorial invitations are consistent with this direction; card
+*grids* that read as a dashboard are not.
+
+Accepted tension: the current direction reads younger than the chosen first
+learner. This is a deliberate bet on warmth over sophistication, recorded in the
+decision log with an explicit revisit condition.
 
 The orientation should feel like the opening of the lesson rather than a form:
 
@@ -163,8 +194,22 @@ The orientation should feel like the opening of the lesson rather than a form:
    “surprise me” option.
 
 Show one question at a time. Tapping an answer advances without a generic
-Continue button. Do not show a progress stepper. Ask no third question unless a
-future decision explicitly revises this constraint.
+Continue button. Do not show a progress stepper.
+
+### Round-One Parameters
+
+These are prototype parameters chosen to make round one testable, not principles.
+Each has a revisit condition, and evidence is expected to move them.
+
+| Parameter | Round-one value | Revisit when |
+| --- | --- | --- |
+| Orientation questions | Exactly two | One is enough, or a third materially improves the first lesson |
+| Focused lesson duration | 90–120 seconds | Learners want more depth, or attention drops before the synthesis |
+| Optional check length | About ten seconds | The check yields too little evidence to adapt, or feels rushed |
+| Scenes per lesson | Whatever the idea needs | — (never a fixed number; see the lesson grammar) |
+
+Stating these as parameters matters: the decision table lists all of them as
+awaiting evidence, so they cannot simultaneously be settled principles.
 
 ## Progressive Lesson Media
 
@@ -208,27 +253,62 @@ generation cost depends on the eventual architecture, caching strategy, asset
 storage, and model interfaces. Learners should be able to inspect, correct, and
 delete remembered information.
 
+## Lesson Reuse and What Is Personalized
+
+Two earlier decisions — *save every completed lesson* and *replay must reproduce
+the same experience* — together imply that a lesson is a stable, versioned,
+addressable artifact. Once that is true, the same artifact can serve more than
+one learner, and the question of what is actually personalized has to be answered
+explicitly rather than by accident.
+
+**Chosen model: a stable core with adaptive framing.**
+
+- The **lesson core** — the focused idea, scene sequence, explanatory moves, and
+  the relationships its visuals must preserve — is a reusable artifact. It can be
+  reviewed once and serve many learners.
+- The **framing** — opening language, vocabulary level, pacing, worked examples,
+  and the chosen angle — adapts to the learner's orientation choices and memory.
+
+This is already what the reference journeys describe, where the selected route
+alters the opening and framing while the explanatory sequence holds. Naming it
+makes three things follow:
+
+1. **Cost** becomes tractable, because cores amortize across learners.
+2. **Accuracy** becomes reviewable, because a core can be checked once rather
+   than trusted afresh on every generation.
+3. **Adaptation stays real** where the learner can perceive it, rather than being
+   claimed for material they never see.
+
+It also means the durable asset is a growing library of reviewed lesson cores
+plus the learner model that routes and frames them — not raw generation volume.
+
+Unit cost is no longer treated as unknowable. The
+[generation spike](./generation-spike.md) measures token spend, API cost, and
+per-scene latency across twelve lessons, and those measurements are inputs to
+this decision. Business model remains out of scope; measured unit cost does not.
+
 ## Decisions We Must Make
 
 | Decision | Current position | Evidence needed |
 | --- | --- | --- |
-| First learner | Likely curious teens and adults | Interviews and concept tests across candidate groups |
+| First learner | **Chosen:** curious adults roughly 25–45 who already learn from video, podcasts, and AI chat for personal interest | Whether curiosity without urgency sustains return and, eventually, willingness to pay |
 | Primary promise | Sustain guided curiosity, optionally directed toward a defined outcome | Validate that one experience can support both without becoming vague |
 | Core experience | Instantly playable learning that quietly adapts the next lesson | Test whether learners notice and value the adaptation |
-| First subject domain | Undecided | Find a domain with observable learning and manageable accuracy risk |
+| First subject domain | Deliberately undecided until the [generation spike](./generation-spike.md) reports | Where generated quality actually holds, measured by domain and by within-domain variance |
 | Session shape | Focused adaptive lessons, not a whole generated course | Test lesson length, continuity, and return behavior |
 | Curriculum model | Adaptive next-topic suggestions rather than a visible prescribed path | Test whether suggestions provide enough continuity and direction |
 | Starting diagnostic | Exactly two full-screen button questions: starting point and approach | Test whether both choices materially improve the first lesson |
 | Practical examples | Include a topic-specific practical-example choice in question two | Test whether learners choose it and whether it improves comprehension |
-| Visual character | Curious, editorial, atmospheric, tactile, and non-corporate | Test whether the interface invites exploration without sacrificing clarity |
+| Visual character | **Chosen:** flat editorial illustration — warm cream and yellow home, saturated accents, topic-transformed lesson worlds | Whether the warm register invites exploration without being read as a children's product |
 | Assessment | A learner-initiated quiz offered after the focused lesson | Identify interactions that feel effortless while yielding useful evidence |
 | Media | Progressively assembled, video-like visual lessons; fully rendered video only when valuable | Test startup latency, continuity, clarity, and generation cost |
-| Personalization | Goal, prior knowledge, evidence, pace, and preferences | Define the minimum learner model that changes the experience materially |
+| Personalization | **Chosen:** stable reusable lesson core plus adaptive framing, driven by goal, prior knowledge, evidence, pace, and preferences | Define the minimum learner model that changes the experience materially |
+| Lesson reuse | Lesson cores are reviewable artifacts shared across learners; framing adapts per learner | Measured generation cost and quality variance from the spike |
 | Lesson history | Save every completed lesson by default | Define the minimum stable representation and asset-retention policy |
 | Entry suggestions | Personalize from Doceo searches, history, interests, and learning evidence | Test relevance without creating a filter bubble or exposing sensitive inferences |
 | Learner memory | Compact, structured, inspectable, correctable, and deletable | Determine which signals materially improve future lessons and token use |
 | Young learners | Future audience, not assumed for version one | Safeguarding, parent/teacher, privacy, reading-level, and curriculum research |
-| Business model | Out of scope until value is clearer | Usage patterns, generation costs, and willingness-to-pay research |
+| Business model | Out of scope until value is clearer, but unit cost is measured now | Usage patterns, willingness-to-pay research; per-lesson cost comes from the spike |
 
 ## Riskiest Assumptions
 
@@ -244,7 +324,32 @@ delete remembered information.
 6. One initial audience and use case can establish the engine without forcing
    premature support for every learner.
 
+### Where each is tested
+
+An assumption with no assigned test is an assumption that silently passes.
+
+| # | Tested by | Notes |
+| --- | --- | --- |
+| 1 | Prototype learner sessions | Partially — one authored journey only |
+| 2 | Prototype learner sessions | Check acceptance rate and stated reasons |
+| 3 | Prototype learner sessions | Limited: two authored orientation branches, staged suggestions |
+| 4 | [Generation spike](./generation-spike.md) | Gating; cannot be answered by the prototype |
+| 5 | **Two-week return follow-on** after the sessions | Deliberately excluded from round-one success thresholds — a moderated session cannot test return. Participants keep access with no reminders or nudges; measure unprompted return only |
+| 6 | Not yet tested | Revisit once a domain is chosen |
+
 ## Discovery Plan
+
+Honest status: steps 1 and 2 were not run as written. The first learner was
+chosen by judgement rather than by problem interviews, and the first domain has
+been deferred to the generation spike rather than scored against candidates. This
+is an accepted shortcut, not a completed step. Step 4 is running now via the
+experience prototype.
+
+The consequence to watch: without problem interviews, the sessions in step 4 may
+confirm that the experience is pleasant while telling you nothing about whether
+anyone has a problem worth solving. Treat the return follow-on as the partial
+substitute, and be willing to go back to step 1 if participants enjoy the
+prototype but never come back to it.
 
 ### 1. Define the problem
 
@@ -347,6 +452,18 @@ Early product metrics should distinguish:
 | 2026-08-14 | Include a practical-example option in the second orientation question | Learners should be able to choose a concrete route into an abstract topic without adding another step | Practical examples work better as a universal lesson element |
 | 2026-08-14 | Give Doceo a curiosity-first, non-SaaS visual character | The product should feel like exploration begins immediately, not like configuring a corporate tool | Usability testing shows the visual direction obscures the primary action |
 | 2026-08-14 | Assemble lessons progressively while preserving video-like pacing | Learners should receive useful content immediately; waiting for a complete custom video would add latency and cost | Fully rendered video becomes fast and inexpensive enough to improve the experience materially |
+| 2026-08-17 | Choose curious adults roughly 25–45 as the first learner | Reachable for research immediately, no safeguarding or parental-consent overhead, no curriculum-compliance burden, and they match the existing fixture's register. Accepts weak urgency as the known cost | Curiosity without urgency fails to produce voluntary return, or a sharper problem is found in another group |
+| 2026-08-17 | Defer the first subject domain to the generation spike | Domain should be chosen where generated quality actually holds, which is measurable rather than arguable | The spike reports, or it fails to separate the candidate domains |
+| 2026-08-17 | Run a gating generation-quality spike in parallel with the prototype | Riskiest assumption 4 cannot be tested by an authored fixture, and discovering it late would waste the entire experience round | Generation quality is demonstrated by other means |
+| 2026-08-17 | Grade generated lessons blind against the hand-authored fixture as a hidden control | A rubric score can be talked past; failure to identify the human-authored lesson cannot | The control becomes known to graders, or the fixture is superseded |
+| 2026-08-17 | Author a genuine second orientation branch before learner sessions | Without a real branch, testing whether orientation choices improve relevance tests only cosmetic reframing — and adaptation is the core product bet | One branch proves sufficient to demonstrate perceived adaptation |
+| 2026-08-17 | Drive the prototype's simulated readiness from latency measured in the spike | Invented delays would make latency look solved; real per-scene timings make the fallback states a genuine design test | Real generation is fast enough that progressive assembly stops being a design problem |
+| 2026-08-17 | Adopt flat editorial illustration (mockup v2) as the visual system, as drawn | The warm, legible, confident register is the intended character, and it shares palette and technique with the lesson screens so entering a lesson is a dissolve rather than a jump | Session participants read Doceo as a children's product, or the register undermines the credibility of factual teaching |
+| 2026-08-17 | Amend the concept doc's visual rules to match the chosen direction | The "avoid cards" rule was aimed at dashboard grids; editorial suggestion lists do not violate its intent. Keep the load-bearing prohibitions | A suggestion list starts accumulating dashboard behaviour |
+| 2026-08-17 | Personalize via stable reusable lesson cores with adaptive framing | Stable replay already implies addressable lesson artifacts; reuse makes cost tractable and accuracy reviewable while keeping adaptation real where the learner perceives it | Measured cost makes per-learner generation viable, or reuse is shown to make lessons feel generic |
+| 2026-08-17 | Measure per-lesson unit cost during the spike while keeping business model out of scope | Twelve lessons are being generated regardless; this is the cheapest cost data the project will ever collect | — |
+| 2026-08-17 | Move the return assumption out of round one into a two-week follow-on | A moderated session cannot test voluntary return, and leaving it in the threshold would let it pass untested | Return is measurable in a longer-running product |
+| 2026-08-17 | Restate orientation count, lesson duration, and check length as round-one parameters | They were written as principles while the decision table listed them as awaiting evidence; both cannot be true | Evidence settles any of them |
 
 ## Open Questions
 
@@ -387,10 +504,31 @@ Next, turn the two authored journeys and lesson grammar into a lightweight
 experience prototype. The prototype should simulate generation and adaptation;
 it should not build production AI infrastructure yet.
 
+Prototype workstream created:
+[Doceo Experience Prototype](./prototype-validation.md).
+
 Each journey should include personalized entry suggestions, the opening
 multiple-choice orientation, one focused lesson, the optional post-lesson quiz,
 the clean ending, the saved history record, the learner memory update, and the
 suggestions that appear on the learner's next visit.
+
+### Outstanding authoring work
+
+1. **Second orientation branch.** Author the *Show me a real example — how
+   astronomers found one* route in the black-hole journey as a genuine parallel
+   scene sequence, not a reskin of the falling-in route. Without a real branch,
+   the claim that orientation choices improve relevance is untestable.
+2. **Compress the fractions journey to five scenes.** Both journeys currently
+   land on seven, which is the author's template leaking rather than the ideas
+   demanding it — the lesson grammar already warns against this. Fractions is a
+   design check rather than a build target, so it is the cheap one to compress.
+   If it teaches as well at five scenes, the grammar's claim that scene count
+   follows the idea is demonstrated rather than asserted.
+
+Note on the fixture: the black-hole journey is the prototype's **experience
+fixture**, chosen because it is already authored to a high standard. It is not a
+commitment to space as the first subject domain — that decision belongs to the
+generation spike.
 
 ## Exit Criteria
 

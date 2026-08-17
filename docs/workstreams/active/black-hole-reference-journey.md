@@ -3,7 +3,19 @@
 Status: Draft reference experience  
 Parent: [Doceo Concept Definition](./concept-definition.md)  
 Topic: “How do black holes work?”  
-Chosen route: Beginner · What would falling in feel like?
+Authored routes: **A** — Beginner · What would falling in feel like? (§1–§9)  
+**B** — Beginner · Show me a real example · How astronomers found one (§10)
+
+This journey is the experience fixture for the
+[prototype](./prototype-validation.md). It is not a commitment to space as
+Doceo's first subject domain — the [generation spike](./generation-spike.md)
+decides that.
+
+Two routes are authored deliberately. If both orientation-2 choices led to the
+same scenes with different wording, the claim that orientation choices improve
+relevance would be untestable, and adaptation is the core product bet. The two
+routes teach **different focused ideas** through **different teaching patterns**,
+which is what a real branch means.
 
 ## Purpose
 
@@ -287,6 +299,192 @@ include:
 
 If the learner opted into the quiz, one suggestion may respond to their evidence.
 Doceo does not display “recommended because you answered incorrectly.”
+
+## 10. Route B — “Show me a real example”
+
+The practical-example route. Authored as a genuine parallel branch: a different
+focused idea, a different teaching pattern, different visuals, and its own
+optional check.
+
+### Why this route exists
+
+The decision log records that the practical-example option needs evidence —
+*test whether learners choose it and whether it improves comprehension*. It is
+also the sharpest possible contrast with Route A: where A is a thought experiment
+about subjective experience, B is about observation, measurement, and how anyone
+knows any of this. A learner who replays with the other choice must get a
+recognisably different lesson, and these two are unmistakable.
+
+### Focused idea
+
+> A black hole emits no light, so astronomers identify one by measuring its
+> effects on things nearby.
+
+**Learner outcome:** afterwards, the learner can say what kind of observation
+counts as evidence for an invisible object — and why a dark patch of sky does
+not.
+
+**Teaching pattern:** evidence to inference. This pattern is not in the current
+grammar library; authoring this route surfaced the gap. See the lesson grammar.
+
+### Immediate transition
+
+Visible immediately:
+
+> **How we found a black hole**  
+> You can't photograph nothing. So look at what it moves.
+
+### Scenes
+
+Target duration: 95–110 seconds. **Six scenes, not seven** — this idea resolves
+in six, and the count follows the idea.
+
+#### Scene 1 — You cannot photograph nothing (0–15s)
+
+**Visual:** A telescope tips up toward the crowded galactic centre. The view
+pushes in until a small, unremarkable patch of dark sky sits at frame centre,
+quietly circled.
+
+**Narration:**
+
+> Black holes give off no light. There is nothing to point a camera at. So
+> astronomers gave up looking for the object — and started watching what it does
+> to everything around it.
+
+**Purpose:** Frame the problem as a detection problem, and set up inference as
+the method.
+
+#### Scene 2 — Watch the stars, not the dark (15–38s)
+
+**Visual:** The same star field, now moving. Over ticking years — 1995, 2002,
+2012, 2020 — most stars barely drift, but a handful near the centre sweep out
+long looping paths and come back around.
+
+**Narration:**
+
+> For nearly thirty years, astronomers tracked individual stars at the centre of
+> our galaxy. Most drift almost imperceptibly. These few raced — swinging around
+> a single point in the dark, and returning.
+
+**Purpose:** Establish the observation itself before any interpretation.
+
+#### Scene 3 — An orbit weighs what it circles (38–58s)
+
+**Visual:** One star's path resolves into a clean ellipse. A marker sits at the
+focus the star orbits — visibly empty. A mass figure resolves alongside it.
+
+**Narration:**
+
+> The shape and speed of an orbit reveal the mass at its centre. One star,
+> called S2, completes a lap in about sixteen years. That orbit points to roughly
+> four million times the mass of our Sun — inside a region smaller than our own
+> solar system.
+
+**Purpose:** Show the inference step explicitly. The measurement is of the star;
+the conclusion is about the invisible thing.
+
+#### Scene 4 — Ruling out the alternatives (58–76s)
+
+**Visual:** Two candidate explanations appear beside the empty focus and are
+struck through in turn — a tight swarm of ordinary stars, which scatters apart;
+a single colossal star, which floods the frame with light.
+
+**Narration:**
+
+> Could it be a dense cluster of ordinary stars? A swarm that tight would have
+> scattered long ago. A single enormous star? At that mass, we could not miss it.
+> Nothing else we know of stays that heavy, that small, and that dark.
+
+**Purpose:** Teach that evidence is what survives the alternatives — the step
+learners most often skip.
+
+#### Scene 5 — Then they photographed the shadow (76–98s)
+
+**Visual:** Radio dishes scattered across a turning globe link into a single
+Earth-sized array. The linked signals resolve into the familiar uneven orange
+ring around a dark centre.
+
+**Narration:**
+
+> In 2019, radio telescopes across the whole planet worked together as one
+> instrument, and produced an image of the galaxy M87's centre. Not a picture of
+> the black hole — a picture of glowing gas bending around the darkness where it
+> sits. In 2022, they did the same for our own galaxy's centre.
+
+**Purpose:** Deliver the payoff observation while being precise about what the
+image actually shows.
+
+#### Scene 6 — End on the method (98–110s)
+
+**Visual:** The three strands settle together in one frame: the looping orbit,
+the mass figure, the ring image.
+
+**Narration:**
+
+> Nobody has ever seen a black hole. We know they are there because of orbits we
+> can measure, a mass we can calculate, and a shadow we can photograph. That is
+> what evidence for an invisible thing looks like.
+
+The image settles and the lesson ends. No score, streak, or recommendation panel.
+
+### Optional check — Route B
+
+> Want a 10-second check?
+
+Prompt:
+
+> Astronomers watch three patches of sky. Which one suggests something massive
+> and invisible?
+
+Three small looping animations, chosen with one tap:
+
+- **A** — stars drifting slowly along straight paths
+- **B** — one star whipping around an empty point and returning
+- **C** — a region of sky with no stars visible at all
+
+The intended answer is **B**.
+
+Feedback redraws B's orbit and marks the empty focus, restating that the motion
+is the measurement. No score.
+
+### Evidence handling — Route B
+
+- **Chooses B:** record evidence that the learner distinguished inference-from-
+  effect from absence-of-light.
+- **Chooses C:** record a possible “darkness is the evidence” misconception —
+  mistaking an absence of signal for a detection. Future suggestions may include
+  a short visual on why empty sky is not evidence.
+- **Chooses A:** record uncertainty about what orbital motion implies; future
+  suggestions may include how orbits reveal mass.
+- **Abandoned:** record participation only.
+- **Declined:** record the preference and no learning evidence.
+
+### History entry — Route B
+
+> **How we found a black hole**  
+> Finding the invisible by its effects · 2 min
+
+### Next visit — Route B
+
+Suggestions differ from Route A's, which is itself part of what the prototype
+observes:
+
+- **How do you weigh a star you can't touch?**
+- **What did the first black hole photograph actually show?**
+- **Why do telescopes on different continents work as one?**
+- one deliberately unrelated curiosity.
+
+### Source basis — Route B
+
+- Nobel Prize in Physics 2020 (Genzel and Ghez, for the supermassive compact
+  object at the galactic centre):
+  <https://www.nobelprize.org/prizes/physics/2020/summary/>
+- Event Horizon Telescope: <https://eventhorizontelescope.org/>
+- NASA, “Black Holes”: <https://science.nasa.gov/universe/black-holes/>
+
+Specific figures — S2's orbital period and the central mass — must be checked
+against current published values before the lesson is produced, not carried over
+from this draft.
 
 ## Visual and Interaction Rules
 
