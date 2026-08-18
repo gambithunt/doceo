@@ -377,6 +377,11 @@ assistant orbs, and a permanent chat transcript.
 
 ## Validation Method
 
+The ready-to-run facilitator script, observation sheet, results table, and
+return log live in the [Learner Study Kit](./learner-study-kit.md). This section
+remains authoritative for the method and thresholds; the kit operationalizes
+them without changing them.
+
 Run moderated sessions with **eight participants** drawn from the chosen first
 learner: curious adults roughly 25–45 who already learn from video, podcasts, or
 AI chat for personal interest, outside work or study requirements. Screen for the
