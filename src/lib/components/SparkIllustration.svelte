@@ -1,5 +1,5 @@
 <script lang="ts">
-	type Illustration = 'cat' | 'clock' | 'leaf' | 'telescope';
+	type Illustration = 'cat' | 'clock' | 'leaf' | 'telescope' | 'bubble' | 'droplet' | 'soap';
 
 	let { variant }: { variant: Illustration } = $props();
 </script>
@@ -8,6 +8,9 @@
 	class:clock={variant === 'clock'}
 	class:leaf={variant === 'leaf'}
 	class:telescope={variant === 'telescope'}
+	class:bubble={variant === 'bubble'}
+	class:droplet={variant === 'droplet'}
+	class:soap={variant === 'soap'}
 	class="illustration"
 >
 	{#if variant === 'cat'}
@@ -31,11 +34,30 @@
 			<path d="M78 13C42 15 20 34 18 70c29 8 56-10 60-57Z" />
 			<path class="line" d="M15 86c13-24 29-39 51-60M31 63l1-20m12 7 18 1M50 39l2-13" />
 		</svg>
-	{:else}
+	{:else if variant === 'telescope'}
 		<svg viewBox="0 0 96 96" role="presentation">
 			<path d="m18 31 48-18 10 25-49 18-9-25Z" />
 			<path class="line" d="m55 48-12 35m12-35 22 35M31 55 17 83M66 20l13-5" />
 			<circle class="line" cx="78" cy="16" r="6" />
+		</svg>
+	{:else if variant === 'bubble'}
+		<svg viewBox="0 0 96 96" role="presentation">
+			<circle cx="45" cy="49" r="27" />
+			<circle class="line" cx="70" cy="24" r="10" />
+			<circle class="line" cx="22" cy="73" r="8" />
+			<path class="line" d="M31 39c5-7 12-11 20-11" />
+		</svg>
+	{:else if variant === 'droplet'}
+		<svg viewBox="0 0 96 96" role="presentation">
+			<path d="M48 10C39 27 22 43 22 62a26 26 0 0 0 52 0c0-19-17-35-26-52Z" />
+			<path class="line" d="M34 63c2 8 8 12 16 13" />
+			<circle class="line" cx="50" cy="51" r="10" />
+		</svg>
+	{:else}
+		<svg viewBox="0 0 96 96" role="presentation">
+			<path d="M18 43c0-7 6-12 13-12h37c7 0 12 5 12 12v27H18V43Z" />
+			<path class="line" d="M18 53h62M31 31c0-8 6-14 14-14m6 14c0-6 5-11 11-11" />
+			<circle class="line" cx="72" cy="18" r="7" />
 		</svg>
 	{/if}
 </span>
@@ -66,6 +88,21 @@
 	.illustration.telescope {
 		background: var(--color-cyan);
 		transform: rotate(3deg);
+	}
+
+	.illustration.bubble {
+		background: var(--color-cyan);
+		transform: rotate(-3deg);
+	}
+
+	.illustration.droplet {
+		background: var(--color-teal);
+		transform: rotate(4deg);
+	}
+
+	.illustration.soap {
+		background: var(--color-yellow);
+		transform: rotate(-5deg);
 	}
 
 	svg {

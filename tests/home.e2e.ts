@@ -12,14 +12,14 @@ test('renders the Doceo foundation', async ({ page }) => {
 
 test('moves a suggested curiosity into the question field', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'How does time work?' }).click();
+	await page.getByRole('button', { name: 'What came before the Big Bang?' }).click();
 
-	await expect(page.getByLabel('Your curiosity')).toHaveValue('How does time work?');
+	await expect(page.getByLabel('Your curiosity')).toHaveValue('What came before the Big Bang?');
 });
 
 test('replaces a suggested curiosity when the learner starts typing', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('button', { name: 'How does time work?' }).click();
+	await page.getByRole('button', { name: 'What came before the Big Bang?' }).click();
 	await page.getByLabel('Your curiosity').click();
 	await page.getByLabel('Your curiosity').pressSequentially('How do black holes work?');
 
@@ -134,5 +134,42 @@ test('is honest about an unsupported curiosity', async ({ page }) => {
 	await page.getByLabel('Your curiosity').fill('Why do cats purr?');
 	await page.getByRole('button', { name: 'Explore this curiosity' }).click();
 
-	await expect(page.getByRole('status')).toContainText('can explore black holes for now');
+	await expect(page.getByRole('status')).toContainText(
+		'black holes, soap, vaccines, or the early universe'
+	);
+});
+
+test('saves and replays the approved soap lesson without generating again', async ({ page }) => {
+	await page.goto('/');
+	await page.getByLabel('Your curiosity').fill('Why does soap remove grease?');
+	await page.getByRole('button', { name: 'Explore this curiosity' }).click();
+
+	await expect(page).toHaveURL(/\/lessons\/everyday-soap$/);
+	await expect(page.getByRole('heading', { name: 'Grease stays on water alone' })).toBeVisible();
+
+	const visualPositions: number[] = [];
+	const buttonPositions: number[] = [];
+	for (let step = 0; step < 3; step += 1) {
+		visualPositions.push((await page.getByTestId('visual-stage').boundingBox())?.y ?? -1);
+		buttonPositions.push((await page.getByTestId('next-button').boundingBox())?.y ?? -1);
+		await page.getByRole('button', { name: 'Next' }).click();
+	}
+	visualPositions.push((await page.getByTestId('visual-stage').boundingBox())?.y ?? -1);
+	buttonPositions.push((await page.getByTestId('next-button').boundingBox())?.y ?? -1);
+	expect(Math.max(...visualPositions) - Math.min(...visualPositions)).toBeLessThan(1);
+	expect(Math.max(...buttonPositions) - Math.min(...buttonPositions)).toBeLessThan(1);
+	await expect(page.getByText('Saved to your History.')).toBeVisible();
+	await page.getByRole('button', { name: 'Try a 10-second check' }).click();
+	await page.getByRole('button', { name: /Soap surrounds the grease, helps loosen it/ }).click();
+	await expect(page.getByText('That’s it.')).toBeVisible();
+	await expect(page.getByText(/soap helps lift greasy dirt into water/)).toBeVisible();
+
+	await page.getByRole('button', { name: 'Return to Doceo home' }).click();
+	await expect(page.getByRole('heading', { name: 'Keep following the thread' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'How do micelles trap grease?' })).toBeVisible();
+	await page.getByRole('button', { name: 'History' }).click();
+	await page.getByRole('link', { name: /How soap helps water carry away grease/ }).click();
+
+	await expect(page).toHaveURL(/\/lessons\/everyday-soap\?version=/);
+	await expect(page.getByRole('heading', { name: 'Grease stays on water alone' })).toBeVisible();
 });

@@ -17,6 +17,9 @@ build/
 test-results/
 playwright-report/
 coverage/
+experiments/generation-spike/runs/
+experiments/generation-spike/blind/
+experiments/generation-pipeline-v2/runs/
 
 # Supabase local credentials
 supabase/.env

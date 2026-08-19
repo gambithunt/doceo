@@ -18,7 +18,7 @@ supported by evidence or explicitly accepted as a product bet.
 
 ## Document Ownership
 
-Four active documents. Each owns one thing and references rather than repeats the
+The active documents below each own one thing and reference rather than repeat the
 others. When they disagree, the owner wins.
 
 | Document | Authoritative for |
@@ -28,6 +28,7 @@ others. When they disagree, the owner wins.
 | [Black Hole](./black-hole-reference-journey.md) and [Fractions](./fractions-reference-journey.md) journeys | Lesson content — scenes, narration, checks, evidence handling |
 | [Experience Prototype](./prototype-validation.md) | Prototype scope, states, method, evidence |
 | [Generation Spike](./generation-spike.md) | Feasibility method, domain selection, measured cost and latency |
+| [Monetization and Unit Economics](./monetization-and-unit-economics.md) | Monetization hypotheses, economic guardrails, and billing-aware architecture boundaries |
 
 ## Starting Point
 
@@ -285,7 +286,10 @@ plus the learner model that routes and frames them — not raw generation volume
 Unit cost is no longer treated as unknowable. The
 [generation spike](./generation-spike.md) measures token spend, API cost, and
 per-scene latency across twelve lessons, and those measurements are inputs to
-this decision. Business model remains out of scope; measured unit cost does not.
+this decision. The [monetization workstream](./monetization-and-unit-economics.md)
+owns the provisional commercial model and production architecture guardrails;
+payment implementation remains out of scope until value and voluntary return are
+clearer.
 
 ## Decisions We Must Make
 
@@ -308,7 +312,7 @@ this decision. Business model remains out of scope; measured unit cost does not.
 | Entry suggestions | Personalize from Doceo searches, history, interests, and learning evidence | Test relevance without creating a filter bubble or exposing sensitive inferences |
 | Learner memory | Compact, structured, inspectable, correctable, and deletable | Determine which signals materially improve future lessons and token use |
 | Young learners | Future audience, not assumed for version one | Safeguarding, parent/teacher, privacy, reading-level, and curriculum research |
-| Business model | Out of scope until value is clearer, but unit cost is measured now | Usage patterns, willingness-to-pay research; per-lesson cost comes from the spike |
+| Business model | **Provisional:** freemium subscription built on reusable approved lesson cores; do not sell unlimited generation or expose token accounting | Voluntary return, real founding-offer purchases, reuse ratio, approval yield, and full cost per completed lesson |
 
 ## Riskiest Assumptions
 
@@ -464,6 +468,8 @@ Early product metrics should distinguish:
 | 2026-08-17 | Measure per-lesson unit cost during the spike while keeping business model out of scope | Twelve lessons are being generated regardless; this is the cheapest cost data the project will ever collect | — |
 | 2026-08-17 | Move the return assumption out of round one into a two-week follow-on | A moderated session cannot test voluntary return, and leaving it in the threshold would let it pass untested | Return is measurable in a longer-running product |
 | 2026-08-17 | Restate orientation count, lesson duration, and check length as round-one parameters | They were written as principles while the decision table listed them as awaiting evidence; both cannot be true | Evidence settles any of them |
+| 2026-08-19 | Adopt reusable approved lesson cores as the economic foundation and record a provisional Free/Explorer subscription hypothesis | Shared reviewed artifacts amortize generation and review cost while preserving replay and trust; unlimited one-off generation would expose the product to poor yield and unbounded cost | Purchase behavior, return, reuse, approval yield, or full costs contradict the model |
+| 2026-08-19 | Require entitlement capabilities, append-only cost events, allowance reservation, versioned pricing, and reuse-before-generation in future production architecture | These boundaries allow pricing and providers to change without scattering billing logic or retrofitting cost control throughout the product | A simpler design demonstrably preserves the same auditability, fairness, and cost controls |
 
 ## Open Questions
 

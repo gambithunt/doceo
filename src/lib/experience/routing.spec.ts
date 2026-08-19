@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isBlackHoleCuriosity } from './routing';
+import { isBlackHoleCuriosity, isSoapCuriosity } from './routing';
 
 describe('prototype curiosity routing', () => {
 	it.each(['How do black holes work?', 'Tell me about a black hole', 'blackhole physics'])(
@@ -12,4 +12,11 @@ describe('prototype curiosity routing', () => {
 	it('does not pretend unsupported curiosities have generated lessons', () => {
 		expect(isBlackHoleCuriosity('Why do cats purr?')).toBe(false);
 	});
+
+	it.each(['Why does soap clean things?', 'How does water remove grease?'])(
+		'routes %s to the approved soap lesson',
+		(question) => {
+			expect(isSoapCuriosity(question)).toBe(true);
+		}
+	);
 });

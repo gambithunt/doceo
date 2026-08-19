@@ -5,9 +5,14 @@
 		homePrompt,
 		homeSuggestions,
 		productName,
-		returningHomeSuggestions
+		returningHomeSuggestions,
+		soapAdjacentSuggestions,
+		soapDeeperSuggestions,
+		soapReinforcementSuggestions
 	} from '$lib/app-meta';
 	import type { LearningAngle } from '$lib/experience/types';
+	import type { VisualHistoryEntry } from '$lib/visuals/history';
+	import { getRecommendationMode } from '$lib/visuals/recommendations';
 	import SparkIllustration from './SparkIllustration.svelte';
 
 	type Props = {
@@ -17,6 +22,7 @@
 		completedLesson?: boolean;
 		completedExampleLesson?: boolean;
 		lastCompletedAngle?: LearningAngle | '';
+		visualHistory?: VisualHistoryEntry[];
 	};
 
 	let {
@@ -25,7 +31,8 @@
 		notice = '',
 		completedLesson = false,
 		completedExampleLesson = false,
-		lastCompletedAngle = ''
+		lastCompletedAngle = '',
+		visualHistory = []
 	}: Props = $props();
 
 	let curiosity = $state('');
@@ -35,12 +42,28 @@
 	let curiosityInput: HTMLInputElement;
 
 	const canExplore = $derived(curiosity.trim().length >= 3);
+	const recommendationMode = $derived(getRecommendationMode(visualHistory));
 	const suggestions = $derived(
-		lastCompletedAngle === 'Show me a real example'
-			? exampleReturningHomeSuggestions
-			: completedLesson
-				? returningHomeSuggestions
-				: homeSuggestions
+		recommendationMode === 'soap-deeper'
+			? soapDeeperSuggestions
+			: recommendationMode === 'soap-reinforcement'
+				? soapReinforcementSuggestions
+				: recommendationMode === 'soap-adjacent'
+					? soapAdjacentSuggestions
+					: lastCompletedAngle === 'Show me a real example'
+						? exampleReturningHomeSuggestions
+						: completedLesson
+							? returningHomeSuggestions
+							: homeSuggestions
+	);
+	const suggestionsHeading = $derived(
+		recommendationMode === 'soap-deeper'
+			? 'Keep following the thread'
+			: recommendationMode === 'soap-reinforcement'
+				? 'Try another angle'
+				: recommendationMode === 'soap-adjacent'
+					? 'Nearby curiosities'
+					: 'Follow a spark'
 	);
 
 	function chooseSuggestion(question: string) {
@@ -112,7 +135,19 @@
 			>
 			{#if historyOpen}
 				<div class="history-note" id="history-note">
-					{#if completedLesson || completedExampleLesson}
+					{#if completedLesson || completedExampleLesson || visualHistory.length}
+						{#each visualHistory as entry (`${entry.lesson.id}:${entry.lesson.artifactVersion}`)}
+							<!-- The app path is resolved before its immutable-version query is appended. -->
+							<!-- eslint-disable svelte/no-navigation-without-resolve -->
+							<a
+								class="history-entry"
+								href={`${resolve('/lessons/[id]', { id: entry.lesson.id })}?version=${encodeURIComponent(entry.lesson.artifactVersion)}`}
+							>
+								<strong>{entry.lesson.title}</strong>
+								<span>Visual lesson · {entry.lesson.frames.length} moments</span>
+							</a>
+							<!-- eslint-enable svelte/no-navigation-without-resolve -->
+						{/each}
 						{#if completedLesson}
 							<button
 								class="history-entry"
@@ -183,7 +218,7 @@
 	<section class="sparks" aria-labelledby="sparks-heading">
 		<div class="section-title">
 			<span aria-hidden="true"></span>
-			<h2 id="sparks-heading">Follow a spark</h2>
+			<h2 id="sparks-heading">{suggestionsHeading}</h2>
 			<span aria-hidden="true"></span>
 		</div>
 
@@ -322,6 +357,13 @@
 		color: var(--color-navy);
 		cursor: pointer;
 		text-align: left;
+		text-decoration: none;
+	}
+
+	.history-entry + .history-entry {
+		margin-top: 0.55rem;
+		padding-top: 0.55rem;
+		border-top: 0.08rem solid rgb(7 27 59 / 16%);
 	}
 
 	.history-entry strong {

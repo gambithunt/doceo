@@ -16,7 +16,15 @@
 		"test": "npm run test:unit && npm run test:e2e",
 		"test:e2e": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
 		"spike:list": "tsx experiments/generation-spike/generate.ts --list",
-		"spike:generate": "node --env-file-if-exists=.env.local --import tsx experiments/generation-spike/generate.ts"
+		"spike:generate": "node --env-file-if-exists=.env.local --import tsx experiments/generation-spike/generate.ts",
+		"spike:blind": "tsx experiments/generation-spike/prepare-blind-set.ts",
+		"pipeline:v2:list": "tsx experiments/generation-pipeline-v2/run.ts --list",
+		"pipeline:v2:test": "vitest --run --config experiments/generation-pipeline-v2/vitest.config.ts",
+		"pipeline:v2:preflight": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/preflight.ts",
+		"pipeline:v2": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/run.ts",
+		"pipeline:v2:compact": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/run-compact.ts",
+		"pipeline:v2:plan-question": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/plan-question.ts",
+		"pipeline:v2:benchmark-reviewer": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/benchmark-reviewer.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",

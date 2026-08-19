@@ -1,12 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import BlackHoleLesson from './BlackHoleLesson.svelte';
 	import HomeScene from './HomeScene.svelte';
 	import LessonCheck from './LessonCheck.svelte';
 	import OrientationOne from './OrientationOne.svelte';
 	import OrientationTwo from './OrientationTwo.svelte';
 	import RealExampleLesson from './RealExampleLesson.svelte';
-	import { isBlackHoleCuriosity } from '$lib/experience/routing';
+	import { generatableContractFor } from '$lib/generation/routing';
+	import type { GenerationJobView } from '$lib/generation/types';
+	import { isBlackHoleCuriosity, isSoapCuriosity } from '$lib/experience/routing';
+	import { loadVisualHistory, type VisualHistoryEntry } from '$lib/visuals/history';
 	import type { LearningAngle, QuizOutcome, StartingPoint } from '$lib/experience/types';
 
 	type Stage = 'home' | 'orientation-one' | 'orientation-two' | 'lesson' | 'check';
@@ -30,9 +35,11 @@
 	let completedExampleLesson = $state(false);
 	let lastCompletedAngle = $state<LearningAngle | ''>('');
 	let quizOutcome = $state<QuizOutcome | ''>('');
+	let visualHistory = $state<VisualHistoryEntry[]>([]);
 
 	onMount(() => {
 		try {
+			visualHistory = loadVisualHistory(window.localStorage);
 			const fallingSaved = window.localStorage.getItem(fallingLessonStorageKey);
 			const exampleSaved = window.localStorage.getItem(exampleLessonStorageKey);
 			const savedLessons = [fallingSaved, exampleSaved]
@@ -52,9 +59,38 @@
 		}
 	});
 
-	function explore(question: string) {
+	async function explore(question: string) {
+		if (isSoapCuriosity(question)) {
+			await goto(resolve('/lessons/[id]', { id: 'everyday-soap' }));
+			return;
+		}
+
+		const contractId = generatableContractFor(question);
+		if (contractId) {
+			notice = '';
+			try {
+				const response = await fetch(resolve('/api/generation'), {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ contractId })
+				});
+				if (!response.ok) throw new Error('Could not start the lesson maker.');
+				const job = (await response.json()) as GenerationJobView;
+				await goto(
+					job.phase === 'approved'
+						? resolve('/generated/[id]', { id: job.id })
+						: resolve('/creating/[id]', { id: job.id })
+				);
+			} catch {
+				notice =
+					'The lesson maker could not start just now. Your curiosity is still here—try again.';
+			}
+			return;
+		}
+
 		if (!isBlackHoleCuriosity(question)) {
-			notice = 'This prototype can explore black holes for now. Try “How do black holes work?”';
+			notice =
+				'This prototype can build lessons about black holes, soap, vaccines, or the early universe for now.';
 			return;
 		}
 
@@ -147,6 +183,7 @@
 		{completedLesson}
 		{completedExampleLesson}
 		{lastCompletedAngle}
+		{visualHistory}
 	/>
 {:else if stage === 'orientation-one'}
 	<OrientationOne
