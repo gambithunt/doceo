@@ -24,6 +24,11 @@
 		"pipeline:v2": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/run.ts",
 		"pipeline:v2:compact": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/run-compact.ts",
 		"pipeline:v2:plan-question": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/plan-question.ts",
+		"pipeline:v2:research-question": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/research-question.ts",
+		"pipeline:v2:audit-research": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/audit-research.ts",
+		"pipeline:v2:narrow-research": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/narrow-research.ts",
+		"pipeline:v2:plan-from-research": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/plan-from-research.ts",
+		"pipeline:v2:evaluate": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/evaluate-questions.ts",
 		"pipeline:v2:benchmark-reviewer": "node --env-file-if-exists=.env.local --import tsx experiments/generation-pipeline-v2/benchmark-reviewer.ts"
 	},
 	"devDependencies": {

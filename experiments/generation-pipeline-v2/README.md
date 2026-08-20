@@ -8,6 +8,7 @@ npm run pipeline:v2:list
 npm run pipeline:v2:test
 npm run pipeline:v2:preflight -- --contract everyday-airplane-lift
 npm run pipeline:v2:plan-question -- --question "Why does the Moon have phases?"
+npm run pipeline:v2:evaluate -- --limit 3
 npm run pipeline:v2 -- --contract everyday-airplane-lift --preflight-file experiments/generation-pipeline-v2/runs/<passed-preflight>.json
 npm run pipeline:v2 -- --review-file experiments/generation-pipeline-v2/runs/<candidate>.json
 npm run pipeline:v2 -- --repair-file experiments/generation-pipeline-v2/runs/<rejected-candidate>.json
@@ -23,6 +24,56 @@ relationship, optional check, and source-claim ledger. Local validation requires
 two distinct source hosts, at least one primary or scholarly source, and proves
 that every declared source URL appeared in the search trace. A proposed plan is
 not an approved contract and cannot enter generation or learner playback.
+Every focused idea, outcome, visual state, misconception, and optional check must
+cite exact claim IDs from that ledger. Locally valid plans receive an independent
+GPT-5.4 medium falsification review. Only `reviewed-proposal` artifacts may be
+considered for later contract conversion; they are still not publishable lessons.
+
+Research a question and return as soon as its sourced answer artifact is ready:
+
+```sh
+npm run pipeline:v2:research-question -- --question "Why is the sky blue?" --answer-only
+```
+
+Omit `--answer-only` to run the independent source-sufficiency audit after the
+answer is saved. A later planner may consume only an `answered` research artifact
+and its exact linked `passed` audit artifact.
+
+Run the fixed mixed-question reliability set through those same app stages:
+
+```sh
+npm run pipeline:v2:evaluate -- --limit 3
+```
+
+Three questions is the default smoke evaluation. Pass `--limit 7` for the full
+set, `--ids mechanism-biology,mechanism-weather,uncertainty` for a focused rerun,
+or `--fresh` to bypass successful research, audit, and plan artifacts. The
+report records terminal stage, cache use, source count, lesson shape, validation
+and review findings, latency, incremental and historical artifact token costs,
+and immutable artifact names. Web-search fees are not included in either token
+cost estimate.
+
+Audit and plan a saved research artifact directly:
+
+```sh
+npm run pipeline:v2:audit-research -- \
+  --research-file experiments/generation-pipeline-v2/runs/<research>.json
+```
+
+If that audit rejects an otherwise valid answer, make one source-bound narrowing
+attempt and audit the new immutable artifact again:
+
+```sh
+npm run pipeline:v2:narrow-research -- \
+  --research-file experiments/generation-pipeline-v2/runs/<research>.json \
+  --audit-file experiments/generation-pipeline-v2/runs/<rejected-audit>.json
+```
+
+```sh
+npm run pipeline:v2:plan-from-research -- \
+  --research-file experiments/generation-pipeline-v2/runs/<research>.json \
+  --audit-file experiments/generation-pipeline-v2/runs/<audit>.json
+```
 
 Run contract preflight before generating. It checks exact claim coverage for the
 focused idea, visual approach, outcome, optional check, safety boundary, and

@@ -5,25 +5,25 @@
 	import { loadVisualHistory } from '$lib/visuals/history';
 
 	let { data } = $props();
-	let savedLesson = $state<typeof data.lesson>();
+	let savedLesson = $state<NonNullable<typeof data.lesson>>();
 	let unavailable = $state(false);
-	const lesson = $derived(savedLesson ?? data.lesson);
-	const ready = $derived(!data.requestedVersion || Boolean(savedLesson) || unavailable);
+	const lesson = $derived(savedLesson ?? data.lesson ?? null);
+	const ready = $derived(Boolean(lesson) || unavailable);
 
 	onMount(() => {
 		if (!data.requestedVersion) return;
 		const saved = loadVisualHistory(window.localStorage).find(
 			(entry) =>
-				entry.lesson.id === data.lesson.id && entry.lesson.artifactVersion === data.requestedVersion
+				entry.lesson.id === data.id && entry.lesson.artifactVersion === data.requestedVersion
 		);
 		if (saved) savedLesson = saved.lesson;
-		else if (data.lesson.artifactVersion === data.requestedVersion) savedLesson = data.lesson;
+		else if (data.lesson?.artifactVersion === data.requestedVersion) savedLesson = data.lesson;
 		else unavailable = true;
 	});
 </script>
 
 <svelte:head>
-	<title>{lesson.title} — Doceo</title>
+	<title>{lesson?.title ?? 'Opening lesson'} — Doceo</title>
 	<meta name="description" content="A focused, independently reviewed visual lesson from Doceo." />
 </svelte:head>
 
@@ -34,7 +34,7 @@
 		<h1>That saved version is not on this device.</h1>
 		<a href={resolve('/')}>Back home</a>
 	</main>
-{:else}
+{:else if lesson}
 	<ApprovedVisualLessonPlayer {lesson} />
 {/if}
 

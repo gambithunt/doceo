@@ -5,10 +5,13 @@
 	import type { VisualLessonFixture } from '$lib/visuals/types';
 	import { saveApprovedVisualLesson, saveVisualCheckOutcome } from '$lib/visuals/history';
 	import ApprovedLessonCheck from './ApprovedLessonCheck.svelte';
+	import ConceptSequence from './ConceptSequence.svelte';
 	import CosmologyTimeline from './CosmologyTimeline.svelte';
+	import FactReveal from './FactReveal.svelte';
 	import HomeButton from './HomeButton.svelte';
 	import ImmuneResponseSequence from './ImmuneResponseSequence.svelte';
 	import SoapContainmentSequence from './SoapContainmentSequence.svelte';
+	import RecallLessonCheck from './RecallLessonCheck.svelte';
 
 	type Props = { lesson: VisualLessonFixture };
 	let { lesson }: Props = $props();
@@ -17,6 +20,7 @@
 	let showCheck = $state(false);
 	const frame = $derived(lesson.frames[frameIndex]);
 	const atEnd = $derived(frameIndex === lesson.frames.length - 1);
+	const factLesson = $derived(lesson.kind === 'fact-reveal');
 
 	$effect(() => {
 		if (!browser || !atEnd || savedVersion === lesson.artifactVersion) return;
@@ -32,24 +36,39 @@
 		if (!browser) return;
 		saveVisualCheckOutcome(window.localStorage, lesson, responseId, supported);
 	}
+
+	function recordRecall() {
+		if (!browser) return;
+		saveVisualCheckOutcome(window.localStorage, lesson, 'revealed', true);
+	}
 </script>
 
-<main class="lesson-shell">
+<main class:fact-shell={factLesson} class="lesson-shell">
 	<HomeButton onclick={() => goto(resolve('/'))} />
 
-	<header>
+	<header class:fact-header={factLesson}>
 		<a class="wordmark" href={resolve('/')}>Doceo</a>
-		<span class="reviewed"><i aria-hidden="true">✓</i> Independently reviewed</span>
+		{#if !factLesson}
+			<span class="reviewed"><i aria-hidden="true">✓</i> Independently reviewed</span>
+		{/if}
 	</header>
 
 	{#if showCheck && lesson.check}
-		<ApprovedLessonCheck
-			check={lesson.check}
-			onanswer={recordCheckAnswer}
-			onback={() => (showCheck = false)}
-		/>
+		{#if lesson.check.kind === 'recall'}
+			<RecallLessonCheck
+				check={lesson.check}
+				onrevealed={recordRecall}
+				onback={() => (showCheck = false)}
+			/>
+		{:else}
+			<ApprovedLessonCheck
+				check={lesson.check}
+				onanswer={recordCheckAnswer}
+				onback={() => (showCheck = false)}
+			/>
+		{/if}
 	{:else}
-		<section class="intro">
+		<section class:fact-intro={factLesson} class="intro">
 			<p>{frame.kicker}</p>
 			<h1>{frame.title}</h1>
 		</section>
@@ -59,35 +78,72 @@
 				<CosmologyTimeline nodes={lesson.nodes} activeStateIds={frame.activeStateIds} />
 			{:else if lesson.kind === 'immune-response'}
 				<ImmuneResponseSequence nodes={lesson.nodes} activeStateIds={frame.activeStateIds} />
-			{:else}
+			{:else if lesson.kind === 'containment-sequence'}
 				<SoapContainmentSequence nodes={lesson.nodes} activeStateIds={frame.activeStateIds} />
+			{:else if lesson.kind === 'fact-reveal'}
+				<FactReveal nodes={lesson.nodes} activeStateIds={frame.activeStateIds} />
+			{:else}
+				<ConceptSequence nodes={lesson.nodes} activeStateIds={frame.activeStateIds} />
 			{/if}
 		</section>
 
-		<footer>
+		<footer class:fact-footer={factLesson}>
 			<div class="progress" aria-label={`Step ${frameIndex + 1} of ${lesson.frames.length}`}>
 				{#each lesson.frames.keys() as index (index)}
 					<span class:active={index === frameIndex}></span>
 				{/each}
 			</div>
-			<p class="caption">{frame.caption}</p>
-			<button class="next-button" type="button" onclick={advance} data-testid="next-button">
-				<span>{atEnd ? 'See it again' : 'Next'}</span>
-				<svg viewBox="0 0 32 32" role="presentation"><path d="M6 16h20m-8-8 8 8-8 8" /></svg>
-			</button>
-			{#if atEnd}
-				<div class="ending">
-					<p class="saved-note" aria-live="polite">Saved to your History.</p>
-					{#if lesson.check}
-						<button class="check-button" type="button" onclick={() => (showCheck = true)}
-							>Try a 10-second check</button
-						>
-					{/if}
-				</div>
+			{#if factLesson}
+				{#if atEnd}
+					<div class="fact-actions">
+						<p class="saved-note" aria-live="polite">Saved to History</p>
+						{#if lesson.check}
+							<button
+								class="next-button fact-check"
+								type="button"
+								onclick={() => (showCheck = true)}
+								data-testid="next-button"
+							>
+								<span>Try the 10-second check</span>
+								<svg viewBox="0 0 32 32" role="presentation"><path d="M6 16h20m-8-8 8 8-8 8" /></svg
+								>
+							</button>
+						{/if}
+						<button class="replay-button" type="button" onclick={advance}>Replay</button>
+					</div>
+				{:else}
+					<button
+						class="next-button fact-reveal-button"
+						type="button"
+						onclick={advance}
+						data-testid="next-button"
+					>
+						<span>Reveal the answer</span>
+						<svg viewBox="0 0 32 32" role="presentation"><path d="M6 16h20m-8-8 8 8-8 8" /></svg>
+					</button>
+				{/if}
+			{:else}
+				<p class="caption">{frame.caption}</p>
+				<button class="next-button" type="button" onclick={advance} data-testid="next-button">
+					<span>{atEnd ? 'See it again' : 'Next'}</span>
+					<svg viewBox="0 0 32 32" role="presentation"><path d="M6 16h20m-8-8 8 8-8 8" /></svg>
+				</button>
+				{#if atEnd}
+					<div class="ending">
+						<p class="saved-note" aria-live="polite">Saved to your History.</p>
+						{#if lesson.check}
+							<button class="check-button" type="button" onclick={() => (showCheck = true)}
+								>Try a 10-second check</button
+							>
+						{/if}
+					</div>
+				{/if}
 			{/if}
 			{#if lesson.provenance}
 				<details class="provenance">
-					<summary>How this lesson was checked</summary>
+					<summary
+						>{factLesson ? '✓ Independently reviewed' : 'How this lesson was checked'}</summary
+					>
 					<p>{lesson.provenance.reviewSummary}</p>
 					{#if lesson.provenance.reviewNotes.length}
 						<ul class="review-notes">
@@ -142,6 +198,10 @@
 		transform: rotate(-4deg);
 	}
 
+	.lesson-shell.fact-shell {
+		padding-bottom: clamp(2rem, 4vw, 3.5rem);
+	}
+
 	header {
 		display: flex;
 		width: min(100%, var(--content-width));
@@ -159,6 +219,10 @@
 		font-weight: 900;
 		letter-spacing: -0.07em;
 		text-decoration: none;
+	}
+
+	.fact-header .wordmark {
+		font-size: clamp(1.8rem, 4vw, 2.7rem);
 	}
 
 	.reviewed {
@@ -214,6 +278,20 @@
 		text-wrap: balance;
 	}
 
+	.intro.fact-intro {
+		width: min(100%, 50rem);
+		height: auto;
+		min-height: 7.5rem;
+		grid-template-rows: auto auto;
+		gap: 0.5rem;
+		margin: clamp(1.5rem, 4vw, 2.8rem) auto clamp(1rem, 2vw, 1.5rem);
+	}
+
+	.intro.fact-intro h1 {
+		font-size: clamp(2.2rem, 5vw, 4.4rem);
+		line-height: 0.98;
+	}
+
 	.visual-stage {
 		width: min(100%, 72rem);
 		margin: 0 auto;
@@ -226,6 +304,14 @@
 		align-items: start;
 		gap: 0.8rem 1.4rem;
 		margin: clamp(1.5rem, 4vw, 2.5rem) auto 0;
+	}
+
+	footer.fact-footer {
+		width: min(100%, 52rem);
+		grid-template-columns: 1fr;
+		justify-items: center;
+		gap: 1rem;
+		margin-top: clamp(1.2rem, 3vw, 2rem);
 	}
 
 	.caption {
@@ -297,6 +383,41 @@
 		stroke-width: 2.5;
 	}
 
+	.fact-reveal-button {
+		width: auto;
+		min-width: 13rem;
+		justify-self: center;
+	}
+
+	.fact-actions {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		align-items: center;
+		justify-content: center;
+		gap: 0.7rem 1.2rem;
+	}
+
+	.fact-actions .saved-note {
+		grid-column: 1 / -1;
+		justify-self: center;
+		text-align: center;
+	}
+
+	.next-button.fact-check {
+		width: auto;
+		min-width: 15rem;
+	}
+
+	.replay-button {
+		padding: 0.35rem 0;
+		border: 0;
+		border-bottom: 0.14rem solid var(--color-teal);
+		background: transparent;
+		color: var(--color-navy);
+		cursor: pointer;
+		font-weight: 900;
+	}
+
 	.ending {
 		display: flex;
 		grid-column: 1 / -1;
@@ -329,6 +450,12 @@
 		padding-top: 0.8rem;
 		border-top: 0.12rem solid rgb(7 27 59 / 18%);
 		font-size: 0.82rem;
+	}
+
+	.fact-footer .provenance {
+		width: 100%;
+		margin-top: 0.2rem;
+		text-align: left;
 	}
 
 	.provenance summary {
@@ -370,6 +497,10 @@
 			height: clamp(10.5rem, 46vw, 12rem);
 			margin-top: 2rem;
 		}
+		.intro.fact-intro {
+			min-height: 6.5rem;
+			margin-top: 1.4rem;
+		}
 		footer {
 			grid-template-columns: 1fr;
 		}
@@ -385,6 +516,13 @@
 		}
 		.saved-note {
 			text-align: center;
+		}
+		.fact-actions {
+			grid-template-columns: 1fr;
+			justify-items: center;
+		}
+		.fact-actions .saved-note {
+			grid-column: auto;
 		}
 	}
 </style>

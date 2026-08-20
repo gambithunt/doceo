@@ -187,7 +187,7 @@ export function adaptApprovedVisualArtifact(value: unknown): VisualLessonFixture
 			caption: scene.narration,
 			activeStateIds: scene.visualModelStateIds
 		})),
-		check: artifact.draft.check,
+		check: artifact.draft.check ? { kind: 'choice', ...artifact.draft.check } : undefined,
 		provenance: {
 			approval: 'independently-reviewed',
 			sources: artifact.contract.sources,

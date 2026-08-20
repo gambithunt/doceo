@@ -10,6 +10,7 @@
 	import RealExampleLesson from './RealExampleLesson.svelte';
 	import { generatableContractFor } from '$lib/generation/routing';
 	import type { GenerationJobView } from '$lib/generation/types';
+	import type { AnswerJobView } from '$lib/answers/types';
 	import { isBlackHoleCuriosity, isSoapCuriosity } from '$lib/experience/routing';
 	import { loadVisualHistory, type VisualHistoryEntry } from '$lib/visuals/history';
 	import type { LearningAngle, QuizOutcome, StartingPoint } from '$lib/experience/types';
@@ -89,8 +90,24 @@
 		}
 
 		if (!isBlackHoleCuriosity(question)) {
-			notice =
-				'This prototype can build lessons about black holes, soap, vaccines, or the early universe for now.';
+			notice = '';
+			try {
+				const response = await fetch(resolve('/api/answers'), {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ question })
+				});
+				if (!response.ok) throw new Error('Could not start the source search.');
+				const job = (await response.json()) as AnswerJobView;
+				await goto(
+					job.phase === 'answered'
+						? resolve('/answers/[id]', { id: job.id })
+						: resolve('/answering/[id]', { id: job.id })
+				);
+			} catch {
+				notice =
+					'I could not start a reliable source search just now. Your question is still here—try again.';
+			}
 			return;
 		}
 

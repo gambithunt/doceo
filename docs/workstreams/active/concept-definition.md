@@ -24,6 +24,7 @@ others. When they disagree, the owner wins.
 | Document | Authoritative for |
 | --- | --- |
 | This file | Thesis, promise, principles, decision log, open questions |
+| [Intent-Aware Responses](./intent-aware-responses.md) | Fact, explanation, and lesson routing; answer experience; lesson admission |
 | [Lesson Grammar](./lesson-grammar.md) | Experience rules, lesson contract, teaching patterns, quality gates |
 | [Black Hole](./black-hole-reference-journey.md) and [Fractions](./fractions-reference-journey.md) journeys | Lesson content — scenes, narration, checks, evidence handling |
 | [Experience Prototype](./prototype-validation.md) | Prototype scope, states, method, evidence |
@@ -57,13 +58,20 @@ requirements.
 
 ## Core Product Promise
 
-> Turn curiosity into an instantly playable learning experience, then quietly
-> adapt the next lesson from what the learner does.
+> Give each curiosity the smallest experience that answers it well, then open a
+> deeper path when there is something worth understanding.
 
-“Instantly playable” means the learner can begin with almost no setup and does
-more than consume an answer. The lesson should invite a small, meaningful action
-through a visual explanation, prediction, manipulation, choice, game, or other
-concept-appropriate interaction.
+That experience may be a compact sourced answer, a focused explanation, or an
+instantly playable lesson. The
+[intent-aware responses workstream](./intent-aware-responses.md) owns the routing
+and answer experience. Lessons remain the richest learning format, but they are
+not the required destination of every question.
+
+“Instantly playable” applies when Doceo routes the curiosity into a lesson. It
+means the learner can begin with almost no setup and does more than consume an
+answer. The lesson should invite a small, meaningful action through a visual
+explanation, prediction, manipulation, choice, game, or other concept-appropriate
+interaction.
 
 “Quietly adapt” means Doceo uses those actions to improve what comes next
 without turning the experience into curriculum administration or a constant
@@ -297,7 +305,8 @@ clearer.
 | --- | --- | --- |
 | First learner | **Chosen:** curious adults roughly 25–45 who already learn from video, podcasts, and AI chat for personal interest | Whether curiosity without urgency sustains return and, eventually, willingness to pay |
 | Primary promise | Sustain guided curiosity, optionally directed toward a defined outcome | Validate that one experience can support both without becoming vague |
-| Core experience | Instantly playable learning that quietly adapts the next lesson | Test whether learners notice and value the adaptation |
+| Core experience | Intent-aware response: sourced answer, focused explanation, or instantly playable lesson; quietly adapt what comes next | Test whether learners receive the depth they wanted and notice valuable adaptation |
+| Response depth | **Chosen:** answer first, then route between lookup, explanation, and lesson from learner intent and lesson worthiness | Whether learners receive the depth they wanted without extra friction |
 | First subject domain | Deliberately undecided until the [generation spike](./generation-spike.md) reports | Where generated quality actually holds, measured by domain and by within-domain variance |
 | Session shape | Focused adaptive lessons, not a whole generated course | Test lesson length, continuity, and return behavior |
 | Curriculum model | Adaptive next-topic suggestions rather than a visible prescribed path | Test whether suggestions provide enough continuity and direction |
@@ -470,6 +479,8 @@ Early product metrics should distinguish:
 | 2026-08-17 | Restate orientation count, lesson duration, and check length as round-one parameters | They were written as principles while the decision table listed them as awaiting evidence; both cannot be true | Evidence settles any of them |
 | 2026-08-19 | Adopt reusable approved lesson cores as the economic foundation and record a provisional Free/Explorer subscription hypothesis | Shared reviewed artifacts amortize generation and review cost while preserving replay and trust; unlimited one-off generation would expose the product to poor yield and unbounded cost | Purchase behavior, return, reuse, approval yield, or full costs contradict the model |
 | 2026-08-19 | Require entitlement capabilities, append-only cost events, allowance reservation, versioned pricing, and reuse-before-generation in future production architecture | These boundaries allow pricing and providers to change without scattering billing logic or retrofitting cost control throughout the product | A simpler design demonstrably preserves the same auditability, fairness, and cost controls |
+| 2026-08-20 | Make lessons one response shape rather than the destination of every curiosity | Atomic lookups are made worse by unnecessary orientation and lesson generation; recognizing learner intent is part of responding well | Learner evidence shows a lesson-first flow is preferred even for simple factual requests |
+| 2026-08-20 | Adopt answer-first intent routing across lookup, explanation, and learning modes | Direct answers respect the request while contextual continuations preserve a path into deeper understanding | The three modes fail to cover recurring learner needs or routing adds more friction than value |
 
 ## Open Questions
 

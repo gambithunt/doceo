@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { VisualLessonCheck } from '$lib/visuals/types';
 
+	type ChoiceCheck = Extract<VisualLessonCheck, { kind: 'choice' }>;
 	type Props = {
-		check: VisualLessonCheck;
+		check: ChoiceCheck;
 		onanswer?: (responseId: string, supported: boolean) => void;
 		onback?: () => void;
 	};

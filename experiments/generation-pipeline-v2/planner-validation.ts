@@ -1,20 +1,11 @@
-import type { QuestionPlan } from './planner-schema.ts';
+import type { QuestionPlan, QuestionPlanReview } from './planner-schema.ts';
+import { tracedSourceUrlMatches } from './research-validation.ts';
 
 export type PlannerValidationIssue = {
 	code: string;
 	path: string;
 	message: string;
 };
-
-function normalizedUrl(value: string) {
-	const url = new URL(value);
-	url.hash = '';
-	for (const key of [...url.searchParams.keys()]) {
-		if (key.startsWith('utm_')) url.searchParams.delete(key);
-	}
-	url.pathname = url.pathname.replace(/\/$/, '');
-	return url.toString();
-}
 
 function host(value: string) {
 	return new URL(value).hostname.replace(/^www\./, '');
@@ -93,7 +84,7 @@ export function validateQuestionPlan(
 			message: 'A visual plan needs between two and six canonical states.'
 		});
 	}
-	if (plan.visualStates[0]?.relationshipToPrevious !== 'start') {
+	if (plan.visualStates.length > 0 && plan.visualStates[0]?.relationshipToPrevious !== 'start') {
 		issues.push({
 			code: 'invalid_first_relationship',
 			path: 'visualStates.0.relationshipToPrevious',
@@ -134,15 +125,41 @@ export function validateQuestionPlan(
 			message: 'A proposed contract needs sources from at least two distinct hosts.'
 		});
 	}
-	if (!plan.sources.some((source) => source.sourceTier !== 'established_educational')) {
+	const allClaimIds = plan.sources.flatMap((source) => source.claims.map((claim) => claim.id));
+	const knownClaimIds = new Set(allClaimIds);
+	if (knownClaimIds.size !== allClaimIds.length) {
 		issues.push({
-			code: 'missing_primary_source',
+			code: 'duplicate_claim_id',
 			path: 'sources',
-			message: 'At least one source must be a primary authority or scholarly source.'
+			message: 'Every source claim ID must be globally unique.'
 		});
 	}
+	const checkClaimReferences = (path: string, claimIds: string[]) => {
+		for (const claimId of claimIds) {
+			if (!knownClaimIds.has(claimId)) {
+				issues.push({
+					code: 'unknown_claim_id',
+					path,
+					message: `Unknown source claim ID: ${claimId}`
+				});
+			}
+		}
+	};
+	checkClaimReferences('focusedIdeaClaimIds', plan.focusedIdeaClaimIds);
+	checkClaimReferences('learnerOutcomeClaimIds', plan.learnerOutcomeClaimIds);
+	checkClaimReferences('safeBoundaryClaimIds', plan.safeBoundaryClaimIds);
+	checkClaimReferences('optionalCheck.sourceClaimIds', plan.optionalCheck.sourceClaimIds);
+	for (const [index, state] of plan.visualStates.entries()) {
+		checkClaimReferences(`visualStates.${index}.sourceClaimIds`, state.sourceClaimIds);
+	}
+	for (const [index, misconception] of plan.likelyMisconceptions.entries()) {
+		checkClaimReferences(
+			`likelyMisconceptions.${index}.sourceClaimIds`,
+			misconception.sourceClaimIds
+		);
+	}
 
-	const researched = new Set(researchedUrls.filter(validHttpsUrl).map(normalizedUrl));
+	const researched = researchedUrls.filter(validHttpsUrl);
 	for (const [index, source] of plan.sources.entries()) {
 		if (!validHttpsUrl(source.url)) {
 			issues.push({
@@ -150,7 +167,7 @@ export function validateQuestionPlan(
 				path: `sources.${index}.url`,
 				message: 'Source URLs must be valid HTTPS URLs.'
 			});
-		} else if (!researched.has(normalizedUrl(source.url))) {
+		} else if (!researched.some((tracedUrl) => tracedSourceUrlMatches(source.url, tracedUrl))) {
 			issues.push({
 				code: 'unresearched_source_url',
 				path: `sources.${index}.url`,
@@ -159,5 +176,39 @@ export function validateQuestionPlan(
 		}
 	}
 
+	return { passed: issues.length === 0, issues };
+}
+
+export function validateQuestionPlanReview(plan: QuestionPlan, review: QuestionPlanReview) {
+	const issues: PlannerValidationIssue[] = [];
+	const knownClaimIds = new Set(
+		plan.sources.flatMap((source) => source.claims.map((claim) => claim.id))
+	);
+	for (const [index, finding] of review.findings.entries()) {
+		for (const claimId of finding.sourceClaimIds) {
+			if (!knownClaimIds.has(claimId)) {
+				issues.push({
+					code: 'review_unknown_claim_id',
+					path: `findings.${index}.sourceClaimIds`,
+					message: `Reviewer cited unknown source claim ID: ${claimId}`
+				});
+			}
+		}
+	}
+	const hasMajor = review.findings.some((finding) => finding.severity === 'major');
+	if (review.decision === 'approve' && hasMajor) {
+		issues.push({
+			code: 'review_approval_has_major_finding',
+			path: 'decision',
+			message: 'A review with a major finding cannot approve the plan.'
+		});
+	}
+	if (review.decision === 'reject' && !hasMajor) {
+		issues.push({
+			code: 'review_rejection_missing_major_finding',
+			path: 'decision',
+			message: 'A rejected plan must identify at least one major finding.'
+		});
+	}
 	return { passed: issues.length === 0, issues };
 }

@@ -564,3 +564,302 @@ The experiment has 34 passing pipeline tests and zero Svelte/type diagnostics.
 Add claim-level visual-state tracing and independent plan review, then run a new
 mixed-domain evaluation. Only a reviewed plan may be converted into a candidate
 lesson contract.
+
+## Claim-traced planner evaluation — 2026-08-19
+
+The planner now gives every researched claim a globally unique ID. The focused
+idea, learner outcome, every canonical visual state, every misconception, the
+optional check, and factual parts of the safe boundary cite those exact IDs.
+Local validation rejects dangling references, duplicate claim IDs, inconsistent
+visual starts, invalid source provenance, and internally contradictory reviewer
+results.
+
+Every locally valid proposal receives a separate GPT-5.4 medium falsification
+review. The reviewer uses only the literal claim ledger, checks whether the
+visual family explains the question rather than merely accompanying it, and
+rejects any major unsupported, contradictory, misleading, or scope-drifting
+element. Reviewer output cannot approve while carrying a major finding or cite
+an unknown claim ID.
+
+The new fixed five-question set produced **0/5 reviewed proposals** without
+content retries:
+
+| Question | Result | Principal finding |
+| --- | --- | --- |
+| Why does ice float? | Review reject | “Open” crystal structure, misconceptions, optional check, and salinity boundary exceeded their cited claims |
+| How does a zipper work? | Review infrastructure failure | The first review exhausted its output budget without parsed structured output; the plan was not preserved by the original implementation |
+| Why can we see a rainbow? (age eight) | Review reject | Outcome and check added unsupported white-light and rain-position details |
+| Why did ancient cities form near rivers? | Review reject | Generalized from particular river-valley claims and added unsupported reliability and food links |
+| Why does negative × negative become positive? | Review reject | The ledger did not directly support the distributive equations used by the visual and check |
+
+The zipper failure exposed a reliability bug. Review is now guarded, uses a
+larger structured-output budget, saves `review-error` as a terminal artifact,
+and lets later questions continue. The subsequent three reviews all completed,
+which exercised the corrected continuation path. The failed zipper item remains
+a failure; it was not retried or silently removed from the batch.
+
+For the four completed plan-and-review calls, mean wall-clock time was **41.24
+seconds**. Estimated token cost was approximately **$0.24883** total
+(`$0.05769` planning and `$0.19114` review), excluding web-search fees and the
+unmeasured failed zipper attempt.
+
+This gate prevented every observed major problem from reaching contract
+generation, but zero useful yield fails the product target. The systematic
+problem is architectural: one call is being asked to discover a sufficient
+claim ledger and design the visual explanation simultaneously. More retries or
+weaker review would hide that problem rather than solve it.
+
+Do not connect this planner to the app. Split the next experiment into two
+immutable stages:
+
+1. a source researcher builds an atomic claim ledger targeted to the question's
+   mechanism, including any equation, spatial relation, comparison, or exception
+   the explanation will require; and
+2. a contract planner receives only that passed ledger and may either compose a
+   fully traced visual plan or reject it as insufficient.
+
+Run a source-sufficiency audit between the stages and test on another new fixed
+set. Do not regenerate this batch.
+
+## Current next step
+
+Build the separate source-research artifact and sufficiency audit. Preserve the
+existing planner and rejected artifacts as the baseline; do not weaken the
+independent reviewer.
+
+## Fast answer path and split evidence pipeline — 2026-08-19
+
+The app now treats the learner-visible answer and the publishable visual lesson
+as two different products:
+
+1. A valid submitted question immediately becomes an in-memory answer job.
+2. GPT-5.4 mini performs one low-reasoning web-search call and returns a short
+   answer, two to four visible sources, and an atomic claim ledger.
+3. The app shows that answer as soon as the research artifact is saved. It does
+   not make the learner wait for lesson planning or review.
+4. Identical questions reuse the completed in-process job.
+5. Only a later request to create a lesson should run the independent
+   source-sufficiency audit. Only a passed audit may enter the evidence-only
+   planner, and that planner cannot browse or change the source ledger.
+
+This separation matters. A useful sourced answer can be shown quickly without
+pretending that it is an independently approved visual lesson. Conversely, a
+strict audit may reject the lesson path without discarding or delaying the
+learner's answer.
+
+The runtime converts missing credentials, provider errors, malformed research,
+and non-terminal subprocess exits into a short terminal boundary response. It
+does not leave the learner in an endless generating state. This is an
+application-level guarantee for valid submissions while the browser, server,
+and network request path are functioning; it cannot guarantee delivery through
+a browser, server, or network outage.
+
+### Live measurements
+
+All measurements used new questions rather than the fixed evaluation set:
+
+| Case | Learner-visible result | Time |
+| --- | --- | ---: |
+| Why do onions make us cry? | 3-source answer | 7.44 s |
+| Repeated identical onion question | Cached completed answer | 3 ms |
+| Why is the sky blue? after answer-only split | Clean 3-source answer | 5.95 s |
+| Invalid model credential | Safe terminal boundary response | 1.65 s |
+
+The first everyday physics test exposed and removed a false-negative rule that
+required a primary paper even when independent university sources directly
+supported the explanation. Source diversity remains mandatory. Markdown links
+that a model redundantly inserts into quick-answer prose are stripped
+deterministically because the UI renders the source list separately.
+
+The Moon and onion research artifacts also demonstrated that a sound-looking
+answer is not sufficient to authorize a lesson. Their independent audits found
+claim-level citation gaps and rejected lesson progression. Those rejections
+remain preserved; they were not retried or weakened.
+
+Current prototype limits: jobs and the repeat cache are process-local, the safe
+fallback saves the research artifact but does not yet offer an automatic retry,
+and the UI does not yet expose the explicit “turn this into a lesson” action that
+would start audit and planning.
+
+## Current next step
+
+Add the explicit lesson action to a sourced answer. Persist answer jobs and their
+research-artifact linkage before using multiple app instances. The action must
+run the audit first and show a useful boundary when evidence is insufficient;
+it must never silently retry until a reviewer approves.
+
+## Learner-triggered lesson audit — 2026-08-19
+
+The sourced-answer page now offers **Turn this into a lesson** only when the
+answer has a saved source artifact. Starting it creates a separate lesson-plan
+job with visible `auditing`, `planning`, `reviewing`, and terminal states. The
+job reads the exact research artifact behind the answer, creates a separately
+saved sufficiency audit, and passes both immutable paths to the evidence-only
+planner. It never searches for a more convenient answer or retries a rejected
+audit.
+
+The waiting screen remains animated and provides Home throughout. A rejection
+keeps the sourced answer intact and shows the auditor's useful reason. A passed
+plan shows its focused idea, outcome, and reviewed visual states as a blueprint;
+it does not claim the generic playable renderer exists yet.
+
+An end-to-end app test used **Why is the sky blue?** The sourced answer arrived
+with three sources in **9.50 seconds**. The learner-triggered audit reached a
+terminal rejection in **27.85 seconds** because the ledger did not directly
+support two observer-facing phrases. The job displayed that reason and did not
+retry. This is a successful safety-path result, not a usable lesson yield.
+
+Learner-facing rejection copy is deliberately separate from the audit summary.
+Claim IDs, requirement IDs, and entailment findings remain in the saved artifact
+for diagnosis; the UI says only whether the evidence or visual explanation was
+not strong enough and makes clear that the sourced answer remains available.
+
+## Current next step
+
+Define the generic playable-lesson contract produced from a `reviewed-proposal`,
+then build the first renderer that can express at least spatial, process, and
+cause-and-effect blueprints without topic-specific code. Keep answer and lesson
+jobs persistent before multi-instance deployment.
+
+## Fact-question scope and citation alignment — 2026-08-19
+
+The failed **Who founded Apple Computer?** lesson was traced to research scope
+drift, not a wrong founder answer. The first ledger added an unrequested causal
+requirement about why the company started and attached it to a weaker claim.
+The strict auditor correctly rejected that mismatch.
+
+Research now classifies the learner's intent as fact, definition, mechanism,
+process, comparison, timeline, application, or other. Deterministic validation
+requires who/when/where/what-year/how-many questions to remain factual, limits
+them to two indispensable requirements, and rejects causal expansion before a
+paid audit. Simple facts may use one-sentence answers and a single requirement.
+
+Distribution and self-publishing platforms cannot be labeled as source
+authorities. The live regression initially found an Apple Podcasts listing;
+local validation now rejects podcast, social, video, and self-publishing hosts,
+and the research prompt excludes them explicitly.
+
+The independent audit now checks the entire literal ledger and returns canonical
+claim alignment instead of being restricted to the researcher's initial claim
+binding. The planner receives that passed alignment. Its structured-output
+wrapper now has the required object root, covered by a regression test.
+
+The visual vocabulary gained `same_event`, preventing a date and its founders
+from being encoded as an earlier-to-later sequence. A learner-requested lesson
+must propose a meaningful interactive visual family or reject; it cannot approve
+a text-only plan. Direct factual plans may have no invented misconceptions and
+policy-only safe boundaries use no factual citations.
+
+The exact original query was rerun without regenerating failed stages:
+
+| Stage | Result | Time |
+| --- | --- | ---: |
+| Factual research | Answered; Apple newsroom + Smithsonian | 8.60 s |
+| Evidence audit | Passed with corrected claim alignment | 6.56 s |
+| Visual plan + independent review | `reviewed-proposal`, zero findings | 25.59 s |
+
+The approved blueprint uses a two-state timeline: Apple Computer is established
+on April 1, 1976, and the three founders are attached to that same event. The
+optional interaction asks the learner to name Steve Jobs, Steve Wozniak, and
+Ronald Wayne.
+
+## Mixed-question reliability smoke test — 2026-08-20
+
+A fixed seven-question evaluation harness now runs the same research, audit, and
+planning commands used by the app. It records the terminal stage, cache use,
+source count, lesson shape, validation and review findings, wall-clock time, and
+both incremental and historical artifact token costs. The default smoke run uses
+three questions; the complete set adds quantity, biology mechanism, weather
+mechanism, and scientific-uncertainty cases.
+
+The first three-question run produced **0/3 lessons** and exposed three distinct
+false or avoidable boundaries: a source URL differed from its search trace only
+by a tracking query, `where` questions could not declare spatial evidence, and a
+direct date answer was sent through a generative visual planner that introduced
+unnecessary scope. URL matching now accepts the same HTTPS origin and path when
+one side only adds a query, while still rejecting conflicting query-selected
+pages. Spatial requirements are valid for `where` questions, and passed fact or
+date answers use the deterministic question-to-answer lesson lane.
+
+After those narrow fixes, the same set produced **2/3 ready lessons**:
+
+| Question | Result | Observed behavior |
+| --- | --- | --- |
+| Who discovered penicillin? | Ready | Audited two-state fact reveal |
+| When did humans land on the Moon? | Ready | Audited two-state date reveal; no planner model call |
+| Where do auroras occur? | Audit reject | Source wording did not fully entail the researcher's stronger paraphrase |
+
+The aurora rejection is not a reason to weaken the audit. It shows the next
+reliability problem: research must preserve source-supported qualifiers closely
+enough that a sound answer does not fail only after the expensive audit.
+
+One bounded audit-aware narrowing pass now handles that case. It receives only
+the immutable ledger and rejection findings, cannot browse or alter sources, and
+may only narrow the answer, learning target, requirements, and their existing
+claim IDs. Direct questions enforce their two-requirement maximum in the tool
+schema. The narrowed artifact must pass local validation and the same independent
+audit; a second rejection is terminal and there is no repair loop.
+
+The unchanged smoke set then reached **3/3 ready**. Aurora narrowed “strong
+geomagnetic storms” to the source-supported “large events with increased space
+weather activity,” passed the second audit, and entered the deterministic fact
+lesson lane. The uncached recovery took about **9.6 seconds**. A subsequent
+cache-only confirmation produced 3/3 in **9 ms** with **$0 incremental model
+token cost**. The next reliability gate is the complete seven-question set.
+
+## Seven-question reliability gate — 2026-08-20
+
+The complete fixed set ran once after the 3/3 smoke gate. Cached smoke questions
+were reused; the four new questions ran through research, audit, one permitted
+narrowing pass, planning, and independent review. The result was **4/7 ready** in
+about **180 seconds** for approximately **$0.24620 incremental model-token cost**,
+excluding web-search fees.
+
+| Question | Result | Terminal reason |
+| --- | --- | --- |
+| Who discovered penicillin? | Ready | Cached audited fact reveal |
+| When did humans land on the Moon? | Ready | Cached audited date reveal |
+| Where do auroras occur? | Ready | Cached narrowed fact reveal |
+| How many bones are in an adult human body? | Ready | Narrowing repaired evidence wording; deterministic fact reveal |
+| What is photosynthesis? | Local plan reject | Planner required a primary/scholarly source although research policy had accepted three established educational sources |
+| How does rain form? | Review reject | Planner mislabeled a correct warm-cloud statement as a misconception |
+| What came before the Big Bang? | Audit reject | Narrowed answer still added the unsupported summary “there is no confirmed answer yet” |
+
+No major error escaped into a lesson. The 57% yield is not sufficient for the
+product promise, and increasing model price would not address these failures.
+The next work should align the research and planner source-policy gates, prevent
+the planner from inventing misconception entries unless the ledger explicitly
+supports them, and make uncertainty narrowing preserve literal epistemic
+qualifiers. Rerun only the three stopped immutable cases as a new version before
+another full seven-question pass.
+
+## Seven-question gate passed — 2026-08-20
+
+The three failure classes were fixed without weakening either independent
+review:
+
+- planning now accepts the same diverse, established educational sources that
+  pass research policy instead of imposing a conflicting primary-source rule;
+- generated misconceptions are removed unless a cited claim explicitly
+  identifies a misconception or common myth;
+- audit-aware narrowing uses the model only to select relevant claim IDs, then
+  rebuilds requirements and the quick answer from the immutable claim ledger.
+  Direct fact answers use one canonical claim per requirement to remain concise,
+  while the full cited evidence remains available to the lesson plan.
+
+The targeted photosynthesis and rain cases both reached independently reviewed
+plans. The Big Bang case initially exposed one remaining model-added phrase,
+“or phase”; claim-ledger reconstruction removed that probabilistic wording gap.
+A mixed retest then exposed an overlong but fully supported aurora answer, so the
+direct-answer composition was bounded without discarding its lesson evidence.
+
+The final complete run produced **7/7 ready lessons** in **99.6 seconds** for
+**$0.137284 incremental model-token cost**, excluding web-search fees. An
+immediate cache-only repeat produced **7/7 in 30 ms** with **$0 incremental
+model-token cost**. All 74 pipeline tests, Svelte diagnostics, formatting, and
+lint checks pass.
+
+This passes the current mixed-question reliability gate. The next product step
+is the generic playable-lesson contract and renderer; broader reliability work
+should expand the fixed evaluation corpus rather than repeatedly tuning these
+seven examples.
